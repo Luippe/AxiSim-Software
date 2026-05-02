@@ -1,6 +1,6 @@
 #pragma once
 #include <vector>
-#include "cuda_runtime.h"
+#include <cuda_runtime.h>
 
 #define CUDA_CHECK(x) do { \
   cudaError_t err = (x); \

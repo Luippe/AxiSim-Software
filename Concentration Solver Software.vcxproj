@@ -49,7 +49,7 @@
       <PreprocessorDefinitions>WIN32;WIN64;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>C:\Users\luits\source\repos\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\luits\source\repos\imgui;C:\Users\luits\source\repos\Concentration Solver Software\Concentration Solver Software\manager\header;C:\Users\luits\source\repos\Concentration Solver Software\Concentration Solver Software\graphics\gui\header;C:\Users\luits\source\repos\Concentration Solver Software\Concentration Solver Software\graphics\window\header;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ShowIncludes>false</ShowIncludes>
     </ClCompile>
     <Link>
@@ -73,7 +73,7 @@
       <PreprocessorDefinitions>WIN32;WIN64;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>C:\Users\luits\source\repos\imgui;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\luits\source\repos\imgui;C:\Users\luits\source\repos\Concentration Solver Software\Concentration Solver Software\manager\header;C:\Users\luits\source\repos\Concentration Solver Software\Concentration Solver Software\graphics\gui\header;C:\Users\luits\source\repos\Concentration Solver Software\Concentration Solver Software\graphics\window\header;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ShowIncludes>false</ShowIncludes>
     </ClCompile>
     <Link>

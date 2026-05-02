@@ -13,3 +13,4 @@ Release/
 *.dll
 *.log
 *.bin
+imgui.ini

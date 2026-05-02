@@ -101,9 +101,6 @@
     <ClInclude Include="jacobi_pcg.cuh">
       <Filter>solver\header</Filter>
     </ClInclude>
-    <ClInclude Include="math_func.h">
-      <Filter>solver\header</Filter>
-    </ClInclude>
     <ClInclude Include="mesh.h">
       <Filter>solver\header</Filter>
     </ClInclude>
@@ -251,6 +248,9 @@
     <ClInclude Include="imgui\imstb_truetype.h">
       <Filter>graphics\imgui</Filter>
     </ClInclude>
+    <ClInclude Include="math_func.h">
+      <Filter>manager\header</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="mesh.frag">
@@ -360,9 +360,6 @@
     <ClCompile Include="..\..\..\..\Downloads\implot-master\implot-master\implot_items.cpp">
       <Filter>graphics\implot</Filter>
     </ClCompile>
-    <ClCompile Include="math_func.cpp">
-      <Filter>solver\source</Filter>
-    </ClCompile>
     <ClCompile Include="mesh.cpp">
       <Filter>solver\source</Filter>
     </ClCompile>
@@ -391,6 +388,9 @@
       <Filter>manager\source</Filter>
     </ClCompile>
     <ClCompile Include="pch.cpp">
+      <Filter>manager\source</Filter>
+    </ClCompile>
+    <ClCompile Include="math_func.cpp">
       <Filter>manager\source</Filter>
     </ClCompile>
   </ItemGroup>
