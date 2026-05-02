@@ -1,0 +1,255 @@
+#pragma once
+#include "setting.cuh"
+#include "gpu_utils.h"
+
+// holds solvers for solving system of linear equations
+
+enum FieldType {
+    FIELD_AXIAL_VELOCITY  = 0,
+    FIELD_RADIAL_VELOCITY = 1,
+    FIELD_PRESSURE        = 2,
+    FIELD_TEMPERATURE     = 3,
+    FIELD_CONCENTRATION   = 4
+};
+
+enum ResidualType {
+	RESIDUAL_RAW = 0,
+	RESIDUAL_RELATIVE = 1
+};
+
+enum LinearSolverType {
+    LINEAR_JACOBI         = 0,
+    LINEAR_BICGSTAB       = 1,
+    LINEAR_GMRES          = 2
+};
+
+enum VelocitySolverType {
+    SOLVER_SIMPLE         = 0,
+    SOLVER_SIMPLEC        = 1
+};
+
+enum class CellStoreType {
+	CENTER,
+	AXIAL,
+	RADIAL
+};
+
+struct Solution {
+
+	double conc;
+	std::vector<double> oxy;
+	std::vector<double> cs;
+	std::vector<double> cw;
+	std::vector<double> cp;
+
+};
+
+struct SolutionField {
+	std::vector<double> field;
+	int nr, nz;
+	double dr, dz;
+	CellStoreType type;
+};
+
+
+enum BCType {
+	DIRICHLET,
+	NEUMANN
+};
+
+struct BoundaryCondition {
+	BCType type = DIRICHLET;
+	double val = 0.0;
+};
+
+struct BoundaryConditionConfig {
+	BoundaryCondition inlet;
+	BoundaryCondition outlet;
+	BoundaryCondition outer;
+	BoundaryCondition centerline;
+};
+
+
+
+struct CudaTimer {
+
+	cudaEvent_t startTime, stopTime;
+	float ms = 0.0f;
+	
+	CudaTimer() {
+		cudaEventCreate(&startTime);
+		cudaEventCreate(&stopTime);
+	}
+
+	~CudaTimer() {
+		destroyEvent();
+	}
+
+	void startTimer(cudaStream_t stream) {
+		cudaStreamSynchronize(stream);
+		cudaEventRecord(startTime, stream);
+	}
+
+	void endTimer(cudaStream_t stream) {
+		cudaEventRecord(stopTime, stream);
+		cudaEventSynchronize(stopTime);
+	}
+
+	float getElapsedTime() {
+		cudaEventElapsedTime(&ms, startTime, stopTime);
+		return ms;
+	}
+
+	void destroyEvent() {
+		cudaEventDestroy(startTime);
+		cudaEventDestroy(stopTime);
+	}
+};
+
+
+struct Coefficients {
+	double* AE = nullptr;
+	double* AW = nullptr;
+	double* AN = nullptr;
+	double* AS = nullptr;
+	double* AC = nullptr;
+	double* b = nullptr;
+	double* res = nullptr;
+	int* active = nullptr;
+	int nr, nz, N;
+	CellStoreType storeType;
+
+	void free() {
+		freeAllDev(AE, AW, AN, AS, AC, b, res, active);
+	}
+};
+
+
+struct IterationConfig {
+
+	double outer_tol = 1e-8;
+	double inner_tol = 1e-10;
+	double cs_tol = 1e-10;
+	int outer_iter = 250;
+	int inner_iter = 250;
+	int cs_iter = 150;
+	int check_iter = 15;
+
+};
+
+struct ConfigSimple {
+	int maxIter = 10000;
+	int checkConv = 100;
+	double momTol = 1e-8;
+	double ppTol = 1e-5;
+};
+
+
+
+struct VariablesSimple {
+
+	double* DU = nullptr;
+	double* DV = nullptr;
+	double* p = nullptr;
+	double* pp = nullptr;
+	double* u = nullptr;
+	double* v = nullptr;
+
+	double* uTemp = nullptr;
+	double* vTemp = nullptr;
+	double* ppTemp = nullptr;
+
+	double momentumRelaxation = 0.7;
+	double correctionRelaxation = 1.7;
+	double pressureRelaxation = 0.3;
+
+	void free() {
+		freeAllDev(DU, DV, p, pp, u, v, uTemp, vTemp, ppTemp);
+	}
+};
+
+struct VariablesBiCGStab {
+
+	double conc;
+
+	double* ACC = nullptr;
+	double* ACnew = nullptr;
+	double* AKE = nullptr;
+	double* AKW = nullptr;
+	double* AKN = nullptr;
+	double* AKS = nullptr;
+	double* foxy = nullptr;
+	double* foxynew = nullptr;
+
+	double* oxy = nullptr;
+	double* beta = nullptr;
+	double* alpha = nullptr;
+	double* cs = nullptr;
+	double* cw = nullptr;
+	double* cp = nullptr;
+	double* res = nullptr;
+	double* res_t = nullptr;
+	double* jp = nullptr;
+	double* jp_t = nullptr;
+	double* js = nullptr;
+	double* js_t = nullptr;
+	double* jrho = nullptr;
+	double* jv = nullptr;
+	double* jt = nullptr;
+
+	double* snorm = nullptr;
+	double* resnorm = nullptr;
+	double* jw = nullptr;
+	double* alpha_den = nullptr;
+	double* w_num = nullptr;
+	double* w_den = nullptr;
+	double* OCR_num = nullptr;
+
+	double* jw_num_val = nullptr;
+	double* jw_den_val = nullptr;
+	double* jalpha_val = nullptr;
+
+	double* jalpha_den_val = nullptr;
+	double* jbeta_val = nullptr;
+	double* jrho_val_prev = nullptr;
+	double* jrho_val = nullptr;
+	double* jw_val = nullptr;
+	double* snorm_val = nullptr;
+	double* resnorm_val = nullptr;
+	double* OCR_num_val = nullptr;
+
+	double* tmpA = nullptr;
+	double* tmpB = nullptr;
+
+	void free() {
+		freeAllDev(ACC, ACnew, AKE, AKW, AKN, AKS);
+		freeAllDev(foxy, foxynew, oxy);
+		freeAllDev(beta, alpha, cs, cw, cp);
+		freeAllDev(res, res_t, jp, jp_t, js, js_t, jrho, jv, jt);
+		freeAllDev(snorm, resnorm, jw, alpha_den, w_num, w_den, OCR_num);
+		freeAllDev(
+			jw_num_val,
+			jw_den_val,
+			jalpha_val,
+			jalpha_den_val,
+			jbeta_val,
+			jrho_val_prev,
+			jrho_val,
+			jw_val,
+			snorm_val,
+			resnorm_val,
+			OCR_num_val
+		);
+		freeAllDev(tmpA, tmpB);
+	}
+};
+
+
+// holds all the config structs
+struct Config {
+
+	FluidPropertyConfig f;
+	GridConfig g;
+	IterationConfig itr;
+
+};
