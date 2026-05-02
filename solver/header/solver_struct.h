@@ -17,6 +17,18 @@ enum ResidualType {
 	RESIDUAL_RELATIVE = 1
 };
 
+enum ResidualNormType {
+	RESIDUAL_L1 = 0,
+	RESIDUAL_L2 = 1,
+	RESIDUAL_LINF = 2
+};
+
+enum ResidualScalingType {
+	RESIDUAL_SCALING_NONE = 0,
+	RESIDUAL_SCALING_N = 1,
+	RESIDUAL_SCALING_SQRT_N = 2
+};
+
 enum LinearSolverType {
     LINEAR_JACOBI         = 0,
     LINEAR_BICGSTAB       = 1,
@@ -115,12 +127,14 @@ struct Coefficients {
 	double* AC = nullptr;
 	double* b = nullptr;
 	double* res = nullptr;
+	double* initRes = nullptr;
 	int* active = nullptr;
 	int nr, nz, N;
+	double resVal = 0.0;
 	CellStoreType storeType;
 
 	void free() {
-		freeAllDev(AE, AW, AN, AS, AC, b, res, active);
+		freeAllDev(AE, AW, AN, AS, AC, b, res, active, initRes);
 	}
 };
 

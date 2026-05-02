@@ -81,7 +81,7 @@ void Console::registerRunCommands() {
 			scene.solver.run();
 		}
 		else if (object == "results") {
-			scene.results.generate(scene.mesh, scene.solver);
+			scene.results.generate();
 			gui.inspector.generate();
 		}
 		else {

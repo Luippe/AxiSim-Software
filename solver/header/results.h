@@ -38,13 +38,16 @@ public:
 	void render(Shader& shaderLine, Shader& shaderEdge);
 
 	// generate results using mesh and solution
-	void generate(Mesh& mesh, Solver& solver);
+	void generate();
 
 	// updates the outline model matrix so it can change with the mesh
 	void updateOutlineModel();
 
 	// upload colormap to shader
 	void uploadColormap();
+
+	// update the results after loading a file
+	void updateAfterLoadingFile();
 
 	std::vector<Vertex> vertices;
 	std::vector<Vertex> verticesCV;
@@ -92,14 +95,18 @@ private:
 	Field pField;
 	Field concField;
 	Solver& solver;
+	Mesh& mesh;
 
 	// updates vmin and vmax
 	void updateMinMax();
 
 	void createFields();
 
+	// create cv buffer using the copied data
+	void createCVBuffer();
+	
 	// copy the cv variables from the mesh class
-	void copyData(Mesh& mesh, Solver& solver);
+	void copyData();
 
 	void draw();
 	void drawCap();

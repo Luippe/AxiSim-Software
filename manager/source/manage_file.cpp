@@ -91,6 +91,30 @@ void saveFromPathMesh(const char* path, Mesh& mesh) {
 	out.close();
 }
 
+void saveFromPathSolver(const char* path, Solver& solver) {
+
+	std::ofstream out(path, std::ios::binary);
+	saveBoundaryConditionConfigs(out, solver.uBC, solver.vBC, solver.pBC, solver.concBC);
+	writeAll(out, solver.configSimple);
+	out.close();
+
+}
+
+//void saveFromPathSolver(const char* path, Results& results) {
+//	std::ofstream out(path, std::ios::binary);
+//	writeAll(
+//		out,
+//	g = mesh.g;
+//	nseg = mesh.nseg;
+//	cv = mesh.cv;
+//	vertices = mesh.vertices;
+//	verticesCV = mesh.verticesCV;
+//	indicesCV = mesh.indicesCV;
+//	);
+//	writeAll(out, solver.configSimple);
+//	out.close();
+//}
+
 void loadFromExplorerMesh(Mesh& mesh) {
 	const char* filters[] = { "*.bin" };
 
@@ -146,14 +170,7 @@ void saveFromExplorerSolver(Solver& solver) {
 	saveFromPathSolver(path, solver);
 }
 
-void saveFromPathSolver(const char* path, Solver& solver) {
 
-	std::ofstream out(path, std::ios::binary);
-	saveBoundaryConditionConfigs(out, solver.uBC, solver.vBC, solver.pBC, solver.concBC);
-	writeAll(out, solver.configSimple);
-	out.close();
-
-}
 
 void loadFromExplorerSolver(Solver& solver) {
 
@@ -188,6 +205,11 @@ void saveLaunchSolver(Solver& solver) {
 	const char* path = "openAtLaunchSolver.bin";
 	saveFromPathSolver(path, solver);
 }
+//
+//void saveFromExplorerResults(Results& results) {
+//	const char* path = "openAtLaunchResults.bin";
+//	saveFromPathResults(path, results);
+//}
 
 //void saveLaunchResults(Results& results) {
 //	const char* path = "openAtLaunchResults.bin";

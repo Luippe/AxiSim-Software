@@ -27,6 +27,14 @@ void BaseGUI::tableNextColumn() {
 void BaseGUI::textAtNewRow(const char* text, const int column, const int nextColumn) {
 	tableNextRow();
 	setTableColumn(column);
-	textToLeft(text);
+	ImGui::TextUnformatted(text);
 	setTableColumn(nextColumn);
+}
+
+void BaseGUI::setNextWindowSize(int height, int width) {
+	ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_Appearing);
+}
+
+void BaseGUI::createSimpleCombo(const char* label, const char* items[], int& currentItem, int itemCount) {
+	ImGui::Combo(label, &currentItem, items, itemCount);
 }

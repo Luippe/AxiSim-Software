@@ -72,7 +72,7 @@ void Menu::drawSave() {
 		}
 
 		if (ImGui::MenuItem("Results")) {
-			saveFromExplorerMesh(scene.mesh);
+			//saveFromExplorerResults(scene.results);
 		}
 
 		ImGui::Separator();

@@ -27,21 +27,8 @@ void SolverGUI::draw() {
 						ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 
 						textAtNewRow("Solver", 0, 1);
-						if (ImGui::BeginCombo("##Solver", solver.velocitySolverType[(int)solver.currentVelocitySolver])) {
-							for (int i = 0; i < IM_ARRAYSIZE(solver.velocitySolverType); i++) {
-								bool isSelected = ((int)solver.currentVelocitySolver == i);
-
-								if (ImGui::Selectable(solver.velocitySolverType[i], isSelected)) {
-									solver.currentVelocitySolver = (VelocitySolverType)(i);
-								}
-
-								if (isSelected) {
-									ImGui::SetItemDefaultFocus();
-								}
-							}
-
-							ImGui::EndCombo();
-						}
+						createSimpleCombo("##Solver", solver.velocitySolverType, (int&)solver.currentVelocitySolver, IM_ARRAYSIZE(solver.velocitySolverType));
+						
 						ImGui::EndTable();
 					}
 				}
@@ -52,21 +39,8 @@ void SolverGUI::draw() {
 						ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 200.0f);
 
 						textAtNewRow("Field", 0, 1);
-						if (ImGui::BeginCombo("##Field", solver.fieldType[(int)solver.currentField])) {
-							for (int i = 0; i < IM_ARRAYSIZE(solver.fieldType); i++) {
-								bool isSelected = ((int)solver.currentField == i);
-
-								if (ImGui::Selectable(solver.fieldType[i], isSelected)) {
-									solver.currentField = (FieldType)i;
-								}
-
-								if (isSelected) {
-									ImGui::SetItemDefaultFocus();
-								}
-							}
-
-							ImGui::EndCombo();
-						}
+						createSimpleCombo("##Field", solver.fieldType, (int&)solver.currentField, IM_ARRAYSIZE(solver.fieldType));
+						
 						ImGui::EndTable();
 					}
 
@@ -79,6 +53,7 @@ void SolverGUI::draw() {
 								ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
 
 								drawBCCombo("Inlet", solver.uBC.inlet);
+								
 								ImGui::EndTable();
 							}
 						}
@@ -89,35 +64,51 @@ void SolverGUI::draw() {
 								ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
 
 								drawBCCombo("Outlet", solver.pBC.outlet);
+								
 								ImGui::EndTable();
 							}
 						}
 					}
 				}
 				if (ImGui::CollapsingHeader("Residuals"), ImGuiTreeNodeFlags_DefaultOpen) {
-					if (ImGui::BeginTable("Residual Settings", 2)) {
+
+
+					// -------------------RESIDUAL TYPE SETTINGS-------------------
+					if (ImGui::BeginTable("Residual Type Settings", 3)) {
 						ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 300.0f);
 						ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+						ImGui::TableSetupColumn("Advanced", ImGuiTableColumnFlags_WidthFixed, 50.0f);
 
 						textAtNewRow("Residual Type", 0, 1);
-						if (ImGui::BeginCombo("##Residual", solver.residualType[(int)solver.currentResidual])) {
-							for (int i = 0; i < IM_ARRAYSIZE(solver.residualType); i++) {
-								bool isSelected = ((int)solver.currentResidual == i);
+						createSimpleCombo("##ResidualType", solver.residualType, (int&)solver.currentResidual, IM_ARRAYSIZE(solver.residualType));
 
-								if (ImGui::Selectable(solver.residualType[i], isSelected)) {
-									solver.currentResidual = (ResidualType)i;
-								}
+						tableNextColumn();
+						if (ImGui::SmallButton("...##AdvancedResidualOptions")) {
+							ImGui::OpenPopup("Advanced Settings");
+						}
 
-								if (isSelected) {
-									ImGui::SetItemDefaultFocus();
-								}
+						if (ImGui::BeginPopup("Advanced Settings")) {
+							if (ImGui::BeginTable("Residual Type Settings", 2)) {
+								ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+								ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 130.0f);
+
+								textAtNewRow("Residual Norm Type", 0, 1);
+								createSimpleCombo("##ResidualNorm", solver.residualNormType, (int&)solver.currentResidualNorm, IM_ARRAYSIZE(solver.residualNormType));
+
+								textAtNewRow("Residual Scaling", 0, 1);
+								createSimpleCombo("##ResidualScaling", solver.residualScalingType, (int&)solver.currentResidualScaling, IM_ARRAYSIZE(solver.residualScalingType));
+
+								ImGui::EndTable();
 							}
-							ImGui::EndCombo();
+							ImGui::EndPopup();
 						}
 						ImGui::EndTable();
 					}
 
-					if (ImGui::BeginTable("Residual Settings", 2)) {
+					ImGui::Separator();
+
+					// -------------------RESIDUAL AND RESIDUAL SETTINGS-------------------
+					if (ImGui::BeginTable("Iteration Settings", 2)) {
 						if (solver.currentVelocitySolver == SOLVER_SIMPLE) {
 							ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 300.0f);
 							ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 150.0f);
@@ -160,6 +151,7 @@ void SolverGUI::draw() {
 		ImGui::EndTabItem();
 	}
 }
+
 
 
 void SolverGUI::drawBCCombo(const char* label, BoundaryCondition& bc) {

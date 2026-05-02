@@ -1,5 +1,6 @@
 #include "math_func.h"
-#include <glm/gtx/quaternion.hpp>
+#include <glm/vec3.hpp>
+#include <glm/vec2.hpp>
 #include <iostream>
 
 std::vector<double> linspace(double start, double end, std::size_t num) {
@@ -25,22 +26,6 @@ std::vector<double> linspace(double start, double end, std::size_t num) {
 	return x;
 }
 
-void print2D(std::vector<std::vector<int>> vec) {
-
-	for (int i = 0; i < vec.size(); ++i) {
-		for (int j = 0; j < vec[i].size(); ++j) {
-			std::cout << vec[i][j] << " ";
-		}
-
-		std::cout << "\n";
-	}
-}
-
-void print1D(std::vector<double> vec) {
-	for (int i = 0; i < vec.size(); ++i) {
-		std::cout << vec[i] << "\n";
-	}
-}
 
 std::vector<double> vec_const_mul(std::vector<double> v, double c) {
 	std::vector<double> res(v.size());

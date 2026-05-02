@@ -1,18 +1,11 @@
 #pragma once
-#define GLM_ENABLE_EXPERIMENTAL
 #include <vector>
-#include <glm/vec3.hpp>
-#include <glm/vec2.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/quaternion.hpp>
+#include <glm/fwd.hpp>
 
 // create spaced 1d vector
 std::vector<double> linspace(double start, double end, std::size_t num);
-
-// print 2d vector
-void print2D(std::vector<std::vector<int>> vec);
-
-// print 1d vector
-void print1D(std::vector<double> vec);
 
 // multiply a vector and a constant
 std::vector<double> vec_const_mul(std::vector<double> v, double c);

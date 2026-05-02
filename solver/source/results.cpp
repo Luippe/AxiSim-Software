@@ -15,7 +15,8 @@ Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader)
 	uField(solver.config),
 	vField(solver.config),
 	pField(solver.config),
-	concField(solver.config){
+	concField(solver.config),
+	mesh(mesh){
 
 	this->colFront = mesh.colFront;
 	this->colBack = mesh.colBack;
@@ -28,7 +29,26 @@ Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader)
 
 }
 
-void Results::copyData(Mesh& mesh, Solver& solver) {
+void Results::updateAfterLoadingFile() {
+
+	createCVBuffer();
+	createOutlineVertices();
+	createOutlineBuffer();
+	createFields();
+	isReady = true;
+
+}
+
+void Results::createCVBuffer() {
+	// deep copy buffer
+	cvBuffer.createBuffer(verticesCV.size() * sizeof(Vertex), &verticesCV[0]);
+	cvBuffer.bind();
+	cvBuffer.enableAttribute(0, 3, GL_FLOAT, sizeof(Vertex), (void*)0);
+	cvElementBuffer.createBuffer(indicesCV.size() * sizeof(unsigned int), &indicesCV[0]);
+	cvBuffer.unbind();
+}
+
+void Results::copyData() {
 
 	// copy variables and structs
 	g = mesh.g;
@@ -38,29 +58,25 @@ void Results::copyData(Mesh& mesh, Solver& solver) {
 	verticesCV = mesh.verticesCV;
 	indicesCV = mesh.indicesCV;
 
-	// deep copy buffer
-	cvBuffer.createBuffer(verticesCV.size() * sizeof(Vertex), &verticesCV[0]);
-	cvBuffer.bind();
-	cvBuffer.enableAttribute(0, 3, GL_FLOAT, sizeof(Vertex), (void*)0);
-	cvElementBuffer.createBuffer(indicesCV.size() * sizeof(unsigned int), &indicesCV[0]);
-	cvBuffer.unbind();
-
 }
 
-void Results::generate(Mesh& mesh, Solver& solver) {
+void Results::generate() {
 
 	Clock::time_point startTime = startTimer();
 
-	copyData(mesh, solver);
-
-	// generate all vertices
-	createOutlineVertices();
-	console->addCompletionMessage("Completed generating vertices");
+	// copy all relevant data from mesh class
+	copyData();
+	createCVBuffer();
+	console->addCompletionMessage("Completed copying data and generating control volume buffers");
 
 	// generate all fields (values and buffers)
 	createFields();
 	console->addCompletionMessage("Completed generating field variables");
 	updateCurrentVariables();
+
+	// generate all vertices
+	createOutlineVertices();
+	console->addCompletionMessage("Completed generating vertices");
 
 	// make buffer for outline
 	createOutlineBuffer();

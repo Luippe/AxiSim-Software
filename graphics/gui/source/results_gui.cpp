@@ -28,7 +28,7 @@ void ResultsGUI::draw() {
 
 		if (ImGui::Button("Generate Results")) {
 
-			scene.results.generate(scene.mesh, scene.solver);
+			scene.results.generate();
 			gui.inspector.generate();
 
 		}

@@ -43,7 +43,8 @@ void allocateCoefficients(Config& config, Coefficients& coeff, BoundaryCondition
 	coeff.AC = deviceAlloc<double>(N);
 	coeff.b = deviceAlloc<double>(N);
 	coeff.res = deviceAlloc<double>(N);
-	
+	coeff.initRes = deviceAlloc<double>(N);
+
 	// find which cells should be active or not. 0 = active, 1 = deactive
 	std::vector<int> active(N, 0);
 	for (int i = 0; i < nr; ++i) {

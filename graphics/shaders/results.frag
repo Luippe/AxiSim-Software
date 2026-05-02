@@ -23,6 +23,8 @@ void main()
     float value = texture(fieldTex, vec2(u, v)).r;
     float t = clamp((value - vmin) / (vmax - vmin), 0.0, 1.0);
     vec3 color = texture(uColormap, vec2(0.5, t)).rgb;
-    FragColor = vec4(color, 1.0);
 
+
+//    FragColor = vec4(color, 1.0);
+    FragColor = vec4(vec3(0.8,0.5,0.5),1.0);
 }

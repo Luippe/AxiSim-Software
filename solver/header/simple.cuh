@@ -29,7 +29,5 @@ void updateVVelocity(Config config, Coefficients coeff, VariablesSimple simple, 
 __global__
 void updatePressure(Config config, Coefficients coeff, VariablesSimple simple, int N);
 
-double getMax(Coefficients& coeff);
-
 __global__
 void getCorrectionCoefficient(Config config, Coefficients coeff, VariablesSimple simple, double* D);

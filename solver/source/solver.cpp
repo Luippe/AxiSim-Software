@@ -182,6 +182,29 @@ void Solver::runBiCGStab() {
 
 }
 
+void Solver::setDefault() {
+    uBC.inlet = { BCType::DIRICHLET, 0.0 };
+    uBC.outlet = { BCType::NEUMANN, 0.0 };
+    uBC.outer = { BCType::NEUMANN, 0.0 };
+    uBC.centerline = { BCType::NEUMANN, 0.0 };
+    vBC.inlet = { BCType::DIRICHLET, 0.0 };
+    vBC.outlet = { BCType::NEUMANN, 0.0 };
+    vBC.outer = { BCType::NEUMANN, 0.0 };
+    vBC.centerline = { BCType::NEUMANN, 0.0 };
+    pBC.inlet = { BCType::NEUMANN, 0.0 };
+    pBC.outlet = { BCType::DIRICHLET, 0.0 };
+    pBC.outer = { BCType::NEUMANN, 0.0 };
+    pBC.centerline = { BCType::NEUMANN, 0.0 };
+    concBC.inlet = { BCType::DIRICHLET, f.Vmax * f.rho / f.m };
+    concBC.outlet = { BCType::NEUMANN, 0.0 };
+    concBC.outer = { BCType::NEUMANN, 0.0 };
+    concBC.centerline = { BCType::NEUMANN, 0.0 };
+}
+
+void Solver::solveResidual() {
+
+}
+
 void Solver::runSimple() {
 
     // allocate memory
@@ -230,19 +253,26 @@ void Solver::runSimple() {
         createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (config, ppCoeff, simple);
         copyVector << <blocks, threadsPerBlock, 0, stream >> > (simple.ppTemp, simple.pp, N);
         jacobi << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff, simple.ppTemp, simple.pp, simple.correctionRelaxation);
+        
 
         // check for convergence and print residual to console
         if (k % configSimple.checkConv == 0) {
-            residualAll << <maxBlocks, threadsPerBlock, 0, stream >> > (currentResidual, 
-                ResidualPairs{ uCoeff,simple.u,nullptr },
+
+            residualAll << <maxBlocks, threadsPerBlock, 0, stream >> > (currentResidual,
+                ResidualPairs{ uCoeff,simple.u,nullptr},
                 ResidualPairs{ vCoeff,simple.v,nullptr },
-                ResidualPairs{ ppCoeff,simple.pp,nullptr });
+                ResidualPairs{ ppCoeff,simple.pp,nullptr});
+
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
-            uRes = getMax(uCoeff);
-            vRes = getMax(vCoeff);
-            ppRes = getMax(ppCoeff);
+			residualAllHost(currentResidualNorm, uCoeff, vCoeff, ppCoeff);
+
+			uRes = uCoeff.resVal;
+			vRes = vCoeff.resVal;
+			ppRes = ppCoeff.resVal;
+
             residualPlot.add(k, uRes, vRes, ppRes);
+
             char buffer[256];
             std::snprintf(buffer, sizeof(buffer), "ITERATION: %d   U: %e  V: %e  Continuity: %e\n", k, uRes, vRes, ppRes);
             std::string line(buffer);

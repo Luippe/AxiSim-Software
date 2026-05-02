@@ -292,8 +292,3 @@ void updatePressure(Config config, Coefficients coeff, VariablesSimple simple, i
 	p[n] += pressureRelaxation * pp[n];
 }
 
-double getMax(Coefficients& coeff) {
-	std::vector<double> h_array(coeff.N);
-	cudaMemcpy(h_array.data(), coeff.res, coeff.N * sizeof(double), cudaMemcpyDeviceToHost);
-	return *std::max_element(h_array.begin(), h_array.end());
-}

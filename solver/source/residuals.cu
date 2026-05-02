@@ -47,3 +47,60 @@ void residualRaw(ResidualPairs& pairs, int n){
 	res[n] = fabs(coeff.b[n] - Ax);
 
 }
+
+__device__
+void residualRelative(ResidualPairs& pairs, int n) {
+
+	Coefficients& coeff = pairs.coeff;
+	const double* x = pairs.x;
+
+	if (n >= pairs.coeff.N) return;
+	if (pairs.coeff.active[n]) return;
+
+	
+}
+
+void residualL1Host(Coefficients& coeff) {
+
+	std::vector<double> h_vec(coeff.N);
+
+	cudaMemcpy(h_vec.data(), coeff.res, coeff.N * sizeof(double), cudaMemcpyDeviceToHost);
+
+	double sum = 0.0;
+
+	for (double& x : h_vec) {
+		sum += std::abs(x);
+	}
+
+	coeff.resVal = sum;
+}
+
+
+void residualL2Host(Coefficients& coeff) {
+
+	std::vector<double> h_vec(coeff.N);
+
+	cudaMemcpy(h_vec.data(), coeff.res, coeff.N * sizeof(double), cudaMemcpyDeviceToHost);
+
+	double sum = 0.0;
+
+	for (double& x : h_vec) {
+		sum += x * x;
+	}
+
+	coeff.resVal = sqrt(sum);
+}
+
+// get maximum absolute value of a residual vector
+void residualLInfHost(Coefficients& coeff) {
+
+	std::vector<double> h_vec(coeff.N);
+
+	cudaMemcpy(h_vec.data(), coeff.res, coeff.N * sizeof(double), cudaMemcpyDeviceToHost);
+
+	for (double& x : h_vec) {
+		x = std::abs(x);
+	}
+
+	coeff.resVal = *std::max_element(h_vec.begin(), h_vec.end());
+}
