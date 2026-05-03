@@ -93,7 +93,6 @@ void Results::generate() {
 	float endTime = endTimer(startTime);
 	console->addCompletionTime("Results", endTime);
 
-
 }
 
 void Results::createFields() {

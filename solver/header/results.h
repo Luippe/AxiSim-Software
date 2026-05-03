@@ -49,6 +49,9 @@ public:
 	// update the results after loading a file
 	void updateAfterLoadingFile();
 
+	// update all relevant variables
+	void updateCurrentVariables();
+
 	std::vector<Vertex> vertices;
 	std::vector<Vertex> verticesCV;
 	std::vector<VertexEdge> verticesEdge;
@@ -67,8 +70,7 @@ public:
 	TextureBuffer currentTextureBuffer;
 	Console* console = nullptr;
 
-	// update all relevant variables
-	void updateCurrentVariables();
+
 
 private:
 
