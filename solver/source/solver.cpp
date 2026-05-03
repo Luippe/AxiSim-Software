@@ -265,7 +265,7 @@ void Solver::runSimple() {
 
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
-			residualAllHost(currentResidualNorm, uCoeff, vCoeff, ppCoeff);
+			residualAllHost(currentResidualScaling, currentResidualNorm, uCoeff, vCoeff, ppCoeff);
 
 			uRes = uCoeff.resVal;
 			vRes = vCoeff.resVal;

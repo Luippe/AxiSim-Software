@@ -2,7 +2,6 @@
 #include "cuda_runtime.h"
 #include "solver_struct.h"
 
-
 __device__
 bool isStoredCenter(CellStoreType& storeType);
 

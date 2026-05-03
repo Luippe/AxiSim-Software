@@ -9,6 +9,19 @@ SolverGUI::SolverGUI(SceneView& scene) :
 	solver(scene.solver){
 }
 
+void SolverGUI::setResidualDefault() {
+	switch (solver.currentResidual) {
+	case RESIDUAL_RAW:
+		solver.currentResidualNorm = RESIDUAL_LINF;
+		solver.currentResidualScaling = RESIDUAL_SCALING_NONE;
+		break;
+	case RESIDUAL_RMS:
+		solver.currentResidualNorm = RESIDUAL_L2;
+		solver.currentResidualScaling = RESIDUAL_SCALING_SQRT_N;
+		break;
+	}
+}
+
 void SolverGUI::draw() {
 	if (ImGui::BeginTabItem("Solver")) {
 
@@ -52,8 +65,12 @@ void SolverGUI::draw() {
 								ImGui::TableSetupColumn("BC Type", ImGuiTableColumnFlags_WidthFixed, 200.0f);
 								ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
 
-								drawBCCombo("Inlet", solver.uBC.inlet);
+								textAtNewRow("Inlet", 0, 1);
+								createSimpleCombo("##InletBCType", solver.bcTypeNames, (int&)(solver.uBC.inlet.type), IM_ARRAYSIZE(solver.bcTypeNames));
 								
+								tableNextColumn();
+								createInputDouble("##InletBCValue", &solver.uBC.inlet.val);
+
 								ImGui::EndTable();
 							}
 						}
@@ -63,24 +80,30 @@ void SolverGUI::draw() {
 								ImGui::TableSetupColumn("BC Type", ImGuiTableColumnFlags_WidthFixed, 200.0f);
 								ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
 
-								drawBCCombo("Outlet", solver.pBC.outlet);
+								textAtNewRow("Outlet", 0, 1);
+								createSimpleCombo("##OutletBCType", solver.bcTypeNames, (int&)(solver.pBC.outlet.type), IM_ARRAYSIZE(solver.bcTypeNames));
 								
+								tableNextColumn();
+								createInputDouble("##OutletBCValue", &solver.pBC.outlet.val);
+
 								ImGui::EndTable();
 							}
 						}
 					}
 				}
+
+				// --------------------------RESIDUAL TYPE SETTINGS----------------------------
 				if (ImGui::CollapsingHeader("Residuals"), ImGuiTreeNodeFlags_DefaultOpen) {
 
-
-					// -------------------RESIDUAL TYPE SETTINGS-------------------
 					if (ImGui::BeginTable("Residual Type Settings", 3)) {
 						ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 300.0f);
 						ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
 						ImGui::TableSetupColumn("Advanced", ImGuiTableColumnFlags_WidthFixed, 50.0f);
 
 						textAtNewRow("Residual Type", 0, 1);
-						createSimpleCombo("##ResidualType", solver.residualType, (int&)solver.currentResidual, IM_ARRAYSIZE(solver.residualType));
+						if (createSimpleCombo("##ResidualType", solver.residualType, (int&)solver.currentResidual, IM_ARRAYSIZE(solver.residualType))) {
+							setResidualDefault();
+						}
 
 						tableNextColumn();
 						if (ImGui::SmallButton("...##AdvancedResidualOptions")) {
@@ -150,33 +173,4 @@ void SolverGUI::draw() {
 
 		ImGui::EndTabItem();
 	}
-}
-
-
-
-void SolverGUI::drawBCCombo(const char* label, BoundaryCondition& bc) {
-	ImGui::PushID(label);
-
-	ImGui::TableNextRow();
-
-	// label column
-	ImGui::TableSetColumnIndex(0);
-	ImGui::AlignTextToFramePadding();
-	ImGui::TextUnformatted(label);
-
-	// combo column
-	ImGui::TableSetColumnIndex(1);
-
-	int currentType = (int)(bc.type);
-
-	if (ImGui::Combo("##BCType", &currentType, solver.bcTypeNames, IM_ARRAYSIZE(solver.bcTypeNames))) {
-		bc.type = (BCType)(currentType);
-	}
-
-	// value column
-	ImGui::TableSetColumnIndex(2);
-	ImGui::SetNextItemWidth(-FLT_MIN);
-	ImGui::InputDouble("##BCValue", &bc.val);
-	
-	ImGui::PopID();
 }

@@ -3,14 +3,16 @@
 
 class SceneView;
 class Solver;
-struct BoundaryCondition;
 
 class SolverGUI : public BaseGUI  {
 public:
 	SolverGUI(SceneView& scene);
 	void draw();
+
 private:
-	void drawBCCombo(const char* label, BoundaryCondition& bc);
+	// set default values for residual settings based on the current residual type
+	void setResidualDefault();
+
 	SceneView& scene;
 	Solver& solver;
 };

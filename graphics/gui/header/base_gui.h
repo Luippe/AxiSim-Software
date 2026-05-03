@@ -13,6 +13,9 @@ public:
 	// helper function to move to next row, set text, and move to next column
 	void textAtNewRow(const char* text, const int column, const int nextColumn);
 
-	// create a simple combo box with label and items, current item is updated by reference
-	void createSimpleCombo(const char* label, const char* items[], int& currentItem, int itemCount);
+	// create a simple combo box with label and items, current item is updated by reference. returns true if the combo box value was changed
+	bool createSimpleCombo(const char* label, const char* items[], int& currentItem, int itemCount);
+
+	// create an input double field
+	void createInputDouble(const char* label, double* value);
 };

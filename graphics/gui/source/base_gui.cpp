@@ -35,6 +35,10 @@ void BaseGUI::setNextWindowSize(int height, int width) {
 	ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_Appearing);
 }
 
-void BaseGUI::createSimpleCombo(const char* label, const char* items[], int& currentItem, int itemCount) {
-	ImGui::Combo(label, &currentItem, items, itemCount);
+bool BaseGUI::createSimpleCombo(const char* label, const char* items[], int& currentItem, int itemCount) {
+	return ImGui::Combo(label, &currentItem, items, itemCount);
+}
+
+void BaseGUI::createInputDouble(const char* label, double* value) {
+	ImGui::InputDouble(label, value);
 }

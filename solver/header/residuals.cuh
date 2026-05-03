@@ -26,28 +26,40 @@ void residualRelative(ResidualPairs& pairs, int n);
 
 
 template <typename... Coefficients>
-void residualAllHost(ResidualNormType residualNormType, Coefficients&...coeff) {
+void residualAllHost(ResidualScalingType residualScaleType, ResidualNormType residualNormType, Coefficients&...coeff) {
 
-	// norm of residual
-	if (residualNormType == RESIDUAL_L1) {
+	// get residual values
+	switch (residualNormType) {
+
+	case RESIDUAL_L1:
 		(residualL1Host(coeff), ...);
-	}
-	else if (residualNormType == RESIDUAL_L2) {
+		break;
+
+	case RESIDUAL_L2:
 		(residualL2Host(coeff), ...);
-	}
-	else if (residualNormType == RESIDUAL_LINF) {
+		break;
+
+	case RESIDUAL_LINF:
 		(residualLInfHost(coeff), ...);
+		break;
+
 	}
 
+	// scale the residual
+	switch (residualScaleType) {
 
-	//if (residualType == RESIDUAL_RELATIVE) {
-	//	residualRelativeAllHost(systems...);
-	//	return;
-	//}
-	//else if (residualType == RESIDUAL_RAW) {
-	//	residualRawAllHost(systems...);
-	//	return;
-	//}
+	case RESIDUAL_SCALING_NONE:
+		break;
+
+	case RESIDUAL_SCALING_N:
+		((coeff.resVal /= coeff.N), ...);
+		break;
+
+	case RESIDUAL_SCALING_SQRT_N:
+		((coeff.resVal /= sqrt(coeff.N)), ...);
+		break;
+
+	}
 }
 
 void residualL1Host(Coefficients& coeff);

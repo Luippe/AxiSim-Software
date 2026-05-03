@@ -14,7 +14,7 @@ enum FieldType {
 
 enum ResidualType {
 	RESIDUAL_RAW = 0,
-	RESIDUAL_RELATIVE = 1
+	RESIDUAL_RMS = 1
 };
 
 enum ResidualNormType {
