@@ -69,25 +69,25 @@ void ResultsGUI::draw() {
 				textAtNewRow("Front", 0, 1);
 				if (ImGui::SliderInt("##Front", &results.colFront, 0, mesh.g.nz)) {
 					results.currentFront = (float)results.colFront * (float)mesh.g.dz;
-					results.updateOutlineModel();
+					results.updateModel();
 				}
 
 				textAtNewRow("Back", 0, 1);
 				if (ImGui::SliderInt("##Back", &results.colBack, 0, mesh.g.nz)) {
 					results.currentBack = (float)results.colBack * (float)mesh.g.dz;
-					results.updateOutlineModel();
+					results.updateModel();
 				}
 
 				textAtNewRow("Outer", 0, 1);
 				if (ImGui::SliderInt("##Outer", &results.rowTop, 0, mesh.g.nr)) {
 					results.currentOuter = (float)results.rowTop * (float)mesh.g.dr;
-					results.updateOutlineModel();
+					results.updateModel();
 				}
 
 				textAtNewRow("Inner", 0, 1);
 				if (ImGui::SliderInt("##Inner", &results.rowBot, 0, mesh.g.nr)) {
 					results.currentInner = (float)results.rowBot * (float)mesh.g.dr;
-					results.updateOutlineModel();
+					results.updateModel();
 				}
 
 				ImGui::EndTable();
@@ -103,7 +103,9 @@ void ResultsGUI::draw() {
 					for (int n = 0; n < IM_ARRAYSIZE(colormap.items); n++) {
 						bool isSelected = (colormap.currentItem == n);
 						if (ImGui::Selectable(colormap.items[n], isSelected)) {
+
 							colormap.setColormap(n);
+							results.uploadColormap();
 							gui.inspector.generate();
 						}
 						if (isSelected) {

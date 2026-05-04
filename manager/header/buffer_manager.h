@@ -25,9 +25,15 @@ class VertexBuffer {
 public:
 	VertexBuffer() {};
 	void bind();
+	void bindVBO();
 	void unbind();
+	void unbindVBO();
 	void createBuffer(GLsizeiptr size, const void* data);
 	void enableAttribute(GLuint index, GLint size, GLenum type, GLsizei stride, const void* pointer);
+	void copyBuffer(GLuint srcBuffer, GLsizeiptr size);
+	void bufferSubData(GLsizeiptr size, const void* data);
+	GLuint getVBO();
+	GLuint getVAO();
 
 private:
 	void deleteBuffer();
@@ -39,6 +45,8 @@ class ElementBuffer {
 public:
 	ElementBuffer() {};
 	void createBuffer(GLsizeiptr size, const void* data);
+	void copyBuffer(GLuint srcBuffer, GLsizeiptr size);
+	GLuint getEBO();
 
 private:
 	void deleteBuffer();
@@ -51,8 +59,8 @@ public:
 	TextureBuffer() {};
 	void bind();
 	void unbind();
-	void createBuffer(GLenum target, int nx, int ny, GLenum format, const void* data);
-	void updateBuffer(GLenum target, int nx, int ny, GLenum format, const void* data);
+	void createBuffer(GLenum target, int nx, int ny, GLenum format, GLenum type, const void* data);
+	void updateBuffer(GLenum target, int nx, int ny, GLenum format, GLenum type, const void* data);
 	unsigned int getTextureID();
 private:
 	void deleteBuffer();

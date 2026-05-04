@@ -18,7 +18,7 @@ void Inspector::generate() {
 }
 
 void Inspector::createBuffer() {
-	textureBuffer.createBuffer(GL_RGBA32F, g.nz + 1, g.nr + 1, GL_RGB, pixels.data());	// initialize buffer
+	textureBuffer.createBuffer(GL_RGBA32F, g.nz + 1, g.nr + 1, GL_RGB, GL_FLOAT, pixels.data());	// initialize buffer
 }
 
 void Inspector::createScalarImage() {
@@ -113,14 +113,8 @@ void Inspector::updateSelectedIndices() {
 		results.currentOuter = (float)endY * (float)g.dr;
 		results.currentInner = (float)startY * (float)g.dr;
 
-		results.updateOutlineModel();
+		results.updateModel();
 
-		//for (int i = startY; i < endY; i++) {
-		//	for (int j = startX; j < endX; j++) {
-		//		int n = i * g.nz + j;
-		//		selectedIndices.push_back(n);
-		//	}
-		//}
 	}
 }
 

@@ -63,7 +63,7 @@ void Field::createValues() {
 }
 
 void Field::createBuffer() {
-	textureBuffer.createBuffer(GL_R32F, config.g.nz + 1, config.g.nr + 1, GL_RED, processedData.data());
+	textureBuffer.createBuffer(GL_R32F, config.g.nz + 1, config.g.nr + 1, GL_RED, GL_FLOAT, processedData.data());
 	//printf("%f\n", processedData[config.g.nz - 1]);
 }
 

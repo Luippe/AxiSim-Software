@@ -84,8 +84,6 @@ void saveFromPathMesh(const char* path, Mesh& mesh) {
 		mesh.g.cell_left,
 		mesh.g.cell_thickness,
 		mesh.g.cell_right,
-		mesh.verticesCV,
-		mesh.indicesCV,
 		mesh.cv
 	);
 	out.close();
@@ -150,8 +148,6 @@ void loadFromPathMesh(const char* path, Mesh& mesh) {
 	readValue(in, mesh.g.cell_right);
 
 	// load vectors
-	readVector(in, mesh.verticesCV);
-	readVector(in, mesh.indicesCV);
 	readVector(in, mesh.cv);
 
 }

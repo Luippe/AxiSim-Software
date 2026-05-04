@@ -152,7 +152,7 @@ struct IterationConfig {
 };
 
 struct ConfigSimple {
-	int maxIter = 10000;
+	int maxIter = 5000;
 	int checkConv = 100;
 	double momTol = 1e-8;
 	double ppTol = 1e-5;

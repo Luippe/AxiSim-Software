@@ -87,8 +87,16 @@ void VertexBuffer::bind() {
 	glBindVertexArray(VAO);
 }
 
+void VertexBuffer::bindVBO() {
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);
+}
+
 void VertexBuffer::unbind() {
 	glBindVertexArray(0);
+}
+
+void VertexBuffer::unbindVBO() {
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 void VertexBuffer::createBuffer(GLsizeiptr size, const void* data) {
@@ -101,14 +109,36 @@ void VertexBuffer::createBuffer(GLsizeiptr size, const void* data) {
 	glGenBuffers(1, &VBO);
 
 	bind();
+
 	glBindBuffer(GL_ARRAY_BUFFER, VBO);
 	glBufferData(GL_ARRAY_BUFFER, size, data, GL_STATIC_DRAW);
+
 	unbind();
 }
 
 void VertexBuffer::enableAttribute(GLuint index, GLint size, GLenum type, GLsizei stride, const void* pointer) {
-	glEnableVertexAttribArray(index);
 	glVertexAttribPointer(index, size, type, GL_FALSE, stride, pointer);
+	glEnableVertexAttribArray(index);
+}
+
+void VertexBuffer::copyBuffer(GLuint srcBuffer, GLsizeiptr size) {
+	glBindBuffer(GL_COPY_READ_BUFFER, srcBuffer);
+	glBindBuffer(GL_COPY_WRITE_BUFFER, VBO);
+	glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, size);
+	glBindBuffer(GL_COPY_READ_BUFFER, 0);
+	glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+}
+
+void VertexBuffer::bufferSubData(GLsizeiptr size, const void* data) {
+	glBufferSubData(GL_ARRAY_BUFFER, 0, size, data);
+}
+
+GLuint VertexBuffer::getVBO() {
+	return VBO;
+}
+
+GLuint VertexBuffer::getVAO() {
+	return VAO;
 }
 
 void VertexBuffer::deleteBuffer() {
@@ -128,12 +158,24 @@ void ElementBuffer::createBuffer(GLsizeiptr size, const void* data) {
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, size, data, GL_STATIC_DRAW);
 }
 
+void ElementBuffer::copyBuffer(GLuint srcBuffer, GLsizeiptr size) {
+	glBindBuffer(GL_COPY_READ_BUFFER, srcBuffer);
+	glBindBuffer(GL_COPY_WRITE_BUFFER, EBO);
+	glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, size);
+	glBindBuffer(GL_COPY_READ_BUFFER, 0);
+	glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+}
+
+GLuint ElementBuffer::getEBO() {
+	return EBO;
+}
+
 void ElementBuffer::deleteBuffer() {
 	glDeleteBuffers(1, &EBO);
 }
 
 // --------------------------Texture Buffer---------------------------
-void TextureBuffer::createBuffer(GLenum internalFormat, int nx, int ny,  GLenum format, const void* data) {
+void TextureBuffer::createBuffer(GLenum internalFormat, int nx, int ny,  GLenum format, GLenum type, const void* data) {
 
 	if (TBO) {
 		deleteBuffer();
@@ -149,14 +191,15 @@ void TextureBuffer::createBuffer(GLenum internalFormat, int nx, int ny,  GLenum 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, nx, ny, 0, format, GL_FLOAT, data);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);	// change if your data is not tightly packed (e.g. RGB format) and color looks corrupted
+	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, nx, ny, 0, format, type, data);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void TextureBuffer::updateBuffer(GLenum internalFormat, int nx, int ny, GLenum format, const void* data) {
+void TextureBuffer::updateBuffer(GLenum internalFormat, int nx, int ny, GLenum format, GLenum type, const void* data) {
 	bind();
-	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, nx, ny, 0, format, GL_FLOAT, data);
+	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, nx, ny, 0, format, type, data);
 	unbind();
 }
 

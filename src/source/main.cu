@@ -31,14 +31,16 @@ bool showPointValue = true;
 
 // callback to zoom in and out when scroll
 void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+	
 
-	ClassContext* classes = static_cast<ClassContext*>(glfwGetWindowUserPointer(window));
-	if (classes->scene->hovered && classes->scene->focused) {
-		classes->camera->fov -= (float)yoffset;
-		classes->camera->calculateZoom(yoffset);
-		if (classes->camera->fov < 1.0f)	classes->camera->fov = 1.0f;
-		if (classes->camera->fov > 90.0f)	classes->camera->fov = 90.0f;
-	}
+
+	//ClassContext* classes = static_cast<ClassContext*>(glfwGetWindowUserPointer(window));
+	//if (classes->scene->hovered && classes->scene->focused) {
+	//	classes->camera->fov -= (float)yoffset;
+	//	classes->camera->calculateZoom(yoffset);
+	//	if (classes->camera->fov < 1.0f)	classes->camera->fov = 1.0f;
+	//	if (classes->camera->fov > 90.0f)	classes->camera->fov = 90.0f;
+	//}
 }
 
 // callback to look around when mouse moves
@@ -48,28 +50,28 @@ void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
 	ImGui_ImplGlfw_CursorPosCallback(window, xpos, ypos);
 	ClassContext* classes = static_cast<ClassContext*>(glfwGetWindowUserPointer(window));
 
-	if (classes->scene->hovered && classes->scene->focused) {
-		
-		if (firstMouse) {
-			lastx = xpos;
-			lasty = ypos;
-			firstMouse = false;
-		}
+	//if (classes->scene->hovered && classes->scene->focused) {
+	//	
+	//	if (firstMouse) {
+	//		lastx = xpos;
+	//		lasty = ypos;
+	//		firstMouse = false;
+	//	}
 
-		if (dragging) {
+	//	if (dragging) {
 
-			float dx = (float)(xpos - lastx);
-			float dy = (float)(lasty - ypos); // reversed since y-coordinates go from bottom to top
-			classes->camera->calculatePan(dx, dy);
+	//		float dx = (float)(xpos - lastx);
+	//		float dy = (float)(lasty - ypos); // reversed since y-coordinates go from bottom to top
+	//		classes->camera->calculatePan(dx, dy);
 
-		}
+	//	}
 
-		if (rotating) {
-			classes->camera->calculateRotation(glm::vec2((float)lastx, (float)lasty), glm::vec2((float)xpos, (float)ypos));
-		}
-		lastx = xpos;
-		lasty = ypos;
-	}
+	//	if (rotating) {
+	//		classes->camera->calculateRotation(glm::vec2((float)lastx, (float)lasty), glm::vec2((float)xpos, (float)ypos));
+	//	}
+	//	lastx = xpos;
+	//	lasty = ypos;
+	//}
 }
 
 // callback mouse button callback
@@ -77,32 +79,32 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
 
 	ImGuiIO& io = ImGui::GetIO();
 	ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
-	
-	ClassContext* classes = static_cast<ClassContext*>(glfwGetWindowUserPointer(window));
+	//
+	//ClassContext* classes = static_cast<ClassContext*>(glfwGetWindowUserPointer(window));
 
-	if (classes->scene->hovered && classes->scene->focused) {
-		if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-			glfwGetCursorPos(window, &initx, &inity);
-			dragging = true;
-		}
+	//if (classes->scene->hovered && classes->scene->focused) {
+	//	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+	//		glfwGetCursorPos(window, &initx, &inity);
+	//		dragging = true;
+	//	}
 
-		if (button == GLFW_MOUSE_BUTTON_MIDDLE && action == GLFW_PRESS) {
-			rotating = true;
-		}
+	//	if (button == GLFW_MOUSE_BUTTON_MIDDLE && action == GLFW_PRESS) {
+	//		rotating = true;
+	//	}
 
-		// register as clicked on screen
-		if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) {
+	//	// register as clicked on screen
+	//	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) {
 
-			classes->scene->picker.pick();
+	//		classes->scene->picker.pick();
 
-		}
+	//	}
 
-		// if any of the mouse button is released, reset boolean variables
-		if (action == GLFW_RELEASE) {
-			dragging = false;
-			rotating = false;
-		}
-	}
+	//	// if any of the mouse button is released, reset boolean variables
+	//	if (action == GLFW_RELEASE) {
+	//		dragging = false;
+	//		rotating = false;
+	//	}
+	//}
 }
 
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
@@ -136,11 +138,11 @@ int main() {
 	glfwSetWindowUserPointer(disp.window, &classes);
 
 	// set mouse and scroll callback
-	glfwSetCursorPosCallback(disp.window, mouseCallback);
-	glfwSetScrollCallback(disp.window, scrollCallback);
-	glfwSetMouseButtonCallback(disp.window, mouseButtonCallback);
-	glfwSetKeyCallback(disp.window, keyCallback);
-	glfwSetCharCallback(disp.window, charCallback);
+	//glfwSetCursorPosCallback(disp.window, mouseCallback);
+	//glfwSetScrollCallback(disp.window, scrollCallback);
+	//glfwSetMouseButtonCallback(disp.window, mouseButtonCallback);
+	//glfwSetKeyCallback(disp.window, keyCallback);
+	//glfwSetCharCallback(disp.window, charCallback);
 
 	while (!glfwWindowShouldClose(disp.window)) {
 		glfwPollEvents();

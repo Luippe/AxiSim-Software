@@ -47,7 +47,7 @@ void GUI::initGUIBuffer(GLFWwindow* window){
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 	ImGui::StyleColorsDark();
-	ImGui_ImplGlfw_InitForOpenGL(window, false);
+	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 330 core");
 
 }
@@ -70,7 +70,9 @@ void GUI::drawUI() {
 	if (ImGui::BeginTabBar("Main")) {
 
 		meshGUI.draw();
+
 		solverGUI.draw();
+
 		resultsGUI.draw();
 
 // ----------------------------------------- SETTINGS --------------------------------------

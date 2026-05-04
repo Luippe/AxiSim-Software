@@ -18,8 +18,7 @@ public:
 	SceneView(Display& disp, Camera& camera, Renderer& renderer, Bounding& bound);
 
 	void render();
-	bool hovered = false;
-	bool focused = false;
+
 
 	Config config;
 	ViewTab currentTab = TAB_MESH;
@@ -33,6 +32,18 @@ public:
 	MousePicker picker;	// picker depends on camera, renderer, and bound being initialized first
 
 private:
+
+	bool hovered = false;
+	bool focused = false;
+	bool dragging = false;
+	bool rotating = false;
+	bool leftMouseDown = false;
+
+	float initX = 0.0f;
+	float initY = 0.0f;
+
+	// handle mouse inputs
+	void handleMouse();
 
 	Display& disp;
 	FrameBuffer frameBuffer;

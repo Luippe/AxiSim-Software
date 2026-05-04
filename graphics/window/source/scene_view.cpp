@@ -2,6 +2,7 @@
 #include "display.h"
 #include "camera.h"
 #include "memory_manager.h"
+#include "printer.h"
 
 SceneView::SceneView(Display& disp, Camera& camera, Renderer& renderer, Bounding& bound)
 	: disp(disp),
@@ -19,6 +20,87 @@ SceneView::SceneView(Display& disp, Camera& camera, Renderer& renderer, Bounding
 {
 	frameBuffer.createBuffer(disp.width, disp.height);
 };
+
+bool isMouseClicked(ImGuiMouseButton button) {
+	return ImGui::IsMouseClicked(button);
+}
+
+bool isMouseReleased(ImGuiMouseButton button) {
+	return ImGui::IsMouseReleased(button);
+}
+
+bool isMouseDragging(ImGuiMouseButton button) {
+	return ImGui::IsMouseDragging(button);
+}
+
+
+void SceneView::handleMouse() {
+
+	// check if the image is hovered or the window is focused
+	hovered = ImGui::IsItemHovered();
+	focused = ImGui::IsWindowFocused();
+
+	if (!(hovered && focused)) return;
+
+	ImGuiIO& io = ImGui::GetIO();
+
+	// ------------ Mouse Clicking -----------------
+	if (isMouseClicked(ImGuiMouseButton_Left)) {
+
+		initX = io.MousePos.x;
+		initY = io.MousePos.y;
+
+		dragging = true;
+		leftMouseDown = true;
+
+	}
+
+	if (isMouseReleased(ImGuiMouseButton_Left)) {
+
+		dragging = false;
+		leftMouseDown = false;
+
+		ImVec2 drag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
+
+		bool wasClick = abs(drag.x) < 3.0f && abs(drag.y) < 3.0f;	// check if the mouse movement is small enough to be considered a click
+
+		if (wasClick) {
+			check();
+		}
+
+		ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
+	}
+
+	// ------------ Camera Panning -----------------
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+		camera.calculatePan(io.MouseDelta.x, -io.MouseDelta.y);
+	}
+
+	// ------------ Camera Rotation-----------------
+	if (isMouseClicked(ImGuiMouseButton_Middle)) {
+		rotating = true;
+	}
+
+	if (isMouseReleased(ImGuiMouseButton_Middle)) {
+		rotating = false;
+		ImGui::ResetMouseDragDelta(ImGuiMouseButton_Middle);
+	}
+
+	if (isMouseDragging(ImGuiMouseButton_Middle)) {
+		glm::vec2 currentMouse(io.MousePos.x, io.MousePos.y);
+		glm::vec2 previousMouse = currentMouse - glm::vec2(io.MouseDelta.x, io.MouseDelta.y);
+
+		camera.calculateRotation(previousMouse, currentMouse);
+	}
+
+	// ------------ Camera Zooming -----------------
+	if (io.MouseWheel != 0.0f) {
+		camera.calculateZoom(io.MouseWheel);
+	}
+
+
+
+}
 
 void SceneView::render() {
 
@@ -100,9 +182,8 @@ void SceneView::render() {
 		ImVec2(1, 0)
 	);
 
-	// check if the image is hovered or the window is focused
-	hovered = ImGui::IsItemHovered();
-	focused = ImGui::IsWindowFocused();
+	handleMouse();
+
 	//printf("RUNNING IN SCENE RENDER\n");
 	ImGui::End();
 	ImGui::PopStyleVar();

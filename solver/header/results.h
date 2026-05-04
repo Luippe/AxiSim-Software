@@ -40,8 +40,7 @@ public:
 	// generate results using mesh and solution
 	void generate();
 
-	// updates the outline model matrix so it can change with the mesh
-	void updateOutlineModel();
+	void updateModel();
 
 	// upload colormap to shader
 	void uploadColormap();
@@ -53,11 +52,12 @@ public:
 	void updateCurrentVariables();
 
 	std::vector<Vertex> vertices;
-	std::vector<Vertex> verticesCV;
+	std::vector<CylinderTemplateVertex> verticesCV;
+	std::vector<unsigned int> indicesCV;
 	std::vector<VertexEdge> verticesEdge;
 	std::vector<VertexLine> verticesCap;
 	std::vector<ControlVolume> cv;
-	std::vector<unsigned int> indicesCV;
+	std::vector<CylinderInstance> instances;
 
 	glm::vec3 cylinderDirection = { 1.0f, 0.0f, 0.0f };
 	glm::mat4 modelOutline = glm::mat4(1.0f);
@@ -67,10 +67,8 @@ public:
 	bool isReady = false;
 
 	Field* currentField;
-	TextureBuffer currentTextureBuffer;
+	TextureBuffer* currentTextureBuffer;
 	Console* console = nullptr;
-
-
 
 private:
 
@@ -91,7 +89,9 @@ private:
 	VertexBuffer capBuffer;
 	VertexBuffer edgeBuffer;
 	VertexBuffer cvBuffer;
+	VertexBuffer cvInstanceBuffer;
 	ElementBuffer cvElementBuffer;
+
 	Field uField;
 	Field vField;
 	Field pField;
@@ -99,18 +99,21 @@ private:
 	Solver& solver;
 	Mesh& mesh;
 
-	// updates vmin and vmax
-	void updateMinMax();
+	// updates the outline model matrix so it can change with the mesh
+	void updateOutlineModel();
+
+	// update instances for instanced rendering
+	void updateInstances();
 
 	void createFields();
 
-	// create cv buffer using the copied data
-	void createCVBuffer();
+	// copy buffer from the mesh class
+	void createBuffer();
 	
 	// copy the cv variables from the mesh class
-	void copyData();
+	void copyMeshData();
 
-	void draw();
+	void draw(unsigned int start, unsigned int count);
 	void drawCap();
 	void drawEdge();
 

@@ -236,6 +236,8 @@ void Console::draw() {
 
 	ImGui::Begin("Console");
 
+	ImGuiIO& io = ImGui::GetIO();
+
 	if (ImGui::Button("Clear")) {
 		clear();
 	}

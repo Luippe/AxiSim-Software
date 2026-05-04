@@ -8,7 +8,149 @@
 #include "console.h"
 #include "solver.h"
 
+
+void createCylinderTemplate(std::vector<CylinderTemplateVertex>& vertices, std::vector<unsigned int>& indices, int nseg) {
+
+	vertices.clear();
+	indices.clear();
+
+	if (nseg < 3) return;
+
+	const float PI = 3.14159265359f;
+
+	auto addVertex = [&](float c, float s, float xCoord, float radialCoord) {
+		vertices.push_back({
+			glm::vec3(0.0f, c, s),
+			xCoord,
+			radialCoord
+			});
+		};
+
+	// outer
+	{
+		unsigned int base = (unsigned int)(vertices.size());
+
+		for (int k = 0; k <= nseg; ++k) {
+			float theta = 2.0f * PI * float(k) / float(nseg);
+			float c = std::cos(theta);
+			float s = std::sin(theta);
+
+			addVertex(c, s, 0.0f, 1.0f); // front outer
+			addVertex(c, s, 1.0f, 1.0f); // back outer
+		}
+
+		for (int k = 0; k < nseg; ++k) {
+			unsigned int a = base + 2 * k;
+			unsigned int b = base + 2 * k + 1;
+			unsigned int c = base + 2 * (k + 1);
+			unsigned int d = base + 2 * (k + 1) + 1;
+
+			// outward-facing winding
+			indices.push_back(a);
+			indices.push_back(c);
+			indices.push_back(b);
+
+			indices.push_back(c);
+			indices.push_back(d);
+			indices.push_back(b);
+		}
+	}
+
+	// inner
+	{
+		unsigned int base = (unsigned int)(vertices.size());
+
+		for (int k = 0; k <= nseg; ++k) {
+			float theta = 2.0f * PI * float(k) / float(nseg);
+			float c = std::cos(theta);
+			float s = std::sin(theta);
+
+			addVertex(c, s, 0.0f, 0.0f); // front inner
+			addVertex(c, s, 1.0f, 0.0f); // back inner
+		}
+
+		for (int k = 0; k < nseg; ++k) {
+			unsigned int a = base + 2 * k;
+			unsigned int b = base + 2 * k + 1;
+			unsigned int c = base + 2 * (k + 1);
+			unsigned int d = base + 2 * (k + 1) + 1;
+
+			// reversed winding for inner wall
+			indices.push_back(a);
+			indices.push_back(b);
+			indices.push_back(c);
+
+			indices.push_back(c);
+			indices.push_back(b);
+			indices.push_back(d);
+		}
+	}
+
+	// front face
+	{
+		unsigned int base = (unsigned int)(vertices.size());
+
+		for (int k = 0; k < nseg; ++k) {
+			float theta = 2.0f * PI * float(k) / float(nseg);
+			float c = std::cos(theta);
+			float s = std::sin(theta);
+
+			addVertex(c, s, 0.0f, 0.0f); // front inner
+			addVertex(c, s, 0.0f, 1.0f); // front outer
+		}
+
+		for (int k = 0; k < nseg; ++k) {
+			unsigned int i0 = base + 2 * k;
+			unsigned int o0 = base + 2 * k + 1;
+
+			unsigned int i1 = base + 2 * ((k + 1) % nseg);
+			unsigned int o1 = base + 2 * ((k + 1) % nseg) + 1;
+
+			// front cap, -x facing
+			indices.push_back(i0);
+			indices.push_back(o1);
+			indices.push_back(o0);
+
+			indices.push_back(i0);
+			indices.push_back(i1);
+			indices.push_back(o1);
+		}
+	}
+
+	// back face
+	{
+		unsigned int base = (unsigned int)(vertices.size());
+
+		for (int k = 0; k < nseg; ++k) {
+			float theta = 2.0f * PI * float(k) / float(nseg);
+			float c = std::cos(theta);
+			float s = std::sin(theta);
+
+			addVertex(c, s, 1.0f, 0.0f); // back inner
+			addVertex(c, s, 1.0f, 1.0f); // back outer
+		}
+
+		for (int k = 0; k < nseg; ++k) {
+			unsigned int i0 = base + 2 * k;
+			unsigned int o0 = base + 2 * k + 1;
+
+			unsigned int i1 = base + 2 * ((k + 1) % nseg);
+			unsigned int o1 = base + 2 * ((k + 1) % nseg) + 1;
+
+			// back cap, +x facing
+			indices.push_back(i0);
+			indices.push_back(o0);
+			indices.push_back(o1);
+
+			indices.push_back(i0);
+			indices.push_back(o1);
+			indices.push_back(i1);
+		}
+	}
+}
+
 Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader) :
+
 	colormap(colormap),
 	shader(shader),
 	solver(solver),
@@ -16,7 +158,9 @@ Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader)
 	vField(solver.config),
 	pField(solver.config),
 	concField(solver.config),
-	mesh(mesh){
+	mesh(mesh),
+	currentField(&uField),
+	currentTextureBuffer(&currentField->textureBuffer){
 
 	this->colFront = mesh.colFront;
 	this->colBack = mesh.colBack;
@@ -27,11 +171,12 @@ Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader)
 	this->currentBack = mesh.currentBack;
 	this->currentInner = mesh.currentInner;
 
+	updateInstances();
+
 }
 
 void Results::updateAfterLoadingFile() {
 
-	createCVBuffer();
 	createOutlineVertices();
 	createOutlineBuffer();
 	createFields();
@@ -39,24 +184,45 @@ void Results::updateAfterLoadingFile() {
 
 }
 
-void Results::createCVBuffer() {
-	// deep copy buffer
-	cvBuffer.createBuffer(verticesCV.size() * sizeof(Vertex), &verticesCV[0]);
-	cvBuffer.bind();
-	cvBuffer.enableAttribute(0, 3, GL_FLOAT, sizeof(Vertex), (void*)0);
-	cvElementBuffer.createBuffer(indicesCV.size() * sizeof(unsigned int), &indicesCV[0]);
+void Results::createBuffer() {
+
+	createCylinderTemplate(verticesCV, indicesCV, nseg);
+
+	cvBuffer.createBuffer(verticesCV.size() * sizeof(CylinderTemplateVertex), verticesCV.data());
+
+	cvBuffer.bind(); // bind the VAO you will draw with
+
+	cvElementBuffer.createBuffer(indicesCV.size() * sizeof(unsigned int), indicesCV.data());
+
+	// Per-vertex attributes: locations 0, 1, 2
+	cvBuffer.enableAttribute(0, 3, GL_FLOAT, sizeof(CylinderTemplateVertex), (void*)offsetof(CylinderTemplateVertex, dir));
+	cvBuffer.enableAttribute(1, 1, GL_FLOAT, sizeof(CylinderTemplateVertex), (void*)offsetof(CylinderTemplateVertex, xCoord));
+	cvBuffer.enableAttribute(2, 1, GL_FLOAT, sizeof(CylinderTemplateVertex), (void*)offsetof(CylinderTemplateVertex, radialCoord));
+
+	// ---------------- Instance VBO ----------------
+	cvInstanceBuffer.createBuffer(g.nr * g.nz * sizeof(CylinderInstance), nullptr);
+
+	// IMPORTANT:
+	cvBuffer.bind(); // bind the VAO you draw with
+
+	glBindBuffer(GL_ARRAY_BUFFER, cvInstanceBuffer.getVBO());
+	cvBuffer.enableAttribute(3, 4, GL_FLOAT, sizeof(CylinderInstance), (void*)0);
+	glVertexAttribDivisor(3, 1);
+
+
+	glBindBuffer(GL_ARRAY_BUFFER, cvInstanceBuffer.getVBO());
+	glBufferSubData(GL_ARRAY_BUFFER, 0, instances.size() * sizeof(CylinderInstance), instances.data());
+
 	cvBuffer.unbind();
+
 }
 
-void Results::copyData() {
+void Results::copyMeshData() {
 
 	// copy variables and structs
 	g = mesh.g;
 	nseg = mesh.nseg;
-	cv = mesh.cv;
 	vertices = mesh.vertices;
-	verticesCV = mesh.verticesCV;
-	indicesCV = mesh.indicesCV;
 
 }
 
@@ -64,9 +230,12 @@ void Results::generate() {
 
 	Clock::time_point startTime = startTimer();
 
+	verticesCV.clear();
+	indicesCV.clear();
+
 	// copy all relevant data from mesh class
-	copyData();
-	createCVBuffer();
+	copyMeshData();
+	createBuffer();
 	console->addCompletionMessage("Completed copying data and generating control volume buffers");
 
 	// generate all fields (values and buffers)
@@ -123,9 +292,6 @@ void Results::updateCurrentVariables() {
 		currentItem = 3;
 		break;
 	}
-
-	currentTextureBuffer = currentField->textureBuffer;
-	uploadColormap();
 }
 
 void Results::createOutlineBuffer() {
@@ -207,8 +373,14 @@ void Results::createOutlineVertices() {
 	}
 }
 
-void Results::updateOutlineModel() {
+void Results::updateModel() {
 
+	updateOutlineModel();
+	updateInstances();
+
+}
+
+void Results::updateOutlineModel() {
 	float dr = (float)g.dr;
 	float dz = (float)g.dz;
 
@@ -222,32 +394,38 @@ void Results::updateOutlineModel() {
 
 	modelOutlineInner = glm::scale(modelOutline, sInner);	// make sure to compute this before modelOutline
 	modelOutline = glm::scale(modelOutline, sOuter);
+}
+
+void Results::updateInstances() {
+
+	instances = {
+		{
+			currentFront,   // x0
+			currentBack,    // x1
+			currentInner,   // innerR
+			currentOuter    // outerR
+		}
+	};
+
+	cvInstanceBuffer.bindVBO();
+
+	cvInstanceBuffer.bufferSubData(instances.size() * sizeof(CylinderInstance), instances.data());
+
+
+	cvInstanceBuffer.unbindVBO();
 
 }
 
 
-void Results::draw() {
+void Results::draw(unsigned int start, unsigned int count) {
 	//printf("%d\n", cv.size());
 	if (show) {
 		cvBuffer.bind();
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-		for (int i = rowBot; i < rowTop; i++) {
-			for (int j = colFront; j < colBack; j++) {
-				int n = i * g.nz + j;
-				if (i == rowTop - 1) {
-					glDrawElements(GL_TRIANGLES, cv[n].outerCount, GL_UNSIGNED_INT, (void*)(cv[n].outerStart * sizeof(unsigned int)));
-				}
-				if (j == colFront) {
-					glDrawElements(GL_TRIANGLES, cv[n].frontCount, GL_UNSIGNED_INT, (void*)(cv[n].frontStart * sizeof(unsigned int)));
-				}
-				if (j == colBack - 1) {
-					glDrawElements(GL_TRIANGLES, cv[n].backCount, GL_UNSIGNED_INT, (void*)(cv[n].backStart * sizeof(unsigned int)));
-				}
-				if (i == rowBot) {
-					glDrawElements(GL_TRIANGLES, cv[n].innerCount, GL_UNSIGNED_INT, (void*)(cv[n].innerStart * sizeof(unsigned int)));
-				}
-			}
-		}
+
+		//glDrawElements(GL_TRIANGLES, indicesCV.size(), GL_UNSIGNED_INT, (void*)(0 * sizeof(unsigned int)));
+		glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_INT, (void*)(start * sizeof(unsigned int)));
+
 		cvBuffer.unbind();
 	}
 }
@@ -274,21 +452,30 @@ void Results::drawEdge() {
 	}
 }
 
+
+
 void Results::render(Shader& shaderLine, Shader& shaderEdge) {
 
 	if (!isReady) return;
 
-	glActiveTexture(GL_TEXTURE0);
-	currentTextureBuffer.bind();
+	//GLuint query;
+	//glGenQueries(1, &query);
+	//glBeginQuery(GL_TIME_ELAPSED, query);
+	shader.use();
 
+	glActiveTexture(GL_TEXTURE0);
+	currentTextureBuffer->bind();
 	glActiveTexture(GL_TEXTURE1);
 	colormap.bind();
 
-	shader.use();
-	draw();
+	cvBuffer.bind();
+
+	glDrawElementsInstanced(GL_TRIANGLES, (GLsizei)(indicesCV.size()), GL_UNSIGNED_INT, 0, (GLsizei)(instances.size()));
+
+	cvBuffer.unbind();
 
 	colormap.unbind();
-	currentTextureBuffer.unbind();
+	currentTextureBuffer->unbind();
 
 	shaderLine.use();
 	shaderLine.SetMat4("model", modelOutline);
@@ -302,4 +489,17 @@ void Results::render(Shader& shaderLine, Shader& shaderEdge) {
 	drawEdge();
 	shaderEdge.SetMat4("model", glm::mat4(1.0));
 
+
+	//// End GPU timer
+	//glEndQuery(GL_TIME_ELAPSED);
+
+	//// Get result
+	//GLuint64 elapsedTime = 0;
+	//glGetQueryObjectui64v(query, GL_QUERY_RESULT, &elapsedTime);
+
+	//double timeMs = elapsedTime / 1'000'000.0;
+
+	//printf("GPU time: %f ms\n", timeMs);
+
 }
+

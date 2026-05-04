@@ -16,9 +16,7 @@ public:
 	int rowBot;
 	glm::vec3 color = { 0.0f, 0.0f, 0.0f };
 	std::vector<Vertex> vertices;
-	std::vector<Vertex> verticesCV;
 	std::vector<unsigned int> indices;
-	std::vector<unsigned int> indicesCV;
 	std::vector<ControlVolume> cv;
 
 	Mesh(Shader& shader, Config& config);
@@ -47,17 +45,13 @@ public:
 
 	Console* console = nullptr;
 
-	VertexBuffer cvBuffer;
-	ElementBuffer cvElementBuffer;
+
 
 private:
 
 	Shader& shader;
-
-	void createBuffer();
 	void clearAll();
 	void createVertices();
-	void createCVIndex();
 	void drawMesh();
 
 };

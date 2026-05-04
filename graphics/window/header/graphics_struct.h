@@ -41,3 +41,16 @@ enum ViewTab {
 	TAB_SOLVER = 1,
 	TAB_RESULTS = 2
 };
+
+struct CylinderInstance {
+	float x0;
+	float x1;
+	float innerR;
+	float outerR;
+};
+
+struct CylinderTemplateVertex {
+	glm::vec3 dir;          // (0, cos(theta), sin(theta))
+	float xCoord;           // 0 = front, 1 = back
+	float radialCoord;      // 0 = inner, 1 = outer
+};

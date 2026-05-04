@@ -9,8 +9,9 @@ public:
 	Colormap();
 
 	int currentItem = 0;
-	float (*currentLUT)[3];
-	const char* items[4] = { "Turbo", "Jet", "Parula", "HSV" };
+	const unsigned char (*currentLUT)[3];
+	const char* items[6] = { "Turbo", "Parula", "HSV", "Gray", "Sky", "Abyss"};
+	
 	//const char* items[4] = {"Turbo", "Jet", "Parula", "HSV"};
 	// binds current texture buffer
 	void bind();
@@ -33,7 +34,10 @@ public:
 private:
 	std::vector<TextureBuffer> colormapBuffers;
 	TextureBuffer turboBuffer;
-	TextureBuffer jetBuffer;
 	TextureBuffer parulaBuffer;
 	TextureBuffer hsvBuffer;
+	TextureBuffer grayBuffer;
+	TextureBuffer skyBuffer;
+	TextureBuffer abyssBuffer;
+
 };
