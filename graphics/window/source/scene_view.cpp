@@ -21,19 +21,6 @@ SceneView::SceneView(Display& disp, Camera& camera, Renderer& renderer, Bounding
 	frameBuffer.createBuffer(disp.width, disp.height);
 };
 
-bool isMouseClicked(ImGuiMouseButton button) {
-	return ImGui::IsMouseClicked(button);
-}
-
-bool isMouseReleased(ImGuiMouseButton button) {
-	return ImGui::IsMouseReleased(button);
-}
-
-bool isMouseDragging(ImGuiMouseButton button) {
-	return ImGui::IsMouseDragging(button);
-}
-
-
 void SceneView::handleMouse() {
 
 	// check if the image is hovered or the window is focused
@@ -45,7 +32,7 @@ void SceneView::handleMouse() {
 	ImGuiIO& io = ImGui::GetIO();
 
 	// ------------ Mouse Clicking -----------------
-	if (isMouseClicked(ImGuiMouseButton_Left)) {
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 
 		initX = io.MousePos.x;
 		initY = io.MousePos.y;
@@ -55,7 +42,7 @@ void SceneView::handleMouse() {
 
 	}
 
-	if (isMouseReleased(ImGuiMouseButton_Left)) {
+	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
 
 		dragging = false;
 		leftMouseDown = false;
@@ -65,7 +52,7 @@ void SceneView::handleMouse() {
 		bool wasClick = abs(drag.x) < 3.0f && abs(drag.y) < 3.0f;	// check if the mouse movement is small enough to be considered a click
 
 		if (wasClick) {
-			check();
+			picker.pick();
 		}
 
 		ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
@@ -77,16 +64,16 @@ void SceneView::handleMouse() {
 	}
 
 	// ------------ Camera Rotation-----------------
-	if (isMouseClicked(ImGuiMouseButton_Middle)) {
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
 		rotating = true;
 	}
 
-	if (isMouseReleased(ImGuiMouseButton_Middle)) {
+	if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
 		rotating = false;
 		ImGui::ResetMouseDragDelta(ImGuiMouseButton_Middle);
 	}
 
-	if (isMouseDragging(ImGuiMouseButton_Middle)) {
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
 		glm::vec2 currentMouse(io.MousePos.x, io.MousePos.y);
 		glm::vec2 previousMouse = currentMouse - glm::vec2(io.MouseDelta.x, io.MouseDelta.y);
 

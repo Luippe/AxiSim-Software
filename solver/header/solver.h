@@ -28,8 +28,8 @@ public:
 	ResidualType currentResidual = RESIDUAL_RAW;
 	ResidualNormType currentResidualNorm = RESIDUAL_LINF;
 	ResidualScalingType currentResidualScaling = RESIDUAL_SCALING_NONE;
-
-	Solution sol;
+	
+	
 	void run();
 	void runSimple();
 	void runBiCGStab();

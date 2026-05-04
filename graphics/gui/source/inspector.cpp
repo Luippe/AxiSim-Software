@@ -85,13 +85,14 @@ void Inspector::drawRect() {
 
 void Inspector::updateSelectedIndices() {
 
-	if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+	if (!ImGui::IsWindowHovered()) return;
+
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 		initMousePos = getMouseIndex();
 		currentMousePos = initMousePos;
 	}
 
-
-	if (ImGui::IsWindowHovered() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 
 		selectedIndices.clear();
 

@@ -3,7 +3,6 @@
 
 
 // -------------axial velocity--------------
-
 __global__
 void createURhs(Config config, Coefficients coeff, VariablesSimple simple);
 

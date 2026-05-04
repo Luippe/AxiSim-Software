@@ -80,7 +80,6 @@ private:
 
 	//Mesh mesh;
 	//Solver solver;
-	Solution sol;
 	GridConfig g;
 
 	Shader& shader;

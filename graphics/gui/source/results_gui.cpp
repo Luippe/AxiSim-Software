@@ -40,20 +40,11 @@ void ResultsGUI::draw() {
 				ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 
 				textAtNewRow("Field", 0, 1);
-				if (ImGui::BeginCombo("##SelectField", results.fieldType[results.currentItem])) {
-					for (int n = 0; n < IM_ARRAYSIZE(results.fieldType); n++) {
-						bool isSelected = (results.currentItem == n);
-						if (ImGui::Selectable(results.fieldType[n], isSelected)) {
-							results.currentItem = n;
-							results.updateCurrentVariables();
-							gui.inspector.generate();
-						}
-						if (isSelected) {
-							ImGui::SetItemDefaultFocus();
-						}
-					}
-					ImGui::EndCombo();
+				if (createSimpleCombo("##SelectField", results.fieldType, results.currentItem, IM_ARRAYSIZE(results.fieldType))) {
+					results.updateCurrentVariables();
+					gui.inspector.generate();
 				}
+
 				ImGui::EndTable();
 			}
 		}
@@ -99,21 +90,12 @@ void ResultsGUI::draw() {
 				ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 
 				textAtNewRow("Colormap", 0, 1);
-				if (ImGui::BeginCombo("##Colormap", colormap.items[colormap.currentItem])) {
-					for (int n = 0; n < IM_ARRAYSIZE(colormap.items); n++) {
-						bool isSelected = (colormap.currentItem == n);
-						if (ImGui::Selectable(colormap.items[n], isSelected)) {
-
-							colormap.setColormap(n);
-							results.uploadColormap();
-							gui.inspector.generate();
-						}
-						if (isSelected) {
-							ImGui::SetItemDefaultFocus();
-						}
-					}
-					ImGui::EndCombo();
+				if (createSimpleCombo("##Colormap", colormap.items, colormap.currentItem, IM_ARRAYSIZE(colormap.items))) {
+					colormap.setColormap(colormap.currentItem);
+					results.uploadColormap();
+					gui.inspector.generate();
 				}
+
 				ImGui::EndTable();
 			}
 		}

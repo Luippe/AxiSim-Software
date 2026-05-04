@@ -3,6 +3,7 @@
 #include <vector>
 #include "buffer_manager.h"
 #include <string>
+
 class Colormap {
 public:
 
@@ -12,7 +13,6 @@ public:
 	const unsigned char (*currentLUT)[3];
 	const char* items[6] = { "Turbo", "Parula", "HSV", "Gray", "Sky", "Abyss"};
 	
-	//const char* items[4] = {"Turbo", "Jet", "Parula", "HSV"};
 	// binds current texture buffer
 	void bind();
 

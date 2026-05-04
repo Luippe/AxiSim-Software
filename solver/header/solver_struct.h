@@ -46,16 +46,6 @@ enum class CellStoreType {
 	RADIAL
 };
 
-struct Solution {
-
-	double conc;
-	std::vector<double> oxy;
-	std::vector<double> cs;
-	std::vector<double> cw;
-	std::vector<double> cp;
-
-};
-
 struct SolutionField {
 	std::vector<double> field;
 	int nr, nz;

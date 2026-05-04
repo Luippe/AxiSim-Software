@@ -10,7 +10,6 @@ void jacobi(Coefficients coeff, double* xTemp, double* x, double relaxation)  {
 	if (n >= coeff.N) return;
 	if (coeff.active[n]) return;
 
-
 	int nr = coeff.nr;
 	int nz = coeff.nz;
 	int j = n % nz;
