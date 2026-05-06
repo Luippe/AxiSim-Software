@@ -241,7 +241,7 @@ void Results::generate() {
 	// generate all fields (values and buffers)
 	createFields();
 	console->addCompletionMessage("Completed generating field variables");
-	updateCurrentVariables();
+	updateCurrentField();
 
 	// generate all vertices
 	createOutlineVertices();
@@ -272,7 +272,7 @@ void Results::createFields() {
 	//concField.generate(solver.concSol, solver.concBC);
 }
 
-void Results::updateCurrentVariables() {
+void Results::updateCurrentField() {
 
 	switch (currentItem) {
 	case 0:
@@ -292,6 +292,8 @@ void Results::updateCurrentVariables() {
 		currentItem = 3;
 		break;
 	}
+	currentTextureBuffer = &currentField->textureBuffer;
+	uploadColormap();
 }
 
 void Results::createOutlineBuffer() {

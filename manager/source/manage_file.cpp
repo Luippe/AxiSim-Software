@@ -5,6 +5,7 @@
 #include "tinyfiledialogs.h"
 #include "solver_struct.h"
 #include "results.h"
+#include "printer.h"
 
 // save one scalar value, such as double, int, float, size_t, etc.
 template<typename T>
@@ -199,6 +200,7 @@ void saveLaunchMesh(Mesh& mesh) {
 
 void saveLaunchSolver(Solver& solver) {
 	const char* path = "openAtLaunchSolver.bin";
+	//check();
 	saveFromPathSolver(path, solver);
 }
 //

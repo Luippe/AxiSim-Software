@@ -18,4 +18,16 @@ __global__
 void copyVector(double* vec1, double* vec2, int N);
 
 __global__
-void createCoefficients(Config config, Coefficients coeff, BoundaryConditionConfig bc);
+void finalizeCoefficients(Coefficients coeff);
+
+__global__
+void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryConditionConfig bc);
+
+__global__
+void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryConditionConfig bc);
+
+__global__
+void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC);
+
+__global__
+void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC);

@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "field_manager.h"
 #include <algorithm>
+#include "printer.h"
 
 Field::Field(Config& config) :
 	config(config) {

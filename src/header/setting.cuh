@@ -51,7 +51,7 @@ struct MemoryConfig {
 // fluid variables
 struct FluidPropertyConfig {
 
-	double rho = 998 / 1000 ^ 3;
+	double rho = 998.0 / 1e9;
 	double mu = 0.0010518 / 1000;
 	double Vmax = 2e-4;
 	double Km = 5e-4;

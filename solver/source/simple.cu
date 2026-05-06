@@ -4,7 +4,7 @@
 #include "solver_util.cuh"
 
 __global__
-void getCorrectionCoefficient(Config config, Coefficients coeff, VariablesSimple simple, double* D) {
+void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, VariablesSimple simple, double* D) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= coeff.N) return;
@@ -17,11 +17,10 @@ void getCorrectionCoefficient(Config config, Coefficients coeff, VariablesSimple
 	double dr = g.dr;
 	double dz = g.dz;
 	double* r = g.r;
-	double mu = f.mu;
-
 	double* AC = coeff.AC;
 
 	D[n] = 0.0;
+
 	if (coeff.active[n]) return;
 
 	int j = n % nz;
@@ -42,10 +41,38 @@ void getCorrectionCoefficient(Config config, Coefficients coeff, VariablesSimple
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
 	D[n] = Az * dz * simple.momentumRelaxation / AC[n];
 
+	//if (isStoredAxial(coeff.storeType)) {
+	//	if (j == 0) {
+	//		D[n] = 0.0;
+	//		return;
+	//	}
+	//}
+
+	//if (isStoredRadial(coeff.storeType)) {
+	//	if (i == 0 || i == g.nr) {
+	//		D[n] = 0.0;
+	//		return;
+	//	}
+	//}
+	//if (!isfinite(AC[n]) || fabs(AC[n]) < 1e-30) {
+	//	printf("Bad V AC: n=%d i=%d j=%d AC=%e\n", n, i, j, AC[n]);
+	//	D[n] = 0.0;
+	//	return;
+	//}
+
+	//if (!isfinite(AC[n]) || fabs(AC[n]) < 1e-30) {
+	//	printf(
+	//		"Bad AC: storeType=%d n=%d i=%d j=%d nz=%d AC=%e\n",
+	//		coeff.storeType, n, i, j, nz, AC[n]
+	//	);
+	//	D[n] = 0.0;
+	//	return;
+	//}
+
 }
 
 __global__
-void createURhs(Config config, Coefficients coeff, VariablesSimple simple) {
+void createURhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -81,7 +108,7 @@ void createURhs(Config config, Coefficients coeff, VariablesSimple simple) {
 
 
 __global__
-void createVRhs(Config config, Coefficients coeff, VariablesSimple simple) {
+void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -109,7 +136,7 @@ void createVRhs(Config config, Coefficients coeff, VariablesSimple simple) {
 }
 
 __global__
-void createPPCoeff(Config config, Coefficients coeff, VariablesSimple simple) {
+void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simple) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -174,7 +201,7 @@ void createPPCoeff(Config config, Coefficients coeff, VariablesSimple simple) {
 }
 
 __global__
-void createPPRhs(Config config, Coefficients coeff, VariablesSimple simple) {
+void createPPRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -224,7 +251,7 @@ void createPPRhs(Config config, Coefficients coeff, VariablesSimple simple) {
 }
 
 __global__
-void updateUVelocity(Config config, Coefficients coeff, VariablesSimple simple, int N) {
+void updateUVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -233,19 +260,18 @@ void updateUVelocity(Config config, Coefficients coeff, VariablesSimple simple, 
 
 	const GridConfig& g = config.g;
 
-	int nz = g.nz;
+	int nz = coeff.nz;
 	double dz = g.dz;
 
 	double* u = simple.u;
 	double* pp = simple.pp;
 	double* DU = simple.DU;
 
-	int j = n % (nz + 1);
-	int i = n / (nz + 1);
+	int j = n % nz;
+	int i = n / nz;
 
-
-	if (j == nz) {
-		u[n] -= (DU[n] / dz) * (-2 * pp[n - i - 1]);
+	if (j == nz - 1) {
+		u[n] -= (DU[n] / dz) * (-2.0 * pp[n - i - 1]);
 	}
 	else {
 		u[n] -= (DU[n] / dz) * (pp[n - i] - pp[n - i - 1]);
@@ -253,7 +279,7 @@ void updateUVelocity(Config config, Coefficients coeff, VariablesSimple simple, 
 }
 
 __global__
-void updateVVelocity(Config config, Coefficients coeff, VariablesSimple simple, int N) {
+void updateVVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -276,7 +302,7 @@ void updateVVelocity(Config config, Coefficients coeff, VariablesSimple simple, 
 }
 
 __global__
-void updatePressure(Config config, Coefficients coeff, VariablesSimple simple, int N) {
+void updatePressure(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 

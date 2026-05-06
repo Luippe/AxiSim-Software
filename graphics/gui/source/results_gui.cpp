@@ -6,8 +6,6 @@
 #include "colormap.h"
 #include "graphics_struct.h"
 
-
-
 ResultsGUI::ResultsGUI(GUI& gui, SceneView& scene) :
 	gui(gui),
 	scene(scene),
@@ -41,7 +39,7 @@ void ResultsGUI::draw() {
 
 				textAtNewRow("Field", 0, 1);
 				if (createSimpleCombo("##SelectField", results.fieldType, results.currentItem, IM_ARRAYSIZE(results.fieldType))) {
-					results.updateCurrentVariables();
+					results.updateCurrentField();
 					gui.inspector.generate();
 				}
 

@@ -4,7 +4,7 @@
 #include "solver.h"
 
 
-void allocateCoefficients(Config& config, Coefficients& coeff, BoundaryConditionConfig& bc, CellStoreType storeType) {
+void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryConditionConfig& bc, CellStoreType storeType) {
 
 	// get size of nr and nz
 	int nr = 0;
@@ -94,7 +94,7 @@ void allocateCoefficients(Config& config, Coefficients& coeff, BoundaryCondition
 
 }
 
-void allocateSimple(Config& config, VariablesSimple& vars) {
+void allocateSimple(ConfigSolver& config, VariablesSimple& vars) {
 
 	int nr = config.g.nr;
 	int nz = config.g.nz;
@@ -120,7 +120,7 @@ void allocateSimple(Config& config, VariablesSimple& vars) {
 
 }
 
-std::vector<double> getInitializedVelocity(Config& config) {
+std::vector<double> getInitializedVelocity(ConfigSolver& config) {
 
 	int nz = config.g.nz;
 	int nr = config.g.nr;
@@ -138,6 +138,8 @@ std::vector<double> getInitializedVelocity(Config& config) {
 
 	for (int i = 0; i < nr; ++i) {
 		for (int j = 0; j < nz + 1; ++j) {
+
+			//if (j != 0) continue;
 
 			int n = i * (nz + 1) + j;
 

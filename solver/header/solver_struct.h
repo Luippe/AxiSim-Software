@@ -46,17 +46,14 @@ enum class CellStoreType {
 	RADIAL
 };
 
-struct SolutionField {
-	std::vector<double> field;
-	int nr, nz;
-	double dr, dz;
-	CellStoreType type;
-};
-
-
 enum BCType {
 	DIRICHLET,
 	NEUMANN
+};
+
+enum ConvectionScheme {
+	FIRST_ORDER_UPWIND,
+	SECOND_ORDER_CENTRAL
 };
 
 struct BoundaryCondition {
@@ -71,7 +68,12 @@ struct BoundaryConditionConfig {
 	BoundaryCondition centerline;
 };
 
-
+struct SolutionField {
+	std::vector<double> field;
+	int nr, nz;
+	double dr, dz;
+	CellStoreType type;
+};
 
 struct CudaTimer {
 
@@ -108,7 +110,7 @@ struct CudaTimer {
 	}
 };
 
-
+// coefficients required for each field variable
 struct Coefficients {
 	double* AE = nullptr;
 	double* AW = nullptr;
@@ -142,12 +144,28 @@ struct IterationConfig {
 };
 
 struct ConfigSimple {
-	int maxIter = 5000;
-	int checkConv = 100;
+	int maxIter = 100;
+	int checkConv = 10;
 	double momTol = 1e-8;
 	double ppTol = 1e-5;
 };
 
+
+struct ConfigSolver {
+	GridConfig g;
+	FluidPropertyConfig f;
+
+	ConvectionScheme convectionType = ConvectionScheme::FIRST_ORDER_UPWIND;
+	bool addConvectionTerm = false;
+	bool steadyState = false;
+};
+
+
+struct ConfigResidual {
+	ResidualType residualType;
+	ResidualNormType residualNormType;
+	ResidualScalingType residualScaleType;
+};
 
 
 struct VariablesSimple {
@@ -171,6 +189,7 @@ struct VariablesSimple {
 		freeAllDev(DU, DV, p, pp, u, v, uTemp, vTemp, ppTemp);
 	}
 };
+
 
 struct VariablesBiCGStab {
 

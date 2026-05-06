@@ -186,7 +186,6 @@ void Console::registerUtilityCommands() {
 	);
 }
 
-
 void Console::addLine(const std::string& s) {
 	lines.push_back({ s });
 	scrollToBottom = true;
@@ -236,6 +235,11 @@ void Console::draw() {
 
 	ImGui::Begin("Console");
 
+	//if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) &&
+	//	ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+	//	focusInputNextFrame = true;
+	//}
+
 	ImGuiIO& io = ImGui::GetIO();
 
 	if (ImGui::Button("Clear")) {
@@ -261,6 +265,9 @@ void Console::draw() {
 
 	ImGui::EndChild();
 	ImGui::Separator();
+	//if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+	//	ImGui::SetKeyboardFocusHere();
+	//}
 
 	char buf[256] = {};
 	bool reclaimFocus = false;

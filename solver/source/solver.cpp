@@ -25,6 +25,7 @@ Solver::Solver(SceneView& scene, Config& config) :
     f(config.f),
     itr(config.itr),
     residualPlot({ "Axial", "Radial" ,"Continuity"}) {
+    runSimple();
 }
 
 void Solver::run() {
@@ -185,17 +186,17 @@ void Solver::runBiCGStab() {
 void Solver::setDefault() {
     uBC.inlet = { BCType::DIRICHLET, 0.0 };
     uBC.outlet = { BCType::NEUMANN, 0.0 };
-    uBC.outer = { BCType::NEUMANN, 0.0 };
+    uBC.outer = { BCType::DIRICHLET, 0.0 };
     uBC.centerline = { BCType::NEUMANN, 0.0 };
     vBC.inlet = { BCType::DIRICHLET, 0.0 };
     vBC.outlet = { BCType::NEUMANN, 0.0 };
-    vBC.outer = { BCType::NEUMANN, 0.0 };
-    vBC.centerline = { BCType::NEUMANN, 0.0 };
+    vBC.outer = { BCType::DIRICHLET, 0.0 };
+    vBC.centerline = { BCType::DIRICHLET, 0.0 };
     pBC.inlet = { BCType::NEUMANN, 0.0 };
     pBC.outlet = { BCType::DIRICHLET, 0.0 };
     pBC.outer = { BCType::NEUMANN, 0.0 };
     pBC.centerline = { BCType::NEUMANN, 0.0 };
-    concBC.inlet = { BCType::DIRICHLET, f.Vmax * f.rho / f.m };
+    concBC.inlet = { BCType::DIRICHLET, 0.0};
     concBC.outlet = { BCType::NEUMANN, 0.0 };
     concBC.outer = { BCType::NEUMANN, 0.0 };
     concBC.centerline = { BCType::NEUMANN, 0.0 };
@@ -207,13 +208,17 @@ void Solver::solveResidual() {
 
 void Solver::runSimple() {
 
+    // create configs for solver and residual
+    ConfigSolver configSolver{ g, f, convectionScheme, addConvectionTerm, steadyState };
+    ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
+
     // allocate memory
     Coefficients uCoeff, vCoeff, ppCoeff;
-    allocateGridConfig(g, f);
-    allocateCoefficients(config, uCoeff, uBC, CellStoreType::AXIAL);
-    allocateCoefficients(config, vCoeff, vBC, CellStoreType::RADIAL);
-    allocateCoefficients(config, ppCoeff, pBC, CellStoreType::CENTER);;
-    allocateSimple(config, simple);
+    allocateGridConfig(configSolver.g, configSolver.f);
+    allocateCoefficients(configSolver, uCoeff, uBC, CellStoreType::AXIAL);
+    allocateCoefficients(configSolver, vCoeff, vBC, CellStoreType::RADIAL);
+    allocateCoefficients(configSolver, ppCoeff, pBC, CellStoreType::CENTER);;
+    allocateSimple(configSolver, simple);
 
     cudaStream_t stream;
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
@@ -233,43 +238,57 @@ void Solver::runSimple() {
     const int maxBlocks = (std::max({ uCoeff.N,vCoeff.N,ppCoeff.N }) + threadsPerBlock - 1) / threadsPerBlock;
     double uRes, vRes, ppRes;
 
-    createCoefficients << <uBlocks, threadsPerBlock, 0, stream >> > (config, uCoeff, uBC);
-    createCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (config, vCoeff, vBC);
-    getCorrectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (config, uCoeff, simple, simple.DU);
-    getCorrectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (config, vCoeff, simple, simple.DV);
-    createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (config, ppCoeff, simple);
-
     for (int k = 0; k < configSimple.maxIter; k++) {
 
-        // solve velocity and pressure correction
-        createURhs << <uBlocks, threadsPerBlock, 0, stream >> > (config, uCoeff, simple);
-        createVRhs << <vBlocks, threadsPerBlock, 0, stream >> > (config, vCoeff, simple);
+		// create coefficients for velocity and pressure correction equations
+        addUDiffusionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, uBC);
+        addVDiffusionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, vBC);
+        
+        if (configSolver.addConvectionTerm) {
+            addUConvectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC);
+            addVConvectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC);
+        }
 
+        finalizeCoefficients << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff);
+		finalizeCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff);
+        
+        getCorrectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple, simple.DU);
+        getCorrectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple, simple.DV);
+
+        // solve velocity
+        createURhs << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
+        createVRhs << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
         copyVector << <uBlocks, threadsPerBlock, 0, stream >> > (simple.uTemp, simple.u, Nu);
         copyVector << <vBlocks, threadsPerBlock, 0, stream >> > (simple.vTemp, simple.v, Nv);
         jacobi << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff, simple.uTemp, simple.u, simple.momentumRelaxation);
         jacobi << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff, simple.vTemp, simple.v, simple.momentumRelaxation);
 
-        createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (config, ppCoeff, simple);
+        // solve pressure correction
+        createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
+        createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
         copyVector << <blocks, threadsPerBlock, 0, stream >> > (simple.ppTemp, simple.pp, N);
         jacobi << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff, simple.ppTemp, simple.pp, simple.correctionRelaxation);
         
-
+        // update field variables
+        updateUVelocity << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple, Nu);
+        updateVVelocity << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple, Nv);
+        updatePressure << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple, N);
+     
         // check for convergence and print residual to console
         if (k % configSimple.checkConv == 0) {
 
-            residualAll << <maxBlocks, threadsPerBlock, 0, stream >> > (currentResidual,
-                ResidualPairs{ uCoeff,simple.u,nullptr},
+            residualAll << <maxBlocks, threadsPerBlock, 0, stream >> > (
+                ResidualPairs{ uCoeff,simple.u,nullptr },
                 ResidualPairs{ vCoeff,simple.v,nullptr },
-                ResidualPairs{ ppCoeff,simple.pp,nullptr});
+                ResidualPairs{ ppCoeff,simple.pp,nullptr });
 
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
-			residualAllHost(currentResidualScaling, currentResidualNorm, uCoeff, vCoeff, ppCoeff);
+            residualAllHost(configResidual, uCoeff, vCoeff, ppCoeff);
 
-			uRes = uCoeff.resVal;
-			vRes = vCoeff.resVal;
-			ppRes = ppCoeff.resVal;
+            uRes = uCoeff.resVal;
+            vRes = vCoeff.resVal;
+            ppRes = ppCoeff.resVal;
 
             residualPlot.add(k, uRes, vRes, ppRes);
 
@@ -279,12 +298,6 @@ void Solver::runSimple() {
             console->addLine(line);
             if (ppRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
         }
-
-        // update field variables
-        updateUVelocity << <uBlocks, threadsPerBlock, 0, stream >> > (config, uCoeff, simple, Nu);
-        updateVVelocity << <vBlocks, threadsPerBlock, 0, stream >> > (config, vCoeff, simple, Nv);
-        updatePressure << <blocks, threadsPerBlock, 0, stream >> > (config, ppCoeff, simple, N);
-        
     }
 
     // end timer and print to console
@@ -303,6 +316,6 @@ void Solver::runSimple() {
     vCoeff.free();
     ppCoeff.free();
     simple.free();
-    free_GridConfig(g);
+    free_GridConfig(configSolver.g);
     cudaStreamDestroy(stream);
 }

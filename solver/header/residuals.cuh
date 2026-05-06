@@ -11,7 +11,7 @@ struct ResidualPairs {
 
 template <typename... Systems>
 __global__
-void residualAll(ResidualType residualType, Systems...systems) {
+void residualAll(Systems...systems) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	(residualRaw(systems, n), ...);
@@ -26,10 +26,10 @@ void residualRelative(ResidualPairs& pairs, int n);
 
 
 template <typename... Coefficients>
-void residualAllHost(ResidualScalingType residualScaleType, ResidualNormType residualNormType, Coefficients&...coeff) {
+void residualAllHost(ConfigResidual& configResidual, Coefficients&...coeff) {
 
 	// get residual values
-	switch (residualNormType) {
+	switch (configResidual.residualNormType) {
 
 	case RESIDUAL_L1:
 		(residualL1Host(coeff), ...);
@@ -46,7 +46,7 @@ void residualAllHost(ResidualScalingType residualScaleType, ResidualNormType res
 	}
 
 	// scale the residual
-	switch (residualScaleType) {
+	switch (configResidual.residualScaleType) {
 
 	case RESIDUAL_SCALING_NONE:
 		break;

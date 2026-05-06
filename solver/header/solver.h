@@ -20,7 +20,7 @@ public:
 	const char* linearSolverType[1] = { "Jacobi" };
 	const char* velocitySolverType[1] = { "SIMPLE" };
 	const char* bcTypeNames[2] = {"Dirichlet","Neumann"};
-
+	const char* convectionDiscretizationType[2] = { "First Order Upwind", "Second Order Central" };
 
 	FieldType currentField = FIELD_AXIAL_VELOCITY;
 	LinearSolverType currentLinearSolver = LINEAR_JACOBI;
@@ -28,8 +28,13 @@ public:
 	ResidualType currentResidual = RESIDUAL_RAW;
 	ResidualNormType currentResidualNorm = RESIDUAL_LINF;
 	ResidualScalingType currentResidualScaling = RESIDUAL_SCALING_NONE;
-	
-	
+	ConvectionScheme convectionScheme = FIRST_ORDER_UPWIND;
+
+	bool addConvectionTerm = false;
+	bool steadyState = true;
+
+
+
 	void run();
 	void runSimple();
 	void runBiCGStab();

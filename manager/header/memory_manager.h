@@ -8,12 +8,12 @@ struct FluidPropertyConfig;
 void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f);
 
 // allocate memory for coefficient matrix
-void allocateCoefficients(Config& config, Coefficients& coeff, BoundaryConditionConfig& bc, CellStoreType type);
+void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryConditionConfig& bc, CellStoreType type);
 
 // allocate memory for simple algorithm
-void allocateSimple(Config& config, VariablesSimple& vars);
+void allocateSimple(ConfigSolver& config, VariablesSimple& vars);
 
-std::vector<double> getInitializedVelocity(Config& config);
+std::vector<double> getInitializedVelocity(ConfigSolver& config);
 
 // initialize and allocate cell variables
 void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& vars);

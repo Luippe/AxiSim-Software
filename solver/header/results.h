@@ -49,7 +49,7 @@ public:
 	void updateAfterLoadingFile();
 
 	// update all relevant variables
-	void updateCurrentVariables();
+	void updateCurrentField();
 
 	std::vector<Vertex> vertices;
 	std::vector<CylinderTemplateVertex> verticesCV;

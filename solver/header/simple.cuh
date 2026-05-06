@@ -4,29 +4,28 @@
 
 // -------------axial velocity--------------
 __global__
-void createURhs(Config config, Coefficients coeff, VariablesSimple simple);
+void createURhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
 
 // ------------radial velocity-------------
-
 __global__
-void createVRhs(Config config, Coefficients coeff, VariablesSimple simple);
+void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
 
 // ---------------pressure correction----------------
 __global__
-void createPPCoeff(Config config, Coefficients coeff, VariablesSimple simple);
+void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
 
 __global__
-void createPPRhs(Config config, Coefficients coeff, VariablesSimple simple);
+void createPPRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
 
 // ---------------------update variables----------------
 __global__
-void updateUVelocity(Config config, Coefficients coeff, VariablesSimple simple, int N);
+void updateUVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N);
 
 __global__
-void updateVVelocity(Config config, Coefficients coeff, VariablesSimple simple, int N);
+void updateVVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N);
 
 __global__
-void updatePressure(Config config, Coefficients coeff, VariablesSimple simple, int N);
+void updatePressure(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N);
 
 __global__
-void getCorrectionCoefficient(Config config, Coefficients coeff, VariablesSimple simple, double* D);
+void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, VariablesSimple simple, double* D);

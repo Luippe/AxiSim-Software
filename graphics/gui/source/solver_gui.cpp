@@ -42,7 +42,14 @@ void SolverGUI::draw() {
 						textAtNewRow("Solver", 0, 1);
 						createSimpleCombo("##Solver", solver.velocitySolverType, (int&)solver.currentVelocitySolver, IM_ARRAYSIZE(solver.velocitySolverType));
 						
+
+						textAtNewRow("Add Convection Term", 0, 1);
+						ImGui::Checkbox("##ConvectionTerm", &solver.addConvectionTerm);
+						textAtNewRow("Steady State", 0, 1);
+						ImGui::Checkbox("##SteadyState", &solver.steadyState);
 						ImGui::EndTable();
+
+
 					}
 				}
 
@@ -85,6 +92,12 @@ void SolverGUI::draw() {
 								
 								tableNextColumn();
 								createInputDouble("##OutletBCValue", &solver.pBC.outlet.val);
+
+								//textAtNewRow("Outlet", 0, 1);
+								//createSimpleCombo("##OutletBCType", solver.bcTypeNames, (int&)(solver.vBC.outlet.type), IM_ARRAYSIZE(solver.bcTypeNames));
+
+								//tableNextColumn();
+								//createInputDouble("##OutletBCValue", &solver.vBC.outlet.val);
 
 								ImGui::EndTable();
 							}

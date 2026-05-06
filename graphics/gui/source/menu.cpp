@@ -44,7 +44,7 @@ void Menu::drawOpenAtLaunch() {
 		}
 
 		if (ImGui::MenuItem("Solver")) {
-
+			saveLaunchSolver(scene.solver);
 		}
 
 		if (ImGui::MenuItem("Results")) {

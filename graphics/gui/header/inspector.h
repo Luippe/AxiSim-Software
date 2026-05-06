@@ -52,9 +52,6 @@ private:
 	// draw the 2D field
 	void drawField();
 
-	// draw GridConfig lines
-	void drawGridConfig();
-
 	// draw rectangle when mouse is dragged
 	void drawRect();
 

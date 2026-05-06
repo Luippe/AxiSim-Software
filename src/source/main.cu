@@ -12,13 +12,6 @@
 #include <GLFW/glfw3.h>
 #include "imgui_impl_opengl3.h"
 
-struct ClassContext {
-	Camera* camera;
-	Display* disp;
-	SceneView* scene;
-	GUI* gui;
-};
-
 // mouse movement callbacks
 bool firstMouse = true;
 double lastx = 400.0, lasty = 400.0;
@@ -39,15 +32,9 @@ int main() {
 
 	SceneView scene(disp, camera, renderer, bound);
 
-	//load_velocity(scene.solver.g, scene.solver.f);
-
 	GUI gui(disp.window, scene);
 	double prevTime = glfwGetTime();
 	int frameCount = 0;
-
-	// store classes needed in callback function
-	ClassContext classes{ &camera, &disp, &scene, &gui};
-	glfwSetWindowUserPointer(disp.window, &classes);
 
 	while (!glfwWindowShouldClose(disp.window)) {
 		glfwPollEvents();

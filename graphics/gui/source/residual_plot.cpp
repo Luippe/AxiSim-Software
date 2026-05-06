@@ -44,7 +44,7 @@ void ResidualPlot::draw() {
 
                 double residual = (double)(values[s * nResiduals + r]);
 
-                // Log scale cannot show zero or negative values
+                // log scale cannot show zero or negative values
                 if (residual <= 0.0) {
                     continue;
                 }
@@ -53,10 +53,6 @@ void ResidualPlot::draw() {
 
                 x.push_back(iter);
                 y.push_back(residual);
-            }
-
-            if (x.size() < 2) {
-                continue;
             }
 
             ImPlot::PlotLine(

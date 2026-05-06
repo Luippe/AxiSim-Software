@@ -19,7 +19,6 @@ public:
 
 	void render();
 
-
 	Config config;
 	ViewTab currentTab = TAB_MESH;
 	Mesh mesh;
