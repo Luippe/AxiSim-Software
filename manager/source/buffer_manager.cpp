@@ -28,7 +28,7 @@ void FrameBuffer::createBuffer(int width, int height, int samples) {
 
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		printf("MSAA framebuffer is not yet complete\n");
-	}
+	} 
 	// resolve framebuffer
 	glGenFramebuffers(1, &resolveFBO);
 	glBindFramebuffer(GL_FRAMEBUFFER, resolveFBO);
@@ -77,7 +77,7 @@ void FrameBuffer::resolve() {
 	unbind();
 }
 
-unsigned int FrameBuffer::getTexture() {
+unsigned int FrameBuffer::getTextureID() {
 	return texture;
 }
 

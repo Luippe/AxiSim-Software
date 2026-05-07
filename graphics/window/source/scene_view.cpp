@@ -163,7 +163,7 @@ void SceneView::render() {
 	frameBuffer.resolve();
 
 	ImGui::Image(
-		(ImTextureID)(intptr_t)frameBuffer.getTexture(),
+		(ImTextureID)(intptr_t)frameBuffer.getTextureID(),
 		ImVec2((float)viewportWidth, (float)viewportHeight),
 		ImVec2(0, 1),
 		ImVec2(1, 0)

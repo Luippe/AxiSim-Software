@@ -90,7 +90,7 @@ void ResultsGUI::draw() {
 				textAtNewRow("Colormap", 0, 1);
 				if (createSimpleCombo("##Colormap", colormap.items, colormap.currentItem, IM_ARRAYSIZE(colormap.items))) {
 					colormap.setColormap(colormap.currentItem);
-					results.uploadColormap();
+					results.uploadUniforms();
 					gui.inspector.generate();
 				}
 

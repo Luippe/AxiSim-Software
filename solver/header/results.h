@@ -45,7 +45,7 @@ public:
 	void updateModel();
 
 	// upload colormap to shader
-	void uploadColormap();
+	void uploadUniforms();
 
 	// update the results after loading a file
 	void updateAfterLoadingFile();
@@ -72,6 +72,9 @@ public:
 	TextureBuffer* currentTextureBuffer;
 	Console* console = nullptr;
 
+	Shader& shader;
+	Colormap& colormap;
+
 private:
 
 	int nseg;
@@ -84,8 +87,8 @@ private:
 	//Solver solver;
 	GridConfig g;
 
-	Shader& shader;
-	Colormap& colormap;
+
+
 
 	VertexBuffer capBuffer;
 	VertexBuffer edgeBuffer;

@@ -8,7 +8,7 @@ public:
 	void unbind();
 	void createBuffer(int width, int height, int samples = 4);
 	void resolve();
-	unsigned int getTexture();
+	unsigned int getTextureID();
 	int width, height;
 
 private:

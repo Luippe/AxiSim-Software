@@ -250,10 +250,9 @@ void Results::generate() {
 
 	// initialize outline and colormaps
 	updateOutlineModel();
-	uploadColormap();
+	uploadUniforms();
 	updateInstances();
 	console->addCompletionMessage("Completed initializing outlines and uploading colormaps");
-
 
 	showOutline = true;
 	isReady = true;
@@ -274,7 +273,7 @@ void Results::createFields() {
 
 void Results::setCurrentTextureBuffer(TextureBuffer& textureBuffer) {
 	currentTextureBuffer = &textureBuffer;
-	uploadColormap();
+	uploadUniforms();
 }
 
 void Results::updateCurrentField() {
@@ -298,7 +297,7 @@ void Results::updateCurrentField() {
 		break;
 	}
 	currentTextureBuffer = &currentField->textureBuffer;
-	uploadColormap();
+	uploadUniforms();
 }
 
 void Results::createOutlineBuffer() {
@@ -322,7 +321,7 @@ void Results::createOutlineBuffer() {
 
 }
 
-void Results::uploadColormap() {
+void Results::uploadUniforms() {
 
 	shader.use();
 	shader.SetFloat("vmin", currentField->vmin);

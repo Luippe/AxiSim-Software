@@ -23,11 +23,11 @@ public:
 	// sample value at given i and j
 	double sample(int i, int j);
 
-
-private:
-
+	int nr, nz;
 	int nzBase = 0;
 	int nrBase = 0;
+
+private:
 
 	// create texture buffer for field
 	void createBuffer();
@@ -41,7 +41,7 @@ private:
 	BoundaryConditionConfig bc;
 	CellStoreType type;
 	std::vector<double> unProcessedData;
-	int nr, nz;
+
 	double dr, dz;
 	double xOffset, yOffset;	// offset of the field from (0,0)
 	

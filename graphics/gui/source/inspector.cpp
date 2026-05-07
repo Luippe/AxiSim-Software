@@ -7,53 +7,70 @@ Inspector::Inspector(SceneView& scene) :
 		mesh(scene.mesh),
 		results(scene.results),
 		colormap(scene.colormap),
-		g(mesh.g){
+		g(mesh.g),
+		inspectorShader("graphics/shaders/inspector.vert", "graphics/shaders/inspector.frag"){
 	aspect = (float)(g.L) / (float)(g.R);
+	frameBuffer.createBuffer(100, 100);
 }
 
 void Inspector::generate() {
 	aspect = (float)(g.L) / (float)(g.R);
-	createScalarImage();
+	nrBase = g.nr;
+	nzBase = g.nz;
+
+	createFullScreenQuad();
 	createBuffer();
+	uploadUniforms();
 }
 
-//void Inspector::updateBuffer(int nr, int nz, std::vector<float> data) {
-//	textureBuffer.updateBuffer(nz, nr, )
-//}
+void Inspector::createFullScreenQuad() {
+
+	quadVertices = {
+		// x, y, u, v
+		-1.0f, -1.0f, 0.0f, 0.0f,
+		 1.0f, -1.0f, 1.0f, 0.0f,
+		 1.0f,  1.0f, 1.0f, 1.0f,
+
+		-1.0f, -1.0f, 0.0f, 0.0f,
+		 1.0f,  1.0f, 1.0f, 1.0f,
+		-1.0f,  1.0f, 0.0f, 1.0f
+	};
+
+	vertexBuffer.createBuffer(quadVertices.size() * sizeof(float), quadVertices.data());
+	vertexBuffer.bind();
+	vertexBuffer.enableAttribute(0, 2, GL_FLOAT, 4 * sizeof(float), (void*)0);
+	vertexBuffer.enableAttribute(1, 2, GL_FLOAT, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+	vertexBuffer.unbind();
+
+}
+
+void Inspector::updateTextureBuffer(int nr, int nz, const std::vector<float>& data) {
+	textureBuffer.updateBuffer(nz, nr, GL_RED, GL_FLOAT, data.data());
+}
+
+void Inspector::uploadUniforms() {
+	inspectorShader.use();
+	inspectorShader.SetFloat("vmin", results.currentField->vmin);
+	inspectorShader.SetFloat("vmax", results.currentField->vmax);
+	inspectorShader.SetInt("fieldTex", 0);
+	inspectorShader.SetInt("uColormap", 1);
+}
 
 void Inspector::createBuffer() {
-	textureBuffer.createBuffer(GL_RGBA32F, g.nz + 1, g.nr + 1, GL_RGB, GL_FLOAT, pixels.data());	// initialize buffer
+
+	textureBuffer.createBuffer(GL_R32F, nzBase + 1, nrBase + 1, GL_RED, GL_FLOAT, results.currentField->processedData.data());
+
 }
 
-void Inspector::createScalarImage() {
-	//printf("%d\n", pixels.size());
-	std::vector<float>& currentData = results.currentField->processedData;
-	pixels.clear();
-	pixels.resize(3 * currentData.size());
 
-	for (int n = 0; n < currentData.size(); n++) {
+void Inspector::resizeImage() {
 
-		glm::vec3 color = colormap.getColor((double)currentData[n], results.currentField->vmin, results.currentField->vmax);
-		pixels[3 * n + 0] = color.r;
-		pixels[3 * n + 1] = color.g;
-		pixels[3 * n + 2] = color.b;
+	ImVec2 avail = ImGui::GetContentRegionAvail();
+	imageWidth = (int)avail.x;
+	imageHeight = (int)avail.y;
+	if (imageWidth != frameBuffer.width || imageHeight != frameBuffer.height) {
+		frameBuffer.createBuffer(imageWidth, imageHeight);
 	}
-}
-
-void Inspector::drawField() {
-
-	imageSize = ImGui::GetContentRegionAvail();
-
-	// fit inside available region while preserving aspect ratio
-	if (keepAspectRatio) {
-		if (imageSize.x / imageSize.y > aspect) {
-			imageSize.x = imageSize.y * aspect;
-		}
-		else {
-			imageSize.y = imageSize.x / aspect;
-		}
-	}
-	ImGui::Image((ImTextureID)(intptr_t)textureBuffer.getTextureID(), imageSize, ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
 }
 
 glm::vec2 Inspector::getMouseIndex() {
@@ -64,11 +81,11 @@ glm::vec2 Inspector::getMouseIndex() {
 
 	ImVec2 localPos(mousePos.x - itemMin.x, itemMax.y - mousePos.y);
 
-	boxWidth = (imageSize.x / (float)g.nz);
-	boxHeight = (imageSize.y / (float)g.nr);
+	boxWidth = (imageWidth / nzBase);
+	boxHeight = (imageHeight / nrBase);
 
-	int i = glm::clamp(0, (int)(localPos.y / boxHeight), g.nr);
-	int j = glm::clamp(0, (int)(localPos.x / boxWidth), g.nz);
+	int i = glm::clamp(0, (int)(localPos.y / boxHeight), nrBase);
+	int j = glm::clamp(0, (int)(localPos.x / boxWidth), nzBase);
 
 	return glm::vec2(j, i);
 }
@@ -89,7 +106,7 @@ void Inspector::drawRect() {
 
 void Inspector::updateSelectedIndices() {
 
-	if (!ImGui::IsWindowHovered()) return;
+	if (!ImGui::IsItemHovered()) return;
 
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 		initMousePos = getMouseIndex();
@@ -123,11 +140,53 @@ void Inspector::updateSelectedIndices() {
 	}
 }
 
+void Inspector::renderPreview() {
+
+	frameBuffer.bind();
+
+	glViewport(0, 0, imageWidth, imageHeight);
+	//glDisable(GL_DEPTH_TEST);
+	glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	inspectorShader.use();
+	//uploadUniforms();
+
+	glActiveTexture(GL_TEXTURE0);
+	//results.currentTextureBuffer->bind();
+	textureBuffer.bind();
+
+	glActiveTexture(GL_TEXTURE1);
+	//results.colormap.bind();
+	colormap.bind();
+
+	vertexBuffer.bind();
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+	vertexBuffer.unbind();
+
+	colormap.unbind();
+	textureBuffer.unbind();
+	
+	//results.colormap.unbind();
+	//results.currentTextureBuffer->unbind();
+
+	frameBuffer.unbind();
+
+	//glEnable(GL_DEPTH_TEST);
+}
+
 void Inspector::render() {
 	ImGui::Begin("Inspector");
-	drawField();
+	resizeImage();
+
+	updateTextureBuffer(nrBase + 1, nzBase + 1, results.currentField->processedData);
+	renderPreview();
+
+	frameBuffer.resolve();
+	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
+
 	updateSelectedIndices();
 	drawRect();
-	//drawGridConfig();
+
 	ImGui::End();
 }
