@@ -7,16 +7,6 @@
 #include "results.h"
 #include "printer.h"
 
-// save one scalar value, such as double, int, float, size_t, etc.
-template<typename T>
-void readVector(std::ifstream& in, std::vector<T>& vec) {
-	size_t size = 0;
-	in.read((char*)&size, sizeof(size));
-	vec.resize(size);
-	if (size > 0) { // avoid empty vector
-		in.read((char*)vec.data(), size * sizeof(T));
-	}
-}
 
 template<typename... Args>
 void saveBoundaryConditionConfigs(std::ofstream& out, const Args&... configs) {
@@ -264,9 +254,13 @@ void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc) {
 	bc.type = (BCType)(type);
 }
 
-void readBoundaryConditionConfig(std::ifstream& in, BoundaryConditionConfig& bcConfig) {
+void readOneBoundaryCondition(std::ifstream& in, BoundaryConditionConfig& bcConfig) {
 	readBoundaryCondition(in, bcConfig.inlet);
 	readBoundaryCondition(in, bcConfig.outlet);
 	readBoundaryCondition(in, bcConfig.outer);
 	readBoundaryCondition(in, bcConfig.centerline);
+}
+
+std::ofstream openBinaryFile(const char* path) {
+	return std::ofstream(path, std::ios::binary);
 }

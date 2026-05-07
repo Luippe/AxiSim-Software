@@ -8,6 +8,7 @@
 #include "scene_view.h"
 #include "residuals.cuh"
 #include "solver_util.cuh"
+#include <chrono>
 
 #define CUDA_CHECK(x) do { \
   cudaError_t err = (x); \
@@ -25,7 +26,7 @@ Solver::Solver(SceneView& scene, Config& config) :
     f(config.f),
     itr(config.itr),
     residualPlot({ "Axial", "Radial" ,"Continuity"}) {
-    runSimple();
+    cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
 }
 
 void Solver::run() {
@@ -57,7 +58,6 @@ bool Solver::runCheck() {
         return false;
     }
 
-
     return true;
 }
 
@@ -68,7 +68,6 @@ void Solver::shutdown() {
 }
 
 void Solver::runBiCGStab() {
-
 
     loadVelocity(g, f);
 
@@ -202,14 +201,10 @@ void Solver::setDefault() {
     concBC.centerline = { BCType::NEUMANN, 0.0 };
 }
 
-void Solver::solveResidual() {
-
-}
-
 void Solver::runSimple() {
 
     // create configs for solver and residual
-    ConfigSolver configSolver{ g, f, convectionScheme, addConvectionTerm, steadyState };
+    ConfigSolver configSolver{ g, f, convectionScheme, addConvectionTerm, transient, dt};
     ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
 
     // allocate memory
@@ -219,13 +214,6 @@ void Solver::runSimple() {
     allocateCoefficients(configSolver, vCoeff, vBC, CellStoreType::RADIAL);
     allocateCoefficients(configSolver, ppCoeff, pBC, CellStoreType::CENTER);;
     allocateSimple(configSolver, simple);
-
-    cudaStream_t stream;
-    cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
-
-    // record time
-    CudaTimer timer;
-    timer.startTimer(stream);
 
     int Nu = g.nr * (g.nz + 1);
     int Nv = (g.nr + 1) * g.nz;
@@ -238,71 +226,117 @@ void Solver::runSimple() {
     const int maxBlocks = (std::max({ uCoeff.N,vCoeff.N,ppCoeff.N }) + threadsPerBlock - 1) / threadsPerBlock;
     double uRes, vRes, ppRes;
 
-    for (int k = 0; k < configSimple.maxIter; k++) {
 
-		// create coefficients for velocity and pressure correction equations
-        addUDiffusionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, uBC);
-        addVDiffusionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, vBC);
-        
-        if (configSolver.addConvectionTerm) {
-            addUConvectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC);
-            addVConvectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC);
+    // open file if transient is turned on
+    std::ofstream out;
+    if (transient) {
+
+        out.open("flow_motion.bin", std::ios::binary);
+        saveBinary(out, g.nr, g.nz, g.dr, g.dz);
+        writeBoundaryConditionConfig(out, uBC);
+        writeBoundaryConditionConfig(out, vBC);
+        writeBoundaryConditionConfig(out, pBC);
+
+    }
+
+    // record time
+    CudaTimer timer;
+    timer.startTimer(stream);
+
+    int numSteps = (int)std::ceil(tEnd / dt);
+    for (int tCount = 0; tCount < numSteps; tCount++) {
+
+
+        cudaMemcpyAsync(simple.uOld, simple.u, Nu * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+        cudaMemcpyAsync(simple.vOld, simple.v, Nv * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+
+        for (int k = 0; k < configSimple.maxIter; k++) {
+
+            // create coefficients for velocity and pressure correction equations
+            addUDiffusionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, uBC);
+            addVDiffusionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, vBC);
+
+            if (configSolver.addConvectionTerm) {
+                addUConvectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC);
+                addVConvectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC);
+            }
+
+            if (configSolver.transient) {
+				addUTransientCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
+				addVTransientCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
+            }
+
+            finalizeCoefficients << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff);
+            finalizeCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff);
+
+            getCorrectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple, simple.DU);
+            getCorrectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple, simple.DV);
+
+            // solve velocity
+            createURhs << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
+            createVRhs << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
+
+            cudaMemcpyAsync(simple.uTemp, simple.u, Nu * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+            cudaMemcpyAsync(simple.vTemp, simple.v, Nv * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+            jacobi << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff, simple.uTemp, simple.u, simple.momentumRelaxation);
+            jacobi << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff, simple.vTemp, simple.v, simple.momentumRelaxation);
+
+            // solve pressure correction
+            createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
+            createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
+            cudaMemcpyAsync(simple.ppTemp, simple.pp, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+            jacobi << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff, simple.ppTemp, simple.pp, simple.correctionRelaxation);
+
+            // update field variables
+            updateUVelocity << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple, Nu);
+            updateVVelocity << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple, Nv);
+            updatePressure << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple, N);
+
+            // check for convergence and print residual to console
+            if (k % configSimple.checkConv == 0) {
+
+                residualAll << <maxBlocks, threadsPerBlock, 0, stream >> > (
+                    ResidualPairs{ uCoeff,simple.u,nullptr },
+                    ResidualPairs{ vCoeff,simple.v,nullptr },
+                    ResidualPairs{ ppCoeff,simple.pp,nullptr });
+
+                CUDA_CHECK(cudaStreamSynchronize(stream));
+
+                residualAllHost(configResidual, uCoeff, vCoeff, ppCoeff);
+
+                uRes = uCoeff.resVal;
+                vRes = vCoeff.resVal;
+                ppRes = ppCoeff.resVal;
+
+                residualPlot.add(k, uRes, vRes, ppRes);
+
+                char buffer[256];
+                std::snprintf(buffer, sizeof(buffer), "ITERATION: %d   U: %e  V: %e  Continuity: %e\n", k, uRes, vRes, ppRes);
+                std::string line(buffer);
+                console->addLine(line);
+                if (ppRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
+            }
         }
 
-        finalizeCoefficients << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff);
-		finalizeCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff);
-        
-        getCorrectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple, simple.DU);
-        getCorrectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple, simple.DV);
-
-        // solve velocity
-        createURhs << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
-        createVRhs << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
-        copyVector << <uBlocks, threadsPerBlock, 0, stream >> > (simple.uTemp, simple.u, Nu);
-        copyVector << <vBlocks, threadsPerBlock, 0, stream >> > (simple.vTemp, simple.v, Nv);
-        jacobi << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff, simple.uTemp, simple.u, simple.momentumRelaxation);
-        jacobi << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff, simple.vTemp, simple.v, simple.momentumRelaxation);
-
-        // solve pressure correction
-        createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
-        createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
-        copyVector << <blocks, threadsPerBlock, 0, stream >> > (simple.ppTemp, simple.pp, N);
-        jacobi << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff, simple.ppTemp, simple.pp, simple.correctionRelaxation);
-        
-        // update field variables
-        updateUVelocity << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple, Nu);
-        updateVVelocity << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple, Nv);
-        updatePressure << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple, N);
-     
-        // check for convergence and print residual to console
-        if (k % configSimple.checkConv == 0) {
-
-            residualAll << <maxBlocks, threadsPerBlock, 0, stream >> > (
-                ResidualPairs{ uCoeff,simple.u,nullptr },
-                ResidualPairs{ vCoeff,simple.v,nullptr },
-                ResidualPairs{ ppCoeff,simple.pp,nullptr });
-
+        if (tCount % saveKeyFrameIter == 0) {
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
-            residualAllHost(configResidual, uCoeff, vCoeff, ppCoeff);
+			std::vector<double> u = copyDeviceToHostVector(simple.u, Nu);
+			std::vector<double> v = copyDeviceToHostVector(simple.v, Nv);
+            std::vector<double> p = copyDeviceToHostVector(simple.p, N);
 
-            uRes = uCoeff.resVal;
-            vRes = vCoeff.resVal;
-            ppRes = ppCoeff.resVal;
-
-            residualPlot.add(k, uRes, vRes, ppRes);
-
-            char buffer[256];
-            std::snprintf(buffer, sizeof(buffer), "ITERATION: %d   U: %e  V: %e  Continuity: %e\n", k, uRes, vRes, ppRes);
-            std::string line(buffer);
-            console->addLine(line);
-            if (ppRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
+            saveBinary(out, (double)tCount * dt, u, v, p);
         }
     }
+
+    if (transient) {
+        out.close();
+	}
 
     // end timer and print to console
     timer.endTimer(stream);
     float ms = timer.getElapsedTime();
+
     console->addCompletionTime("Solver", ms);
 
     // copy all necessary variables back to host
@@ -317,5 +351,4 @@ void Solver::runSimple() {
     ppCoeff.free();
     simple.free();
     free_GridConfig(configSolver.g);
-    cudaStreamDestroy(stream);
 }

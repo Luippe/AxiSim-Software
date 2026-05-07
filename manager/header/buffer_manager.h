@@ -60,7 +60,7 @@ public:
 	void bind();
 	void unbind();
 	void createBuffer(GLenum target, int nx, int ny, GLenum format, GLenum type, const void* data);
-	void updateBuffer(GLenum target, int nx, int ny, GLenum format, GLenum type, const void* data);
+	void updateBuffer(int nx, int ny, GLenum format, GLenum type, const void* data);
 	unsigned int getTextureID();
 private:
 	void deleteBuffer();

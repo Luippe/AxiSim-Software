@@ -48,18 +48,6 @@ void residualRaw(ResidualPairs& pairs, int n){
 
 }
 
-__device__
-void residualRelative(ResidualPairs& pairs, int n) {
-
-	Coefficients& coeff = pairs.coeff;
-	const double* x = pairs.x;
-
-	if (n >= pairs.coeff.N) return;
-	if (pairs.coeff.active[n]) return;
-
-	
-}
-
 void residualL1Host(Coefficients& coeff) {
 
 	std::vector<double> h_vec(coeff.N);

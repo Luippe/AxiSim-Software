@@ -154,10 +154,10 @@ Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader)
 	colormap(colormap),
 	shader(shader),
 	solver(solver),
-	uField(solver.config),
-	vField(solver.config),
-	pField(solver.config),
-	concField(solver.config),
+	uField(solver.config.g.nz, solver.config.g.nr),
+	vField(solver.config.g.nz, solver.config.g.nr),
+	pField(solver.config.g.nz, solver.config.g.nr),
+	concField(solver.config.g.nz, solver.config.g.nr),
 	mesh(mesh),
 	currentField(&uField),
 	currentTextureBuffer(&currentField->textureBuffer){
@@ -170,8 +170,6 @@ Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader)
 	this->currentFront = mesh.currentFront;
 	this->currentBack = mesh.currentBack;
 	this->currentInner = mesh.currentInner;
-
-	updateInstances();
 
 }
 
@@ -208,7 +206,6 @@ void Results::createBuffer() {
 	glBindBuffer(GL_ARRAY_BUFFER, cvInstanceBuffer.getVBO());
 	cvBuffer.enableAttribute(3, 4, GL_FLOAT, sizeof(CylinderInstance), (void*)0);
 	glVertexAttribDivisor(3, 1);
-
 
 	glBindBuffer(GL_ARRAY_BUFFER, cvInstanceBuffer.getVBO());
 	glBufferSubData(GL_ARRAY_BUFFER, 0, instances.size() * sizeof(CylinderInstance), instances.data());
@@ -254,10 +251,13 @@ void Results::generate() {
 	// initialize outline and colormaps
 	updateOutlineModel();
 	uploadColormap();
+	updateInstances();
 	console->addCompletionMessage("Completed initializing outlines and uploading colormaps");
+
 
 	showOutline = true;
 	isReady = true;
+
 
 	float endTime = endTimer(startTime);
 	console->addCompletionTime("Results", endTime);
@@ -270,6 +270,11 @@ void Results::createFields() {
 	vField.generate(solver.vSol, solver.vBC);
 	pField.generate(solver.pSol, solver.pBC);
 	//concField.generate(solver.concSol, solver.concBC);
+}
+
+void Results::setCurrentTextureBuffer(TextureBuffer& textureBuffer) {
+	currentTextureBuffer = &textureBuffer;
+	uploadColormap();
 }
 
 void Results::updateCurrentField() {
@@ -409,10 +414,23 @@ void Results::updateInstances() {
 		}
 	};
 
+	//instances.clear();
+	//for (int i = 0; i < g.nr; i++) {
+	//	for (int j = 0; j < g.nz; j++) {
+	//		float r = (i + 0.5f) * g.dr;
+	//		float z = j * g.dz;
+
+	//		glm::vec3 pos = { r,z,0.0f };
+	//		float val = currentField->sample(i, j);
+	//		if (val > 0.05f) {
+	//			instances.push_back({ z, z + (float)g.dz, r - (float)g.dr, r});
+	//		}
+
+	//	}
+	//}
+
 	cvInstanceBuffer.bindVBO();
-
 	cvInstanceBuffer.bufferSubData(instances.size() * sizeof(CylinderInstance), instances.data());
-
 
 	cvInstanceBuffer.unbindVBO();
 
@@ -425,7 +443,6 @@ void Results::draw(unsigned int start, unsigned int count) {
 		cvBuffer.bind();
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-		//glDrawElements(GL_TRIANGLES, indicesCV.size(), GL_UNSIGNED_INT, (void*)(0 * sizeof(unsigned int)));
 		glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_INT, (void*)(start * sizeof(unsigned int)));
 
 		cvBuffer.unbind();

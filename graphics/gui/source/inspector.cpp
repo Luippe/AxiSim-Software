@@ -17,6 +17,10 @@ void Inspector::generate() {
 	createBuffer();
 }
 
+//void Inspector::updateBuffer(int nr, int nz, std::vector<float> data) {
+//	textureBuffer.updateBuffer(nz, nr, )
+//}
+
 void Inspector::createBuffer() {
 	textureBuffer.createBuffer(GL_RGBA32F, g.nz + 1, g.nr + 1, GL_RGB, GL_FLOAT, pixels.data());	// initialize buffer
 }

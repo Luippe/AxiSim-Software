@@ -112,6 +112,8 @@ void allocateSimple(ConfigSolver& config, VariablesSimple& vars) {
 	std::vector<double> h_pp(nr * nz, 0.0);
 	std::vector<double> h_p(nr * nz, 0.0);
 
+	vars.uOld = copyHostToDevice(h_u.data(), h_u.size());
+	vars.vOld = copyHostToDevice(h_v.data(), h_v.size());
 	vars.u = copyHostToDevice(h_u.data(), h_u.size());
 	vars.v = copyHostToDevice(h_v.data(), h_v.size());
 	vars.pp = copyHostToDevice(h_pp.data(), h_pp.size());
@@ -139,7 +141,7 @@ std::vector<double> getInitializedVelocity(ConfigSolver& config) {
 	for (int i = 0; i < nr; ++i) {
 		for (int j = 0; j < nz + 1; ++j) {
 
-			//if (j != 0) continue;
+			if (j != 0) continue;
 
 			int n = i * (nz + 1) + j;
 

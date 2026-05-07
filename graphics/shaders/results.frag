@@ -12,8 +12,7 @@ uniform float R;  // full domain radius
 uniform float vmin;
 uniform float vmax;
 
-void main()
-{
+void main() {
     float r = length(localPos.yz);
     float x = localPos.x;
 

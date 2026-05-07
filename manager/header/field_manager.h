@@ -6,7 +6,7 @@
 class Field {
 public:
 
-	Field(Config& config);
+	Field(int nz, int nr);
 
 	void generate(SolutionField& solution, BoundaryConditionConfig& bc);
 
@@ -20,7 +20,14 @@ public:
 	float vmin = 0.0f;
 	float vmax = 0.0f;
 
+	// sample value at given i and j
+	double sample(int i, int j);
+
+
 private:
+
+	int nzBase = 0;
+	int nrBase = 0;
 
 	// create texture buffer for field
 	void createBuffer();
@@ -31,11 +38,7 @@ private:
 	// update vmin and vmax
 	void updateMinMax();
 
-	// sample value at given i and j
-	double sample(int i, int j);
-
 	BoundaryConditionConfig bc;
-	Config& config;
 	CellStoreType type;
 	std::vector<double> unProcessedData;
 	int nr, nz;

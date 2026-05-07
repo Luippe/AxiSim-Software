@@ -12,16 +12,6 @@
 #include <GLFW/glfw3.h>
 #include "imgui_impl_opengl3.h"
 
-// mouse movement callbacks
-bool firstMouse = true;
-double lastx = 400.0, lasty = 400.0;
-double initx = 400.0, inity = 400.0;
-
-// mouse callback
-bool dragging = false;
-bool rotating = false;
-bool showPointValue = true;
-
 int main() {
 
 	Camera camera;
@@ -35,6 +25,9 @@ int main() {
 	GUI gui(disp.window, scene);
 	double prevTime = glfwGetTime();
 	int frameCount = 0;
+
+	int counter = 0;
+
 
 	while (!glfwWindowShouldClose(disp.window)) {
 		glfwPollEvents();
@@ -54,6 +47,12 @@ int main() {
 		// draw scene
 		scene.render();
 
+		//if (counter == 0) {
+
+		//	counter++;
+		//}
+		//scene.solver.runSimple();
+
 		//int displayWidth, displayHeight;
 		//glfwGetFramebufferSize(disp.window, &displayWidth, &displayHeight);
 		//glViewport(0, 0, displayWidth, displayHeight);
@@ -71,10 +70,12 @@ int main() {
 
 		// check and call events and swap the buffers
 		glfwSwapBuffers(disp.window);
+		//break;
 	}
 
 	// properly shutdown
 	scene.solver.shutdown();
+	cudaStreamDestroy(scene.solver.stream);
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();

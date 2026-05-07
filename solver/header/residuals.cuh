@@ -21,9 +21,6 @@ void residualAll(Systems...systems) {
 __device__
 void residualRaw(ResidualPairs& pairs, int n);
 
-__device__
-void residualRelative(ResidualPairs& pairs, int n);
-
 
 template <typename... Coefficients>
 void residualAllHost(ConfigResidual& configResidual, Coefficients&...coeff) {

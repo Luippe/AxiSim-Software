@@ -3,8 +3,9 @@
 #include <algorithm>
 #include "printer.h"
 
-Field::Field(Config& config) :
-	config(config) {
+Field::Field(int nz, int nr) :
+	nzBase(nz),
+	nrBase(nr){
 }
 
 void Field::generate(SolutionField& solution, BoundaryConditionConfig& bc) {
@@ -41,16 +42,15 @@ void Field::updateMinMax() {
 
 	vmin = (double)*std::min_element(processedData.begin(), processedData.end());
 	vmax = (double)*std::max_element(processedData.begin(), processedData.end());
-	//printf("%f\n", vmin);
-	//printf("%f\n", vmax);
+
 }
 
 void Field::createValues() {
 
 	processedData.clear();
 
-	for (int i = 0; i < config.g.nr + 1; i++) {
-		for (int j = 0; j < config.g.nz + 1; j++) {
+	for (int i = 0; i < nrBase + 1; i++) {
+		for (int j = 0; j < nzBase + 1; j++) {
 
 			float x = j * dz;
 			float r = i * dr;
@@ -64,10 +64,8 @@ void Field::createValues() {
 }
 
 void Field::createBuffer() {
-	textureBuffer.createBuffer(GL_R32F, config.g.nz + 1, config.g.nr + 1, GL_RED, GL_FLOAT, processedData.data());
-	//printf("%f\n", processedData[config.g.nz - 1]);
+	textureBuffer.createBuffer(GL_R32F, nzBase + 1, nrBase + 1, GL_RED, GL_FLOAT, processedData.data());
 }
-
 
 double Field::sample(int i, int j) {
 
@@ -160,44 +158,6 @@ float Field::getData(glm::vec3& pos) {
 	f12 = sample(i1, j2);
 	f21 = sample(i2, j1);
 	f22 = sample(i2, j2);
-
-	//if (i1 > 0 && j1 > 0 && i2 < nr && j2 < nz) {		// flow field
-	//	f11 = unProcessedData[n11];
-	//	f12 = unProcessedData[n12];
-	//	f21 = unProcessedData[n21];
-	//	f22 = unProcessedData[n22];
-	//}
-	//else if (i1 <= 0 && j1 <= 0) {					// bottom left corner (inlet + centerline)
-	//	f11 = f21 = bc.inlet.val;
-	//	f12 = f22 = unProcessedData[n22];
-	//}
-	//else if (i2 >= nr && j1 <= 0) {					// top left corner	(inlet + outer)
-	//	f11 = f21 = bc.inlet.val;
-	//	f12 = f22 = unProcessedData[n12];
-	//}
-	//else if (i2 >= nr && j2 >= nz) {					// top right corner
-	//	f11 = f21 = f12 = f22 = unProcessedData[n11];
-	//}
-	//else if (i1 <= 0 && j2 >= nz) {					// bottom right corner
-	//	f11 = f21 = f12 = f22 = unProcessedData[n21];
-	//}
-	//else if (j1 <= 0) {								// inlet
-	//	f11 = f21 = bc.inlet.val;
-	//	f12 = unProcessedData[n12];
-	//	f22 = unProcessedData[n22];
-	//}
-	//else if (i1 <= 0) {								// centerline
-	//	f11 = f21 = unProcessedData[n21];
-	//	f12 = f22 = unProcessedData[n22];
-	//}
-	//else if (i2 >= nr) {							// outer wall
-	//	f21 = f11 = unProcessedData[n11];
-	//	f22 = f12 = unProcessedData[n12];
-	//}
-	//else if (j2 >= nz) {							// outlet
-	//	f11 = f12 = unProcessedData[n11];
-	//	f21 = f22 = unProcessedData[n21];
-	//}
 
 	float A = (float)(1.0 / ((z2 - z1) * (r2 - r1)));
 	glm::vec2 B((z2 - z), (z - z1));

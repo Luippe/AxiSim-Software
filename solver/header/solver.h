@@ -31,9 +31,12 @@ public:
 	ConvectionScheme convectionScheme = FIRST_ORDER_UPWIND;
 
 	bool addConvectionTerm = false;
-	bool steadyState = true;
+	bool transient = true;
 
+	int saveKeyFrameIter = 2;
 
+	double dt = 0.1;
+	double tEnd = 2.0;
 
 	void run();
 	void runSimple();
@@ -60,6 +63,7 @@ public:
 	SolutionField concSol;
 
 	std::thread solverThread;
+	cudaStream_t stream = nullptr;
 	Console* console = nullptr;
 	bool running = false;
 	bool continueSolver = false;
@@ -78,8 +82,6 @@ private:
 	// set all variables to default values
 	void setDefault();
 
-	// calculate the residual
-	void solveResidual();
 	VariablesSimple simpleCoeff;
 	MemoryConfig mem;
 

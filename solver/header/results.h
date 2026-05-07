@@ -29,6 +29,8 @@ public:
 
 	Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader);
 
+	void setCurrentTextureBuffer(TextureBuffer& textureBuffer);
+
 	// get all vertices for the outline
 	void createOutlineVertices();
 

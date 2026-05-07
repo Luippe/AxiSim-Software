@@ -5,6 +5,7 @@ cmake_policy(SET CMP0009 NEW)
 # PROJECT_SOURCES at CMakeLists.txt:23 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/*.cpp")
 set(OLD_GLOB
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/animation_gui.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/base_gui.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/colorbar.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/console.cpp"
@@ -106,6 +107,7 @@ endif()
 # PROJECT_HEADERS at CMakeLists.txt:37 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/*.h")
 set(OLD_GLOB
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/animation_gui.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/base_gui.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/colorbar.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/console.h"

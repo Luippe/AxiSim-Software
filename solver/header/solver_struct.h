@@ -89,12 +89,12 @@ struct CudaTimer {
 		destroyEvent();
 	}
 
-	void startTimer(cudaStream_t stream) {
+	void startTimer(cudaStream_t& stream) {
 		cudaStreamSynchronize(stream);
 		cudaEventRecord(startTime, stream);
 	}
 
-	void endTimer(cudaStream_t stream) {
+	void endTimer(cudaStream_t& stream) {
 		cudaEventRecord(stopTime, stream);
 		cudaEventSynchronize(stopTime);
 	}
@@ -157,7 +157,9 @@ struct ConfigSolver {
 
 	ConvectionScheme convectionType = ConvectionScheme::FIRST_ORDER_UPWIND;
 	bool addConvectionTerm = false;
-	bool steadyState = false;
+	bool transient = false;
+
+	double dt = 0.1;
 };
 
 
@@ -176,6 +178,8 @@ struct VariablesSimple {
 	double* pp = nullptr;
 	double* u = nullptr;
 	double* v = nullptr;
+	double* uOld = nullptr;
+	double* vOld = nullptr;
 
 	double* uTemp = nullptr;
 	double* vTemp = nullptr;
@@ -275,4 +279,11 @@ struct Config {
 	GridConfig g;
 	IterationConfig itr;
 
+};
+
+struct FlowFrame {
+	double time = 0.0;
+	std::vector<float> u;
+	std::vector<float> v;
+	std::vector<float> p;
 };

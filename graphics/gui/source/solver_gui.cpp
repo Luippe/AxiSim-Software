@@ -46,7 +46,7 @@ void SolverGUI::draw() {
 						textAtNewRow("Add Convection Term", 0, 1);
 						ImGui::Checkbox("##ConvectionTerm", &solver.addConvectionTerm);
 						textAtNewRow("Steady State", 0, 1);
-						ImGui::Checkbox("##SteadyState", &solver.steadyState);
+						ImGui::Checkbox("##SteadyState", &solver.transient);
 						ImGui::EndTable();
 
 
@@ -166,6 +166,31 @@ void SolverGUI::draw() {
 					}
 				}
 				ImGui::EndTabItem();
+
+			}
+
+			// --------------------------Transient Settings----------------------------
+			if (solver.transient) {
+				if (ImGui::BeginTabItem("Transient")) {
+					if (ImGui::CollapsingHeader("Transient"), ImGuiTreeNodeFlags_DefaultOpen) {
+						if (ImGui::BeginTable("Transient Settings", 2)) {
+							ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 300.0f);
+							ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+							
+							textAtNewRow("dt", 0, 1);
+							ImGui::InputDouble("##timeStep", &scene.solver.dt, 0.0, 0.0, "%.3e");
+
+							textAtNewRow("tEnd", 0, 1);
+							ImGui::InputDouble("##endTime", &scene.solver.tEnd, 0.0, 0.0, "%.3e");
+
+							textAtNewRow("Save keyframe every # Iterations", 0, 1);
+							ImGui::InputInt("##saveKeyFrameIter", &scene.solver.saveKeyFrameIter, 0.0, 0.0);
+
+							ImGui::EndTable();
+						}
+					}
+					ImGui::EndTabItem();
+				}
 			}
 
 			if (ImGui::BeginTabItem("Temperature")) {

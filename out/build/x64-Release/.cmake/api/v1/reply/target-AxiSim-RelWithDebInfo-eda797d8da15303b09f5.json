@@ -161,17 +161,18 @@
 				23,
 				24,
 				25,
-				28,
-				30,
-				77,
-				78,
+				26,
+				29,
+				31,
 				79,
 				80,
 				81,
 				82,
 				83,
 				84,
-				85
+				85,
+				86,
+				87
 			]
 		},
 		{
@@ -253,13 +254,13 @@
 			},
 			"sourceIndexes" : 
 			[
-				26,
 				27,
-				29,
-				31,
+				28,
+				30,
 				32,
 				33,
-				34
+				34,
+				35
 			]
 		},
 		{
@@ -333,7 +334,7 @@
 			"language" : "C",
 			"sourceIndexes" : 
 			[
-				86
+				88
 			]
 		}
 	],
@@ -415,28 +416,28 @@
 				5,
 				6,
 				7,
-				8
+				8,
+				9
 			]
 		},
 		{
 			"name" : "graphics\\window\\source",
 			"sourceIndexes" : 
 			[
-				9,
 				10,
 				11,
 				12,
 				13,
 				14,
 				15,
-				16
+				16,
+				17
 			]
 		},
 		{
 			"name" : "manager\\source",
 			"sourceIndexes" : 
 			[
-				17,
 				18,
 				19,
 				20,
@@ -444,35 +445,35 @@
 				22,
 				23,
 				24,
-				25
+				25,
+				26
 			]
 		},
 		{
 			"name" : "solver\\source",
 			"sourceIndexes" : 
 			[
-				26,
 				27,
 				28,
 				29,
 				30,
 				31,
 				32,
-				33
+				33,
+				34
 			]
 		},
 		{
 			"name" : "src\\source",
 			"sourceIndexes" : 
 			[
-				34
+				35
 			]
 		},
 		{
 			"name" : "graphics\\gui\\header",
 			"sourceIndexes" : 
 			[
-				35,
 				36,
 				37,
 				38,
@@ -481,38 +482,38 @@
 				41,
 				42,
 				43,
-				44
+				44,
+				45,
+				46
 			]
 		},
 		{
 			"name" : "graphics\\tinyfiledialogs",
 			"sourceIndexes" : 
 			[
-				45,
-				86
+				47,
+				88
 			]
 		},
 		{
 			"name" : "graphics\\window\\header",
 			"sourceIndexes" : 
 			[
-				46,
-				47,
 				48,
 				49,
 				50,
 				51,
 				52,
 				53,
-				54
+				54,
+				55,
+				56
 			]
 		},
 		{
 			"name" : "manager\\header",
 			"sourceIndexes" : 
 			[
-				55,
-				56,
 				57,
 				58,
 				59,
@@ -522,55 +523,63 @@
 				63,
 				64,
 				65,
-				66
+				66,
+				67,
+				68
 			]
 		},
 		{
 			"name" : "solver\\header",
 			"sourceIndexes" : 
 			[
-				67,
-				68,
 				69,
 				70,
 				71,
 				72,
 				73,
 				74,
-				75
+				75,
+				76,
+				77
 			]
 		},
 		{
 			"name" : "src\\header",
 			"sourceIndexes" : 
 			[
-				76
+				78
 			]
 		},
 		{
 			"name" : "graphics\\imgui",
 			"sourceIndexes" : 
 			[
-				77,
-				78,
 				79,
 				80,
 				81,
-				84,
-				85
+				82,
+				83,
+				86,
+				87
 			]
 		},
 		{
 			"name" : "graphics\\imgui\\backends",
 			"sourceIndexes" : 
 			[
-				82,
-				83
+				84,
+				85
 			]
 		}
 	],
 	"sources" : 
 	[
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/animation_gui.cpp",
+			"sourceGroupIndex" : 0
+		},
 		{
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
@@ -780,6 +789,11 @@
 			"compileGroupIndex" : 1,
 			"path" : "src/source/main.cu",
 			"sourceGroupIndex" : 4
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/animation_gui.h",
+			"sourceGroupIndex" : 5
 		},
 		{
 			"backtrace" : 2,

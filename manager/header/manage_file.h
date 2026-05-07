@@ -15,6 +15,9 @@ struct BoundaryConditionConfig;
 // check if file exists
 bool fileExists(const std::string& filename);
 
+// open .bin file and return stream
+std::ofstream openBinaryFile(const char* path);
+
 // load variables from a file
 void loadVelocity(GridConfig& g, FluidPropertyConfig& f);
 
@@ -57,11 +60,16 @@ void writeBoundaryConditionConfig(std::ofstream& out, const BoundaryConditionCon
 // read boundary condition from save file
 void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc);
 
-// read boundary condition config from save file
-void readBoundaryConditionConfig(std::ifstream& in, BoundaryConditionConfig& bcConfig);
+void readOneBoundaryCondition(std::ifstream& in, BoundaryConditionConfig& bcConfig);
 
 // load selected files when the application launches
 void loadAtLaunch(Mesh& mesh, Solver& solver, Results& results);
+
+// read boundary condition config from save file
+template<typename...Args>
+void readBoundaryConditionConfig(std::ifstream& in, Args&... args) {
+	(readOneBoundaryCondition(in, args),...);
+}
 
 template <typename T>
 void writeVar(std::ofstream& out, const T& value) {
@@ -76,9 +84,30 @@ void writeVar(std::ofstream& out, const std::vector<T>& vec) {
 	out.write((const char*)vec.data(), size * sizeof(T));
 }
 
+// load a value
 template<typename T>
-void readValue(std::ifstream& in, T& val) {
-	in.read((char*)&val, sizeof(T));
+bool readValue(std::ifstream& in, T& val) {
+	return (bool)in.read((char*)&val, sizeof(T));
+}
+
+// load several values
+template<typename... Args>
+void readAll(std::ifstream& in, const Args&... args) {
+	(readValue(in, args),...);
+}
+
+// load one vector
+template<typename T>
+bool readVector(std::ifstream& in, std::vector<T>& vec) {
+	size_t size = 0;
+
+	if (!(bool)in.read((char*)&size, sizeof(size))) {
+		return false;
+	}
+
+	vec.resize(size);
+	return (bool)in.read((char*)vec.data(), size * sizeof(T));
+
 }
 
 template <typename... Args>
@@ -95,5 +124,13 @@ void saveBinary(const std::string& filename, const Args&... args) {
 		throw std::runtime_error("Could not open file: " + filename);
 	}
 
+	writeAll(out, args...);
+}
+
+template <typename... Args>
+void saveBinary(std::ofstream& out, const Args&... args) {
+	if (!out) {
+		throw std::runtime_error("Output stream is not open.");
+	}
 	writeAll(out, args...);
 }

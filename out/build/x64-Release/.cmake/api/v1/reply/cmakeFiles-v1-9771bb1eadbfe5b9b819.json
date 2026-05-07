@@ -5,6 +5,7 @@
 			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/*.cpp",
 			"paths" : 
 			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/animation_gui.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/base_gui.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/colorbar.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/console.cpp",
@@ -96,6 +97,7 @@
 			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/*.h",
 			"paths" : 
 			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/animation_gui.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/base_gui.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/colorbar.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/console.h",

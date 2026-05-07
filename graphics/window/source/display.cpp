@@ -35,15 +35,11 @@ Display::Display(Camera& camera) : camera(camera) {	// initialize shader
 
 	// enable depth testing
 	glEnable(GL_DEPTH_TEST);
-	glCullFace(GL_BACK);
-	glCullFace(GL_CULL_FACE);
 
-	// enable stencil testing
-	//glEnable(GL_DEPTH_TEST);
-	//glDepthFunc(GL_LESS);
-	//glEnable(GL_STENCIL_TEST);
-	//glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-	//glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_BACK);
+
+	glFrontFace(GL_CCW);
 
 	// enable anti alias
 	glEnable(GL_MULTISAMPLE);

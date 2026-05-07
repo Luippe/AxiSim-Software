@@ -25,6 +25,7 @@ GUI::GUI(GLFWwindow* window, SceneView& scene) :
 	meshGUI(*this, scene),
 	solverGUI(scene),
 	resultsGUI(*this, scene),
+	animationGUI(scene),
 	config(scene.config)
 
 {
@@ -110,6 +111,11 @@ void GUI::render() {
 	if (scene.currentTab == TAB_RESULTS && results.isReady) {
 		colorbar.render();
 		inspector.render();
+
+		if (scene.solver.transient) {
+			animationGUI.render();
+		}
+
 	}
 
 	if (scene.currentTab == TAB_SOLVER) {

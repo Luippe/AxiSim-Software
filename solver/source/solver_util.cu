@@ -474,6 +474,83 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	AC[n] += (Fe - Fw + Fn - Fs);
 }
 
+__global__
+void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, VariablesSimple simple) {
+
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (n >= uCoeff.N) return;
+
+	const GridConfig& g = config.g;
+	const FluidPropertyConfig& f = config.f;
+
+	int nr = uCoeff.nr;
+	int nz = uCoeff.nz;
+	double dr = g.dr;
+	double dz = g.dz;
+	double* r = g.r;
+	double rho = f.rho;
+
+	double* AC = uCoeff.AC;
+	double* b = uCoeff.b;
+	int* cell = uCoeff.active;
+	double* uOld = simple.uOld;
+
+	int j = n % nz;
+	int i = n / nz;
+
+	if (cell[n]) return;
+
+	double r1 = 0.0;
+	double r2 = 0.0;
+
+	r1 = r[i] - (dr / 2);
+	r2 = r[i] + (dr / 2);
+
+	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
+
+	AC[n] += (rho * Az * dz) / config.dt;
+	b[n] += (rho * Az * dz * uOld[n]) / config.dt;
+}
+
+__global__
+void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, VariablesSimple simple) {
+
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (n >= vCoeff.N) return;
+	const GridConfig& g = config.g;
+	const FluidPropertyConfig& f = config.f;
+
+	int nr = vCoeff.nr;
+	int nz = vCoeff.nz;
+	double dr = g.dr;
+	double dz = g.dz;
+	double* r = g.r;
+	double mu = f.mu;
+	double rho = f.rho;
+
+	double* AC = vCoeff.AC;
+	double* b = vCoeff.b;
+	int* cell = vCoeff.active;
+	double* vOld = simple.vOld;
+
+	int j = n % nz;
+	int i = n / nz;
+
+	if (cell[n]) return;
+
+	double r1 = 0.0;
+	double r2 = 0.0;
+
+	r1 = r[i - 1];
+	r2 = r[i];
+
+	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
+
+	AC[n] += (rho * Az * dz) / config.dt;
+	b[n] += (rho * Az * dz * vOld[n]) / config.dt;
+}
 
 __global__
 void finalizeCoefficients(Coefficients coeff) {

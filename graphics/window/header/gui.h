@@ -6,6 +6,7 @@
 #include "results_gui.h"
 #include "mesh_gui.h"
 #include "menu.h"
+#include "animation_gui.h"
 
 class Results;
 class SceneView;
@@ -35,6 +36,7 @@ public:
 	MeshGUI meshGUI;
 	SolverGUI solverGUI;
 	ResultsGUI resultsGUI;
+	AnimationGUI animationGUI;
 	Config& config;
 
 	GUI(GLFWwindow* window, SceneView& scene);

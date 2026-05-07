@@ -197,9 +197,9 @@ void TextureBuffer::createBuffer(GLenum internalFormat, int nx, int ny,  GLenum 
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void TextureBuffer::updateBuffer(GLenum internalFormat, int nx, int ny, GLenum format, GLenum type, const void* data) {
+void TextureBuffer::updateBuffer(int nx, int ny, GLenum format, GLenum type, const void* data) {
 	bind();
-	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, nx, ny, 0, format, type, data);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, nx, ny, format, type, data);
 	unbind();
 }
 
