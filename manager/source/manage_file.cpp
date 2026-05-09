@@ -23,27 +23,6 @@ bool fileExists(const std::string& filename) {
 	return file.good();
 }
 
-void loadVelocity(GridConfig& g, FluidPropertyConfig& f) {
-
-	std::ifstream in("data.bin", std::ios::binary);
-
-	// initialize variables
-	int Nu = g.nr * (g.nz + 1);
-	int Nv = (g.nr + 1) * g.nz;
-	std::vector<double> u(Nu,0.0);
-	std::vector<double> v(Nv,0.0);
-
-	// load and allocate memory for velocity
-	readVector(in, u);
-	readVector(in, v);
-	f.u = copyHostToDevice(u.data(), Nu);
-	f.v = copyHostToDevice(v.data(), Nv);
-	//printf("%f\n", u[0]);
-	//printf("%f\n", v[0]);
-	in.close();
-
-}
-
 void saveFromExplorerMesh(Mesh& mesh) {
 	const char* path = tinyfd_saveFileDialog(
 		"Save Mesh",          // dialog title
@@ -80,29 +59,7 @@ void saveFromPathMesh(const char* path, Mesh& mesh) {
 	out.close();
 }
 
-void saveFromPathSolver(const char* path, Solver& solver) {
 
-	std::ofstream out(path, std::ios::binary);
-	saveBoundaryConditionConfigs(out, solver.uBC, solver.vBC, solver.pBC, solver.concBC);
-	writeAll(out, solver.configSimple);
-	out.close();
-
-}
-
-//void saveFromPathSolver(const char* path, Results& results) {
-//	std::ofstream out(path, std::ios::binary);
-//	writeAll(
-//		out,
-//	g = mesh.g;
-//	nseg = mesh.nseg;
-//	cv = mesh.cv;
-//	vertices = mesh.vertices;
-//	verticesCV = mesh.verticesCV;
-//	indicesCV = mesh.indicesCV;
-//	);
-//	writeAll(out, solver.configSimple);
-//	out.close();
-//}
 
 void loadFromExplorerMesh(Mesh& mesh) {
 	const char* filters[] = { "*.bin" };
@@ -126,20 +83,30 @@ void loadFromPathMesh(const char* path, Mesh& mesh) {
 	std::ifstream in(path, std::ios::binary);
 
 	// load dimensions
-	readValue(in, mesh.nseg);
-	readValue(in, mesh.g.R);
-	readValue(in, mesh.g.L);
-	readValue(in, mesh.g.nr);
-	readValue(in, mesh.g.nz);
-	readValue(in, mesh.g.dr);
-	readValue(in, mesh.g.dz);
-	readValue(in, mesh.g.cell_top);
-	readValue(in, mesh.g.cell_left);
-	readValue(in, mesh.g.cell_thickness);
-	readValue(in, mesh.g.cell_right);
+	readBinary(path,
+		mesh.nseg,
+		mesh.g.R,
+		mesh.g.L,
+		mesh.g.nr,
+		mesh.g.nz,
+		mesh.g.dr,
+		mesh.g.dz,
+		mesh.g.cell_top,
+		mesh.g.cell_left,
+		mesh.g.cell_thickness,
+		mesh.g.cell_right,
+		mesh.cv);
 
-	// load vectors
-	readVector(in, mesh.cv);
+}
+
+void saveFromPathSolver(const char* path, Solver& solver) {
+
+	std::ofstream out(path, std::ios::binary);
+
+	saveBinary(out, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
+	saveBoundaryConditionConfigs(out, solver.uBC, solver.vBC, solver.pBC, solver.concBC);
+	writeAll(out, solver.configSimple);
+	out.close();
 
 }
 
@@ -157,7 +124,12 @@ void saveFromExplorerSolver(Solver& solver) {
 	saveFromPathSolver(path, solver);
 }
 
-
+void loadFromPathSolver(const char* path, Solver& solver) {
+	std::ifstream in(path, std::ios::binary);
+	readBinary(in, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
+	loadBoundaryConditionConfigs(in, solver.uBC, solver.vBC, solver.pBC, solver.concBC);
+	readVar(in, solver.configSimple);
+}
 
 void loadFromExplorerSolver(Solver& solver) {
 
@@ -177,11 +149,7 @@ void loadFromExplorerSolver(Solver& solver) {
 	loadFromPathSolver(path, solver);
 }
 
-void loadFromPathSolver(const char* path, Solver& solver) {
-	std::ifstream in(path, std::ios::binary);
-	loadBoundaryConditionConfigs(in, solver.uBC, solver.vBC, solver.pBC, solver.concBC);
-	readValue(in, solver.configSimple);
-}
+
 
 void saveLaunchMesh(Mesh& mesh) {
 	const char* path = "openAtLaunchMesh.bin";

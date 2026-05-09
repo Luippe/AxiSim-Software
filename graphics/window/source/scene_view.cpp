@@ -96,17 +96,18 @@ void SceneView::render() {
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 	ImGui::Begin("Scene");
 
-	ImVec2 avail = ImGui::GetContentRegionAvail();
-	int viewportWidth = (int)avail.x;
-	int viewportHeight = (int)avail.y;
+	rectSize = ImGui::GetContentRegionAvail();
+	int viewportWidth = (int)rectSize.x;
+	int viewportHeight = (int)rectSize.y;
 
 	if (viewportWidth != frameBuffer.width || viewportHeight != frameBuffer.height)
 	{
+
 		// resize scene framebuffer
 		frameBuffer.createBuffer(viewportWidth, viewportHeight);
 
 		//update camera and picker width and height and position
-		ImVec2 rectPos = ImGui::GetCursorScreenPos();
+		rectPos = ImGui::GetCursorScreenPos();
 
 		camera.setDimensions(viewportWidth, viewportHeight, rectPos);
 		picker.setDimensions(viewportWidth, viewportHeight, rectPos);

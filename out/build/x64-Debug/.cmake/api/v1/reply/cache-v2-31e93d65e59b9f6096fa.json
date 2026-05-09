@@ -11,7 +11,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release"
+			"value" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug"
 		},
 		{
 			"name" : "AxiSimSoftware_IS_TOP_LEVEL",
@@ -63,7 +63,7 @@
 				}
 			],
 			"type" : "STRING",
-			"value" : "RelWithDebInfo"
+			"value" : "Debug"
 		},
 		{
 			"name" : "CMAKE_CACHEFILE_DIR",
@@ -75,7 +75,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "c:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release"
+			"value" : "c:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug"
 		},
 		{
 			"name" : "CMAKE_CACHE_MAJOR_VERSION",
@@ -643,7 +643,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/pkgRedirects"
+			"value" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/pkgRedirects"
 		},
 		{
 			"name" : "CMAKE_GENERATOR",
@@ -751,7 +751,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/install/x64-Release"
+			"value" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/install/x64-Debug"
 		},
 		{
 			"name" : "CMAKE_LINKER",

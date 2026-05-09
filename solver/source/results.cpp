@@ -159,9 +159,7 @@ Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader)
 	pField(solver.config.g.nz, solver.config.g.nr),
 	concField(solver.config.g.nz, solver.config.g.nr),
 	mesh(mesh),
-	currentField(&uField),
-	currentTextureBuffer(&currentField->textureBuffer){
-
+	currentField(&uField) {
 	this->colFront = mesh.colFront;
 	this->colBack = mesh.colBack;
 	this->rowTop = mesh.rowTop;
@@ -271,11 +269,6 @@ void Results::createFields() {
 	//concField.generate(solver.concSol, solver.concBC);
 }
 
-void Results::setCurrentTextureBuffer(TextureBuffer& textureBuffer) {
-	currentTextureBuffer = &textureBuffer;
-	uploadUniforms();
-}
-
 void Results::updateCurrentField() {
 
 	switch (currentItem) {
@@ -296,7 +289,7 @@ void Results::updateCurrentField() {
 		currentItem = 3;
 		break;
 	}
-	currentTextureBuffer = &currentField->textureBuffer;
+
 	uploadUniforms();
 }
 
@@ -480,9 +473,10 @@ void Results::render(Shader& shaderLine, Shader& shaderEdge) {
 	//glGenQueries(1, &query);
 	//glBeginQuery(GL_TIME_ELAPSED, query);
 	shader.use();
+	uploadUniforms();
 
 	glActiveTexture(GL_TEXTURE0);
-	currentTextureBuffer->bind();
+	currentField->textureBuffer.bind();
 	glActiveTexture(GL_TEXTURE1);
 	colormap.bind();
 
@@ -493,7 +487,7 @@ void Results::render(Shader& shaderLine, Shader& shaderEdge) {
 	cvBuffer.unbind();
 
 	colormap.unbind();
-	currentTextureBuffer->unbind();
+	currentField->textureBuffer.unbind();
 
 	shaderLine.use();
 	shaderLine.SetMat4("model", modelOutline);

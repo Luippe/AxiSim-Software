@@ -9,6 +9,10 @@ struct ResidualPairs {
 	const double* xTemp = nullptr;
 };
 
+__global__
+void continuityResidual(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N);
+
+
 template <typename... Systems>
 __global__
 void residualAll(Systems...systems) {

@@ -16,15 +16,15 @@ struct GridConfig {
 	double L = 10.0;
 	double dz;
 	double dr;
-	int N;
+	int N = 0;
 
-	int n_cell;
+	int n_cell = 0;
 	double cell_top = 1.5;
 	double cell_left = 4.0;
 	double cell_thickness = 0.5;
 	double cell_right = 4.5;
-	double A_tot;
-	double kl;
+	double A_tot = 0.0;
+	double kl = 0.0;
 
 	int* c_cell;
 	int* z_cell;

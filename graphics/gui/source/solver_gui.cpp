@@ -45,8 +45,8 @@ void SolverGUI::draw() {
 
 						textAtNewRow("Add Convection Term", 0, 1);
 						ImGui::Checkbox("##ConvectionTerm", &solver.addConvectionTerm);
-						textAtNewRow("Steady State", 0, 1);
-						ImGui::Checkbox("##SteadyState", &solver.transient);
+						textAtNewRow("Transient", 0, 1);
+						ImGui::Checkbox("##TransientTerm", &solver.transient);
 						ImGui::EndTable();
 
 
@@ -178,10 +178,10 @@ void SolverGUI::draw() {
 							ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
 							
 							textAtNewRow("dt", 0, 1);
-							ImGui::InputDouble("##timeStep", &scene.solver.dt, 0.0, 0.0, "%.3e");
+							ImGui::InputDouble("##timeStep", &scene.solver.dt, 0.0, 0.0, "%.3f");
 
 							textAtNewRow("tEnd", 0, 1);
-							ImGui::InputDouble("##endTime", &scene.solver.tEnd, 0.0, 0.0, "%.3e");
+							ImGui::InputDouble("##endTime", &scene.solver.tEnd, 0.0, 0.0, "%.3f");
 
 							textAtNewRow("Save keyframe every # Iterations", 0, 1);
 							ImGui::InputInt("##saveKeyFrameIter", &scene.solver.saveKeyFrameIter, 0.0, 0.0);
@@ -204,9 +204,15 @@ void SolverGUI::draw() {
 			ImGui::EndTabBar();
 		}
 
+		ImGui::Checkbox("Continue Solver", &solver.continueSolver);
+
 		if (ImGui::Button("Start Solver")) {
 			scene.solver.run();
 		}
+		
+		//ImGui::SameLine();
+
+
 		changeCursorOnHover();
 
 		ImGui::EndTabItem();

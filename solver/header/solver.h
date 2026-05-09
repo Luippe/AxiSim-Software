@@ -32,7 +32,6 @@ public:
 
 	bool addConvectionTerm = false;
 	bool transient = true;
-
 	int saveKeyFrameIter = 2;
 
 	double dt = 0.1;
@@ -65,7 +64,7 @@ public:
 	std::thread solverThread;
 	cudaStream_t stream = nullptr;
 	Console* console = nullptr;
-	bool running = false;
+	bool solverRunning = false;
 	bool continueSolver = false;
 
 	// iteration configs
@@ -74,15 +73,14 @@ public:
 	// variable configs
 	VariablesSimple simple;
 
+	// set all variables to default values
+	void setDefault();
+
 private:
 
 	// check if the solver can run
 	bool runCheck();
 
-	// set all variables to default values
-	void setDefault();
-
-	VariablesSimple simpleCoeff;
 	MemoryConfig mem;
 
 };

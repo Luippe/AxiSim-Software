@@ -19,13 +19,13 @@ void createPPRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple
 
 // ---------------------update variables----------------
 __global__
-void updateUVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N);
+void updateUVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
 
 __global__
-void updateVVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N);
+void updateVVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
 
 __global__
-void updatePressure(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N);
+void updatePressure(Coefficients coeff, VariablesSimple simple);
 
 __global__
 void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, VariablesSimple simple, double* D);

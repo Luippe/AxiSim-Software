@@ -28,13 +28,17 @@ private:
 	std::vector<FlowFrame> frames;
 	TextureBuffer textureBuffer;
 
+	int widgetWidth;
+	int widgetHeight;
+
 	int nr = 0;
 	int nz = 0;
 
-
 	int currentFrame = 0;
-	bool playing = false;
-	int fps = 30;
+	bool isPlaying = false;
+	int maxFPS = 120;
+	int minFPS = 1;
+	int fps = 10;
 	float accumulator = 0.0f;
 
 };

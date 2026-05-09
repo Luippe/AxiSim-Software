@@ -156,6 +156,7 @@ struct ConfigSolver {
 	FluidPropertyConfig f;
 
 	ConvectionScheme convectionType = ConvectionScheme::FIRST_ORDER_UPWIND;
+	
 	bool addConvectionTerm = false;
 	bool transient = false;
 
@@ -178,19 +179,20 @@ struct VariablesSimple {
 	double* pp = nullptr;
 	double* u = nullptr;
 	double* v = nullptr;
-	double* uOld = nullptr;
-	double* vOld = nullptr;
 
 	double* uTemp = nullptr;
 	double* vTemp = nullptr;
 	double* ppTemp = nullptr;
+
+	double* uOld = nullptr;
+	double* vOld = nullptr;
 
 	double momentumRelaxation = 0.7;
 	double correctionRelaxation = 1.7;
 	double pressureRelaxation = 0.3;
 
 	void free() {
-		freeAllDev(DU, DV, p, pp, u, v, uTemp, vTemp, ppTemp);
+		freeAllDev(DU, DV, p, pp, u, v, uTemp, vTemp, ppTemp, uOld, vOld);
 	}
 };
 
@@ -286,4 +288,20 @@ struct FlowFrame {
 	std::vector<float> u;
 	std::vector<float> v;
 	std::vector<float> p;
+
+	std::vector<float>& operator[](int index) {
+		switch (index) {
+		case 0: return u;
+		case 1: return v;
+		case 2: return p;
+		}
+	}
+
+	const std::vector<float>& operator[](int index) const {
+		switch (index) {
+		case 0: return u;
+		case 1: return v;
+		case 2: return p;
+		}
+	}
 };

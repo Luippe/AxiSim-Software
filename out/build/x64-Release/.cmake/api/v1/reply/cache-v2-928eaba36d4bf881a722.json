@@ -11,7 +11,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug"
+			"value" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release"
 		},
 		{
 			"name" : "AxiSimSoftware_IS_TOP_LEVEL",
@@ -63,7 +63,7 @@
 				}
 			],
 			"type" : "STRING",
-			"value" : "Debug"
+			"value" : "RelWithDebInfo"
 		},
 		{
 			"name" : "CMAKE_CACHEFILE_DIR",
@@ -75,7 +75,7 @@
 				}
 			],
 			"type" : "INTERNAL",
-			"value" : "c:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug"
+			"value" : "c:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release"
 		},
 		{
 			"name" : "CMAKE_CACHE_MAJOR_VERSION",
@@ -283,10 +283,10 @@
 				},
 				{
 					"name" : "HELPSTRING",
-					"value" : "CXX compiler"
+					"value" : "No help, variable specified on the command line."
 				}
 			],
-			"type" : "STRING",
+			"type" : "FILEPATH",
 			"value" : "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe"
 		},
 		{
@@ -395,10 +395,10 @@
 				},
 				{
 					"name" : "HELPSTRING",
-					"value" : "C compiler"
+					"value" : "No help, variable specified on the command line."
 				}
 			],
-			"type" : "STRING",
+			"type" : "FILEPATH",
 			"value" : "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe"
 		},
 		{
@@ -643,7 +643,7 @@
 				}
 			],
 			"type" : "STATIC",
-			"value" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/pkgRedirects"
+			"value" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/pkgRedirects"
 		},
 		{
 			"name" : "CMAKE_GENERATOR",
@@ -751,7 +751,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/install/x64-Debug"
+			"value" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/install/x64-Release"
 		},
 		{
 			"name" : "CMAKE_LINKER",
@@ -779,7 +779,7 @@
 				}
 			],
 			"type" : "FILEPATH",
-			"value" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe"
+			"value" : "C:/PROGRA~1/MIB055~1/2022/COMMUN~1/Common7/IDE/COMMON~1/MICROS~1/CMake/Ninja/ninja.exe"
 		},
 		{
 			"name" : "CMAKE_MODULE_LINKER_FLAGS",
@@ -1271,10 +1271,10 @@
 				},
 				{
 					"name" : "HELPSTRING",
-					"value" : "The CMake toolchain file"
+					"value" : "No help, variable specified on the command line."
 				}
 			],
-			"type" : "FILEPATH",
+			"type" : "UNINITIALIZED",
 			"value" : "C:/Users/luits/vcpkg/scripts/buildsystems/vcpkg.cmake"
 		},
 		{
@@ -1307,7 +1307,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include/../extras/CUPTI/include"
+			"value" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/extras/CUPTI/include"
 		},
 		{
 			"name" : "CUDA_CUDART",

@@ -69,7 +69,6 @@ public:
 	bool isReady = false;
 
 	Field* currentField;
-	TextureBuffer* currentTextureBuffer;
 	Console* console = nullptr;
 
 	Shader& shader;
@@ -86,8 +85,6 @@ private:
 	//Mesh mesh;
 	//Solver solver;
 	GridConfig g;
-
-
 
 
 	VertexBuffer capBuffer;

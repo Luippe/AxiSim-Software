@@ -18,9 +18,6 @@ bool fileExists(const std::string& filename);
 // open .bin file and return stream
 std::ofstream openBinaryFile(const char* path);
 
-// load variables from a file
-void loadVelocity(GridConfig& g, FluidPropertyConfig& f);
-
 // save mesh by opening explorer
 void saveFromExplorerMesh(Mesh& mesh);
 
@@ -71,6 +68,63 @@ void readBoundaryConditionConfig(std::ifstream& in, Args&... args) {
 	(readOneBoundaryCondition(in, args),...);
 }
 
+
+// ====================================================
+// -------------------READING FILE---------------------
+// ====================================================
+
+// load a value
+template<typename T>
+bool readVar(std::ifstream& in, T& val) {
+	return (bool)in.read((char*)&val, sizeof(T));
+}
+
+// load one vector
+template<typename T>
+bool readVar(std::ifstream& in, std::vector<T>& vec) {
+	size_t size = 0;
+
+	if (!(bool)in.read((char*)&size, sizeof(size))) {
+		return false;
+	}
+
+	vec.resize(size);
+	return (bool)in.read((char*)vec.data(), size * sizeof(T));
+}
+
+// load several values
+template<typename... Args>
+bool readAll(std::ifstream& in, Args&... args) {
+	return (readVar(in, args) && ...);
+}
+
+template <typename... Args>
+bool readBinary(const std::string& filename, Args&... args) {
+	std::ifstream in(filename, std::ios::binary);
+
+	if (!in) {
+		throw std::runtime_error("Could not open file: " + filename);
+	}
+
+	readAll(in, args...);
+
+}
+
+template <typename... Args>
+bool readBinary(std::ifstream& in, Args&... args) {
+
+	if (!in) {
+		throw std::runtime_error("Invalid ifstream");
+	}
+
+	return readAll(in, args...);
+}
+
+
+// ====================================================
+// -------------------SAVING FILE----------------------
+// ====================================================
+
 template <typename T>
 void writeVar(std::ofstream& out, const T& value) {
 	out.write((const char*)(&value), sizeof(T));
@@ -84,38 +138,11 @@ void writeVar(std::ofstream& out, const std::vector<T>& vec) {
 	out.write((const char*)vec.data(), size * sizeof(T));
 }
 
-// load a value
-template<typename T>
-bool readValue(std::ifstream& in, T& val) {
-	return (bool)in.read((char*)&val, sizeof(T));
-}
-
-// load several values
-template<typename... Args>
-void readAll(std::ifstream& in, const Args&... args) {
-	(readValue(in, args),...);
-}
-
-// load one vector
-template<typename T>
-bool readVector(std::ifstream& in, std::vector<T>& vec) {
-	size_t size = 0;
-
-	if (!(bool)in.read((char*)&size, sizeof(size))) {
-		return false;
-	}
-
-	vec.resize(size);
-	return (bool)in.read((char*)vec.data(), size * sizeof(T));
-
-}
-
 template <typename... Args>
 void writeAll(std::ofstream& out, const Args&... args) {
 	(writeVar(out, args), ...);
 }
 
-// main save function
 template <typename... Args>
 void saveBinary(const std::string& filename, const Args&... args) {
 	std::ofstream out(filename, std::ios::binary);
@@ -134,3 +161,4 @@ void saveBinary(std::ofstream& out, const Args&... args) {
 	}
 	writeAll(out, args...);
 }
+

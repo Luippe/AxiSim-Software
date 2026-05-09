@@ -570,3 +570,4 @@ void finalizeCoefficients(Coefficients coeff) {
 	AC[n] += -(AE[n] + AW[n] + AN[n] + AS[n]);
 
 }
+

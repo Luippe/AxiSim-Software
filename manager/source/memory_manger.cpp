@@ -45,6 +45,15 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 	coeff.res = deviceAlloc<double>(N);
 	coeff.initRes = deviceAlloc<double>(N);
 
+	CUDA_CHECK(cudaMemset(coeff.AE, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.AW, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.AN, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.AS, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.AC, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.b, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.res, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.initRes, 0, N * sizeof(double)));
+
 	// find which cells should be active or not. 0 = active, 1 = deactive
 	std::vector<int> active(N, 0);
 	for (int i = 0; i < nr; ++i) {
@@ -96,30 +105,38 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 
 void allocateSimple(ConfigSolver& config, VariablesSimple& vars) {
 
+
 	int nr = config.g.nr;
 	int nz = config.g.nz;
 
-	vars.DU = deviceAlloc<double>(nr * (nz + 1));
-	vars.DV = deviceAlloc<double>((nr + 1) * nz);
+	int Nu = nr * (nz + 1);
+	int Nv = (nr + 1) * nz;
+	int N = nr * nz;
 
-	vars.uTemp = deviceAlloc<double>(nr * (nz + 1));
-	vars.vTemp = deviceAlloc<double>((nr + 1) * nz);
-	vars.ppTemp = deviceAlloc<double>(nr * nz);
+	vars.DU = deviceAlloc<double>(Nu);
+	vars.DV = deviceAlloc<double>(Nv);
+	vars.uTemp = deviceAlloc<double>(Nu);
+	vars.vTemp = deviceAlloc<double>(Nv);
+	vars.ppTemp = deviceAlloc<double>(N);
 
-	// initialize uOld and vOld before sending it to device
+	CUDA_CHECK(cudaMemset(vars.DU, 0, Nu * sizeof(double)));
+	CUDA_CHECK(cudaMemset(vars.DV, 0, Nv * sizeof(double)));
+	CUDA_CHECK(cudaMemset(vars.uTemp, 0, Nu * sizeof(double)));
+	CUDA_CHECK(cudaMemset(vars.vTemp, 0, Nv * sizeof(double)));
+	CUDA_CHECK(cudaMemset(vars.ppTemp, 0, N * sizeof(double)));
+
 	std::vector<double> h_u = getInitializedVelocity(config);
-	std::vector<double> h_v((nr + 1) * nz, 0.0);
-	std::vector<double> h_pp(nr * nz, 0.0);
-	std::vector<double> h_p(nr * nz, 0.0);
+	std::vector<double> h_v(Nv, 0.0);
+	std::vector<double> h_pp(N, 0.0);
+	std::vector<double> h_p(N, 0.0);
 
 	vars.uOld = copyHostToDevice(h_u.data(), h_u.size());
 	vars.vOld = copyHostToDevice(h_v.data(), h_v.size());
+
 	vars.u = copyHostToDevice(h_u.data(), h_u.size());
 	vars.v = copyHostToDevice(h_v.data(), h_v.size());
 	vars.pp = copyHostToDevice(h_pp.data(), h_pp.size());
 	vars.p = copyHostToDevice(h_p.data(), h_p.size());
-
-
 }
 
 std::vector<double> getInitializedVelocity(ConfigSolver& config) {
@@ -443,6 +460,10 @@ void free_GridConfig(GridConfig& g) {
 	freeDev(g.surf_index);
 	freeDev(g.dist);
 	freeDev(g.kf);
+
+	g.n_cell = 0;
+	g.A_tot = 0.0;
+	g.kl = 0.0;
 
 	g.c_cell_vec.clear();
 	g.v_cell_vec.clear();

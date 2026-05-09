@@ -44,8 +44,8 @@ void Inspector::createFullScreenQuad() {
 
 }
 
-void Inspector::updateTextureBuffer(int nr, int nz, const std::vector<float>& data) {
-	textureBuffer.updateBuffer(nz, nr, GL_RED, GL_FLOAT, data.data());
+void Inspector::updateTextureBuffer(const void* data) {
+	textureBuffer.updateBuffer(nzBase + 1, nrBase + 1, GL_RED, GL_FLOAT, data);
 }
 
 void Inspector::uploadUniforms() {
@@ -81,12 +81,12 @@ glm::vec2 Inspector::getMouseIndex() {
 
 	ImVec2 localPos(mousePos.x - itemMin.x, itemMax.y - mousePos.y);
 
-	boxWidth = (imageWidth / nzBase);
-	boxHeight = (imageHeight / nrBase);
+	boxWidth = ((float)imageWidth / nzBase);
+	boxHeight = ((float)imageHeight / nrBase);
 
-	int i = glm::clamp(0, (int)(localPos.y / boxHeight), nrBase);
-	int j = glm::clamp(0, (int)(localPos.x / boxWidth), nzBase);
-
+	int i = glm::clamp((int)(localPos.y / boxHeight), 0,  nrBase);
+	int j = glm::clamp((int)(localPos.x / boxWidth), 0,  nzBase);
+	printInt(i, j);
 	return glm::vec2(j, i);
 }
 
@@ -150,25 +150,20 @@ void Inspector::renderPreview() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	inspectorShader.use();
-	//uploadUniforms();
+	uploadUniforms();
 
 	glActiveTexture(GL_TEXTURE0);
-	//results.currentTextureBuffer->bind();
-	textureBuffer.bind();
+	results.currentField->textureBuffer.bind();
 
 	glActiveTexture(GL_TEXTURE1);
-	//results.colormap.bind();
-	colormap.bind();
+	results.colormap.bind();
 
 	vertexBuffer.bind();
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 	vertexBuffer.unbind();
 
-	colormap.unbind();
-	textureBuffer.unbind();
-	
-	//results.colormap.unbind();
-	//results.currentTextureBuffer->unbind();
+	results.colormap.unbind();
+	results.currentField->textureBuffer.unbind();
 
 	frameBuffer.unbind();
 
@@ -179,7 +174,7 @@ void Inspector::render() {
 	ImGui::Begin("Inspector");
 	resizeImage();
 
-	updateTextureBuffer(nrBase + 1, nzBase + 1, results.currentField->processedData);
+	updateTextureBuffer(results.currentField->processedData.data());
 	renderPreview();
 
 	frameBuffer.resolve();

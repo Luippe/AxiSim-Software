@@ -25,8 +25,31 @@ Solver::Solver(SceneView& scene, Config& config) :
     g(config.g),
     f(config.f),
     itr(config.itr),
-    residualPlot({ "Axial", "Radial" ,"Continuity"}) {
+    residualPlot(*this, { "Axial", "Radial" ,"Continuity"}) {
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+}
+
+
+void Solver::setDefault() {
+    uBC.inlet = { BCType::DIRICHLET, 0.0 };
+    uBC.outlet = { BCType::NEUMANN, 0.0 };
+    uBC.outer = { BCType::DIRICHLET, 0.0 };
+    uBC.centerline = { BCType::NEUMANN, 0.0 };
+    vBC.inlet = { BCType::DIRICHLET, 0.0 };
+    vBC.outlet = { BCType::NEUMANN, 0.0 };
+    vBC.outer = { BCType::DIRICHLET, 0.0 };
+    vBC.centerline = { BCType::DIRICHLET, 0.0 };
+    pBC.inlet = { BCType::NEUMANN, 0.0 };
+    pBC.outlet = { BCType::DIRICHLET, 0.0 };
+    pBC.outer = { BCType::NEUMANN, 0.0 };
+    pBC.centerline = { BCType::NEUMANN, 0.0 };
+    concBC.inlet = { BCType::DIRICHLET, 0.0 };
+    concBC.outlet = { BCType::NEUMANN, 0.0 };
+    concBC.outer = { BCType::NEUMANN, 0.0 };
+    concBC.centerline = { BCType::NEUMANN, 0.0 };
+
+    dt = 0.1;
+    tEnd = 2.0;
 }
 
 void Solver::run() {
@@ -34,21 +57,21 @@ void Solver::run() {
     if (!runCheck()) return;
 
     if (!continueSolver) {
-        residualPlot.clear();
+        residualPlot.resetState();
     }
 
     shutdown();                 // end any previous solver threads
 
-    running = true;
+    solverRunning = true;
     solverThread = std::thread([&]() {
         runSimple();
-        running = false;
+        solverRunning = false;
         });
 }
 
 bool Solver::runCheck() {
     
-    if (running) {
+    if (solverRunning) {
         console->addLine("Solver still running");
         return false;
     }
@@ -69,7 +92,7 @@ void Solver::shutdown() {
 
 void Solver::runBiCGStab() {
 
-    loadVelocity(g, f);
+    //loadVelocity(g, f);
 
     // create streams
     cudaStream_t stream;
@@ -80,7 +103,6 @@ void Solver::runBiCGStab() {
     allocateBiCGStab(g, f, vars);
 
     int N = g.N;
-
 
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
 
@@ -182,24 +204,6 @@ void Solver::runBiCGStab() {
 
 }
 
-void Solver::setDefault() {
-    uBC.inlet = { BCType::DIRICHLET, 0.0 };
-    uBC.outlet = { BCType::NEUMANN, 0.0 };
-    uBC.outer = { BCType::DIRICHLET, 0.0 };
-    uBC.centerline = { BCType::NEUMANN, 0.0 };
-    vBC.inlet = { BCType::DIRICHLET, 0.0 };
-    vBC.outlet = { BCType::NEUMANN, 0.0 };
-    vBC.outer = { BCType::DIRICHLET, 0.0 };
-    vBC.centerline = { BCType::DIRICHLET, 0.0 };
-    pBC.inlet = { BCType::NEUMANN, 0.0 };
-    pBC.outlet = { BCType::DIRICHLET, 0.0 };
-    pBC.outer = { BCType::NEUMANN, 0.0 };
-    pBC.centerline = { BCType::NEUMANN, 0.0 };
-    concBC.inlet = { BCType::DIRICHLET, 0.0};
-    concBC.outlet = { BCType::NEUMANN, 0.0 };
-    concBC.outer = { BCType::NEUMANN, 0.0 };
-    concBC.centerline = { BCType::NEUMANN, 0.0 };
-}
 
 void Solver::runSimple() {
 
@@ -208,11 +212,12 @@ void Solver::runSimple() {
     ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
 
     // allocate memory
-    Coefficients uCoeff, vCoeff, ppCoeff;
+    Coefficients uCoeff, vCoeff, ppCoeff, contCoeff;
     allocateGridConfig(configSolver.g, configSolver.f);
     allocateCoefficients(configSolver, uCoeff, uBC, CellStoreType::AXIAL);
     allocateCoefficients(configSolver, vCoeff, vBC, CellStoreType::RADIAL);
-    allocateCoefficients(configSolver, ppCoeff, pBC, CellStoreType::CENTER);;
+    allocateCoefficients(configSolver, ppCoeff, pBC, CellStoreType::CENTER);
+    allocateCoefficients(configSolver, contCoeff, pBC, CellStoreType::CENTER);
     allocateSimple(configSolver, simple);
 
     int Nu = g.nr * (g.nz + 1);
@@ -224,8 +229,7 @@ void Solver::runSimple() {
     const int uBlocks = (Nu + threadsPerBlock - 1) / threadsPerBlock;
     const int vBlocks = (Nv + threadsPerBlock - 1) / threadsPerBlock;
     const int maxBlocks = (std::max({ uCoeff.N,vCoeff.N,ppCoeff.N }) + threadsPerBlock - 1) / threadsPerBlock;
-    double uRes, vRes, ppRes;
-
+    double uRes, vRes, contRes;
 
     // open file if transient is turned on
     std::ofstream out;
@@ -243,9 +247,10 @@ void Solver::runSimple() {
     CudaTimer timer;
     timer.startTimer(stream);
 
-    int numSteps = (int)std::ceil(tEnd / dt);
-    for (int tCount = 0; tCount < numSteps; tCount++) {
+    int numSteps = transient ? (int)std::ceil(tEnd / dt) : 1;
+    int counter = 0;
 
+    for (int tCount = 0; tCount < numSteps; tCount++) {
 
         cudaMemcpyAsync(simple.uOld, simple.u, Nu * sizeof(double), cudaMemcpyDeviceToDevice, stream);
         cudaMemcpyAsync(simple.vOld, simple.v, Nv * sizeof(double), cudaMemcpyDeviceToDevice, stream);
@@ -288,34 +293,36 @@ void Solver::runSimple() {
             jacobi << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff, simple.ppTemp, simple.pp, simple.correctionRelaxation);
 
             // update field variables
-            updateUVelocity << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple, Nu);
-            updateVVelocity << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple, Nv);
-            updatePressure << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple, N);
+            updateUVelocity << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
+            updateVVelocity << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
+            updatePressure << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff, simple);
 
             // check for convergence and print residual to console
             if (k % configSimple.checkConv == 0) {
 
                 residualAll << <maxBlocks, threadsPerBlock, 0, stream >> > (
                     ResidualPairs{ uCoeff,simple.u,nullptr },
-                    ResidualPairs{ vCoeff,simple.v,nullptr },
-                    ResidualPairs{ ppCoeff,simple.pp,nullptr });
+                    ResidualPairs{ vCoeff,simple.v,nullptr });
 
+                continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (configSolver, contCoeff, simple, N);
+                
                 CUDA_CHECK(cudaStreamSynchronize(stream));
 
-                residualAllHost(configResidual, uCoeff, vCoeff, ppCoeff);
+                residualAllHost(configResidual, uCoeff, vCoeff, contCoeff);
 
                 uRes = uCoeff.resVal;
                 vRes = vCoeff.resVal;
-                ppRes = ppCoeff.resVal;
+                contRes = contCoeff.resVal;
 
-                residualPlot.add(k, uRes, vRes, ppRes);
+                residualPlot.add(counter, uRes, vRes, contRes);
 
                 char buffer[256];
-                std::snprintf(buffer, sizeof(buffer), "ITERATION: %d   U: %e  V: %e  Continuity: %e\n", k, uRes, vRes, ppRes);
+                std::snprintf(buffer, sizeof(buffer), "ITERATION: %d   U: %e  V: %e  Continuity: %e\n", k, uRes, vRes, contRes);
                 std::string line(buffer);
                 console->addLine(line);
-                if (ppRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
+                //if (contRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
             }
+            counter++;
         }
 
         if (tCount % saveKeyFrameIter == 0) {
@@ -349,6 +356,7 @@ void Solver::runSimple() {
     uCoeff.free();
     vCoeff.free();
     ppCoeff.free();
+    contCoeff.free();
     simple.free();
     free_GridConfig(configSolver.g);
 }

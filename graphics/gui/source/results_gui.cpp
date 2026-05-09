@@ -40,7 +40,6 @@ void ResultsGUI::draw() {
 				textAtNewRow("Field", 0, 1);
 				if (createSimpleCombo("##SelectField", results.fieldType, results.currentItem, IM_ARRAYSIZE(results.fieldType))) {
 					results.updateCurrentField();
-					gui.inspector.generate();
 				}
 
 				ImGui::EndTable();
@@ -91,7 +90,6 @@ void ResultsGUI::draw() {
 				if (createSimpleCombo("##Colormap", colormap.items, colormap.currentItem, IM_ARRAYSIZE(colormap.items))) {
 					colormap.setColormap(colormap.currentItem);
 					results.uploadUniforms();
-					gui.inspector.generate();
 				}
 
 				ImGui::EndTable();

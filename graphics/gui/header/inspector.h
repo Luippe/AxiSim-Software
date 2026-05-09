@@ -18,7 +18,7 @@ public:
 	void render();
 
 	// update the texture buffer
-	void updateTextureBuffer(int nr, int nz, const std::vector<float>& data);
+	void updateTextureBuffer(const void* data);
 
 	// upload all uniforms to shader
 	void uploadUniforms();
@@ -48,10 +48,8 @@ private:
 	VertexBuffer vertexBuffer;
 	Shader inspectorShader;
 
+	// create a rectangular quad
 	void createFullScreenQuad();
-
-	// resize the framebuffer
-	void updateFieldTexture();
 
 	// get and return the loction of the mouse in index notation
 	glm::vec2 getMouseIndex();

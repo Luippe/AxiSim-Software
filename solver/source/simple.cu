@@ -86,7 +86,6 @@ void createURhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 
 	double* b = coeff.b;
 	double* p = simple.p;
-	b[n] = 0.0;
 
 	int j = n % (nz + 1);
 	int i = n / (nz + 1);
@@ -122,7 +121,6 @@ void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 	double* r = g.r;
 	double* b = coeff.b;
 	double* p = simple.p;
-	b[n] = 0.0;
 
 	int i = n / nz;
 
@@ -251,11 +249,11 @@ void createPPRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple
 }
 
 __global__
-void updateUVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N) {
+void updateUVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (n >= N) return;
+	if (n >= coeff.N) return;
 	if (coeff.active[n]) return;
 
 	const GridConfig& g = config.g;
@@ -279,11 +277,11 @@ void updateUVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple si
 }
 
 __global__
-void updateVVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N) {
+void updateVVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (n >= N) return;
+	if (n >= coeff.N) return;
 	if (coeff.active[n]) return;
 
 	const GridConfig& g = config.g;
@@ -302,14 +300,12 @@ void updateVVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple si
 }
 
 __global__
-void updatePressure(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N) {
+void updatePressure(Coefficients coeff, VariablesSimple simple) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (n >= N) return;
+	if (n >= coeff.N) return;
 	if (coeff.active[n]) return;
-
-	const GridConfig& g = config.g;
 
 	double* pp = simple.pp;
 	double* p = simple.p;

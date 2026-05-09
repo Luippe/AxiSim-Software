@@ -1,4 +1,7 @@
 #include "residuals.cuh"
+
+#include <math_constants.h>
+
 #include "device_launch_parameters.h"
 #include "solver_struct.h"
 
@@ -48,6 +51,51 @@ void residualRaw(ResidualPairs& pairs, int n){
 
 }
 
+__global__
+void continuityResidual(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N) {
+
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (n >= N) return;
+	if (coeff.active[n]) return;
+
+	const GridConfig& g = config.g;
+	const FluidPropertyConfig& f = config.f;
+
+	int nz = g.nz;
+	double dr = g.dr;
+	double dz = g.dz;
+	double* r = g.r;
+	double rho = f.rho;
+	double* u = simple.u;
+	double* v = simple.v;
+	double* res = coeff.res;
+
+	int i = n / nz;
+
+	double r1 = r[i] - (dr / 2);
+	double r2 = r[i] + (dr / 2);
+
+	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
+	double Ar2 = 2 * CUDART_PI * r2 * dz;
+	double Ar1 = 2 * CUDART_PI * r1 * dz;
+
+	// east
+	double me = rho * u[n + i + 1] * Az;
+
+	// west
+	double mw = rho * u[n + i] * Az;
+
+	// north
+	double mn = rho * v[n + nz] * Ar2;
+
+	// south
+	double ms = rho * v[n] * Ar1;
+
+	res[n] = (me - mw + mn - ms);
+
+}
+
 void residualL1Host(Coefficients& coeff) {
 
 	std::vector<double> h_vec(coeff.N);
@@ -92,3 +140,4 @@ void residualLInfHost(Coefficients& coeff) {
 
 	coeff.resVal = *std::max_element(h_vec.begin(), h_vec.end());
 }
+
