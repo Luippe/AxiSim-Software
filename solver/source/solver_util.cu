@@ -27,6 +27,11 @@ bool isBCNeumann(BCType& type) {
 	return type == BCType::NEUMANN;
 }
 
+__device__
+bool isFullyDeveloped(BCType& type) {
+	return type == BCType::FULLY_DEVELOPED;
+}
+
 __global__
 void copyVector(double* vec1, double* vec2, int N) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
@@ -103,11 +108,6 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	// west
 	if (j == 0) {
 		AW[n] = 0.0;
-		if (isBCDirichlet(bc.inlet.type)) {
-			double K = mu * Az / (0.5 * dz);
-			AC[n] += K;
-			b[n] += K * bc.inlet.val;
-		}	
 	}
 	else if (cell[n - 1] == 1) {
 		AW[n] = 0.0;
@@ -267,9 +267,6 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	else {
 		AS[n] = -(mu * Ar1 / dr);
 	}
-
-
-	//AC[n] += -(AE[n] + AW[n] + AN[n] + AS[n]);
 }
 
 __global__

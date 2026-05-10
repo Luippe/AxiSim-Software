@@ -204,21 +204,23 @@ void Solver::runBiCGStab() {
 
 }
 
-
 void Solver::runSimple() {
 
     // create configs for solver and residual
     ConfigSolver configSolver{ g, f, convectionScheme, addConvectionTerm, transient, dt};
     ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
+    allocateGridConfig(configSolver.g, configSolver.f);
 
     // allocate memory
-    Coefficients uCoeff, vCoeff, ppCoeff, contCoeff;
-    allocateGridConfig(configSolver.g, configSolver.f);
-    allocateCoefficients(configSolver, uCoeff, uBC, CellStoreType::AXIAL);
-    allocateCoefficients(configSolver, vCoeff, vBC, CellStoreType::RADIAL);
-    allocateCoefficients(configSolver, ppCoeff, pBC, CellStoreType::CENTER);
-    allocateCoefficients(configSolver, contCoeff, pBC, CellStoreType::CENTER);
-    allocateSimple(configSolver, simple);
+    if (!solutionReady || !continueSolver) {
+
+        allocateCoefficients(configSolver, uCoeff, uBC, CellStoreType::AXIAL);
+        allocateCoefficients(configSolver, vCoeff, vBC, CellStoreType::RADIAL);
+        allocateCoefficients(configSolver, ppCoeff, pBC, CellStoreType::CENTER);
+        allocateCoefficients(configSolver, contCoeff, pBC, CellStoreType::CENTER);
+        allocateSimple(configSolver, simple, uBC);
+        currentIteration = 0;
+    }
 
     int Nu = g.nr * (g.nz + 1);
     int Nv = (g.nr + 1) * g.nz;
@@ -248,7 +250,6 @@ void Solver::runSimple() {
     timer.startTimer(stream);
 
     int numSteps = transient ? (int)std::ceil(tEnd / dt) : 1;
-    int counter = 0;
 
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
@@ -314,15 +315,15 @@ void Solver::runSimple() {
                 vRes = vCoeff.resVal;
                 contRes = contCoeff.resVal;
 
-                residualPlot.add(counter, uRes, vRes, contRes);
+                residualPlot.add(currentIteration, uRes, vRes, contRes);
 
                 char buffer[256];
-                std::snprintf(buffer, sizeof(buffer), "ITERATION: %d   U: %e  V: %e  Continuity: %e\n", k, uRes, vRes, contRes);
+                std::snprintf(buffer, sizeof(buffer), "ITERATION: %d   U: %e  V: %e  Continuity: %e\n", currentIteration, uRes, vRes, contRes);
                 std::string line(buffer);
                 console->addLine(line);
                 //if (contRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
             }
-            counter++;
+            currentIteration++;
         }
 
         if (tCount % saveKeyFrameIter == 0) {
@@ -351,12 +352,14 @@ void Solver::runSimple() {
     uSol = SolutionField{ copyDeviceToHostVector(simple.u, Nu), g.nr, g.nz + 1, g.dr, g.dz, CellStoreType::AXIAL };
     vSol = SolutionField{ copyDeviceToHostVector(simple.v, Nv), g.nr + 1, g.nz, g.dr, g.dz, CellStoreType::RADIAL };
     pSol = SolutionField{ copyDeviceToHostVector(simple.p, N), g.nr, g.nz, g.dr, g.dz, CellStoreType::CENTER };
+    solutionReady = true;
 
     // free memory
-    uCoeff.free();
-    vCoeff.free();
-    ppCoeff.free();
-    contCoeff.free();
-    simple.free();
-    free_GridConfig(configSolver.g);
+    //uCoeff.free();
+    //vCoeff.free();
+    //ppCoeff.free();
+    //contCoeff.free();
+    //simple.free();
+    //free_GridConfig(configSolver.g);
+
 }

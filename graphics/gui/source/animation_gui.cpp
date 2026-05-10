@@ -103,10 +103,34 @@ void AnimationGUI::updateAnimationTexture() {
 
 }
 
+void AnimationGUI::handleEvents() {
+
+    if (!ImGui::IsWindowFocused()) return;
+
+    // play/pause
+    if (ImGui::IsKeyPressed(ImGuiKey_Space)) {
+        isPlaying = !isPlaying;
+    }
+
+    // step forward a frame
+    if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+        currentFrame = std::clamp(currentFrame + 1, 0, (int)(frames.size() - 1));
+    }
+
+    // step back a frame
+    if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
+        currentFrame = currentFrame - 1 < 0 ? 0 : currentFrame - 1;
+    }
+
+}
+
+// ======================================================================
+// -----------------------MAIN DRAW LOOP---------------------------------
+// ======================================================================
 void AnimationGUI::render() {
 
-    ImGui::SetNextWindowSize(ImVec2(scene.rectSize.x * 0.3f, 80.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowPos(ImVec2(scene.rectPos.x + 0.3f * scene.rectSize.x, scene.rectPos.y + scene.rectSize.y - 90), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(scene.rectSize.x * 0.33f, 70.0f), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2(scene.rectPos.x + scene.rectSize.x * 0.33f, scene.rectPos.y + scene.rectSize.y - 90), ImGuiCond_Always);
 
     ImGui::Begin("Animation", 
         nullptr, 
@@ -124,11 +148,7 @@ void AnimationGUI::render() {
         return;
     }
 
-    if (ImGui::IsWindowFocused()) {
-        if (ImGui::IsKeyPressed(ImGuiKey_Space)) {
-            isPlaying = !isPlaying;
-        }
-    }
+    handleEvents();
 
     if (ImGui::Button(isPlaying ? "Pause" : "Play")) {
         isPlaying = !isPlaying;
@@ -145,8 +165,15 @@ void AnimationGUI::render() {
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
     ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 180));
 
-    int endFrame = frames.size() - 1;
-    ImGui::SliderInt("##Frame", &currentFrame, 0, endFrame);
+    float plusW = ImGui::CalcTextSize("+").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    float minusW = ImGui::CalcTextSize("-").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+    float spacing = ImGui::GetStyle().ItemSpacing.x;
+
+    float availW = ImGui::GetContentRegionAvail().x;
+    float sliderW = availW - plusW - minusW;
+
+    ImGui::SetNextItemWidth(sliderW);
+    ImGui::SliderInt("##Frame", &currentFrame, 0, frames.size() - 1);
 
     ImGui::SameLine(0.0f, 0.0f);
     if (ImGui::Button("-##frame")) {
@@ -160,7 +187,6 @@ void AnimationGUI::render() {
 
     ImGui::PopStyleColor();
     ImGui::PopStyleVar();
-
 
     if (isReady) {
         updateFlowAnimation();

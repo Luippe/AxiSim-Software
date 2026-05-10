@@ -463,8 +463,6 @@ void Results::drawEdge() {
 	}
 }
 
-
-
 void Results::render(Shader& shaderLine, Shader& shaderEdge) {
 
 	if (!isReady) return;

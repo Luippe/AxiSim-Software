@@ -19,7 +19,8 @@ public:
 	const char* residualScalingType[3] = { "None", "N", "sqrt(N)" };
 	const char* linearSolverType[1] = { "Jacobi" };
 	const char* velocitySolverType[1] = { "SIMPLE" };
-	const char* bcTypeNames[2] = {"Dirichlet","Neumann"};
+	const char* bcTypeNames[2] = {"Constant", "Flux"};
+	const char* bcInletTypeNames[3]{ "Constant", "Flux", "Fully Developed" };
 	const char* convectionDiscretizationType[2] = { "First Order Upwind", "Second Order Central" };
 
 	FieldType currentField = FIELD_AXIAL_VELOCITY;
@@ -66,6 +67,7 @@ public:
 	Console* console = nullptr;
 	bool solverRunning = false;
 	bool continueSolver = false;
+	bool solutionReady = false;
 
 	// iteration configs
 	ConfigSimple configSimple;
@@ -78,9 +80,10 @@ public:
 
 private:
 
+	int currentIteration = 0;
 	// check if the solver can run
 	bool runCheck();
-
+	Coefficients uCoeff, vCoeff, ppCoeff, contCoeff;
 	MemoryConfig mem;
 
 };

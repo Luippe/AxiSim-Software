@@ -11,9 +11,7 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f);
 void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryConditionConfig& bc, CellStoreType type);
 
 // allocate memory for simple algorithm
-void allocateSimple(ConfigSolver& config, VariablesSimple& vars);
-
-std::vector<double> getInitializedVelocity(ConfigSolver& config);
+void allocateSimple(ConfigSolver& config, VariablesSimple& vars, BoundaryConditionConfig& bc);
 
 // initialize and allocate cell variables
 void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& vars);

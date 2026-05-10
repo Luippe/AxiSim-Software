@@ -102,7 +102,7 @@ void loadFromPathMesh(const char* path, Mesh& mesh) {
 void saveFromPathSolver(const char* path, Solver& solver) {
 
 	std::ofstream out(path, std::ios::binary);
-
+	saveBinary(out, solver.addConvectionTerm, solver.transient);
 	saveBinary(out, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
 	saveBoundaryConditionConfigs(out, solver.uBC, solver.vBC, solver.pBC, solver.concBC);
 	writeAll(out, solver.configSimple);
@@ -126,6 +126,7 @@ void saveFromExplorerSolver(Solver& solver) {
 
 void loadFromPathSolver(const char* path, Solver& solver) {
 	std::ifstream in(path, std::ios::binary);
+	readBinary(in, solver.addConvectionTerm, solver.transient);
 	readBinary(in, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
 	loadBoundaryConditionConfigs(in, solver.uBC, solver.vBC, solver.pBC, solver.concBC);
 	readVar(in, solver.configSimple);
@@ -161,7 +162,7 @@ void saveLaunchSolver(Solver& solver) {
 	//check();
 	saveFromPathSolver(path, solver);
 }
-//
+
 //void saveFromExplorerResults(Results& results) {
 //	const char* path = "openAtLaunchResults.bin";
 //	saveFromPathResults(path, results);

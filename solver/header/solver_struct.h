@@ -37,7 +37,7 @@ enum LinearSolverType {
 
 enum VelocitySolverType {
     SOLVER_SIMPLE         = 0,
-    SOLVER_SIMPLEC        = 1
+    SOLVER_SIMPLER        = 1
 };
 
 enum class CellStoreType {
@@ -48,7 +48,8 @@ enum class CellStoreType {
 
 enum BCType {
 	DIRICHLET,
-	NEUMANN
+	NEUMANN,
+	FULLY_DEVELOPED
 };
 
 enum ConvectionScheme {

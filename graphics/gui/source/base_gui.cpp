@@ -1,5 +1,4 @@
 #include "base_gui.h"
-#include "imgui.h"
 
 void BaseGUI::changeCursorOnHover() {
 	if (ImGui::IsItemHovered()) {
@@ -41,4 +40,17 @@ bool BaseGUI::createSimpleCombo(const char* label, const char* items[], int& cur
 
 void BaseGUI::createInputDouble(const char* label, double* value) {
 	ImGui::InputDouble(label, value);
+}
+
+void BaseGUI::drawLeaf(const char* label) {
+
+	bool selected = selectedItem == label;
+
+	ImGui::TreeNodeEx(label, flags | (selected ? ImGuiTreeNodeFlags_Selected : 0));
+
+	if (ImGui::IsItemClicked()) {
+		selectedItem = label;
+	}
+
+	changeCursorOnHover();
 }

@@ -14,6 +14,9 @@ bool isStoredRadial(CellStoreType& storeType);
 __device__
 bool isBCDirichlet(BCType& type);
 
+__device__
+bool isFullyDeveloped(BCType& type);
+
 __global__
 void copyVector(double* vec1, double* vec2, int N);
 

@@ -2,7 +2,7 @@
 #include "setting.cuh"
 #include "math_func.h"
 #include "solver.h"
-
+#include "printer.h"
 
 void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryConditionConfig& bc, CellStoreType storeType) {
 
@@ -61,7 +61,7 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 			int n = i * nz + j;
 
 			// inlet
-			if (j == 0 && storeType == CellStoreType::AXIAL && bc.inlet.type == BCType::DIRICHLET) {
+			if (j == 0 && storeType == CellStoreType::AXIAL && !(bc.inlet.type == BCType::NEUMANN)) {
 				active[n] = 1;
 			}
 
@@ -103,7 +103,49 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 
 }
 
-void allocateSimple(ConfigSolver& config, VariablesSimple& vars) {
+std::vector<double> getInitializedVelocity(ConfigSolver& config, BoundaryConditionConfig& uBC) {
+
+	int nz = config.g.nz;
+	int nr = config.g.nr;
+	double dr = config.g.dr;
+	double dz = config.g.dz;
+	double R = config.g.R;
+	double Umax = config.f.Umax;
+
+	double cell_left = config.g.cell_left;
+	double cell_right = config.g.cell_right;
+	double cell_top = config.g.cell_top;
+
+	// initialize axial velocity
+	std::vector<double> u(nr * (nz + 1), 0.0);
+
+	for (int i = 0; i < nr; ++i) {
+		for (int j = 0; j < nz + 1; ++j) {
+
+			int n = i * (nz + 1) + j;
+
+			if (j != 0) continue;
+
+			double x = j * dz;
+			double r = 0.5 * dr + i * dr;
+
+			if (uBC.inlet.type == BCType::DIRICHLET) {
+				u[n] = uBC.inlet.val;
+			}
+			else if (uBC.inlet.type == BCType::FULLY_DEVELOPED) {
+				u[n] = uBC.inlet.val * (1.0 - (r / R) * (r / R));
+			}
+
+			if (x >= cell_left && x <= cell_right && r <= cell_top) {
+				u[n] = 0.0;
+			}
+		}
+	}
+
+	return u;
+}
+
+void allocateSimple(ConfigSolver& config, VariablesSimple& vars, BoundaryConditionConfig& uBC) {
 
 
 	int nr = config.g.nr;
@@ -125,7 +167,7 @@ void allocateSimple(ConfigSolver& config, VariablesSimple& vars) {
 	CUDA_CHECK(cudaMemset(vars.vTemp, 0, Nv * sizeof(double)));
 	CUDA_CHECK(cudaMemset(vars.ppTemp, 0, N * sizeof(double)));
 
-	std::vector<double> h_u = getInitializedVelocity(config);
+	std::vector<double> h_u = getInitializedVelocity(config, uBC);
 	std::vector<double> h_v(Nv, 0.0);
 	std::vector<double> h_pp(N, 0.0);
 	std::vector<double> h_p(N, 0.0);
@@ -139,43 +181,7 @@ void allocateSimple(ConfigSolver& config, VariablesSimple& vars) {
 	vars.p = copyHostToDevice(h_p.data(), h_p.size());
 }
 
-std::vector<double> getInitializedVelocity(ConfigSolver& config) {
 
-	int nz = config.g.nz;
-	int nr = config.g.nr;
-	double dr = config.g.dr;
-	double dz = config.g.dz;
-	double R = config.g.R;
-	double Umax = config.f.Umax;
-
-	double cell_left = config.g.cell_left;
-	double cell_right = config.g.cell_right;
-	double cell_top = config.g.cell_top;
-
-	// initialize axial velocity
-	std::vector<double> u(nr * (nz + 1), 0.0);
-
-	for (int i = 0; i < nr; ++i) {
-		for (int j = 0; j < nz + 1; ++j) {
-
-			if (j != 0) continue;
-
-			int n = i * (nz + 1) + j;
-
-			double x = j * dz;
-			double r = 0.5 * dr + i * dr;
-
-			u[n] = Umax * (1 - (r / R) * (r / R));
-
-			if (x >= cell_left && x <= cell_right && r <= cell_top) {
-				u[n] = 0.0;
-			}
-
-		}
-	}
-
-	return u;
-}
 
 // initialize variables
 void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {

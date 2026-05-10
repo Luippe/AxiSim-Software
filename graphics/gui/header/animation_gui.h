@@ -22,7 +22,12 @@ private:
 
 	void updateFlowAnimation();
 
+	// update texture buffer
 	void updateAnimationTexture();
+
+	// handle mouse and keyboard events
+	void handleEvents();
+
 	SceneView& scene;
 
 	std::vector<FlowFrame> frames;

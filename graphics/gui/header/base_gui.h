@@ -1,7 +1,10 @@
 #pragma once
+#include <string>
+#include "imgui.h"
 
 class BaseGUI {
 public:
+
 	void changeCursorOnHover();
 	void textToLeft(const char* text);
 	void setTableColumn(const int column);
@@ -18,4 +21,18 @@ public:
 
 	// create an input double field
 	void createInputDouble(const char* label, double* value);
+
+	// draw leaf for tree node
+	void drawLeaf(const char* label);
+
+	std::string selectedItem;
+
+private:
+
+	ImGuiTreeNodeFlags flags =
+		ImGuiTreeNodeFlags_Leaf |
+		ImGuiTreeNodeFlags_NoTreePushOnOpen |
+		ImGuiTreeNodeFlags_SpanAvailWidth;
+
+
 };

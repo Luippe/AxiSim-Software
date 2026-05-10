@@ -72,10 +72,10 @@ double Field::sample(int i, int j) {
 	// inlet
 	if (j < 0) {
 		if (type == CellStoreType::CENTER || type == CellStoreType::RADIAL) {
-			if (bc.inlet.type == BCType::DIRICHLET) {
+			if (!(bc.inlet.type == BCType::NEUMANN)) {
 				return bc.inlet.val;
 			}
-			else if(bc.inlet.type == BCType::NEUMANN) {
+			else {
 				j = 0;
 			}
 		}
