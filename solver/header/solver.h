@@ -17,7 +17,7 @@ public:
 	const char* residualType[3] = { "Raw Residual", "RMS", "Custom Residual"};
 	const char* residualNormType[3] = { "L1 Norm", "L2 Norm", "Linf Norm" };
 	const char* residualScalingType[3] = { "None", "N", "sqrt(N)" };
-	const char* linearSolverType[1] = { "Jacobi" };
+	const char* linearSolverType[2] = { "Jacobi", "Red Black Gauss Seidel"};
 	const char* velocitySolverType[1] = { "SIMPLE" };
 	const char* bcTypeNames[2] = {"Constant", "Flux"};
 	const char* bcInletTypeNames[3]{ "Constant", "Flux", "Fully Developed" };
@@ -74,6 +74,8 @@ public:
 
 	// variable configs
 	VariablesSimple simple;
+
+	LinearSolverConfig linearSolverConfig;
 
 	// set all variables to default values
 	void setDefault();

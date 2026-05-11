@@ -54,30 +54,32 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 	CUDA_CHECK(cudaMemset(coeff.res, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.initRes, 0, N * sizeof(double)));
 
-	// find which cells should be active or not. 0 = active, 1 = deactive
-	std::vector<int> active(N, 0);
+	// find which cells should be active or not. 1 = active, 0 = deactive
+	std::vector<uint8_t> activeCell (N, 1);
+	std::vector<uint8_t> activeBC(N, 1);
+
 	for (int i = 0; i < nr; ++i) {
 		for (int j = 0; j < nz; ++j) {
 			int n = i * nz + j;
 
 			// inlet
 			if (j == 0 && storeType == CellStoreType::AXIAL && !(bc.inlet.type == BCType::NEUMANN)) {
-				active[n] = 1;
+				activeBC[n] = 0;
 			}
 
 			// outlet
 			if (j == nz - 1 && storeType == CellStoreType::AXIAL && bc.outlet.type == BCType::DIRICHLET) {
-				active[n] = 1;
+				activeBC[n] = 0;
 			}
 
 			// centerline
 			if (i == 0 && storeType == CellStoreType::RADIAL && bc.centerline.type == BCType::DIRICHLET) {
-				active[n] = 1;
+				activeBC[n] = 0;
 			}
 
 			// outer
 			if (i == nr - 1 && storeType == CellStoreType::RADIAL && bc.outer.type == BCType::DIRICHLET) {
-				active[n] = 1;
+				activeBC[n] = 0;
 			}
 
 			// cells
@@ -95,11 +97,12 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 			}
 
 			if (x >= cell_left && x <= cell_right && y <= cell_top) {
-				active[n] = 1;
+				activeCell[n] = 0;
 			}
 		}
 	}
-	coeff.active = copyHostToDevice(active.data(), active.size());
+	coeff.activeCell = copyHostToDevice(activeCell.data(), activeCell.size());
+	coeff.activeBC = copyHostToDevice(activeBC.data(), activeBC.size());
 
 }
 
@@ -124,7 +127,7 @@ std::vector<double> getInitializedVelocity(ConfigSolver& config, BoundaryConditi
 
 			int n = i * (nz + 1) + j;
 
-			if (j != 0) continue;
+			//if (j != 0) continue;
 
 			double x = j * dz;
 			double r = 0.5 * dr + i * dr;
@@ -147,7 +150,6 @@ std::vector<double> getInitializedVelocity(ConfigSolver& config, BoundaryConditi
 
 void allocateSimple(ConfigSolver& config, VariablesSimple& vars, BoundaryConditionConfig& uBC) {
 
-
 	int nr = config.g.nr;
 	int nz = config.g.nz;
 
@@ -163,9 +165,6 @@ void allocateSimple(ConfigSolver& config, VariablesSimple& vars, BoundaryConditi
 
 	CUDA_CHECK(cudaMemset(vars.DU, 0, Nu * sizeof(double)));
 	CUDA_CHECK(cudaMemset(vars.DV, 0, Nv * sizeof(double)));
-	CUDA_CHECK(cudaMemset(vars.uTemp, 0, Nu * sizeof(double)));
-	CUDA_CHECK(cudaMemset(vars.vTemp, 0, Nv * sizeof(double)));
-	CUDA_CHECK(cudaMemset(vars.ppTemp, 0, N * sizeof(double)));
 
 	std::vector<double> h_u = getInitializedVelocity(config, uBC);
 	std::vector<double> h_v(Nv, 0.0);
@@ -179,6 +178,10 @@ void allocateSimple(ConfigSolver& config, VariablesSimple& vars, BoundaryConditi
 	vars.v = copyHostToDevice(h_v.data(), h_v.size());
 	vars.pp = copyHostToDevice(h_pp.data(), h_pp.size());
 	vars.p = copyHostToDevice(h_p.data(), h_p.size());
+
+	CUDA_CHECK(cudaMemcpy(vars.uTemp, vars.u, Nu * sizeof(double), cudaMemcpyDeviceToDevice));
+	CUDA_CHECK(cudaMemcpy(vars.vTemp, vars.v, Nv * sizeof(double), cudaMemcpyDeviceToDevice));
+	CUDA_CHECK(cudaMemcpy(vars.ppTemp, vars.pp, N * sizeof(double), cudaMemcpyDeviceToDevice));
 }
 
 

@@ -138,6 +138,10 @@ void SolverGUI::drawPropertiesPanel() {
 
 				textAtNewRow("Continuity Tolerance", 0, 1);
 				ImGui::InputDouble("##SimpleContTol", &scene.solver.configSimple.ppTol, 0.0, 0.0, "%.3e");
+			
+				textAtNewRow("Linear Solver Max Iteration", 0, 1);
+				ImGui::InputInt("##LinearSolverIteration", &scene.solver.linearSolverConfig.maxIter, 0.0, 0.0);
+			
 			}
 			ImGui::EndTable();
 		}

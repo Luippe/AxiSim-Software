@@ -258,19 +258,23 @@ void Solver::runSimple() {
 
         for (int k = 0; k < configSimple.maxIter; k++) {
 
+            clearCoefficients << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff);
+            clearCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff);
+            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
+
             // create coefficients for velocity and pressure correction equations
             addUDiffusionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, uBC);
             addVDiffusionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, vBC);
 
-            if (configSolver.addConvectionTerm) {
-                addUConvectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC);
-                addVConvectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC);
-            }
+    //        if (configSolver.addConvectionTerm) {
+    //            addUConvectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC);
+    //            addVConvectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC);
+    //        }
 
-            if (configSolver.transient) {
-				addUTransientCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
-				addVTransientCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
-            }
+    //        if (configSolver.transient) {
+				//addUTransientCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
+				//addVTransientCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
+    //        }
 
             finalizeCoefficients << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff);
             finalizeCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff);
@@ -282,16 +286,14 @@ void Solver::runSimple() {
             createURhs << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
             createVRhs << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
 
-            cudaMemcpyAsync(simple.uTemp, simple.u, Nu * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-            cudaMemcpyAsync(simple.vTemp, simple.v, Nv * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-            jacobi << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff, simple.uTemp, simple.u, simple.momentumRelaxation);
-            jacobi << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff, simple.vTemp, simple.v, simple.momentumRelaxation);
+            solveLinearSystem(uCoeff, linearSolverConfig, stream, simple.u, simple.uTemp, threadsPerBlock, simple.momentumRelaxation);
+            solveLinearSystem(vCoeff, linearSolverConfig, stream, simple.v, simple.vTemp, threadsPerBlock, simple.momentumRelaxation);
 
             // solve pressure correction
             createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
             createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
-            cudaMemcpyAsync(simple.ppTemp, simple.pp, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-            jacobi << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff, simple.ppTemp, simple.pp, simple.correctionRelaxation);
+            finalizeCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (ppCoeff);
+            solveLinearSystem(ppCoeff, linearSolverConfig, stream, simple.pp, simple.ppTemp, threadsPerBlock, simple.correctionRelaxation);
 
             // update field variables
             updateUVelocity << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
@@ -302,8 +304,8 @@ void Solver::runSimple() {
             if (k % configSimple.checkConv == 0) {
 
                 residualAll << <maxBlocks, threadsPerBlock, 0, stream >> > (
-                    ResidualPairs{ uCoeff,simple.u,nullptr },
-                    ResidualPairs{ vCoeff,simple.v,nullptr });
+                    ResidualPairs{ uCoeff, simple.u, nullptr },
+                    ResidualPairs{ vCoeff, simple.v, nullptr });
 
                 continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (configSolver, contCoeff, simple, N);
                 
@@ -352,6 +354,15 @@ void Solver::runSimple() {
     uSol = SolutionField{ copyDeviceToHostVector(simple.u, Nu), g.nr, g.nz + 1, g.dr, g.dz, CellStoreType::AXIAL };
     vSol = SolutionField{ copyDeviceToHostVector(simple.v, Nv), g.nr + 1, g.nz, g.dr, g.dz, CellStoreType::RADIAL };
     pSol = SolutionField{ copyDeviceToHostVector(simple.p, N), g.nr, g.nz, g.dr, g.dz, CellStoreType::CENTER };
+    
+    std::vector<double> AC1 = copyDeviceToHostVector(uCoeff.AW, Nu);
+    std::vector<double> AC2 = copyDeviceToHostVector(uCoeff.AE, Nu);
+    //printf("%f\n", vSol.field[g.nz]);
+    printFloat(uSol.field[g.nz + 1], uSol.field[g.nz + 2], uSol.field[g.nz + 3]);
+    printFloat(AC1[g.nz + 1], AC1[g.nz + 2], AC1[g.nz + 3]);
+    printFloat(AC2[g.nz + 1], AC2[g.nz + 2], AC2[g.nz + 3]);
+    //printFloat(vSol.field[g.nz], vSol.field[g.nz + 1], vSol.field[g.nz + 2]);
+
     solutionReady = true;
 
     // free memory

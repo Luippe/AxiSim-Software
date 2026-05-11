@@ -31,8 +31,9 @@ enum ResidualScalingType {
 
 enum LinearSolverType {
     LINEAR_JACOBI         = 0,
-    LINEAR_BICGSTAB       = 1,
-    LINEAR_GMRES          = 2
+	LINEAR_GS_RB		  = 1,
+    LINEAR_BICGSTAB       = 2,
+    LINEAR_GMRES          = 3
 };
 
 enum VelocitySolverType {
@@ -121,16 +122,21 @@ struct Coefficients {
 	double* b = nullptr;
 	double* res = nullptr;
 	double* initRes = nullptr;
-	int* active = nullptr;
+	uint8_t* activeCell = nullptr;
+	uint8_t* activeBC = nullptr;
 	int nr, nz, N;
 	double resVal = 0.0;
 	CellStoreType storeType;
 
 	void free() {
-		freeAllDev(AE, AW, AN, AS, AC, b, res, active, initRes);
+		freeAllDev(AE, AW, AN, AS, AC, b, res, activeCell, activeBC, initRes);
 	}
 };
 
+struct LinearSolverConfig {
+	LinearSolverType type = LINEAR_JACOBI;
+	int maxIter = 50;
+};
 
 struct IterationConfig {
 
@@ -189,7 +195,7 @@ struct VariablesSimple {
 	double* vOld = nullptr;
 
 	double momentumRelaxation = 0.7;
-	double correctionRelaxation = 1.7;
+	double correctionRelaxation = 1.0;
 	double pressureRelaxation = 0.3;
 
 	void free() {

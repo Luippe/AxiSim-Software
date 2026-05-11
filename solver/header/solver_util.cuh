@@ -40,3 +40,6 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 
 __global__
 void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC);
+
+__global__
+void clearCoefficients(Coefficients coeff);

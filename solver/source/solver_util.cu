@@ -1,7 +1,7 @@
 #include "solver_util.cuh"
 #include "device_launch_parameters.h"
 #include <math_constants.h>
-
+#include "printer.h"
 __device__
 bool isStoredCenter(CellStoreType& storeType) {
 	return storeType == CellStoreType::CENTER;
@@ -64,18 +64,14 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	double* AN = coeff.AN;
 	double* AS = coeff.AS;
 	double* b = coeff.b;
-	int* cell = coeff.active;
+	uint8_t* cell = coeff.activeCell;
+
 	int j = n % nz;
 	int i = n / nz;
 
-	AE[n] = 0.0;
-	AW[n] = 0.0;
-	AN[n] = 0.0;
-	AS[n] = 0.0;
-	AC[n] = 0.0;
-	b[n] = 0.0;
-
-	if (cell[n]) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) {
+		return;
+	}
 
 	double r1 = 0.0;
 	double r2 = 0.0;
@@ -97,7 +93,7 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 			b[n] += K * bc.outlet.val;
 		}
 	}
-	else if (cell[n + 1] == 1) {
+	else if (cell[n + 1] == 0) {
 		AE[n] = 0.0;
 		AC[n] += (mu * Az / dz);
 	}
@@ -109,7 +105,7 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	if (j == 0) {
 		AW[n] = 0.0;
 	}
-	else if (cell[n - 1] == 1) {
+	else if (cell[n - 1] == 0) {
 		AW[n] = 0.0;
 		AC[n] += (mu * Az / dz);
 	}
@@ -126,7 +122,7 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 			b[n] += K * bc.outer.val;
 		}	
 	}
-	else if (cell[n + nz] == 1) {
+	else if (cell[n + nz] == 0) {
 		AN[n] = 0.0;
 		AC[n] += (mu * Ar2 / (0.5 * dr));
 	}
@@ -137,21 +133,14 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	// south
 	if (i == 0) {
 		AS[n] = 0.0;
-		if (isBCDirichlet(bc.centerline.type)) {
-			double K = mu * Ar1 / (0.5 * dr);
-			AC[n] += K;
-			b[n] += K * bc.centerline.val;
-		}
 	}
-	else if (cell[n - nz] == 1) {
+	else if (cell[n - nz] == 0) {
 		AS[n] = 0.0;
 		AC[n] += (mu * Ar1 / (0.5 * dr));
 	}
 	else {
 		AS[n] = -(mu * Ar1 / dr);
 	}
-
-	//AC[n] += -(AE[n] + AW[n] + AN[n] + AS[n]);
 }
 
 __global__
@@ -177,18 +166,12 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	double* AN = coeff.AN;
 	double* AS = coeff.AS;
 	double* b = coeff.b;
-	int* cell = coeff.active;
+	uint8_t* cell = coeff.activeCell;
+
 	int j = n % nz;
 	int i = n / nz;
 
-	AE[n] = 0.0;
-	AW[n] = 0.0;
-	AN[n] = 0.0;
-	AS[n] = 0.0;
-	AC[n] = 0.0;
-	b[n] = 0.0;
-
-	if (cell[n]) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	double r1 = 0.0;
 	double r2 = 0.0;
@@ -203,15 +186,10 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	// east
 	if (j == nz - 1) {
 		AE[n] = 0.0;
-		if (isBCDirichlet(bc.outlet.type)) {
-			double K = mu * Az / (0.5 * dz);
-			AC[n] += K;
-			b[n] += K * bc.outlet.val;
-		}
 	}
-	else if (cell[n + 1] == 1) {
+	else if (cell[n + 1] == 0) {
 		AE[n] = 0.0;
-		AC[n] += (mu * Az / dz);
+		AC[n] += (mu * Az / (0.5 * dz));
 	}
 	else {
 		AE[n] = -(mu * Az / dz);
@@ -220,13 +198,9 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	// west
 	if (j == 0) {
 		AW[n] = 0.0;
-		if (isBCDirichlet(bc.inlet.type)) {
-			double K = mu * Az / (0.5 * dz);
-			AC[n] += K;
-			b[n] += K * bc.inlet.val;
-		}
+		AC[n] += mu * Az / (0.5 * dz);
 	}
-	else if (cell[n - 1] == 1) {
+	else if (cell[n - 1] == 0) {
 		AW[n] = 0.0;
 		AC[n] += (mu * Az / dz);
 	}
@@ -243,7 +217,7 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 			b[n] += K * bc.outer.val;
 		}
 	}
-	else if (cell[n + nz] == 1) {
+	else if (cell[n + nz] == 0) {
 		AN[n] = 0.0;
 		AC[n] += (mu * Ar2 / (0.5 * dr));
 	}
@@ -260,7 +234,7 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 			b[n] += K * bc.centerline.val;
 		}
 	}
-	else if (cell[n - nz] == 1) {
+	else if (cell[n - nz] == 0) {
 		AS[n] = 0.0;
 		AC[n] += (mu * Ar1 / (0.5 * dr));
 	}
@@ -293,11 +267,12 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	double* AN = uCoeff.AN;
 	double* AS = uCoeff.AS;
 	double* b = uCoeff.b;
-	int* cell = uCoeff.active;
+	uint8_t* cell = uCoeff.activeCell;
+
 	int j = n % nz;
 	int i = n / nz;
 
-	if (cell[n]) return;
+	if (!uCoeff.activeCell[n] || !uCoeff.activeBC[n]) return;
 
 	double r1 = 0.0;
 	double r2 = 0.0;
@@ -399,11 +374,11 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	double* AN = vCoeff.AN;
 	double* AS = vCoeff.AS;
 	double* b = vCoeff.b;
-	int* cell = vCoeff.active;
+	uint8_t* cell = vCoeff.activeCell;
 	int j = n % nz;
 	int i = n / nz;
 
-	if (cell[n]) return;
+	if (!vCoeff.activeCell[n] || !vCoeff.activeBC[n]) return;
 
 	double r1 = 0.0;
 	double r2 = 0.0;
@@ -490,13 +465,13 @@ void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, Variable
 
 	double* AC = uCoeff.AC;
 	double* b = uCoeff.b;
-	int* cell = uCoeff.active;
+	uint8_t* cell = uCoeff.activeCell;
 	double* uOld = simple.uOld;
 
 	int j = n % nz;
 	int i = n / nz;
 
-	if (cell[n]) return;
+	if (!uCoeff.activeCell[n] || !uCoeff.activeBC[n]) return;
 
 	double r1 = 0.0;
 	double r2 = 0.0;
@@ -529,13 +504,13 @@ void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, Variable
 
 	double* AC = vCoeff.AC;
 	double* b = vCoeff.b;
-	int* cell = vCoeff.active;
+	uint8_t* cell = vCoeff.activeCell;
 	double* vOld = simple.vOld;
 
 	int j = n % nz;
 	int i = n / nz;
 
-	if (cell[n]) return;
+	if (!vCoeff.activeCell[n] || !vCoeff.activeBC[n]) return;
 
 	double r1 = 0.0;
 	double r2 = 0.0;
@@ -561,10 +536,24 @@ void finalizeCoefficients(Coefficients coeff) {
 	double* AS = coeff.AS;
 	double* AC = coeff.AC;
 
-	int* cell = coeff.active;
-	if (cell[n]) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	AC[n] += -(AE[n] + AW[n] + AN[n] + AS[n]);
 
 }
 
+__global__
+void clearCoefficients(Coefficients coeff) {
+
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+	if (n >= coeff.N) return;
+
+	coeff.AE[n] = 0.0;
+	coeff.AW[n] = 0.0;
+	coeff.AN[n] = 0.0;
+	coeff.AS[n] = 0.0;
+	coeff.AC[n] = 0.0;
+	coeff.b[n] = 0.0;
+	coeff.res[n] = 0.0;
+
+}

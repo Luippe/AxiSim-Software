@@ -12,8 +12,8 @@ void residualRaw(ResidualPairs& pairs, int n){
 	Coefficients& coeff = pairs.coeff;
 	const double* x = pairs.x;
 
-	if (n >= pairs.coeff.N) return;
-	if (pairs.coeff.active[n]) return;
+	if (n >= coeff.N) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	double* b = coeff.b;
 	double* AC = coeff.AC;
@@ -57,7 +57,7 @@ void continuityResidual(ConfigSolver config, Coefficients coeff, VariablesSimple
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= N) return;
-	if (coeff.active[n]) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	const GridConfig& g = config.g;
 	const FluidPropertyConfig& f = config.f;

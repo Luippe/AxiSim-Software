@@ -21,7 +21,7 @@ void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, Variables
 
 	D[n] = 0.0;
 
-	if (coeff.active[n]) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	int j = n % nz;
 	int i = n / nz;
@@ -30,8 +30,8 @@ void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, Variables
 	double r2 = 0.0;
 
 	if (isStoredAxial(coeff.storeType)) {
-		r1 = r[i] - (dr / 2);
-		r2 = r[i] + (dr / 2);
+		r1 = r[i] - (dr / 2.0);
+		r2 = r[i] + (dr / 2.0);
 	}
 	else if (isStoredRadial(coeff.storeType)) {
 		r1 = r[i - 1];
@@ -40,34 +40,6 @@ void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, Variables
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
 	D[n] = Az * dz * simple.momentumRelaxation / AC[n];
-
-	//if (isStoredAxial(coeff.storeType)) {
-	//	if (j == 0) {
-	//		D[n] = 0.0;
-	//		return;
-	//	}
-	//}
-
-	//if (isStoredRadial(coeff.storeType)) {
-	//	if (i == 0 || i == g.nr) {
-	//		D[n] = 0.0;
-	//		return;
-	//	}
-	//}
-	//if (!isfinite(AC[n]) || fabs(AC[n]) < 1e-30) {
-	//	printf("Bad V AC: n=%d i=%d j=%d AC=%e\n", n, i, j, AC[n]);
-	//	D[n] = 0.0;
-	//	return;
-	//}
-
-	//if (!isfinite(AC[n]) || fabs(AC[n]) < 1e-30) {
-	//	printf(
-	//		"Bad AC: storeType=%d n=%d i=%d j=%d nz=%d AC=%e\n",
-	//		coeff.storeType, n, i, j, nz, AC[n]
-	//	);
-	//	D[n] = 0.0;
-	//	return;
-	//}
 
 }
 
@@ -79,32 +51,40 @@ void createURhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 	if (n >= coeff.N) return;
 
 	const GridConfig& g = config.g;
+	const FluidPropertyConfig& f = config.f;
 
-	int nz = g.nz;
+	int nz = coeff.nz;
 	double dr = g.dr;
+	double dz = g.dz;
 	double* r = g.r;
 
 	double* b = coeff.b;
 	double* p = simple.p;
+	double* u = simple.u;
+	double mu = f.mu;
 
-	int j = n % (nz + 1);
-	int i = n / (nz + 1);
+	int j = n % nz;
+	int i = n / nz;
 
-	if (coeff.active[n]) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
-	double r1 = r[i] - (dr / 2);
-	double r2 = r[i] + (dr / 2);
+	double r1 = r[i] - (dr / 2.0);
+	double r2 = r[i] + (dr / 2.0);
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
 
 	// outlet
-	if (j == nz) {
-		b[n] += -Az * (-2 * p[n - i - 1]);
+	if (j == nz - 1) {
+		b[n] += -Az * (-2.0 * p[n - i - 1]);
 	}
 	else {
 		b[n] += -Az * (p[n - i] - p[n - i - 1]);
 	}
-}
 
+	//if (j == 1) {
+	//	b[n] += mu * Az * u[n - 1] / dz;
+	//}
+
+}
 
 __global__
 void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple) {
@@ -115,8 +95,8 @@ void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 
 	const GridConfig& g = config.g;
 
-	int nr = g.nr;
-	int nz = g.nz;
+	int nr = coeff.nr;
+	int nz = coeff.nz;
 	double dz = g.dz;
 	double* r = g.r;
 	double* b = coeff.b;
@@ -124,11 +104,11 @@ void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 
 	int i = n / nz;
 
-	if (coeff.active[n]) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	double r1 = r[i - 1];
 	double r2 = r[i];
-	double Ar = 2 * CUDART_PI * (0.5 * (r1 + r2)) * dz;
+	double Ar = 2.0 * CUDART_PI * (0.5 * (r1 + r2)) * dz;
 
 	b[n] += -Ar * (p[n] - p[n - nz]);
 }
@@ -162,24 +142,18 @@ void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simp
 	int j = n % nz;
 	int i = n / nz;
 
-	AE[n] = 0.0;
-	AW[n] = 0.0;
-	AN[n] = 0.0;
-	AS[n] = 0.0;
-	AC[n] = 0.0;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
-	if (coeff.active[n]) return;
-
-	double r1 = r[i] - (dr / 2);
-	double r2 = r[i] + (dr / 2);
+	double r1 = r[i] - (dr / 2.0);
+	double r2 = r[i] + (dr / 2.0);
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2 * CUDART_PI * r2 * dz;
-	double Ar1 = 2 * CUDART_PI * r1 * dz;
+	double Ar2 = 2.0 * CUDART_PI * r2 * dz;
+	double Ar1 = 2.0 * CUDART_PI * r1 * dz;
 
 	// east
 	if (j == nz - 1) {
-		AC[n] += (2 * rho * DU[n + i + 1] * Az / dz);
+		AC[n] += (2.0 * rho * DU[n + i + 1] * Az / dz);
 	}
 	else {
 		AE[n] = -rho * DU[n + i + 1] * Az / dz;
@@ -193,8 +167,6 @@ void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simp
 
 	// south
 	AS[n] = -rho * DV[n] * Ar1 / dr;
-
-	AC[n] += -(AE[n] + AW[n] + AN[n] + AS[n]);
 
 }
 
@@ -220,17 +192,16 @@ void createPPRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple
 
 	int i = n / nz;
 
-	b[n] = 0.0;
 	pp[n] = 0.0;
 
-	if (coeff.active[n]) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
-	double r1 = r[i] - (dr / 2);
-	double r2 = r[i] + (dr / 2);
+	double r1 = r[i] - (dr / 2.0);
+	double r2 = r[i] + (dr / 2.0);
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2 * CUDART_PI * r2 * dz;
-	double Ar1 = 2 * CUDART_PI * r1 * dz;
+	double Ar2 = 2.0 * CUDART_PI * r2 * dz;
+	double Ar1 = 2.0 * CUDART_PI * r1 * dz;
 
 	// east
 	double me = rho * u[n + i + 1] * Az;
@@ -244,7 +215,7 @@ void createPPRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple
 	// south
 	double ms = rho * v[n] * Ar1;
 
-	b[n] = -(me - mw + mn - ms);
+	b[n] += -(me - mw + mn - ms);
 
 }
 
@@ -254,7 +225,7 @@ void updateUVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple si
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= coeff.N) return;
-	if (coeff.active[n]) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	const GridConfig& g = config.g;
 
@@ -282,12 +253,12 @@ void updateVVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple si
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= coeff.N) return;
-	if (coeff.active[n]) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	const GridConfig& g = config.g;
 
-	int nr = g.nr;
-	int nz = g.nz;
+	int nr = coeff.nr;
+	int nz = coeff.nz;
 	double dr = g.dr;
 
 	double* v = simple.v;
@@ -305,7 +276,7 @@ void updatePressure(Coefficients coeff, VariablesSimple simple) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= coeff.N) return;
-	if (coeff.active[n]) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	double* pp = simple.pp;
 	double* p = simple.p;
