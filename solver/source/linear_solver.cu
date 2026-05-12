@@ -7,12 +7,17 @@ void solveLinearSystem(Coefficients& coeff, const LinearSolverConfig& config, cu
 
 	switch (config.type) {
 	case LINEAR_JACOBI:
-
 		for (int k = 0; k < config.maxIter; k++) {
 			jacobi << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, xTemp, relaxation);
 			std::swap(x, xTemp);
 		}
+		break;
 
+	case LINEAR_GS_RB:
+		for (int k = 0; k < config.maxIter; k++) {
+			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, relaxation, 0);
+			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, relaxation, 1);
+		}
 		break;
 	}
 }
@@ -82,16 +87,19 @@ void gaussSeidelRB(Coefficients coeff, double* x, double relaxation, int color) 
 	int j = n % nz;
 	int i = n / nz;
 
-	double* b = coeff.b;
 	double* AC = coeff.AC;
 	double* AE = coeff.AE;
 	double* AW = coeff.AW;
 	double* AN = coeff.AN;
 	double* AS = coeff.AS;
+	double* b = coeff.b;
 
 	if ((i + j) % 2 != color) return;
 
 	double val = b[n];
+
+	val += ((1 - relaxation) / (relaxation)) * AC[n] * x[n];
+
 	if (j != nz - 1) {
 		val -= AE[n] * x[n + 1];
 	}
@@ -108,7 +116,7 @@ void gaussSeidelRB(Coefficients coeff, double* x, double relaxation, int color) 
 		val -= AS[n] * x[n - nz];
 	}
 
-	val /= AC[n];
+	val *= (relaxation / AC[n]);
 
-	x[n] = relaxation * val + (1 - relaxation) * x[n];
+	x[n] = val;
 }

@@ -10,8 +10,6 @@ ResidualPlot::ResidualPlot(Solver& solver, std::initializer_list<std::string> re
     solver(solver),
     names(residualNames){
 
-
-
     resetState();
 
 }

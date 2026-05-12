@@ -80,10 +80,6 @@ void createURhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 		b[n] += -Az * (p[n - i] - p[n - i - 1]);
 	}
 
-	//if (j == 1) {
-	//	b[n] += mu * Az * u[n - 1] / dz;
-	//}
-
 }
 
 __global__
@@ -264,8 +260,6 @@ void updateVVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple si
 	double* v = simple.v;
 	double* pp = simple.pp;
 	double* DV = simple.DV;
-
-	int i = n / nz;
 
 	v[n] -= (DV[n] / dr) * (pp[n] - pp[n - nz]);
 }

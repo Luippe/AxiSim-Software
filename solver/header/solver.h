@@ -24,7 +24,6 @@ public:
 	const char* convectionDiscretizationType[2] = { "First Order Upwind", "Second Order Central" };
 
 	FieldType currentField = FIELD_AXIAL_VELOCITY;
-	LinearSolverType currentLinearSolver = LINEAR_JACOBI;
 	VelocitySolverType currentVelocitySolver = SOLVER_SIMPLE;
 	ResidualType currentResidual = RESIDUAL_RAW;
 	ResidualNormType currentResidualNorm = RESIDUAL_LINF;

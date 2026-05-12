@@ -37,8 +37,12 @@ void SolverGUI::drawPropertiesPanel() {
 			textAtNewRow("Solver", 0, 1);
 			createSimpleCombo("##Solver", solver.velocitySolverType, (int&)solver.currentVelocitySolver, IM_ARRAYSIZE(solver.velocitySolverType));
 
+			textAtNewRow("Linear Solver", 0, 1);
+			createSimpleCombo("##LinearSolverType", solver.linearSolverType, (int&)(solver.linearSolverConfig.type), IM_ARRAYSIZE(solver.linearSolverType));
+			
 			textAtNewRow("Add Convection Term", 0, 1);
 			ImGui::Checkbox("##ConvectionTerm", &solver.addConvectionTerm);
+			
 			textAtNewRow("Transient", 0, 1);
 			ImGui::Checkbox("##TransientTerm", &solver.transient);
 			ImGui::EndTable();
@@ -177,20 +181,20 @@ void SolverGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 0), true);
 
-		if (ImGui::TreeNodeEx("General")) {
+		if (ImGui::TreeNodeEx("General", treeFlags)) {
 			drawLeaf("Solver Settings");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 
-		if (ImGui::TreeNodeEx("Boundary Conditions")) {
+		if (ImGui::TreeNodeEx("Boundary Conditions", treeFlags)) {
 			drawLeaf("Velocity BC");
 			drawLeaf("Pressure BC");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 
-		if (ImGui::TreeNodeEx("Convergence")) {
+		if (ImGui::TreeNodeEx("Convergence", treeFlags)) {
 			drawLeaf("Residual Type");
 			drawLeaf("Tolerance");
 			ImGui::TreePop();
@@ -198,7 +202,7 @@ void SolverGUI::draw() {
 		changeCursorOnHover();
 
 		if (solver.transient) {
-			if (ImGui::TreeNodeEx("Transient")) {
+			if (ImGui::TreeNodeEx("Transient", treeFlags)) {
 				drawLeaf("Transient Settings");
 				ImGui::TreePop();
 			}
