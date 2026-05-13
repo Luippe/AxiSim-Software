@@ -94,6 +94,7 @@ void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 	int nr = coeff.nr;
 	int nz = coeff.nz;
 	double dz = g.dz;
+	double dr = g.dr;
 	double* r = g.r;
 	double* b = coeff.b;
 	double* p = simple.p;
@@ -105,8 +106,8 @@ void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 	double r1 = r[i - 1];
 	double r2 = r[i];
 	double Ar = 2.0 * CUDART_PI * (0.5 * (r1 + r2)) * dz;
-
 	b[n] += -Ar * (p[n] - p[n - nz]);
+
 }
 
 __global__
@@ -119,8 +120,8 @@ void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simp
 	const GridConfig& g = config.g;
 	const FluidPropertyConfig& f = config.f;
 
-	int nr = g.nr;
-	int nz = g.nz;
+	int nr = coeff.nr;
+	int nz = coeff.nz;
 	double dr = g.dr;
 	double dz = g.dz;
 	double* r = g.r;
@@ -183,12 +184,14 @@ void createPPRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple
 	double rho = f.rho;
 	double* b = coeff.b;
 	double* pp = simple.pp;
+	double* ppTemp = simple.ppTemp;
 	double* u = simple.u;
 	double* v = simple.v;
 
 	int i = n / nz;
 
 	pp[n] = 0.0;
+	ppTemp[n] = 0.0;
 
 	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 

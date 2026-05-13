@@ -21,14 +21,14 @@ public:
 	const char* velocitySolverType[1] = { "SIMPLE" };
 	const char* bcTypeNames[2] = {"Constant", "Flux"};
 	const char* bcInletTypeNames[3]{ "Constant", "Flux", "Fully Developed" };
-	const char* convectionDiscretizationType[2] = { "First Order Upwind", "Second Order Central" };
+	const char* convectionDiscretizationType[3] = { "First Order Upwind", "Central Difference", "Second Order Upwind"};
 
 	FieldType currentField = FIELD_AXIAL_VELOCITY;
 	VelocitySolverType currentVelocitySolver = SOLVER_SIMPLE;
 	ResidualType currentResidual = RESIDUAL_RAW;
 	ResidualNormType currentResidualNorm = RESIDUAL_LINF;
 	ResidualScalingType currentResidualScaling = RESIDUAL_SCALING_NONE;
-	ConvectionScheme convectionScheme = FIRST_ORDER_UPWIND;
+	ConvectionScheme convectionScheme = CONV_UPWIND;
 
 	bool addConvectionTerm = false;
 	bool transient = true;

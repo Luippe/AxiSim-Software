@@ -8,4 +8,8 @@ __global__
 void jacobi(Coefficients coeff, double* xTemp, double* x, double relaxation);
 
 __global__
+void jacobiPP(Coefficients coeff, double* xTemp, double* x, double relaxation);
+
+
+__global__
 void gaussSeidelRB(Coefficients coeff, double* x, double relaxation, int color);

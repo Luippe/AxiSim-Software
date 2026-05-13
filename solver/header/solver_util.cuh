@@ -36,10 +36,10 @@ __global__
 void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, VariablesSimple simple);
 
 __global__
-void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC);
+void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC, ConvectionScheme scheme);
 
 __global__
-void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC);
+void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC, ConvectionScheme scheme);
 
 __global__
 void clearCoefficients(Coefficients coeff);

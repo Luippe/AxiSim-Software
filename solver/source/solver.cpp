@@ -207,7 +207,7 @@ void Solver::runBiCGStab() {
 void Solver::runSimple() {
 
     // create configs for solver and residual
-    ConfigSolver configSolver{ g, f, convectionScheme, addConvectionTerm, transient, dt};
+    ConfigSolver configSolver{ g, f, addConvectionTerm, transient, dt};
     ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
     allocateGridConfig(configSolver.g, configSolver.f);
 
@@ -261,15 +261,16 @@ void Solver::runSimple() {
             clearCoefficients << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff);
             clearCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
+            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (contCoeff);
 
             // create coefficients for velocity and pressure correction equations
             addUDiffusionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, uBC);
             addVDiffusionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, vBC);
 
-    //        if (configSolver.addConvectionTerm) {
-    //            addUConvectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC);
-    //            addVConvectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC);
-    //        }
+            if (configSolver.addConvectionTerm) {
+                addUConvectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC, convectionScheme);
+                addVConvectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC, convectionScheme);
+            }
 
     //        if (configSolver.transient) {
 				//addUTransientCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
@@ -292,7 +293,7 @@ void Solver::runSimple() {
             // solve pressure correction
             createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
             createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
-            finalizeCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (ppCoeff);
+            finalizeCoefficients << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
             solveLinearSystem(ppCoeff, linearSolverConfig, stream, simple.pp, simple.ppTemp, threadsPerBlock, simple.correctionRelaxation);
 
             // update field variables

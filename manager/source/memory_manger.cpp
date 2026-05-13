@@ -127,7 +127,7 @@ std::vector<double> getInitializedVelocity(ConfigSolver& config, BoundaryConditi
 
 			int n = i * (nz + 1) + j;
 
-			if (j != 0) continue;
+			//if (j != 0) continue;
 
 			double x = j * dz;
 			double r = 0.5 * dr + i * dr;

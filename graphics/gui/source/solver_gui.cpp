@@ -40,6 +40,9 @@ void SolverGUI::drawPropertiesPanel() {
 			textAtNewRow("Linear Solver", 0, 1);
 			createSimpleCombo("##LinearSolverType", solver.linearSolverType, (int&)(solver.linearSolverConfig.type), IM_ARRAYSIZE(solver.linearSolverType));
 			
+			textAtNewRow("Convection Discretization Scheme", 0, 1);
+			createSimpleCombo("##ConvectionScheme", solver.convectionDiscretizationType, (int&)(solver.convectionScheme), IM_ARRAYSIZE(solver.convectionDiscretizationType));
+
 			textAtNewRow("Add Convection Term", 0, 1);
 			ImGui::Checkbox("##ConvectionTerm", &solver.addConvectionTerm);
 			

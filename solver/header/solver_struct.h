@@ -54,8 +54,10 @@ enum BCType {
 };
 
 enum ConvectionScheme {
-	FIRST_ORDER_UPWIND,
-	SECOND_ORDER_CENTRAL
+	CONV_UPWIND,
+	CONV_CENTRAL,
+	CONV_SECOND_ORDER_UPWIND,
+	CONV_QUICK
 };
 
 struct BoundaryCondition {
@@ -162,8 +164,6 @@ struct ConfigSolver {
 	GridConfig g;
 	FluidPropertyConfig f;
 
-	ConvectionScheme convectionType = ConvectionScheme::FIRST_ORDER_UPWIND;
-	
 	bool addConvectionTerm = false;
 	bool transient = false;
 
@@ -195,7 +195,7 @@ struct VariablesSimple {
 	double* vOld = nullptr;
 
 	double momentumRelaxation = 0.7;
-	double correctionRelaxation = 1.0;
+	double correctionRelaxation = 0.2;
 	double pressureRelaxation = 0.3;
 
 	void free() {

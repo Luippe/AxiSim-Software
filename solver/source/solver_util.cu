@@ -41,6 +41,34 @@ void copyVector(double* vec1, double* vec2, int N) {
 	vec1[n] = vec2[n];
 }
 
+// ==============================================================
+// ==================DEFERRED CORRECTION=========================
+// ==============================================================
+__device__
+double centralCorrection(double F, double phiP, double phiNb) {
+	double phiUpwind = (F >= 0.0) ? phiP : phiNb;
+	double phiCentral = 0.5 * (phiP + phiNb);
+
+	return F * (phiCentral - phiUpwind);
+}
+
+__device__
+double secondOrderUpwindCorrection(double F, double phiLL, double phiL, double phiR, double phiRR, bool hasLL, bool hasRR) {
+
+	if (F >= 0.0) {
+		if (!hasLL) return 0.0;
+		return 0.5 * F * (phiL - phiLL);
+	}
+	else {
+		if (!hasRR) return 0.0;
+		return 0.5 * F * (phiR - phiRR);
+	}
+	
+}
+
+// ==============================================================
+// ==================DIFFUSION TERM==============================
+// ==============================================================
 __global__
 void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryConditionConfig bc) {
 
@@ -243,8 +271,11 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	}
 }
 
+// ==============================================================
+// ==================CONVECTION TERM=============================
+// ==============================================================
 __global__
-void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC) {
+void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC, ConvectionScheme scheme) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -289,7 +320,7 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	double vn = 0.0;
 	double vs = 0.0;
 
-	// ----------ADD Convection Term--------------
+	// ----------Add Convection Term--------------
 	// east
 	if (j == nz - 1) {
 		ue = u[n];	// not correct but just for test
@@ -348,10 +379,28 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 
 	AC[n] += (Fe - Fw + Fn - Fs);
 
+	// ----------ADD Deferred Correction Term--------------
+	switch (scheme) {
+	case CONV_UPWIND:
+		break;
+	case CONV_CENTRAL:
+		b[n] -= centralCorrection(Fe, u[n], u[n + 1]);
+		b[n] -= centralCorrection(Fw, u[n], u[n - 1]);
+		b[n] -= centralCorrection(Fn, u[n], u[n + nz]);
+		b[n] -= centralCorrection(Fs, u[n], u[n - nz]);
+		break;
+	case CONV_SECOND_ORDER_UPWIND:
+
+		if (j > 0 && j < nz - 2) 		b[n] -= secondOrderUpwindCorrection(Fe, u[n - 1], u[n], u[n + 1], u[n + 2], j > 0, j < nz - 2);
+		if (j > 1 && j < nz - 1)		b[n] -= secondOrderUpwindCorrection(Fw, u[n - 2], u[n - 1], u[n], u[n + 1], j > 1, j < nz - 1);
+		if (i > 0 && i < nr - 2)		b[n] -= secondOrderUpwindCorrection(Fn, u[n - nz], u[n], u[n + nz], u[n + 2 * nz], i > 0, i < nr - 2);
+		if (i > 1 && i < nr - 1)		b[n] -= secondOrderUpwindCorrection(Fs, u[n - 2 * nz], u[n - nz], u[n], u[n + nz], i > 1, i < nr - 1);
+		break;
+	}
 }
 
 __global__
-void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC) {
+void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC, ConvectionScheme scheme) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -444,8 +493,35 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	AS[n] += -fmax(Fs, 0.0);
 
 	AC[n] += (Fe - Fw + Fn - Fs);
+
+	// ----------ADD Deferred Correction Term--------------
+	switch (scheme) {
+	case CONV_UPWIND:
+
+		break;
+
+	case CONV_CENTRAL:
+
+		b[n] -= centralCorrection(Fe, v[n], v[n + 1]);
+		b[n] -= centralCorrection(Fw, v[n], v[n - 1]);
+		b[n] -= centralCorrection(Fn, v[n], v[n + nz]);
+		b[n] -= centralCorrection(Fs, v[n], v[n - nz]);
+		break;
+
+	case CONV_SECOND_ORDER_UPWIND:
+
+		if (j > 0 && j < nz - 2) 		b[n] -= secondOrderUpwindCorrection(Fe, v[n - 1], v[n], v[n + 1], v[n + 2], j > 0, j < nz - 2);
+		if (j > 1 && j < nz - 1)		b[n] -= secondOrderUpwindCorrection(Fw, v[n - 2], v[n - 1], v[n], v[n + 1], j > 1, j < nz - 1);
+		if (i > 0 && i < nr - 2)		b[n] -= secondOrderUpwindCorrection(Fn, v[n - nz], v[n], v[n + nz], v[n + 2 * nz], i > 0, i < nr - 2);
+		if (i > 1 && i < nr - 1)		b[n] -= secondOrderUpwindCorrection(Fs, v[n - 2 * nz], v[n - nz], v[n], v[n + nz], i > 1, i < nr - 1);
+		break;
+
+	}
 }
 
+// ==============================================================
+// ==================TRANSIENT TERM==============================
+// ==============================================================
 __global__
 void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, VariablesSimple simple) {
 
@@ -557,3 +633,5 @@ void clearCoefficients(Coefficients coeff) {
 	coeff.res[n] = 0.0;
 
 }
+
+
