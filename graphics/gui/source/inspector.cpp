@@ -2,6 +2,7 @@
 #include "printer.h"
 #include "scene_view.h"
 #include "math_func.h"
+#include <format>
 
 Inspector::Inspector(SceneView& scene) :
 		scene(scene),
@@ -27,17 +28,17 @@ void clampZoomCenter(ImVec2& zoomCenter, float& halfW, float& halfH) {
 	zoomCenter.y = glm::clamp(zoomCenter.y, halfH, 1.0f - halfH);
 }
 
-void toggleSelectedPoint(std::vector<InspectorPoint>& points, glm::vec2& pos, float value) {
+void toggleSelectedPoint(std::vector<InspectorPoint>& points, glm::vec2& dataPos, glm::vec2& mousePos, float value) {
 	auto it = std::find_if(points.begin(), points.end(),
 		[&](const InspectorPoint& p) {
-			return p.position == pos;
+			return p.dataPos == dataPos;
 		});
 
 	if (it != points.end()) {
 		points.erase(it);
 	}
 	else {
-		points.push_back({ pos, value });
+		points.push_back({ mousePos, dataPos, value });
 	}
 }
 
@@ -160,11 +161,44 @@ void Inspector::displayRect() {
 
 void Inspector::displayTextValue() {
 
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	for (const InspectorPoint& point : points) {
-		drawList->AddCircleFilled(ImVec2(point.position.x, point.position.y), circleRadius, IM_COL32(255, 0, 0, 255), 32);
-	}
+	ImVec2 imageMin = ImGui::GetItemRectMin();
 
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	for (const InspectorPoint& point : points) {
+
+		// Convert grid index to normalized texture coordinate
+		float u = point.dataPos.x / float(nzBase);
+		float v = point.dataPos.y / float(nrBase);
+
+		// Skip points outside the current zoomed/panned view
+		if (u < u0 || u > u1 || v < v0 || v > v1) {
+			continue;
+		}
+
+		// Convert normalized texture coordinate to image-local position
+		float sx = (u - u0) / (u1 - u0);
+
+		// Use this if your image is drawn with ImVec2(u0, v1), ImVec2(u1, v0)
+		float sy = (v1 - v) / (v1 - v0);
+
+		ImVec2 screenPos(
+			imageMin.x + sx * imageWidth,
+			imageMin.y + sy * imageHeight
+		);
+
+		std::string label = std::format(
+			"x: {:.0f}\ny: {:.0f}\nvalue: {:.3f}",
+			point.dataPos.x,
+			point.dataPos.y,
+			point.value
+		);
+
+		drawList->AddCircleFilled(screenPos, circleRadius, IM_COL32(255, 0, 0, 255), 32);
+		drawList->AddText(ImVec2(screenPos.x + 10.0f, screenPos.y), IM_COL32(0,0,0, 255), label.c_str());
+
+	}
 }
 
 void Inspector::handleMouse() {
@@ -246,8 +280,10 @@ void Inspector::handleMouse() {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	drawList->AddCircleFilled(currentMousePos, circleRadius, IM_COL32(255, 0, 0, 255), 32);
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-		glm::vec2 pos = glm::vec2(currentMousePos.x, currentMousePos.y);
-		toggleSelectedPoint(points, pos, results.currentField->getData(pos));
+		glm::vec2 dataPos = glm::vec2(currentMouseIndex.x, currentMouseIndex.y);
+		glm::vec2 mousePos = glm::vec2(currentMousePos.x, currentMousePos.y);
+		//printf("%f\n", results.currentField->getData(dataPos));
+		toggleSelectedPoint(points, dataPos, mousePos, results.currentField->getData(glm::vec2(g.dz * dataPos.x, g.dr * dataPos.y)));
 	}
 }
 
@@ -284,6 +320,7 @@ void Inspector::renderPreview() {
 
 
 void Inspector::render() {
+
 	ImGui::Begin("Inspector");
 	resizeImage();
 

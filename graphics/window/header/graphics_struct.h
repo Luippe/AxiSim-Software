@@ -9,7 +9,8 @@ enum class CompareType {
 };
 
 struct InspectorPoint {
-	glm::vec2 position;
+	glm::vec2 mousePos;
+	glm::vec2 dataPos;
 	float value;
 };
 

@@ -181,6 +181,7 @@ float Field::getData(const glm::vec2& pos) {
 
 float Field::getData(const glm::vec3& pos) {
 
+
 	double r = sqrt(pos.y * pos.y + pos.z * pos.z);
 	double z = pos.x;
 
