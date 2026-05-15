@@ -1,10 +1,16 @@
 #pragma once
 #include <glm/vec3.hpp>
+#include <glm/vec2.hpp>
 
 enum class CompareType {
 	LessThan,
 	EqualTo,
 	GreaterThan
+};
+
+struct InspectorPoint {
+	glm::vec2 position;
+	float value;
 };
 
 struct Vertex {

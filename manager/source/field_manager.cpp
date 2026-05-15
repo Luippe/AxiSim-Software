@@ -148,12 +148,12 @@ double Field::sample(int i, int j) {
 	return unProcessedData[i * nz + j];
 }
 
-float Field::getData(glm::vec3& pos) {
+float Field::getData(const glm::vec2& pos) {
 
 	double f11, f12, f21, f22;
 
-	double r = sqrt(pos.y * pos.y + pos.z * pos.z);
 	double z = pos.x;
+	double r = pos.y;
 
 	int i1 = (r - yOffset) / dr;
 	int j1 = (z - xOffset) / dz;
@@ -164,11 +164,6 @@ float Field::getData(glm::vec3& pos) {
 	double z1 = std::clamp(j1 * dz + xOffset, 0.0, nz * dz);
 	double r2 = std::clamp(i2 * dr + yOffset, 0.0, nr * dr);
 	double z2 = std::clamp(j2 * dz + xOffset, 0.0, nz * dz);
-	
-	int n11 = i1 * nz + j1;
-	int n12 = i1 * nz + j2;
-	int n21 = i2 * nz + j1;
-	int n22 = i2 * nz + j2;
 
 	f11 = sample(i1, j1);
 	f12 = sample(i1, j2);
@@ -181,4 +176,13 @@ float Field::getData(glm::vec3& pos) {
 	glm::vec2 D((r2 - r), (r - r1));
 
 	return A * glm::dot(B, (C * D));
+
+}
+
+float Field::getData(const glm::vec3& pos) {
+
+	double r = sqrt(pos.y * pos.y + pos.z * pos.z);
+	double z = pos.x;
+
+	return getData(glm::vec2(z, r));
 }

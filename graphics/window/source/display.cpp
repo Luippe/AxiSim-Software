@@ -8,9 +8,22 @@ Display::Display(Camera& camera) : camera(camera) {	// initialize shader
 	// initialize display
 	glfwInit();
 
-	// get primary monitor
-	GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+	// get monitor
+	GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
+	GLFWmonitor* monitor = monitors[monitorIndex];
 	const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+	//for (int i = 0; i < monitorCount; i++) {
+	//	int x, y;
+	//	glfwGetMonitorPos(monitors[i], &x, &y);
+
+	//	const GLFWvidmode* mode = glfwGetVideoMode(monitors[i]);
+
+	//	std::cout << i << ": " << glfwGetMonitorName(monitors[i])
+	//		<< " pos=(" << x << ", " << y << ") "
+	//		<< "size=" << mode->width << "x" << mode->height
+	//		<< "\n";
+	//}
 
 	glfwWindowHint(GLFW_SAMPLES, 4);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -18,7 +31,8 @@ Display::Display(Camera& camera) : camera(camera) {	// initialize shader
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
 	
-	window = glfwCreateWindow(mode->width, mode->height, "OpenGL Demo", nullptr, nullptr);
+	window = glfwCreateWindow(mode->width, mode->height, "AxiSim", nullptr, nullptr);
+
 	glfwMakeContextCurrent(window);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 
@@ -26,9 +40,11 @@ Display::Display(Camera& camera) : camera(camera) {	// initialize shader
 	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
 		std::cout << "Failed to initialize GLAD" << std::endl;
 	}
-
+	//std::cout << "Vendor:   " << glGetString(GL_VENDOR) << "\n";
+	//std::cout << "Renderer: " << glGetString(GL_RENDERER) << "\n";
 	// set width and height to the monitor's resolution
 	glfwGetWindowSize(window, &width, &height);
+
 	aspect = (float)width / (float)height;
 	worldWidth = 2.0f * camera.zoom * aspect;
 	worldHeight = 2.0f * camera.zoom;
@@ -46,6 +62,7 @@ Display::Display(Camera& camera) : camera(camera) {	// initialize shader
 
 	// enable vsync
 	glfwSwapInterval(1);
+
 
 	// tell GLFW to capture our mouse
 	//glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
