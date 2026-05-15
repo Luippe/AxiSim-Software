@@ -1,100 +1,125 @@
 # ninja log v6
 3472	4154	8000063509712265	CMakeFiles/AxiSim.dir/graphics/imgui/imgui_tables.cpp.obj	24a0203e447758cf
-20	68	8003471306457017	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+27	75	8004930699346854	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
 2119	2926	8000063496182892	CMakeFiles/AxiSim.dir/manager/source/pch.cpp.obj	7757aedaccf997f
 83	565	8000743599023153	CMakeFiles/AxiSim.dir/graphics/gui/source/base_gui.cpp.obj	e13691b3c55da7cb
 1738	4605	8003471323635744	CMakeFiles/AxiSim.dir/solver/source/linear_solver.cu.obj	c3b4bbdde508c8a0
 127	1670	8000063476241380	CMakeFiles/AxiSim.dir/graphics/window/source/display.cpp.obj	35ece303261f3f27
-121	1070	8000063476200531	CMakeFiles/AxiSim.dir/graphics/window/source/bounding.cpp.obj	a4c351c723be01a1
-111	2621	8003471307369774	CMakeFiles/AxiSim.dir/graphics/gui/source/residual_plot.cpp.obj	944690b36dfcd45c
-119	1810	8003471307450058	CMakeFiles/AxiSim.dir/graphics/gui/source/solver_gui.cpp.obj	3b1d4f593030461d
-114	1343	8002291239965303	CMakeFiles/AxiSim.dir/graphics/window/source/camera.cpp.obj	2b05d49a94530bd
-1991	6569	8003471326169525	CMakeFiles/AxiSim.dir/solver/source/solver.cpp.obj	ee6c1dc45903a5df
-106	1990	8003471307329635	CMakeFiles/AxiSim.dir/graphics/gui/source/mesh_gui.cpp.obj	860f48bb918eed64
-123	3037	8003471307490196	CMakeFiles/AxiSim.dir/graphics/window/source/gui.cpp.obj	50f8aed91e9ecc3f
+115	1173	8004929196065662	CMakeFiles/AxiSim.dir/graphics/window/source/bounding.cpp.obj	a4c351c723be01a1
+143	3296	8004871513469068	CMakeFiles/AxiSim.dir/graphics/gui/source/residual_plot.cpp.obj	944690b36dfcd45c
+111	1475	8004930700186267	CMakeFiles/AxiSim.dir/graphics/gui/source/solver_gui.cpp.obj	3b1d4f593030461d
+98	1293	8003562537699728	CMakeFiles/AxiSim.dir/graphics/window/source/camera.cpp.obj	2b05d49a94530bd
+129	4695	8004930700368135	CMakeFiles/AxiSim.dir/solver/source/solver.cpp.obj	ee6c1dc45903a5df
+105	1352	8004930700126062	CMakeFiles/AxiSim.dir/graphics/gui/source/mesh_gui.cpp.obj	860f48bb918eed64
+114	2535	8004930700216774	CMakeFiles/AxiSim.dir/graphics/window/source/gui.cpp.obj	50f8aed91e9ecc3f
 2303	4099	8000063498015558	CMakeFiles/AxiSim.dir/manager/source/time_manager.cpp.obj	4d30a64652e285be
 3341	5991	8000063508405791	CMakeFiles/AxiSim.dir/graphics/imgui/imgui.cpp.obj	8bddce5a34f32825
-87	1525	8003471307128941	CMakeFiles/AxiSim.dir/graphics/gui/source/colorbar.cpp.obj	13f9c3ba93047439
-98	1738	8003471307239322	CMakeFiles/AxiSim.dir/graphics/gui/source/inspector.cpp.obj	a8387e6d86362f15
+93	1286	8004930700005641	CMakeFiles/AxiSim.dir/graphics/gui/source/colorbar.cpp.obj	13f9c3ba93047439
+99	1307	8004930700065852	CMakeFiles/AxiSim.dir/graphics/gui/source/inspector.cpp.obj	a8387e6d86362f15
 66	10212	8000063474403916	build.ninja	b7d7cd99d404a2ab
-1071	2118	8000063485692867	CMakeFiles/AxiSim.dir/graphics/window/source/renderer.cpp.obj	2fa3c34505dd4b88
+126	1164	8004929196176051	CMakeFiles/AxiSim.dir/graphics/window/source/renderer.cpp.obj	2fa3c34505dd4b88
 1670	3355	8000063491690160	CMakeFiles/AxiSim.dir/manager/source/math_func.cpp.obj	8998bd1fdae5002b
-127	1933	8003471307530335	CMakeFiles/AxiSim.dir/graphics/window/source/mouse_picker.cpp.obj	b10b0a10a3fbf7ed
+117	1524	8004930700246878	CMakeFiles/AxiSim.dir/graphics/window/source/mouse_picker.cpp.obj	b10b0a10a3fbf7ed
 1556	1675	8000063490550837	CMakeFiles/AxiSim.dir/manager/source/buffer_manager.cpp.obj	40df06baec30e7be
-115	1879	8003471307409911	CMakeFiles/AxiSim.dir/graphics/gui/source/results_gui.cpp.obj	185a2c64c086f036
-132	1793	8003471307580503	CMakeFiles/AxiSim.dir/graphics/window/source/scene_view.cpp.obj	268696098986e3b8
-102	3200	8003471307279469	CMakeFiles/AxiSim.dir/graphics/gui/source/menu.cpp.obj	cb3090c396b1148d
-144	1003	8002291240266347	CMakeFiles/AxiSim.dir/manager/source/printer.cpp.obj	db798d225bd08b54
-1880	4016	8003471325060687	CMakeFiles/AxiSim.dir/solver/source/results.cpp.obj	942ae4ba8304fdab
+108	1314	8004930700156168	CMakeFiles/AxiSim.dir/graphics/gui/source/results_gui.cpp.obj	185a2c64c086f036
+120	1407	8004930700276978	CMakeFiles/AxiSim.dir/graphics/window/source/scene_view.cpp.obj	268696098986e3b8
+102	2488	8004930700095955	CMakeFiles/AxiSim.dir/graphics/gui/source/menu.cpp.obj	cb3090c396b1148d
+122	1325	8003562537946393	CMakeFiles/AxiSim.dir/manager/source/printer.cpp.obj	db798d225bd08b54
+126	2503	8004930700337618	CMakeFiles/AxiSim.dir/solver/source/results.cpp.obj	942ae4ba8304fdab
 1567	2867	8000063490671257	CMakeFiles/AxiSim.dir/manager/source/colormap.cpp.obj	fa4f8ac7eee86e2b
 4225	4965	8000063517243878	CMakeFiles/AxiSim.dir/graphics/imgui/backends/imgui_impl_opengl3.cpp.obj	fd738d0514cf486a
 4099	5700	8000063515989887	CMakeFiles/AxiSim.dir/graphics/imgui/imgui_widgets.cpp.obj	b16a89c15321135f
-136	1514	8003471307620647	CMakeFiles/AxiSim.dir/manager/source/field_manager.cpp.obj	abef3efc6bf26cb1
-94	3247	8003471307199180	CMakeFiles/AxiSim.dir/graphics/gui/source/console.cpp.obj	b8276e5c9f493f3b
+129	1529	8004889168625954	CMakeFiles/AxiSim.dir/manager/source/field_manager.cpp.obj	abef3efc6bf26cb1
+96	2557	8004930700035747	CMakeFiles/AxiSim.dir/graphics/gui/source/console.cpp.obj	b8276e5c9f493f3b
 1542	3087	8000063490409039	CMakeFiles/AxiSim.dir/graphics/window/source/shader.cpp.obj	98a5f4fee8429091
-1515	3352	8003471321408018	CMakeFiles/AxiSim.dir/manager/source/memory_manger.cpp.obj	324a4965a3e33bcc
-141	3220	8003471307660782	CMakeFiles/AxiSim.dir/manager/source/manage_file.cpp.obj	44858439acd69927
-6629	6962	8003471372549802	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+119	1760	8003562537906256	CMakeFiles/AxiSim.dir/manager/source/memory_manger.cpp.obj	324a4965a3e33bcc
+123	2509	8004930700307510	CMakeFiles/AxiSim.dir/manager/source/manage_file.cpp.obj	44858439acd69927
+4859	5160	8004930747668677	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
 3356	4206	8000063508552618	CMakeFiles/AxiSim.dir/graphics/imgui/imgui_draw.cpp.obj	c4891dd57f20c553
 4206	5172	8000063517052527	CMakeFiles/AxiSim.dir/graphics/imgui/backends/imgui_impl_glfw.cpp.obj	e13817be8a255d2c
-1793	3614	8003471324187659	CMakeFiles/AxiSim.dir/solver/source/mesh.cpp.obj	9d8f8d48ce3a249c
+1165	2897	8004929206563483	CMakeFiles/AxiSim.dir/solver/source/mesh.cpp.obj	9d8f8d48ce3a249c
 4155	5816	8000063516534626	CMakeFiles/AxiSim.dir/graphics/imgui/imgui_demo.cpp.obj	75d9750ef15e0a49
 1810	4621	8003471324368284	CMakeFiles/AxiSim.dir/solver/source/residuals.cu.obj	1cef5b93b709920b
-2622	5018	8003471332472552	CMakeFiles/AxiSim.dir/solver/source/solver_util.cu.obj	1099bc1556a5c5bc
-83	3345	8003471307088804	CMakeFiles/AxiSim.dir/graphics/gui/source/animation_gui.cpp.obj	2c3ef63abf895e89
-1525	4953	8003471321508366	CMakeFiles/AxiSim.dir/solver/source/jacobi_pcg.cu.obj	63876fca5f8b6d0a
+1325	3969	8003562549974109	CMakeFiles/AxiSim.dir/solver/source/solver_util.cu.obj	1099bc1556a5c5bc
+89	2610	8004930699965502	CMakeFiles/AxiSim.dir/graphics/gui/source/animation_gui.cpp.obj	2c3ef63abf895e89
+126	3689	8003562537976502	CMakeFiles/AxiSim.dir/solver/source/jacobi_pcg.cu.obj	63876fca5f8b6d0a
 1933	4662	8003471325592532	CMakeFiles/AxiSim.dir/solver/source/simple.cu.obj	8fb226197ae156c5
-3037	6628	8003471336636997	CMakeFiles/AxiSim.dir/src/source/main.cu.obj	d575039c9bb92bb5
+1286	4858	8004930711942320	CMakeFiles/AxiSim.dir/src/source/main.cu.obj	d575039c9bb92bb5
 5172	5743	8000063526719103	CMakeFiles/AxiSim.dir/graphics/tinyfiledialogs/tinyfiledialogs.c.obj	89a7b703c226e876
 4965	7015	8000063524646425	CMakeFiles/AxiSim.dir/graphics/imgui/implot.cpp.obj	c90d0b44b55e49d6
 5164	17776	8000063526627990	CMakeFiles/AxiSim.dir/graphics/imgui/implot_items.cpp.obj	691dd516d6395220
-6962	7575	8003471375875098	AxiSim.exe	9300306967cfd4f4
+5160	5615	8004930750671190	AxiSim.exe	9300306967cfd4f4
 80	106	8000055977279623	clean	7c4ab7700f810e4a
-25	77	8003471651136366	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
-114	1708	8003471652019425	CMakeFiles/AxiSim.dir/graphics/gui/source/results_gui.cpp.obj	185a2c64c086f036
-137	1724	8003471652250223	CMakeFiles/AxiSim.dir/manager/source/memory_manger.cpp.obj	324a4965a3e33bcc
-126	1776	8003471652139842	CMakeFiles/AxiSim.dir/graphics/window/source/mouse_picker.cpp.obj	b10b0a10a3fbf7ed
-98	1784	8003471651868904	CMakeFiles/AxiSim.dir/graphics/gui/source/inspector.cpp.obj	a8387e6d86362f15
-106	1791	8003471651939143	CMakeFiles/AxiSim.dir/graphics/gui/source/mesh_gui.cpp.obj	860f48bb918eed64
-118	2098	8003471652059568	CMakeFiles/AxiSim.dir/graphics/gui/source/solver_gui.cpp.obj	3b1d4f593030461d
-130	2229	8003471652179980	CMakeFiles/AxiSim.dir/graphics/window/source/scene_view.cpp.obj	268696098986e3b8
-110	2286	8003471651979283	CMakeFiles/AxiSim.dir/graphics/gui/source/residual_plot.cpp.obj	944690b36dfcd45c
-141	2455	8003471652290365	CMakeFiles/AxiSim.dir/solver/source/results.cpp.obj	942ae4ba8304fdab
-134	2486	8003471652220117	CMakeFiles/AxiSim.dir/manager/source/manage_file.cpp.obj	44858439acd69927
-102	2670	8003471651899002	CMakeFiles/AxiSim.dir/graphics/gui/source/menu.cpp.obj	cb3090c396b1148d
-122	2902	8003471652099700	CMakeFiles/AxiSim.dir/graphics/window/source/gui.cpp.obj	50f8aed91e9ecc3f
-91	3066	8003471651798658	CMakeFiles/AxiSim.dir/graphics/gui/source/animation_gui.cpp.obj	2c3ef63abf895e89
-95	3108	8003471651828765	CMakeFiles/AxiSim.dir/graphics/gui/source/console.cpp.obj	b8276e5c9f493f3b
-1724	5263	8003471668121316	CMakeFiles/AxiSim.dir/src/source/main.cu.obj	d575039c9bb92bb5
-1708	5415	8003471667960760	CMakeFiles/AxiSim.dir/solver/source/solver.cpp.obj	ee6c1dc45903a5df
-5416	5720	8003471705035492	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
-5720	6141	8003471708087795	AxiSim.exe	9300306967cfd4f4
-27	77	8003475535967964	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
-131	1718	8003475537016638	CMakeFiles/AxiSim.dir/graphics/window/source/scene_view.cpp.obj	268696098986e3b8
-109	1734	8003475536785837	CMakeFiles/AxiSim.dir/graphics/gui/source/mesh_gui.cpp.obj	860f48bb918eed64
-101	1745	8003475536705560	CMakeFiles/AxiSim.dir/graphics/gui/source/inspector.cpp.obj	a8387e6d86362f15
-121	1803	8003475536906255	CMakeFiles/AxiSim.dir/graphics/gui/source/solver_gui.cpp.obj	3b1d4f593030461d
-128	1814	8003475536976499	CMakeFiles/AxiSim.dir/graphics/window/source/mouse_picker.cpp.obj	b10b0a10a3fbf7ed
-138	1839	8003475537086882	CMakeFiles/AxiSim.dir/manager/source/memory_manger.cpp.obj	324a4965a3e33bcc
-117	1884	8003475536876152	CMakeFiles/AxiSim.dir/graphics/gui/source/results_gui.cpp.obj	185a2c64c086f036
-113	2592	8003475536825977	CMakeFiles/AxiSim.dir/graphics/gui/source/residual_plot.cpp.obj	944690b36dfcd45c
-142	2705	8003475537116990	CMakeFiles/AxiSim.dir/solver/source/results.cpp.obj	942ae4ba8304fdab
-93	2829	8003475536625287	CMakeFiles/AxiSim.dir/graphics/gui/source/animation_gui.cpp.obj	2c3ef63abf895e89
-135	2834	8003475537046742	CMakeFiles/AxiSim.dir/manager/source/manage_file.cpp.obj	44858439acd69927
-97	2885	8003475536665419	CMakeFiles/AxiSim.dir/graphics/gui/source/console.cpp.obj	b8276e5c9f493f3b
-105	2931	8003475536745699	CMakeFiles/AxiSim.dir/graphics/gui/source/menu.cpp.obj	cb3090c396b1148d
-124	3033	8003475536946398	CMakeFiles/AxiSim.dir/graphics/window/source/gui.cpp.obj	50f8aed91e9ecc3f
-1735	4011	8003475553048785	CMakeFiles/AxiSim.dir/solver/source/solver_util.cu.obj	1099bc1556a5c5bc
-1746	5522	8003475553159171	CMakeFiles/AxiSim.dir/src/source/main.cu.obj	d575039c9bb92bb5
-1719	5635	8003475552888229	CMakeFiles/AxiSim.dir/solver/source/solver.cpp.obj	ee6c1dc45903a5df
-5636	5968	8003475592066760	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
-5968	6447	8003475595378238	AxiSim.exe	9300306967cfd4f4
-21	71	8003475623736236	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
-84	1436	8003475624358393	CMakeFiles/AxiSim.dir/solver/source/solver_util.cu.obj	1099bc1556a5c5bc
-1436	1695	8003475637885322	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
-1696	2081	8003475640469955	AxiSim.exe	9300306967cfd4f4
-23	72	8003477188968403	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
-19	68	8003486723563760	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
-82	1898	8003486724195954	CMakeFiles/AxiSim.dir/solver/source/solver_util.cu.obj	1099bc1556a5c5bc
-1899	2164	8003486742355458	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
-2164	2588	8003486745012980	AxiSim.exe	9300306967cfd4f4
+23	70	8004931748715419	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+84	790	8004931749314803	CMakeFiles/AxiSim.dir/graphics/gui/source/inspector.cpp.obj	a8387e6d86362f15
+790	1039	8004931756372029	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+1039	1427	8004931758867967	AxiSim.exe	9300306967cfd4f4
+23	71	8004933378019490	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+86	1383	8004933378646020	CMakeFiles/AxiSim.dir/solver/source/results.cpp.obj	942ae4ba8304fdab
+1384	1637	8004933391626043	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+1637	2032	8004933394154953	AxiSim.exe	9300306967cfd4f4
+23	71	8004934526120781	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+21	66	8004935631296304	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+98	1334	8004935632058383	CMakeFiles/AxiSim.dir/graphics/gui/source/mesh_gui.cpp.obj	860f48bb918eed64
+101	1345	8004935632099064	CMakeFiles/AxiSim.dir/graphics/gui/source/results_gui.cpp.obj	185a2c64c086f036
+84	1350	8004935631927924	CMakeFiles/AxiSim.dir/graphics/gui/source/colorbar.cpp.obj	13f9c3ba93047439
+91	1356	8004935631998166	CMakeFiles/AxiSim.dir/graphics/gui/source/inspector.cpp.obj	a8387e6d86362f15
+104	1363	8004935632119221	CMakeFiles/AxiSim.dir/graphics/gui/source/solver_gui.cpp.obj	3b1d4f593030461d
+113	1459	8004935632218517	CMakeFiles/AxiSim.dir/graphics/window/source/scene_view.cpp.obj	268696098986e3b8
+110	1579	8004935632119221	CMakeFiles/AxiSim.dir/graphics/window/source/mouse_picker.cpp.obj	b10b0a10a3fbf7ed
+120	2385	8004935632288707	CMakeFiles/AxiSim.dir/solver/source/results.cpp.obj	942ae4ba8304fdab
+117	2392	8004935632258602	CMakeFiles/AxiSim.dir/manager/source/manage_file.cpp.obj	44858439acd69927
+94	2410	8004935632028269	CMakeFiles/AxiSim.dir/graphics/gui/source/menu.cpp.obj	cb3090c396b1148d
+87	2494	8004935631958026	CMakeFiles/AxiSim.dir/graphics/gui/source/console.cpp.obj	b8276e5c9f493f3b
+81	2554	8004935631897822	CMakeFiles/AxiSim.dir/graphics/gui/source/animation_gui.cpp.obj	2c3ef63abf895e89
+107	2602	8004935632119221	CMakeFiles/AxiSim.dir/graphics/window/source/gui.cpp.obj	50f8aed91e9ecc3f
+123	4523	8004935632318812	CMakeFiles/AxiSim.dir/solver/source/solver.cpp.obj	ee6c1dc45903a5df
+1335	4884	8004935644437982	CMakeFiles/AxiSim.dir/src/source/main.cu.obj	d575039c9bb92bb5
+4885	5188	8004935679914861	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+5188	5617	8004935682971976	AxiSim.exe	9300306967cfd4f4
+24	70	8004935920497522	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+83	792	8004935921087130	CMakeFiles/AxiSim.dir/graphics/gui/source/results_gui.cpp.obj	185a2c64c086f036
+792	1040	8004935928161663	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+1040	1421	8004935930658321	AxiSim.exe	9300306967cfd4f4
+22	74	8004936414450591	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+90	799	8004936415127187	CMakeFiles/AxiSim.dir/graphics/gui/source/results_gui.cpp.obj	185a2c64c086f036
+93	1380	8004936415127187	CMakeFiles/AxiSim.dir/solver/source/results.cpp.obj	942ae4ba8304fdab
+1380	1643	8004936428031888	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+1643	2032	8004936430658576	AxiSim.exe	9300306967cfd4f4
+23	69	8004937631837607	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+19	65	8004940352928911	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+79	789	8004940353531993	CMakeFiles/AxiSim.dir/graphics/gui/source/results_gui.cpp.obj	185a2c64c086f036
+789	1038	8004940360638669	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+1038	1445	8004940363127991	AxiSim.exe	9300306967cfd4f4
+23	68	8004942928914545	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+19	65	8004946200988679	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+79	796	8004946201582384	CMakeFiles/AxiSim.dir/graphics/gui/source/results_gui.cpp.obj	185a2c64c086f036
+797	1050	8004946208764399	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+1050	1456	8004946211302137	AxiSim.exe	9300306967cfd4f4
+35	90	8004959488548880	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+104	1294	8004959489241747	CMakeFiles/AxiSim.dir/graphics/gui/source/results_gui.cpp.obj	185a2c64c086f036
+1294	1727	8004959501138670	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+1728	2542	8004959505469711	AxiSim.exe	9300306967cfd4f4
+22	68	8004973296467247	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+82	1054	8004973297072103	CMakeFiles/AxiSim.dir/graphics/gui/source/results_gui.cpp.obj	185a2c64c086f036
+86	1062	8004973297102209	CMakeFiles/AxiSim.dir/graphics/window/source/display.cpp.obj	35ece303261f3f27
+1063	1332	8004973306867270	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+1332	1746	8004973309568685	AxiSim.exe	9300306967cfd4f4
+25	77	8005206923223099	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+93	1143	8005206923899575	CMakeFiles/AxiSim.dir/manager/source/field_manager.cpp.obj	abef3efc6bf26cb1
+97	1714	8005206923939712	CMakeFiles/AxiSim.dir/solver/source/results.cpp.obj	942ae4ba8304fdab
+1715	1999	8005206940122730	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+1999	2495	8005206942968536	AxiSim.exe	9300306967cfd4f4
+23	69	8005208417703828	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+83	1387	8005208418298459	CMakeFiles/AxiSim.dir/solver/source/results.cpp.obj	942ae4ba8304fdab
+1387	1671	8005208431333621	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+1672	2203	8005208434101594	AxiSim.exe	9300306967cfd4f4
+23	69	8005208468717229	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+83	1382	8005208469311958	CMakeFiles/AxiSim.dir/solver/source/results.cpp.obj	942ae4ba8304fdab
+1383	1635	8005208482313733	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+1635	2046	8005208484830275	AxiSim.exe	9300306967cfd4f4
+23	69	8005220526316518	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8
+83	1644	8005220526910182	CMakeFiles/AxiSim.dir/solver/source/results.cpp.obj	942ae4ba8304fdab
+1644	1903	8005220542519472	CMakeFiles/AxiSim.dir/cmake_device_link.obj	d1c62b9e70acadfc
+1904	2334	8005220545117504	AxiSim.exe	9300306967cfd4f4
+23	70	8005229072769107	C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release/CMakeFiles/cmake.verify_globs	87f8013818957de8

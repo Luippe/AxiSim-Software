@@ -11,7 +11,7 @@ void checkInt(int n);
 
 template<typename... Args>
 void printFloat(Args... args) {
-	(printf("%e ", args), ...);
+	(printf("%f ", args), ...);
 	printf("\n");
 }
 

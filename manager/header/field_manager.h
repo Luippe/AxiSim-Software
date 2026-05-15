@@ -6,6 +6,17 @@
 class Field {
 public:
 
+	std::vector<float> processedData;
+	std::vector<float> cvValues;	// cell centered value
+
+	TextureBuffer textureBuffer;
+
+	float vmin = 0.0f;
+	float vmax = 0.0f;
+	int nr, nz;
+	int nzBase = 0;
+	int nrBase = 0;
+
 	Field(int nz, int nr);
 
 	void generate(SolutionField& solution, BoundaryConditionConfig& bc);
@@ -13,27 +24,21 @@ public:
 	// get value at given position using bilinear interpolation
 	float getData(glm::vec3& pos);
 
-	std::vector<float> processedData;
-
-	TextureBuffer textureBuffer;
-
-	float vmin = 0.0f;
-	float vmax = 0.0f;
-
 	// sample value at given i and j
 	double sample(int i, int j);
 
-	int nr, nz;
-	int nzBase = 0;
-	int nrBase = 0;
+
 
 private:
 
 	// create texture buffer for field
 	void createBuffer();
 
-	// fill in field with values
-	void createValues();
+	// create values at cell vertices
+	void createVertexValues();
+
+	// create cell centered values
+	void createCVValues();
 
 	// update vmin and vmax
 	void updateMinMax();

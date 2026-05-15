@@ -138,8 +138,6 @@ void ResidualPlot::handleEvents() {
     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
         clickedPos.clear();
     }
-    
-
 }
 
 // ======================================================================
@@ -167,7 +165,5 @@ void ResidualPlot::draw() {
 
         ImPlot::EndPlot();
     }
-
-
 	ImGui::End();
 }

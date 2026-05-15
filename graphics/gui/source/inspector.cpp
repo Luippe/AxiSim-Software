@@ -73,21 +73,49 @@ void Inspector::resizeImage() {
 	}
 }
 
-glm::vec2 Inspector::getMouseIndex() {
+glm::ivec2 Inspector::getMouseIndex() {
 
 	ImVec2 mousePos = ImGui::GetIO().MousePos;
 	ImVec2 itemMin = ImGui::GetItemRectMin();
 	ImVec2 itemMax = ImGui::GetItemRectMax();
 
-	ImVec2 localPos(mousePos.x - itemMin.x, itemMax.y - mousePos.y);
+	float viewW = 1.0f / zoom;
+	float viewH = 1.0f / zoom;
 
-	boxWidth = ((float)imageWidth / nzBase);
-	boxHeight = ((float)imageHeight / nrBase);
 
-	int i = glm::clamp((int)(localPos.y / boxHeight), 0,  nrBase);
-	int j = glm::clamp((int)(localPos.x / boxWidth), 0,  nzBase);
-	printInt(i, j);
-	return glm::vec2(j, i);
+	boxWidth = (float)imageWidth / (float)(nzBase + 1);
+	boxHeight = (float)imageHeight / (float)(nrBase + 1);
+
+
+	ImVec2 localPos = ImVec2(mousePos.x - itemMin.x, itemMax.y - mousePos.y);
+
+	float localU = localPos.x / imageWidth;
+	float localV = localPos.y / imageHeight;
+
+	float texU = u0 + localU * (u1 - u0);
+	float texV = v0 + localV * (v1 - v0);
+
+	int i = glm::clamp((int)std::round(texV * (nrBase + 1)), 0,  nrBase + 1);
+	int j = glm::clamp((int)std::round(texU * (nzBase + 1)), 0,  nzBase + 1);
+
+	return { j, i };
+}
+
+ImVec2 Inspector::gridToScreen(int j, int i) {
+
+	ImVec2 itemMin = ImGui::GetItemRectMin();
+	ImVec2 itemMax = ImGui::GetItemRectMax();
+
+	float texU = (float)j / (float)(nzBase + 1);
+	float texV = (float)i / (float)(nrBase + 1);
+
+	float localU = (texU - u0) / (u1 - u0);
+	float localV = (texV - v0) / (v1 - v0);
+
+	float x = itemMin.x + localU * imageWidth;
+	float y = itemMax.y - localV * imageHeight;
+
+	return ImVec2(x, y);
 }
 
 void Inspector::drawRect() {
@@ -97,33 +125,45 @@ void Inspector::drawRect() {
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
+	ImVec2 initMousePos = gridToScreen(initMouseIndex.x, initMouseIndex.y);
+	ImVec2 currentMousePos = gridToScreen(currentMouseIndex.x, currentMouseIndex.y);
+	
 	drawList->AddRect(
-		ImVec2(itemMin.x + initMousePos.x * boxWidth, itemMax.y - initMousePos.y * boxHeight),
-		ImVec2(itemMin.x + currentMousePos.x * boxWidth, itemMax.y - currentMousePos.y * boxHeight),
+		ImVec2(initMousePos.x, initMousePos.y),
+		ImVec2(currentMousePos.x, currentMousePos.y),
 		IM_COL32(255, 255, 255, 255));
 
 }
 
-void Inspector::updateSelectedIndices() {
+void Inspector::displayValue() {
+
+
+
+}
+
+void Inspector::handleMouse() {
 
 	if (!ImGui::IsItemHovered()) return;
 
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-		initMousePos = getMouseIndex();
-		currentMousePos = initMousePos;
+	ImGuiIO& io = ImGui::GetIO();
+
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+		initMouseIndex = getMouseIndex();
+		currentMouseIndex = initMouseIndex;
 	}
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
 
 		selectedIndices.clear();
 
-		currentMousePos = getMouseIndex();
+		currentMouseIndex = getMouseIndex();
 
-		startX = std::min(initMousePos.x, currentMousePos.x);
-		startY = std::min(initMousePos.y, currentMousePos.y);
+		startX = std::min(initMouseIndex.x, currentMouseIndex.x);
+		startY = std::min(initMouseIndex.y, currentMouseIndex.y);
 
-		endX = std::max(initMousePos.x, currentMousePos.x);
-		endY = std::max(initMousePos.y, currentMousePos.y);
+		endX = std::max(initMouseIndex.x, currentMouseIndex.x);
+		endY = std::max(initMouseIndex.y, currentMouseIndex.y);
 
 		results.colFront = startX;
 		results.colBack = endX;
@@ -138,6 +178,47 @@ void Inspector::updateSelectedIndices() {
 		results.updateModel();
 
 	}
+
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+		ImVec2 delta = io.MouseDelta;
+
+		float viewW = 1.0f / zoom;
+		float viewH = 1.0f / zoom;
+
+		zoomCenter.x -= (delta.x / imageWidth) * viewW;
+		zoomCenter.y += (delta.y / imageHeight) * viewH;
+
+		float halfW = viewW * 0.5f;
+		float halfH = viewH * 0.5f;
+
+		zoomCenter.x = glm::clamp(zoomCenter.x, halfW, 1.0f - halfW);
+		zoomCenter.y = glm::clamp(zoomCenter.y, halfH, 1.0f - halfH);
+
+		u0 = glm::clamp(zoomCenter.x - halfW, 0.0f, 1.0f);
+		u1 = glm::clamp(zoomCenter.x + halfW, 0.0f, 1.0f);
+		v0 = glm::clamp(zoomCenter.y - halfH, 0.0f, 1.0f);
+		v1 = glm::clamp(zoomCenter.y + halfH, 0.0f, 1.0f);
+	}
+
+	// handle zooming in/out
+	if (io.MouseWheel != 0.0f) {
+
+		zoom *= (io.MouseWheel > 0.0f) ? 1.1f : 0.9f;
+		zoom = glm::clamp(zoom, 1.0f, 20.0f);
+
+		float viewW = 1.0f / zoom;
+		float viewH = 1.0f / zoom;
+
+		u0 = glm::clamp(zoomCenter.x - viewW * 0.5f, 0.0f, 1.0f);
+		u1 = glm::clamp(zoomCenter.x + viewW * 0.5f, 0.0f, 1.0f);
+		v0 = glm::clamp(zoomCenter.y - viewH * 0.5f, 0.0f, 1.0f);
+		v1 = glm::clamp(zoomCenter.y + viewH * 0.5f, 0.0f, 1.0f);
+
+
+		//printFloat(u0, u1, v0, v1);
+	}
+
+	displayValue();
 }
 
 void Inspector::renderPreview() {
@@ -170,6 +251,8 @@ void Inspector::renderPreview() {
 	//glEnable(GL_DEPTH_TEST);
 }
 
+
+
 void Inspector::render() {
 	ImGui::Begin("Inspector");
 	resizeImage();
@@ -178,10 +261,11 @@ void Inspector::render() {
 	renderPreview();
 
 	frameBuffer.resolve();
-	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
+	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(u0, v1), ImVec2(u1, v0));
 
-	updateSelectedIndices();
+	handleMouse();
 	drawRect();
+
 
 	ImGui::End();
 }

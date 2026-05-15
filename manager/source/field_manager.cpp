@@ -33,7 +33,8 @@ void Field::generate(SolutionField& solution, BoundaryConditionConfig& bc) {
 		break;
 	}
 
-	createValues();
+	createVertexValues();
+	createCVValues();
 	createBuffer();
 	updateMinMax();
 }
@@ -45,7 +46,7 @@ void Field::updateMinMax() {
 
 }
 
-void Field::createValues() {
+void Field::createVertexValues() {
 
 	processedData.clear();
 
@@ -59,6 +60,24 @@ void Field::createValues() {
 			float val = getData(pos);
 
 			processedData.push_back(val);
+		}
+	}
+
+
+}
+
+void Field::createCVValues() {
+
+	for (int i = 0; i < nrBase; i++) {
+		for (int j = 0; j < nzBase; j++) {
+
+			float x = j * dz + 0.5 * dz;
+			float r = i * dr + 0.5 * dr;
+
+			glm::vec3 pos = { x, r, 0.0f };
+			float val = getData(pos);
+
+			cvValues.push_back(val);
 		}
 	}
 }

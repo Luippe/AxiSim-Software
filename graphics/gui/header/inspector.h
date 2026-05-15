@@ -33,8 +33,8 @@ private:
 	float boxWidth, boxHeight;
 	bool dragging = false;
 	int imageWidth, imageHeight;
-	glm::vec2 initMousePos;
-	glm::vec2 currentMousePos;
+	glm::ivec2 initMouseIndex;
+	glm::ivec2 currentMouseIndex;
 	std::vector<int> selectedIndices;
 
 	SceneView& scene;
@@ -52,10 +52,7 @@ private:
 	void createFullScreenQuad();
 
 	// get and return the loction of the mouse in index notation
-	glm::vec2 getMouseIndex();
-
-	// handle all mouse events
-	void updateSelectedIndices();
+	glm::ivec2 getMouseIndex();
 
 	// render the preview onto fbo
 	void renderPreview();
@@ -69,8 +66,24 @@ private:
 	// draw rectangle when mouse is dragged
 	void drawRect();
 
+	// handle mouse events
+	void handleMouse();
+
+	// display value when there is mouse event
+	void displayValue();
+
+	// turns i,j coordinates to pixel coordinates
+	ImVec2 gridToScreen(int i, int j);
+
 	int nrBase = 0;
 	int nzBase = 0;
+
+	float zoom = 1.0f;
+	glm::vec2 zoomCenter = glm::vec2(0.5f, 0.5f);
+	float u0 = 0.0f;
+	float v0 = 0.0f;
+	float u1 = 1.0f;
+	float v1 = 1.0f;
 
 	std::vector<float> pixels;
 	std::vector<float> quadVertices;

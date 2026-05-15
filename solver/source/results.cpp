@@ -8,6 +8,25 @@
 #include "console.h"
 #include "solver.h"
 
+bool compareFloat(float a, float b, CompareType type) {
+
+	constexpr float eps = 1e-6f;
+
+	switch (type) {
+
+	case CompareType::LessThan:
+		return a < b;
+
+	case CompareType::EqualTo:
+		return std::abs(a - b) < eps;
+
+	case CompareType::GreaterThan:
+		return a > b;
+
+	}
+
+	return false;
+}
 
 void createCylinderTemplate(std::vector<CylinderTemplateVertex>& vertices, std::vector<unsigned int>& indices, int nseg) {
 
@@ -206,7 +225,7 @@ void Results::createBuffer() {
 	glVertexAttribDivisor(3, 1);
 
 	glBindBuffer(GL_ARRAY_BUFFER, cvInstanceBuffer.getVBO());
-	glBufferSubData(GL_ARRAY_BUFFER, 0, instances.size() * sizeof(CylinderInstance), instances.data());
+	glBufferSubData(GL_ARRAY_BUFFER, 0, allInstances.size() * sizeof(CylinderInstance), allInstances.data());
 
 	cvBuffer.unbind();
 
@@ -230,6 +249,9 @@ void Results::generate() {
 
 	// copy all relevant data from mesh class
 	copyMeshData();
+
+	// create instances and create buffer
+	createAllCVInstances();
 	createBuffer();
 	console->addCompletionMessage("Completed copying data and generating control volume buffers");
 
@@ -249,12 +271,11 @@ void Results::generate() {
 	// initialize outline and colormaps
 	updateOutlineModel();
 	uploadUniforms();
-	updateInstances();
+	updateSelectedInstances();
 	console->addCompletionMessage("Completed initializing outlines and uploading colormaps");
 
 	showOutline = true;
 	isReady = true;
-
 
 	float endTime = endTimer(startTime);
 	console->addCompletionTime("Results", endTime);
@@ -290,6 +311,7 @@ void Results::updateCurrentField() {
 		break;
 	}
 
+	updateSelectedInstances();
 	uploadUniforms();
 }
 
@@ -375,7 +397,7 @@ void Results::createOutlineVertices() {
 void Results::updateModel() {
 
 	updateOutlineModel();
-	updateInstances();
+	updateSelectedInstances();
 
 }
 
@@ -395,50 +417,51 @@ void Results::updateOutlineModel() {
 	modelOutline = glm::scale(modelOutline, sOuter);
 }
 
-void Results::updateInstances() {
+void Results::createAllCVInstances() {
 
-	instances = {
-		{
-			currentFront,   // x0
-			currentBack,    // x1
-			currentInner,   // innerR
-			currentOuter    // outerR
+	allInstances.clear();
+
+	for (int i = 0; i < g.nr; i++) {
+		for (int j = 0; j < g.nz; j++) {
+			int n = i * g.nz + j;
+
+			float x0 = (float)j * (float)g.dz;
+			float x1 = (float)(j + 1) * (float)g.dz;
+
+			float r0 = (float)i * (float)g.dr;
+			float r1 = (float)(i + 1) * (float)g.dr;
+
+			allInstances.push_back({ x0, x1, r0, r1 });
 		}
-	};
+	}
 
-	//instances.clear();
-	//for (int i = 0; i < g.nr; i++) {
-	//	for (int j = 0; j < g.nz; j++) {
-	//		float r = (i + 0.5f) * g.dr;
-	//		float z = j * g.dz;
+	//printFloat(instances[0].x0, instances[0].x1, instances[0].innerR, instances[0].outerR);
+}
 
-	//		glm::vec3 pos = { r,z,0.0f };
-	//		float val = currentField->sample(i, j);
-	//		if (val > 0.05f) {
-	//			instances.push_back({ z, z + (float)g.dz, r - (float)g.dr, r});
-	//		}
+void Results::updateSelectedInstances() {
 
+	//selectedInstances = {
+	//	{
+	//		currentFront,   // x0
+	//		currentBack,    // x1
+	//		currentInner,   // innerR
+	//		currentOuter    // outerR
 	//	}
-	//}
+	//};
+
+	selectedInstances.clear();
+
+	for (int n = 0; n < g.nr * g.nz; n++) {
+		if (compareFloat(currentField->cvValues[n], 0.05, currentCompareType)) {
+			selectedInstances.push_back(allInstances[n]);
+		}
+	}
 
 	cvInstanceBuffer.bindVBO();
-	cvInstanceBuffer.bufferSubData(instances.size() * sizeof(CylinderInstance), instances.data());
+	cvInstanceBuffer.bufferSubData(selectedInstances.size() * sizeof(CylinderInstance), selectedInstances.data());
 
 	cvInstanceBuffer.unbindVBO();
 
-}
-
-
-void Results::draw(unsigned int start, unsigned int count) {
-	//printf("%d\n", cv.size());
-	if (show) {
-		cvBuffer.bind();
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
-		glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_INT, (void*)(start * sizeof(unsigned int)));
-
-		cvBuffer.unbind();
-	}
 }
 
 void Results::drawCap() {
@@ -480,7 +503,7 @@ void Results::render(Shader& shaderLine, Shader& shaderEdge) {
 
 	cvBuffer.bind();
 
-	glDrawElementsInstanced(GL_TRIANGLES, (GLsizei)(indicesCV.size()), GL_UNSIGNED_INT, 0, (GLsizei)(instances.size()));
+	glDrawElementsInstanced(GL_TRIANGLES, (GLsizei)(indicesCV.size()), GL_UNSIGNED_INT, 0, (GLsizei)(selectedInstances.size()));
 
 	cvBuffer.unbind();
 
