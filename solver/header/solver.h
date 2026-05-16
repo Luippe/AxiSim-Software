@@ -31,7 +31,7 @@ public:
 	ConvectionScheme convectionScheme = CONV_UPWIND;
 
 	bool addConvectionTerm = false;
-	bool transient = true;
+	bool transient = false;
 	int saveKeyFrameIter = 2;
 
 	double dt = 0.1;

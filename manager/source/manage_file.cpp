@@ -23,6 +23,9 @@ bool fileExists(const std::string& filename) {
 	return file.good();
 }
 
+// ====================================================
+// -------------------MESH-----------------------------
+// ====================================================
 void saveFromExplorerMesh(Mesh& mesh) {
 	const char* path = tinyfd_saveFileDialog(
 		"Save Mesh",          // dialog title
@@ -49,12 +52,7 @@ void saveFromPathMesh(const char* path, Mesh& mesh) {
 		mesh.g.nr,
 		mesh.g.nz,
 		mesh.g.dr,
-		mesh.g.dz,
-		mesh.g.cell_top,
-		mesh.g.cell_left,
-		mesh.g.cell_thickness,
-		mesh.g.cell_right,
-		mesh.cv
+		mesh.g.dz
 	);
 	out.close();
 }
@@ -90,19 +88,23 @@ void loadFromPathMesh(const char* path, Mesh& mesh) {
 		mesh.g.nr,
 		mesh.g.nz,
 		mesh.g.dr,
-		mesh.g.dz,
-		mesh.g.cell_top,
-		mesh.g.cell_left,
-		mesh.g.cell_thickness,
-		mesh.g.cell_right,
-		mesh.cv);
+		mesh.g.dz);
 
 }
 
+void saveLaunchMesh(Mesh& mesh) {
+	const char* path = "openAtLaunchMesh.bin";
+	saveFromPathMesh(path, mesh);
+}
+
+// ====================================================
+// -------------------SOLVER---------------------------
+// ====================================================
 void saveFromPathSolver(const char* path, Solver& solver) {
 
 	std::ofstream out(path, std::ios::binary);
-	// current settings
+
+	saveBinary(out, solver.varUnits);
 	saveBinary(out, 
 		solver.linearSolverConfig, 
 		solver.currentVelocitySolver,
@@ -132,7 +134,10 @@ void saveFromExplorerSolver(Solver& solver) {
 }
 
 void loadFromPathSolver(const char* path, Solver& solver) {
+
 	std::ifstream in(path, std::ios::binary);
+
+	readBinary(in, solver.varUnits);
 	readBinary(in,
 		solver.linearSolverConfig,
 		solver.currentVelocitySolver,
@@ -161,13 +166,6 @@ void loadFromExplorerSolver(Solver& solver) {
 	if (!path) return;
 
 	loadFromPathSolver(path, solver);
-}
-
-
-
-void saveLaunchMesh(Mesh& mesh) {
-	const char* path = "openAtLaunchMesh.bin";
-	saveFromPathMesh(path, mesh);
 }
 
 void saveLaunchSolver(Solver& solver) {

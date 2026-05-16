@@ -8,7 +8,7 @@ struct UnitOption {
 
 struct UnitValue {
 	double baseValue = 0.0;
-	int unitIndex = 0;
+	std::uint8_t unitIndex = 0;
 };
 
 inline constexpr std::array<UnitOption, 4> velocityUnits = { {

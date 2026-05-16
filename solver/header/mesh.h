@@ -17,7 +17,6 @@ public:
 	glm::vec3 color = { 0.0f, 0.0f, 0.0f };
 	std::vector<Vertex> vertices;
 	std::vector<unsigned int> indices;
-	std::vector<ControlVolume> cv;
 
 	Mesh(Shader& shader, Config& config);
 
@@ -44,8 +43,6 @@ public:
 	void updateAfterLoadingFile();
 
 	Console* console = nullptr;
-
-
 
 private:
 

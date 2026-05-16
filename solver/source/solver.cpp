@@ -28,11 +28,12 @@ Solver::Solver(SceneView & scene, Config & config) :
     varUnits(config.varUnits),
     residualPlot(*this, { "Axial", "Radial" ,"Continuity"}) {
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+    //setDefault();
 }
 
 
 void Solver::setDefault() {
-    uBC.inlet = { BCType::DIRICHLET, 0.0 };
+    uBC.inlet = { BCType::FULLY_DEVELOPED, 8.444199e-2 };
     uBC.outlet = { BCType::NEUMANN, 0.0 };
     uBC.outer = { BCType::DIRICHLET, 0.0 };
     uBC.centerline = { BCType::NEUMANN, 0.0 };
@@ -49,6 +50,9 @@ void Solver::setDefault() {
     concBC.outer = { BCType::NEUMANN, 0.0 };
     concBC.centerline = { BCType::NEUMANN, 0.0 };
 
+
+    addConvectionTerm = false;
+    transient = false;
     dt = 0.1;
     tEnd = 2.0;
 }

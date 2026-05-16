@@ -5,6 +5,7 @@
 #include "colormap.h"
 #include "mesh.h"
 #include "solver_struct.h"
+#include "unit_manager.h"
 
 MeshGUI::MeshGUI(GUI& gui, SceneView& scene) :
 	gui(gui),
@@ -17,92 +18,74 @@ MeshGUI::MeshGUI(GUI& gui, SceneView& scene) :
 }
 
 void MeshGUI::getGridConfigEdits() {
-	GridConfigEdits.nseg = mesh.nseg;
-	GridConfigEdits.L = config.g.L;
-	GridConfigEdits.R = config.g.R;
-	GridConfigEdits.nr = config.g.nr;
-	GridConfigEdits.nz = config.g.nz;
+	gridConfigEdits.nseg = mesh.nseg;
+	gridConfigEdits.L = config.g.L;
+	gridConfigEdits.R = config.g.R;
+	gridConfigEdits.nr = config.g.nr;
+	gridConfigEdits.nz = config.g.nz;
 }
 
 void MeshGUI::setGridConfigEdits() {
-	mesh.nseg = GridConfigEdits.nseg;
-	config.g.L = GridConfigEdits.L;
-	config.g.R = GridConfigEdits.R;
-	config.g.nr = GridConfigEdits.nr;
-	config.g.nz = GridConfigEdits.nz;
-	config.g.N = GridConfigEdits.nr * GridConfigEdits.nz;
-	config.g.dz = GridConfigEdits.L / GridConfigEdits.nz;
-	config.g.dr = GridConfigEdits.R / GridConfigEdits.nr;
+	mesh.nseg = gridConfigEdits.nseg;
+	config.g.L = gridConfigEdits.L;
+	config.g.R = gridConfigEdits.R;
+	config.g.nr = gridConfigEdits.nr;
+	config.g.nz = gridConfigEdits.nz;
+	config.g.N = gridConfigEdits.nr * gridConfigEdits.nz;
+	config.g.dz = gridConfigEdits.L / gridConfigEdits.nz;
+	config.g.dr = gridConfigEdits.R / gridConfigEdits.nr;
+}
+
+void MeshGUI::drawPropertiesPanel() {
+	ImGui::Begin("Properties");
+
+	if (selectedItem == "Edit") {
+		ImGui::SeparatorText("Mesh Settings");
+		if (ImGui::BeginTable("Input", 3)) {
+			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+			ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+			ImGui::TableSetupColumn("Units", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+
+
+			textAtNewRow("Segments", 0, 1);
+			ImGui::InputInt("##MeshNseg", &gridConfigEdits.nseg, 0.0, 0.0);
+
+			inputDoubleWithUnits("Length", gridConfigEdits.L, scene.config.varUnits.LUnit, lengthUnits);
+			inputDoubleWithUnits("Radius", gridConfigEdits.R, scene.config.varUnits.RUnit, lengthUnits);
+
+			textAtNewRow("nr", 0, 1);
+			ImGui::InputInt("##Meshnr", &gridConfigEdits.nr, 0.0, 0.0);
+
+			textAtNewRow("nz", 0, 1);
+			ImGui::InputInt("##Meshnz", &gridConfigEdits.nz, 0.0, 0.0);
+
+			ImGui::EndTable();
+		}
+	}
+	ImGui::End();
 }
 
 void MeshGUI::draw() {
 	if (ImGui::BeginTabItem("Mesh")) {
+		scene.currentTab = TAB_MESH;
 
-		if (scene.currentTab != TAB_MESH) {
-			scene.currentTab = TAB_MESH;
-		}
+		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
-		if (ImGui::CollapsingHeader("Edit"), ImGuiTreeNodeFlags_DefaultOpen) {
-
-			ImGui::SeparatorText("Mesh Settings");
-			if (ImGui::BeginTable("Input", 2)) {
-				ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-				ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-
-				textAtNewRow("Segments", 0, 1);
-				ImGui::InputInt("##MeshNseg", &GridConfigEdits.nseg, 0.0, 0.0);
-
-				textAtNewRow("Length", 0, 1);
-				ImGui::InputDouble("##MeshLength", &GridConfigEdits.L, 0.0, 0.0, "%.3f");
-
-				textAtNewRow("Radius", 0, 1);
-				ImGui::InputDouble("##MeshRadius",&GridConfigEdits.R, 0.0, 0.0, "%.3f");
-
-				textAtNewRow("nr", 0, 1);
-				ImGui::InputInt("##Meshnr", &GridConfigEdits.nr, 0.0, 0.0);
-
-				textAtNewRow("nz", 0, 1);
-				ImGui::InputInt("##Meshnz", &GridConfigEdits.nz, 0.0, 0.0);
-
-
-				ImGui::EndTable();
-			}
-			ImGui::SeparatorText("Slice Geometry");
-
-			if (ImGui::BeginTable("Geometry", 2)) {
-				ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 45.0f);
-				ImGui::TableSetupColumn("Slider", ImGuiTableColumnFlags_WidthStretch);
-				
-				textAtNewRow("Front", 0, 1);
-				if (ImGui::SliderInt("##Front", &mesh.colFront, 0, GridConfigEdits.nz)) {
-					mesh.currentFront = (float)mesh.colFront * (float)mesh.g.dz;
-				}
-
-				textAtNewRow("Back", 0, 1);
-				if (ImGui::SliderInt("##Back", &mesh.colBack, 0, GridConfigEdits.nz)) {
-					mesh.currentBack = (float)mesh.colBack * (float)mesh.g.dz;
-				}
-
-				textAtNewRow("Outer", 0, 1);
-				if (ImGui::SliderInt("##Outer", &mesh.rowTop, 0, GridConfigEdits.nr)) {
-					mesh.currentOuter = (float)mesh.rowTop * (float)mesh.g.dr;
-				}
-
-				textAtNewRow("Inner", 0, 1);
-				if (ImGui::SliderInt("##Inner", &mesh.rowBot, 0, GridConfigEdits.nr)) {
-					mesh.currentInner = (float)mesh.rowBot * (float)mesh.g.dr;
-				}
-
-				ImGui::EndTable();
-			}
+		if (ImGui::TreeNodeEx("General", treeFlags)) {
+			drawLeaf("Edit");
+			ImGui::TreePop();
 		}
 		changeCursorOnHover();
+
+		ImGui::EndChild();
 
 		if (ImGui::Button("Generate Mesh")) {
 			setGridConfigEdits();
 			mesh.generate();
 		}
 		changeCursorOnHover();
+
+		drawPropertiesPanel();
 
 		ImGui::EndTabItem();
 	}

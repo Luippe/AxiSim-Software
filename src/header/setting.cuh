@@ -69,7 +69,13 @@ struct FluidPropertyConfig {
 
 
 struct VariableUnits {
-	int rhoUnit = 0;
-	int muUnit = 0;
-	int DUnit = 0;
+
+	// mesh
+	std::uint8_t LUnit = 0;
+	std::uint8_t RUnit = 0;
+
+	// solver
+	std::uint8_t  rhoUnit = 0;
+	std::uint8_t  muUnit = 0;
+	std::uint8_t  DUnit = 0;
 };

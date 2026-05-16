@@ -28,7 +28,7 @@ public:
 
 	// draw label, input, units in a 3 column table
 	template <typename T, size_t N>
-	void inputDoubleWithUnits(const char* label, T& value, int& unitIndex, const std::array<UnitOption, N>& units) {
+	void inputDoubleWithUnits(const char* label, T& value, std::uint8_t& unitIndex, const std::array<UnitOption, N>& units) {
 		
 		const UnitOption& unit = units[unitIndex];
 

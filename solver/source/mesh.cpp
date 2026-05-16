@@ -17,7 +17,6 @@ Mesh::Mesh(Shader& shader, Config& config) : shader(shader), g(config.g) {
 void Mesh::clearAll() {
 	vertices.clear();
 	indices.clear();
-	cv.clear();
 }
 
 void Mesh::generate() {

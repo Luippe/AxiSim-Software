@@ -188,10 +188,7 @@ void SolverGUI::drawPropertiesPanel() {
 
 void SolverGUI::draw() {
 	if (ImGui::BeginTabItem("Solver")) {
-
-		if (scene.currentTab != TAB_SOLVER) {
-			scene.currentTab = TAB_SOLVER;
-		}
+		scene.currentTab = TAB_SOLVER;
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 

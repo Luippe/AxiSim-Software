@@ -19,6 +19,7 @@ struct GridConfigEdits {
 class MeshGUI : public BaseGUI {
 public:
 	MeshGUI(GUI& gui, SceneView& scene);
+
 	void draw();
 
 	void getGridConfigEdits();
@@ -27,7 +28,15 @@ public:
 
 private:
 
-	GridConfigEdits GridConfigEdits;
+	// draw properties panel when a tree node is clicked on
+	void drawPropertiesPanel();
+
+	ImGuiTreeNodeFlags treeFlags =
+		ImGuiTreeNodeFlags_DefaultOpen |
+		ImGuiTreeNodeFlags_OpenOnArrow |
+		ImGuiTreeNodeFlags_SpanAvailWidth;
+
+	GridConfigEdits gridConfigEdits;
 	SceneView& scene;
 	GUI& gui;
 	Results& results;

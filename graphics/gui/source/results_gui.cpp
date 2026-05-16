@@ -81,18 +81,7 @@ void ResultsGUI::drawPropertiesPanel() {
 void ResultsGUI::draw() {
 
 	if (ImGui::BeginTabItem("Results")) {
-
-		if (scene.currentTab != TAB_RESULTS) {
-			scene.currentTab = TAB_RESULTS;
-		}
-
-		if (ImGui::Button("Generate Results")) {
-
-			scene.results.generate();
-			gui.inspector.generate();
-
-		}
-		changeCursorOnHover();
+		scene.currentTab = TAB_RESULTS;
 
 		if (ImGui::BeginTable("Field", 2)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
@@ -120,6 +109,14 @@ void ResultsGUI::draw() {
 			ImGui::TreePop();
 		}
 		ImGui::EndChild();
+
+		if (ImGui::Button("Generate Results")) {
+
+			scene.results.generate();
+			gui.inspector.generate();
+
+		}
+		changeCursorOnHover();
 
 		drawPropertiesPanel();
 
