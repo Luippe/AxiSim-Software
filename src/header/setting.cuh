@@ -65,9 +65,11 @@ struct FluidPropertyConfig {
 	double D = 3.0277e-3;
 	double Umax = 8.444199e-2;
 
-	double* u;
-	double* v;
-
 };
 
 
+struct VariableUnits {
+	int rhoUnit = 0;
+	int muUnit = 0;
+	int DUnit = 0;
+};

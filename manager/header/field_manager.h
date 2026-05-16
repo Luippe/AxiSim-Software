@@ -21,15 +21,12 @@ public:
 
 	void generate(SolutionField& solution, BoundaryConditionConfig& bc);
 
-
 	// get value at given position using bilinear interpolation
 	float getData(const glm::vec2& pos);
 	float getData(const glm::vec3& pos);
 
 	// sample value at given i and j
 	double sample(int i, int j);
-
-
 
 private:
 

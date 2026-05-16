@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include "imgui.h"
+#include "unit_manager.h"
 
 class BaseGUI {
 public:
@@ -24,6 +25,46 @@ public:
 
 	// draw leaf for tree node
 	void drawLeaf(const char* label);
+
+	// draw label, input, units in a 3 column table
+	template <typename T, size_t N>
+	void inputDoubleWithUnits(const char* label, T& value, int& unitIndex, const std::array<UnitOption, N>& units) {
+		
+		const UnitOption& unit = units[unitIndex];
+
+		double displayValue = (double)value / unit.toBase;
+
+		ImGui::PushID(label);	// dont have to build unique settings with this
+		ImGui::TableNextRow();
+
+		ImGui::TableSetColumnIndex(0);
+		ImGui::TextUnformatted(label);
+		ImGui::TableNextColumn();
+
+
+		// convert display value back to solver/base value
+		if (ImGui::InputDouble("##value", &displayValue)) {
+			value = (T)(displayValue * unit.toBase);
+		}
+
+		ImGui::TableNextColumn();
+		if (ImGui::BeginCombo("##unit", unit.name)) {
+			for (int i = 0; i < (int)N; i++) {
+				bool selected = (unitIndex == i);
+
+				if (ImGui::Selectable(units[i].name, selected)) {
+					unitIndex = i;
+				}
+
+				if (selected) {
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+
+			ImGui::EndCombo();
+		}
+		ImGui::PopID();
+	}
 
 	std::string selectedItem;
 

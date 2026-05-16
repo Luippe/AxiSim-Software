@@ -47,6 +47,7 @@ public:
 	GridConfig& g;
 	FluidPropertyConfig& f;
 	IterationConfig& itr;
+	VariableUnits& varUnits;
 	ResidualPlot residualPlot;
 
 	// config for boundary conditions

@@ -28,7 +28,8 @@ public:
 	CompareType currentCompareType = CompareType::GreaterThan;
 	const char* fieldType[3] = { "Axial Velocity", "Radial Velocity", "Pressure" };
 	const char* compareType[3] = { "Less Than", "Equal To", "Greater Than" };
-	
+	float selectedValue = 0.0;
+
 	Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader);
 
 	// get all vertices for the outline

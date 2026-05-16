@@ -287,6 +287,7 @@ struct Config {
 	FluidPropertyConfig f;
 	GridConfig g;
 	IterationConfig itr;
+	VariableUnits varUnits;
 
 };
 

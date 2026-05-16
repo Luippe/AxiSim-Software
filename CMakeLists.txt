@@ -144,7 +144,7 @@ add_executable(AxiSim
     ${IMGUI_SOURCES}
     ${IMPLOT_SOURCES}
     ${TINYFILEDIALOGS_SOURCES}
- "graphics/gui/source/animation_gui.cpp" "graphics/gui/header/animation_gui.h")
+ "graphics/gui/source/animation_gui.cpp" "graphics/gui/header/animation_gui.h" )
 
 target_include_directories(AxiSim PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"

@@ -58,7 +58,6 @@ private:
 
     ImPlotSpec marker;
 
-
     std::vector<TextPos> clickedPos;
 
     Solver& solver;

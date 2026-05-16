@@ -29,7 +29,6 @@ public:
 	Renderer& renderer;
 	Bounding& bound;
 	MousePicker picker;	// picker depends on camera, renderer, and bound being initialized first
-
 	ImVec2 rectPos;		// top left corner of window
 	ImVec2 rectSize;	// width and height of window
 

@@ -77,7 +77,7 @@ private:
 
 
 	// -----------selected data--------------
-	const float circleRadius = 5.0f;
+	const float circleRadius = 3.0f;
 	std::vector<int> selectedIndices;
 	std::vector<InspectorPoint> points;
 	std::vector<ImVec2> textPos;
@@ -109,7 +109,5 @@ private:
 
 	// turns i,j coordinates to pixel coordinates
 	ImVec2 gridToScreen(float i, float j);
-
-
 
 };

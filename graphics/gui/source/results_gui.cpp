@@ -51,9 +51,12 @@ void ResultsGUI::drawPropertiesPanel() {
 			}
 
 			textAtNewRow("Filter", 0, 1);
-			if (createSimpleCombo("##Filters", results.compareType, (int&)results.currentCompareType, IM_ARRAYSIZE(results.compareType))) {
+			if (createSimpleCombo("##Filter", results.compareType, (int&)results.currentCompareType, IM_ARRAYSIZE(results.compareType))) {
 				results.updateSelectedInstances();
 			}
+
+			textAtNewRow("Value", 0, 1);
+			ImGui::InputFloat("##Value", &results.selectedValue);
 			ImGui::EndTable();
 		}
 	}
@@ -103,7 +106,7 @@ void ResultsGUI::draw() {
 			ImGui::EndTable();
 		}
 
-		ImGui::BeginChild("SetupTree", ImVec2(260, 0), true);
+		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
 		if (ImGui::TreeNodeEx("General", treeFlags)) {
 			drawLeaf("Settings");

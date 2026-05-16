@@ -1,6 +1,7 @@
 #pragma once
 #include <glm/vec3.hpp>
 #include <glm/vec2.hpp>
+#include "imgui.h"
 
 enum class CompareType {
 	LessThan,
@@ -9,8 +10,8 @@ enum class CompareType {
 };
 
 struct InspectorPoint {
-	glm::vec2 mousePos;
-	glm::vec2 dataPos;
+	ImVec2 mousePos;
+	ImVec2 dataPos;
 	float value;
 };
 

@@ -1,5 +1,6 @@
 #include "base_gui.h"
 
+
 void BaseGUI::changeCursorOnHover() {
 	if (ImGui::IsItemHovered()) {
 		ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
@@ -28,6 +29,7 @@ void BaseGUI::textAtNewRow(const char* text, const int column, const int nextCol
 	setTableColumn(column);
 	ImGui::TextUnformatted(text);
 	setTableColumn(nextColumn);
+
 }
 
 void BaseGUI::setNextWindowSize(int height, int width) {
@@ -54,3 +56,4 @@ void BaseGUI::drawLeaf(const char* label) {
 
 	changeCursorOnHover();
 }
+

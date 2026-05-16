@@ -28,10 +28,10 @@ void clampZoomCenter(ImVec2& zoomCenter, float& halfW, float& halfH) {
 	zoomCenter.y = glm::clamp(zoomCenter.y, halfH, 1.0f - halfH);
 }
 
-void toggleSelectedPoint(std::vector<InspectorPoint>& points, glm::vec2& dataPos, glm::vec2& mousePos, float value) {
+void toggleSelectedPoint(std::vector<InspectorPoint>& points, ImVec2& dataPos, ImVec2& mousePos, float value) {
 	auto it = std::find_if(points.begin(), points.end(),
 		[&](const InspectorPoint& p) {
-			return p.dataPos == dataPos;
+			return (p.dataPos.x == dataPos.x && p.dataPos.y == dataPos.y);
 		});
 
 	if (it != points.end()) {
@@ -90,7 +90,6 @@ void Inspector::createBuffer() {
 	textureBuffer.createBuffer(GL_R32F, nzBase + 1, nrBase + 1, GL_RED, GL_FLOAT, results.currentField->processedData.data());
 
 }
-
 
 void Inspector::resizeImage() {
 
@@ -163,24 +162,23 @@ void Inspector::displayTextValue() {
 
 	ImVec2 imageMin = ImGui::GetItemRectMin();
 
-
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 	for (const InspectorPoint& point : points) {
 
-		// Convert grid index to normalized texture coordinate
+		// convert grid index to normalized texture coordinate
 		float u = point.dataPos.x / float(nzBase);
 		float v = point.dataPos.y / float(nrBase);
 
-		// Skip points outside the current zoomed/panned view
+		// skip points outside the current zoomed/panned view
 		if (u < u0 || u > u1 || v < v0 || v > v1) {
 			continue;
 		}
 
-		// Convert normalized texture coordinate to image-local position
+		// convert normalized texture coordinate to image-local position
 		float sx = (u - u0) / (u1 - u0);
 
-		// Use this if your image is drawn with ImVec2(u0, v1), ImVec2(u1, v0)
+		// use this if your image is drawn with ImVec2(u0, v1), ImVec2(u1, v0)
 		float sy = (v1 - v) / (v1 - v0);
 
 		ImVec2 screenPos(
@@ -189,13 +187,14 @@ void Inspector::displayTextValue() {
 		);
 
 		std::string label = std::format(
-			"x: {:.0f}\ny: {:.0f}\nvalue: {:.3f}",
+			"i: {:.0f}\nj: {:.0f}\nvalue: {:.3f}",
 			point.dataPos.x,
 			point.dataPos.y,
 			point.value
 		);
 
-		drawList->AddCircleFilled(screenPos, circleRadius, IM_COL32(255, 0, 0, 255), 32);
+		drawList->AddCircleFilled(screenPos, circleRadius, IM_COL32(150, 150, 150, 255), 16);
+		drawList->AddCircle(screenPos, circleRadius, IM_COL32(200, 200, 200, 255), 16, 1.0f);
 		drawList->AddText(ImVec2(screenPos.x + 10.0f, screenPos.y), IM_COL32(0,0,0, 255), label.c_str());
 
 	}
@@ -245,6 +244,7 @@ void Inspector::handleMouse() {
 	}
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+
 		ImVec2 delta = io.MouseDelta;
 
 		float viewW = 1.0f / zoom;
@@ -278,12 +278,11 @@ void Inspector::handleMouse() {
 
 	// handle mouse hovering
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	drawList->AddCircleFilled(currentMousePos, circleRadius, IM_COL32(255, 0, 0, 255), 32);
+	drawList->AddCircleFilled(currentMousePos, circleRadius, IM_COL32(150, 150, 150, 255), 16);
+	drawList->AddCircle(currentMousePos, circleRadius, IM_COL32(200, 200, 200, 255), 16, 1.0f);
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-		glm::vec2 dataPos = glm::vec2(currentMouseIndex.x, currentMouseIndex.y);
-		glm::vec2 mousePos = glm::vec2(currentMousePos.x, currentMousePos.y);
 		//printf("%f\n", results.currentField->getData(dataPos));
-		toggleSelectedPoint(points, dataPos, mousePos, results.currentField->getData(glm::vec2(g.dz * dataPos.x, g.dr * dataPos.y)));
+		toggleSelectedPoint(points, currentMouseIndex, currentMousePos, results.currentField->getData(glm::vec2(g.dz * currentMouseIndex.x, g.dr * currentMouseIndex.y)));
 	}
 }
 

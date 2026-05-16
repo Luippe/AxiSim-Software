@@ -153,6 +153,17 @@ void SolverGUI::drawPropertiesPanel() {
 			ImGui::EndTable();
 		}
 	}
+	else if (selectedItem == "Fluid Settings") {
+		ImGui::SeparatorText("Fluid Settings");
+		if (ImGui::BeginTable("Fluid Settings", 3)) {
+			inputDoubleWithUnits("Density", solver.f.rho, solver.varUnits.rhoUnit, densityUnits);
+			inputDoubleWithUnits("Dynamic Viscosity", solver.f.mu, solver.varUnits.muUnit, dynamicViscosityUnits);
+
+			ImGui::EndTable();
+		}
+
+
+	}
 	else if (selectedItem == "Transient Settings") {
 		ImGui::SeparatorText("Transient Settings");
 
@@ -182,7 +193,7 @@ void SolverGUI::draw() {
 			scene.currentTab = TAB_SOLVER;
 		}
 
-		ImGui::BeginChild("SetupTree", ImVec2(260, 0), true);
+		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
 		if (ImGui::TreeNodeEx("General", treeFlags)) {
 			drawLeaf("Solver Settings");
@@ -200,6 +211,12 @@ void SolverGUI::draw() {
 		if (ImGui::TreeNodeEx("Convergence", treeFlags)) {
 			drawLeaf("Residual Type");
 			drawLeaf("Tolerance");
+			ImGui::TreePop();
+		}
+		changeCursorOnHover();
+		
+		if (ImGui::TreeNodeEx("Fluid Properties", treeFlags)) {
+			drawLeaf("Fluid Settings");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();

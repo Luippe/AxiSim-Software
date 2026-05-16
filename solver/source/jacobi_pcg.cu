@@ -117,8 +117,8 @@ void get_oxy_coeffj(const Config& config, VariablesBiCGStab& vars, int i, int j,
 	double* AKW = vars.AKW;
 	double* AKN = vars.AKN;
 	double* AKS = vars.AKS;
-	double* u = f.u;
-	double* v = f.v;
+	double* u = vars.AKS;			// MUST CHANGE
+	double* v = vars.AKS;			// MUST CHANGE 
 	int* cell = g.c_cell;
 	double D = f.D;
 
@@ -200,7 +200,8 @@ void get_oxy_rhsj(const Config& config, VariablesBiCGStab& vars, double oxy_in, 
 	double dz = g.dz;
 	double* r = g.r;
 	double* rhsnew = vars.foxynew;
-	double* u = f.u;
+	double* u = vars.AKS;			// MUST CHANGE
+	double* v = vars.AKS;			// MUST CHANGE 
 	double D = f.D;
 
 	rhsnew[n] = 0.0;

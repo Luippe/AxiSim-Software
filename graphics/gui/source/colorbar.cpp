@@ -35,7 +35,8 @@ void Colorbar::drawTickValue() {
 
 void Colorbar::drawLabel() {
 
-	const char* label = "Concentration";
+	const char* label = results.fieldType[results.currentItem];
+
 	ImVec2 textSize = ImGui::CalcTextSize(label);
 
 	ImVec2 textPos(
@@ -57,6 +58,8 @@ void Colorbar::drawTicks() {
 
 
 void Colorbar::render() { 
+
+	if (!results.isReady) return;
 
 	ImGui::Begin("Colorbar");
 

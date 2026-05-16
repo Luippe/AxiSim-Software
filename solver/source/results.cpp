@@ -452,14 +452,13 @@ void Results::updateSelectedInstances() {
 	selectedInstances.clear();
 
 	for (int n = 0; n < g.nr * g.nz; n++) {
-		if (compareFloat(currentField->cvValues[n], 0.05, currentCompareType)) {
+		if (compareFloat(currentField->cvValues[n], selectedValue, currentCompareType)) {
 			selectedInstances.push_back(allInstances[n]);
 		}
 	}
 
 	cvInstanceBuffer.bindVBO();
 	cvInstanceBuffer.bufferSubData(selectedInstances.size() * sizeof(CylinderInstance), selectedInstances.data());
-
 	cvInstanceBuffer.unbindVBO();
 
 }

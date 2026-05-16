@@ -227,6 +227,7 @@ set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/pch.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/printer.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/time_manager.h"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/unit_manager.h"
   )
 if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   message("-- GLOB mismatch!")

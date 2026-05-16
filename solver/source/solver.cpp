@@ -19,12 +19,13 @@
 } while(0)
 
 
-Solver::Solver(SceneView& scene, Config& config) :
+Solver::Solver(SceneView & scene, Config & config) :
     scene(scene),
     config(config),
     g(config.g),
     f(config.f),
     itr(config.itr),
+    varUnits(config.varUnits),
     residualPlot(*this, { "Axial", "Radial" ,"Continuity"}) {
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
 }
