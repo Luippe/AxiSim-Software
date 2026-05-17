@@ -494,12 +494,7 @@ void Results::updateSelectedInstances() {
 
 	selectedInstances.clear();
 	selectedInstances = createRowMergedCylinderInstances(currentField->cvValues, g.nr, g.nz, g.dz, g.dr, selectedValue, currentCompareType);
-	//for (int n = 0; n < g.nr * g.nz; n++) {
-	//	if (compareFloat(currentField->cvValues[n], selectedValue, currentCompareType)) {
-	//		selectedInstances.push_back(allInstances[n]);
-	//	}
-	//}
-	//printInt(selectedInstances.size());
+
 	cvInstanceBuffer.bindVBO();
 	cvInstanceBuffer.bufferSubData(selectedInstances.size() * sizeof(CylinderInstance), selectedInstances.data());
 	cvInstanceBuffer.unbindVBO();
@@ -531,7 +526,7 @@ void Results::drawEdge() {
 void Results::render(Shader& shaderLine, Shader& shaderEdge) {
 
 	if (!isReady) return;
-	updateSelectedInstances();
+	updateSelectedInstances();	// might be heavy on the cpu, optimize if AxiSim starts lagging
 
 	//GLuint query;
 	//glGenQueries(1, &query);

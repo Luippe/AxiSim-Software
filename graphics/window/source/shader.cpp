@@ -1,48 +1,61 @@
 #include "pch.h"
 #include "shader.h"
-#include "camera.h"
-#include <string>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <glm/gtc/type_ptr.hpp>
 
+
+GLint Shader::getUniformLocation(const char* name) {
+	std::string key(name);
+
+	auto it = uniformLocationCache.find(key);
+	if (it != uniformLocationCache.end()) {
+		return it->second;
+	}
+
+	GLint location = glGetUniformLocation(ID, name);
+	uniformLocationCache[key] = location;
+
+	return location;
+
+}
+
 void Shader::SetFloat(const char *name, float value) {
-	glUniform1f(glGetUniformLocation(ID, name), value);
+	glUniform1f(getUniformLocation(name), value);
 }
 
 void Shader::SetInt(const char* name, int value) {
-	glUniform1i(glGetUniformLocation(ID, name), value);
+	glUniform1i(getUniformLocation(name), value);
 }
 
 void Shader::SetVec3(const char *name, float x, float y, float z) {
-	glUniform3f(glGetUniformLocation(ID, name), x, y, z);
+	glUniform3f(getUniformLocation(name), x, y, z);
 }
 
 void Shader::SetVec3(const char* name, glm::vec3 &value) {
-	glUniform3fv(glGetUniformLocation(ID, name), 1, &value[0]);
+	glUniform3fv(getUniformLocation(name), 1, &value[0]);
 }
 
 void Shader::SetMat4(const char *name, const glm::mat4 &matrix) {
-	glUniformMatrix4fv(glGetUniformLocation(ID, name), 1, GL_FALSE, glm::value_ptr(matrix));
+	glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, glm::value_ptr(matrix));
 }
 void Shader::SetBool(const char* name, bool value) {
-	glUniform1i(glGetUniformLocation(ID, name), (int)value);
+	glUniform1i(getUniformLocation(name), (int)value);
 }
 
 void Shader::SetColor(const char* name, const glm::vec3& vec) {
-	glUniform3f(glGetUniformLocation(ID, name), vec.x, vec.y, vec.z);
+	glUniform3f(getUniformLocation(name), vec.x, vec.y, vec.z);
 }
 
-void Shader::loadTransformationMatrix(Camera& camera) {
+void Shader::loadTransformationMatrix(const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection) {
 	use();
-	SetMat4("model", camera.model);
-	SetMat4("view", camera.view);
-	SetMat4("projection", camera.projection);
+	SetMat4("model", model);
+	SetMat4("view", view);
+	SetMat4("projection", projection);
 }
 
 Shader::Shader(const char* vertexPath, const char* fragmentPath) {
-
 
 	// retrieve the vertex/fragment source code from filePath
 	std::string vertexCode;

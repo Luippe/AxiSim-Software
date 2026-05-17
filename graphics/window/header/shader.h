@@ -1,10 +1,14 @@
 #pragma once
 #include <glm/fwd.hpp>
+#include <string>
+#include <unordered_map>
+
 class Camera;
 
 // shader class to make it easier to manage shaders
 class Shader {
 public:
+
 	unsigned int ID;
 	unsigned int VBO;
 
@@ -19,6 +23,10 @@ public:
 	void SetMat4(const char* name, const glm::mat4& matrix);
 	void SetBool(const char* name, bool value);
 	void SetColor(const char* name, const glm::vec3& vec);
-	void loadTransformationMatrix(Camera& camera);
+	void loadTransformationMatrix(const glm::mat4& model, const glm::mat4& view, const glm::mat4& projection);
 
+private:
+
+	std::unordered_map<std::string, GLint> uniformLocationCache;
+	GLint getUniformLocation(const char* name);
 };

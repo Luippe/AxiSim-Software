@@ -126,8 +126,8 @@ void SceneView::render() {
 
 	if (currentTab == TAB_MESH) {
 		// load transformation matrix for mesh shader
-		shaderMesh.loadTransformationMatrix(camera);
-		shaderLine.loadTransformationMatrix(camera);
+		shaderMesh.loadTransformationMatrix(camera.model, camera.view, camera.projection);
+		shaderLine.loadTransformationMatrix(camera.model, camera.view, camera.projection);
 
 		// update picker
 		picker.update();
@@ -139,9 +139,9 @@ void SceneView::render() {
 	else if (currentTab == TAB_RESULTS) {
 
 		// load transformation matrix for solution shader
-		shaderResults.loadTransformationMatrix(camera);
-		shaderLine.loadTransformationMatrix(camera);
-		shaderEdge.loadTransformationMatrix(camera);
+		shaderResults.loadTransformationMatrix(camera.model, camera.view, camera.projection);
+		shaderLine.loadTransformationMatrix(camera.model, camera.view, camera.projection);
+		shaderEdge.loadTransformationMatrix(camera.model, camera.view, camera.projection);
 
 		// update picker
 		picker.update();
