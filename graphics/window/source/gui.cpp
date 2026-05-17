@@ -10,6 +10,8 @@
 #include "solver_struct.h"
 #include "implot.h"
 
+#include "gui_manager.h"
+
 GUI::GUI(GLFWwindow* window, SceneView& scene) :
 	scene(scene),
 	inspector(scene),
@@ -56,7 +58,7 @@ void GUI::newFrame() {
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
-	ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
+	ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), UIFlags::BaseDockspaceFlags);
 }
 
 void GUI::changeCursorOnHover() {

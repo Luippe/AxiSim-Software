@@ -2,6 +2,7 @@
 #include <glm/vec3.hpp>
 #include <glm/vec2.hpp>
 #include "imgui.h"
+#include "buffer_manager.h"
 
 enum class CompareType {
 	LessThan,
@@ -32,22 +33,9 @@ struct VertexLine {
 	glm::vec3 color;
 };
 
-struct ControlVolume {
+struct AppAssets {
+	TextureBuffer houseIcon;
 
-	// size of each control volume
-	int indexCount;
-
-	// starting index
-	int frontStart;
-	int outerStart;
-	int innerStart;
-	int backStart;
-
-	// number of indices
-	int frontCount;
-	int outerCount;
-	int innerCount;
-	int backCount;
 };
 
 enum ViewTab {

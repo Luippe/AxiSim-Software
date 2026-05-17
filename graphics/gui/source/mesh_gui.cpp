@@ -6,6 +6,7 @@
 #include "mesh.h"
 #include "solver_struct.h"
 #include "unit_manager.h"
+#include "gui_manager.h"
 
 MeshGUI::MeshGUI(GUI& gui, SceneView& scene) :
 	gui(gui),
@@ -37,7 +38,7 @@ void MeshGUI::setGridConfigEdits() {
 }
 
 void MeshGUI::drawPropertiesPanel() {
-	ImGui::Begin("Properties");
+	ImGui::Begin("Overview");
 
 	if (selectedItem == "Edit") {
 		ImGui::SeparatorText("Mesh Settings");
@@ -71,7 +72,7 @@ void MeshGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
-		if (ImGui::TreeNodeEx("General", treeFlags)) {
+		if (ImGui::TreeNodeEx("General", UIFlags::BranchFlags)) {
 			drawLeaf("Edit");
 			ImGui::TreePop();
 		}

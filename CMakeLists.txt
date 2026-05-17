@@ -81,7 +81,6 @@ set(IMGUI_SOURCES
     "${IMGUI_DIR}/imgui_draw.cpp"
     "${IMGUI_DIR}/imgui_tables.cpp"
     "${IMGUI_DIR}/imgui_widgets.cpp"
-    "${IMGUI_DIR}/imgui_demo.cpp"
 
     "${IMGUI_DIR}/backends/imgui_impl_glfw.cpp"
     "${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp"
@@ -144,7 +143,7 @@ add_executable(AxiSim
     ${IMGUI_SOURCES}
     ${IMPLOT_SOURCES}
     ${TINYFILEDIALOGS_SOURCES}
- "graphics/gui/source/animation_gui.cpp" "graphics/gui/header/animation_gui.h" )
+  "externals/stb_image/stb_image.cpp" "manager/header/gui_manager.h")
 
 target_include_directories(AxiSim PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -153,6 +152,7 @@ target_include_directories(AxiSim PRIVATE
 
     "${CMAKE_CURRENT_SOURCE_DIR}/graphics/imgui"
     "${CMAKE_CURRENT_SOURCE_DIR}/graphics/imgui/backends"
+    "${CMAKE_SOURCE_DIR}/externals/stb_image"
 
     "${IMPLOT_DIR}"
     "${TINYFILEDIALOGS_DIR}"

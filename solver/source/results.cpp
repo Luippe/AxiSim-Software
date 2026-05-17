@@ -179,14 +179,16 @@ Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader)
 	concField(solver.config.g.nz, solver.config.g.nr),
 	mesh(mesh),
 	currentField(&uField) {
-	this->colFront = mesh.colFront;
-	this->colBack = mesh.colBack;
-	this->rowTop = mesh.rowTop;
-	this->rowBot = mesh.rowBot;
-	this->currentOuter = mesh.currentOuter;
-	this->currentFront = mesh.currentFront;
-	this->currentBack = mesh.currentBack;
-	this->currentInner = mesh.currentInner;
+
+	colFront = 0;
+	colBack = solver.config.g.nz;
+	rowTop = solver.config.g.nr;
+	rowBot = 0;
+
+	currentFront = (float)colFront * (float)solver.g.dz;
+	currentBack = (float)colBack * (float)solver.g.dz;
+	currentOuter = (float)rowTop * (float)solver.g.dr;
+	currentInner = (float)rowBot * (float)solver.g.dr;
 
 }
 

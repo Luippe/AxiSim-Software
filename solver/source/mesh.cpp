@@ -8,10 +8,6 @@
 
 
 Mesh::Mesh(Shader& shader, Config& config) : shader(shader), g(config.g) {
-	colFront = 0;
-	colBack = g.nz;
-	rowTop = g.nr;
-	rowBot = 0;
 }
 
 void Mesh::clearAll() {

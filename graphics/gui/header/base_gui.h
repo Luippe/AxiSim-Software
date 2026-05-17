@@ -43,7 +43,7 @@ public:
 
 
 		// convert display value back to solver/base value
-		if (ImGui::InputDouble("##value", &displayValue)) {
+		if (ImGui::InputDouble("##value", &displayValue, 0.0, 0.0, "%.6g")) {
 			value = (T)(displayValue * unit.toBase);
 		}
 
@@ -69,11 +69,5 @@ public:
 	std::string selectedItem;
 
 private:
-
-	ImGuiTreeNodeFlags flags =
-		ImGuiTreeNodeFlags_Leaf |
-		ImGuiTreeNodeFlags_NoTreePushOnOpen |
-		ImGuiTreeNodeFlags_SpanAvailWidth;
-
 
 };

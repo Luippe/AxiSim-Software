@@ -3,6 +3,7 @@
 #include "solver.h"
 #include "graphics_struct.h"
 #include "solver_struct.h"
+#include "gui_manager.h"
 
 SolverGUI::SolverGUI(SceneView& scene) :
 	scene(scene),
@@ -24,7 +25,7 @@ void SolverGUI::setResidualDefault() {
 
 void SolverGUI::drawPropertiesPanel() {
 
-	ImGui::Begin("Properties");
+	ImGui::Begin("Overview");
 
 	if (selectedItem == "Solver Settings") {
 		ImGui::SeparatorText("Solver Settings");
@@ -192,34 +193,34 @@ void SolverGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
-		if (ImGui::TreeNodeEx("General", treeFlags)) {
+		if (ImGui::TreeNodeEx("General", UIFlags::BranchFlags)) {
 			drawLeaf("Solver Settings");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 
-		if (ImGui::TreeNodeEx("Boundary Conditions", treeFlags)) {
+		if (ImGui::TreeNodeEx("Boundary Conditions", UIFlags::BranchFlags)) {
 			drawLeaf("Velocity BC");
 			drawLeaf("Pressure BC");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 
-		if (ImGui::TreeNodeEx("Convergence", treeFlags)) {
+		if (ImGui::TreeNodeEx("Convergence", UIFlags::BranchFlags)) {
 			drawLeaf("Residual Type");
 			drawLeaf("Tolerance");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 		
-		if (ImGui::TreeNodeEx("Fluid Properties", treeFlags)) {
+		if (ImGui::TreeNodeEx("Fluid Properties", UIFlags::BranchFlags)) {
 			drawLeaf("Fluid Settings");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 
 		if (solver.transient) {
-			if (ImGui::TreeNodeEx("Transient", treeFlags)) {
+			if (ImGui::TreeNodeEx("Transient", UIFlags::BranchFlags)) {
 				drawLeaf("Transient Settings");
 				ImGui::TreePop();
 			}

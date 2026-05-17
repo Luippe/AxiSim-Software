@@ -43,12 +43,14 @@ private:
 
 class ElementBuffer {
 public:
+
 	ElementBuffer() {};
 	void createBuffer(GLsizeiptr size, const void* data);
 	void copyBuffer(GLuint srcBuffer, GLsizeiptr size);
 	GLuint getEBO();
 
 private:
+
 	void deleteBuffer();
 	unsigned int EBO = 0;
 };
@@ -59,10 +61,21 @@ public:
 	TextureBuffer() {};
 	void bind();
 	void unbind();
+
+	// create texture buffer using pixel data
 	void createBuffer(GLenum target, int nx, int ny, GLenum format, GLenum type, const void* data);
+
+	// create texture buffer using PNG images
+	void createBuffer(const char* path);
+
+	// update texture buffer, mostly used to update it with new data
 	void updateBuffer(int nx, int ny, GLenum format, GLenum type, const void* data);
+
+	// getter for texture id
 	unsigned int getTextureID();
+
 private:
+
 	void deleteBuffer();
 	unsigned int TBO = 0;
 };

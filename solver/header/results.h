@@ -62,7 +62,6 @@ public:
 	std::vector<unsigned int> indicesCV;
 	std::vector<VertexEdge> verticesEdge;
 	std::vector<VertexLine> verticesCap;
-	std::vector<ControlVolume> cv;
 	std::vector<CylinderInstance> allInstances;
 	std::vector<CylinderInstance> selectedInstances;
 
@@ -86,10 +85,7 @@ private:
 	double dz;
 	double dr;
 
-	//Mesh mesh;
-	//Solver solver;
 	GridConfig g;
-
 
 	VertexBuffer capBuffer;
 	VertexBuffer edgeBuffer;

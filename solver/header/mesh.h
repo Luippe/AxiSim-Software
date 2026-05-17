@@ -10,10 +10,6 @@ class Config;
 class Mesh {
 public:
 
-	int colFront;
-	int colBack;
-	int rowTop;
-	int rowBot;
 	glm::vec3 color = { 0.0f, 0.0f, 0.0f };
 	std::vector<Vertex> vertices;
 	std::vector<unsigned int> indices;
@@ -32,11 +28,6 @@ public:
 	bool isReady = false;
 
 	glm::vec3 cylinderDirection = { 1.0f, 0.0f, 0.0f };
-
-	float currentOuter = g.R;
-	float currentFront = 0.0;
-	float currentBack = g.L;
-	float currentInner = 0.0;
 
 	void generate();
 

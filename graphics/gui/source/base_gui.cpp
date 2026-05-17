@@ -1,5 +1,5 @@
 #include "base_gui.h"
-
+#include "gui_manager.h"
 
 void BaseGUI::changeCursorOnHover() {
 	if (ImGui::IsItemHovered()) {
@@ -48,7 +48,7 @@ void BaseGUI::drawLeaf(const char* label) {
 
 	bool selected = selectedItem == label;
 
-	ImGui::TreeNodeEx(label, flags | (selected ? ImGuiTreeNodeFlags_Selected : 0));
+	ImGui::TreeNodeEx(label, UIFlags::LeafFlags | (selected ? ImGuiTreeNodeFlags_Selected : 0));
 
 	if (ImGui::IsItemClicked()) {
 		selectedItem = label;

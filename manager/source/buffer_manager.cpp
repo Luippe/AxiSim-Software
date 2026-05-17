@@ -1,7 +1,10 @@
 #include "buffer_manager.h"
 #include <cstdio>
-// --------------------------Frame Buffer---------------------------
+#include "stb_image.h"
 
+// ===================================================================
+// --------------------------Frame Buffer---------------------------
+// ===================================================================
 void FrameBuffer::createBuffer(int width, int height, int samples) {
 
 	this->width = width;
@@ -81,8 +84,9 @@ unsigned int FrameBuffer::getTextureID() {
 	return texture;
 }
 
+// ===================================================================
 // --------------------------Vertex Buffer---------------------------
-
+// ===================================================================
 void VertexBuffer::bind() {
 	glBindVertexArray(VAO);
 }
@@ -146,7 +150,9 @@ void VertexBuffer::deleteBuffer() {
 	glDeleteBuffers(1, &VBO);
 }
 
+// ===================================================================
 // --------------------------Element Buffer---------------------------
+// ===================================================================
 void ElementBuffer::createBuffer(GLsizeiptr size, const void* data) {
 
 	if (EBO) {
@@ -174,7 +180,9 @@ void ElementBuffer::deleteBuffer() {
 	glDeleteBuffers(1, &EBO);
 }
 
+// ===================================================================
 // --------------------------Texture Buffer---------------------------
+// ===================================================================
 void TextureBuffer::createBuffer(GLenum internalFormat, int nx, int ny,  GLenum format, GLenum type, const void* data) {
 
 	if (TBO) {
@@ -195,6 +203,30 @@ void TextureBuffer::createBuffer(GLenum internalFormat, int nx, int ny,  GLenum 
 	glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, nx, ny, 0, format, type, data);
 
 	glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void TextureBuffer::createBuffer(const char* path) {
+
+	int width, height, channels;
+	unsigned char* data = stbi_load(path, &width, &height, &channels, 4);
+
+	if (TBO) {
+		deleteBuffer();
+	}
+
+	glGenTextures(1, &TBO);
+	bind();
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	stbi_image_free(data);
 }
 
 void TextureBuffer::updateBuffer(int nx, int ny, GLenum format, GLenum type, const void* data) {

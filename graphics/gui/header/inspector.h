@@ -17,6 +17,8 @@ public:
 	Inspector(SceneView& scene);
 
 	void generate();
+
+	// toolbar is drawn first, then the 2D field is rendered using the remaining space
 	void render();
 
 	// update the texture buffer
@@ -44,13 +46,12 @@ private:
 
 	// ----------resources-----------
 	TextureBuffer textureBuffer;
+	AppAssets assets;
 	FrameBuffer frameBuffer;
 	VertexBuffer vertexBuffer;
 	Shader inspectorShader;
 
 	// ----------image state-----------
-	float aspect;
-	float boxWidth, boxHeight;
 	int startX, startY;
 	int endX, endY;
 	int imageWidth, imageHeight;
@@ -74,14 +75,11 @@ private:
 	ImVec2 rectPos1 = ImVec2(0.0f, 0.0f);
 	ImVec2 rectPos2 = ImVec2(0.0f, 0.0f);
 
-
-
 	// -----------selected data--------------
 	const float circleRadius = 3.0f;
 	std::vector<int> selectedIndices;
 	std::vector<InspectorPoint> points;
 	std::vector<ImVec2> textPos;
-
 
 	// create a rectangular quad
 	void createFullScreenQuad();
@@ -106,6 +104,9 @@ private:
 
 	// display text at positions given by textPos
 	void displayTextValue();
+
+	// draw toolbar at the top of the inspector, which can be used for variety of functions
+	void drawToolBar();
 
 	// turns i,j coordinates to pixel coordinates
 	ImVec2 gridToScreen(float i, float j);

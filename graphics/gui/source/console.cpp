@@ -10,6 +10,8 @@
 #include "printer.h"
 #include "gui.h"
 
+#include "gui_manager.h"
+
 // parse words separated by space
 std::vector<std::string> parseWords(const std::string& line) {
 

@@ -69,7 +69,7 @@ public:
 	bool continueSolver = false;
 	bool solutionReady = false;
 
-	// iteration configs
+	// config for simple algorithm
 	ConfigSimple configSimple;
 
 	// variable configs

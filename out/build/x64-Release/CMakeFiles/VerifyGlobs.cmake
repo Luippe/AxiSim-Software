@@ -216,11 +216,11 @@ endif()
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/*.h")
 set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/buffer_manager.h"
-  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/cmaps.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/colormap.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/colormap_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/field_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/gpu_utils.h"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/gui_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/manage_file.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/math_func.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/memory_manager.h"

@@ -208,8 +208,6 @@ void loadAtLaunch(Mesh& mesh, Solver& solver, Results& results) {
 			loadFromPathSolver(solverFile, solver);
 		}
 	}
-
-
 }
 
 void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc) {
@@ -244,3 +242,4 @@ void readOneBoundaryCondition(std::ifstream& in, BoundaryConditionConfig& bcConf
 std::ofstream openBinaryFile(const char* path) {
 	return std::ofstream(path, std::ios::binary);
 }
+

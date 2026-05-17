@@ -11,9 +11,11 @@ Inspector::Inspector(SceneView& scene) :
 		colormap(scene.colormap),
 		g(mesh.g),
 		inspectorShader("graphics/shaders/inspector.vert", "graphics/shaders/inspector.frag"){
-	aspect = (float)(g.L) / (float)(g.R);
+
 	// radial location
 	frameBuffer.createBuffer(100, 100);
+	assets.houseIcon.createBuffer("assets/icons/house.png");
+
 }
 
 void updateUV(float& u0, float& u1, float& v0, float& v1, ImVec2& zoomCenter, float halfW, float halfH) {
@@ -43,7 +45,6 @@ void toggleSelectedPoint(std::vector<InspectorPoint>& points, ImVec2& dataPos, I
 }
 
 void Inspector::generate() {
-	aspect = (float)(g.L) / (float)(g.R);
 	nrBase = g.nr;
 	nzBase = g.nz;
 
@@ -109,11 +110,6 @@ ImVec2 Inspector::getMouseIndex() {
 
 	float viewW = 1.0f / zoom;
 	float viewH = 1.0f / zoom;
-
-
-	boxWidth = (float)imageWidth / (float)(nzBase + 1);
-	boxHeight = (float)imageHeight / (float)(nrBase + 1);
-
 
 	ImVec2 localPos = ImVec2(mousePos.x - itemMin.x, itemMax.y - mousePos.y);
 
@@ -199,6 +195,7 @@ void Inspector::displayTextValue() {
 
 	}
 }
+
 
 void Inspector::handleMouse() {
 
@@ -286,6 +283,25 @@ void Inspector::handleMouse() {
 	}
 }
 
+void Inspector::drawToolBar() {
+	float toolbarHeight = 32.0f;
+
+	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
+
+	if (ImGui::ImageButton("##ResetView", (ImTextureID)(intptr_t)assets.houseIcon.getTextureID(), ImVec2(22.0f, 22.0f))) {
+		zoom = 1.0f;
+		zoomCenter = ImVec2(0.5f, 0.5f);
+		updateUV(u0, v0, u1, v1, zoomCenter, 0.5, 0.5);
+
+	}
+
+	ImGui::SameLine();
+
+	ImGui::EndChild();
+	ImGui::Separator();
+}
+
+
 void Inspector::renderPreview() {
 
 	frameBuffer.bind();
@@ -321,8 +337,11 @@ void Inspector::renderPreview() {
 void Inspector::render() {
 
 	ImGui::Begin("Inspector");
-	resizeImage();
 
+	drawToolBar();
+
+	resizeImage();
+	
 	updateTextureBuffer(results.currentField->processedData.data());
 	renderPreview();
 

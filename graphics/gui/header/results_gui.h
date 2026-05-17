@@ -16,10 +16,7 @@ public:
 
 private:
 
-	ImGuiTreeNodeFlags treeFlags =
-		ImGuiTreeNodeFlags_DefaultOpen |
-		ImGuiTreeNodeFlags_OpenOnArrow |
-		ImGuiTreeNodeFlags_SpanAvailWidth;
+
 
 	SceneView& scene;
 	GUI& gui;

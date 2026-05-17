@@ -1,3 +1,4 @@
+#pragma once
 static const unsigned char Parula[256][3] = {
     {  62,  38, 168 },
     {  62,  39, 172 },

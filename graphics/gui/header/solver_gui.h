@@ -16,10 +16,6 @@ private:
 	// draw properties panel when a tree node is clicked on
 	void drawPropertiesPanel();
 
-	ImGuiTreeNodeFlags treeFlags =
-		ImGuiTreeNodeFlags_DefaultOpen |
-		ImGuiTreeNodeFlags_OpenOnArrow |
-		ImGuiTreeNodeFlags_SpanAvailWidth;
 	SceneView& scene;
 	Solver& solver;
 };

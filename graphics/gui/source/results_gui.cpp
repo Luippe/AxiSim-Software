@@ -5,6 +5,7 @@
 #include "mesh.h"
 #include "colormap.h"
 #include "graphics_struct.h"
+#include "gui_manager.h"
 
 ResultsGUI::ResultsGUI(GUI& gui, SceneView& scene) :
 	gui(gui),
@@ -16,7 +17,7 @@ ResultsGUI::ResultsGUI(GUI& gui, SceneView& scene) :
 
 void ResultsGUI::drawPropertiesPanel() {
 
-	ImGui::Begin("Properties");
+	ImGui::Begin("Overview");
 
 	if (selectedItem == "Settings") {
 
@@ -97,14 +98,14 @@ void ResultsGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
-		if (ImGui::TreeNodeEx("General", treeFlags)) {
+		if (ImGui::TreeNodeEx("General", UIFlags::BranchFlags)) {
 			drawLeaf("Settings");
 			drawLeaf("View");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 
-		if (ImGui::TreeNodeEx("Colormap", treeFlags)) {
+		if (ImGui::TreeNodeEx("Colormap", UIFlags::BranchFlags)) {
 			drawLeaf("Change Colormap");
 			ImGui::TreePop();
 		}

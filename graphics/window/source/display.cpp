@@ -3,11 +3,12 @@
 #include <iostream>
 #include <GLFW/glfw3.h>
 
+
 Display::Display(Camera& camera) : camera(camera) {	// initialize shader
 
 	// initialize display
 	glfwInit();
-
+	
 	// get monitor
 	GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
 	GLFWmonitor* monitor = monitors[monitorIndex];
