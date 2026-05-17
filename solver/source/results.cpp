@@ -273,7 +273,6 @@ void Results::generate() {
 	// initialize outline and colormaps
 	updateOutlineModel();
 	uploadUniforms();
-	updateSelectedInstances();
 	console->addCompletionMessage("Completed initializing outlines and uploading colormaps");
 
 	showOutline = true;
@@ -440,6 +439,48 @@ void Results::createAllCVInstances() {
 	//printFloat(instances[0].x0, instances[0].x1, instances[0].innerR, instances[0].outerR);
 }
 
+std::vector<CylinderInstance> createRowMergedCylinderInstances(const std::vector<float>& field, int nr, int nz, double dz, double dr, float selectedValue, CompareType type) {
+
+	std::vector<CylinderInstance> instances;
+
+	for (int i = 0; i < nr; i++) {
+		int j = 0;
+
+		while (j < nz) {
+			int n = i * nz + j;
+
+			if (field[n] <= selectedValue) {
+				j++;
+				continue;
+			}
+
+			// start selected run
+			int j0 = j;
+
+			while (j < nz && field[i * nz + j] > selectedValue) {	// we dont use n here, as we want the index to update every loop
+				j++;
+			}
+
+			int j1 = j;
+
+			CylinderInstance inst{};
+
+			inst.x0 = (float)(j0 * dz);				// front
+			inst.x1 = (float)(j1 * dz);				// back
+
+			double r = 0.5 * dr + (double)i * dr;
+
+			inst.innerR = (float)(r - 0.5 * dr);	// inner radius
+			inst.outerR = (float)(r + 0.5 * dr);	// outer radius
+
+			//printFloat(inst.x0, inst.x1, inst.innerR, inst.outerR);
+			instances.push_back(inst);
+		}
+	}
+	//printFloat(instances[0].x0, instances[0].x1, instances[0].innerR, instances[0].outerR);
+	return instances;
+}
+
 void Results::updateSelectedInstances() {
 
 	//selectedInstances = {
@@ -452,13 +493,13 @@ void Results::updateSelectedInstances() {
 	//};
 
 	selectedInstances.clear();
-
-	for (int n = 0; n < g.nr * g.nz; n++) {
-		if (compareFloat(currentField->cvValues[n], selectedValue, currentCompareType)) {
-			selectedInstances.push_back(allInstances[n]);
-		}
-	}
-
+	selectedInstances = createRowMergedCylinderInstances(currentField->cvValues, g.nr, g.nz, g.dz, g.dr, selectedValue, currentCompareType);
+	//for (int n = 0; n < g.nr * g.nz; n++) {
+	//	if (compareFloat(currentField->cvValues[n], selectedValue, currentCompareType)) {
+	//		selectedInstances.push_back(allInstances[n]);
+	//	}
+	//}
+	//printInt(selectedInstances.size());
 	cvInstanceBuffer.bindVBO();
 	cvInstanceBuffer.bufferSubData(selectedInstances.size() * sizeof(CylinderInstance), selectedInstances.data());
 	cvInstanceBuffer.unbindVBO();
@@ -490,6 +531,7 @@ void Results::drawEdge() {
 void Results::render(Shader& shaderLine, Shader& shaderEdge) {
 
 	if (!isReady) return;
+	updateSelectedInstances();
 
 	//GLuint query;
 	//glGenQueries(1, &query);

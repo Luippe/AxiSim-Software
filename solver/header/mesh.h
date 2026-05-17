@@ -21,7 +21,7 @@ public:
 	// render the mesh, wireframe, and outline
 	void render();
 
-	int nseg = 16;	// number of vertices on the circle
+	int nseg = 64;	// number of vertices on the circle
 	float ntheta; // angle of each triangle in circle
 	bool showMesh = true;
 	bool showFill = true;

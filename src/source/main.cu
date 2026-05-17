@@ -35,7 +35,7 @@ int main() {
 		double currentTime = glfwGetTime();
 		frameCount++;
 		if (currentTime - prevTime >= 1.0) { // If last update was more than 1 second ago
-			//std::cout << "FPS: " << frameCount << std::endl;
+			printf("FPS: %d\n",frameCount);
 
 			frameCount = 0;
 			prevTime = currentTime;
@@ -46,18 +46,6 @@ int main() {
 
 		// draw scene
 		scene.render();
-
-		//if (counter == 0) {
-
-		//	counter++;
-		//}
-		//scene.solver.runSimple();
-
-		//int displayWidth, displayHeight;
-		//glfwGetFramebufferSize(disp.window, &displayWidth, &displayHeight);
-		//glViewport(0, 0, displayWidth, displayHeight);
-		//glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
-		//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		int displayWidth, displayHeight;
 		glfwGetFramebufferSize(disp.window, &displayWidth, &displayHeight);

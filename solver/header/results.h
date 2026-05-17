@@ -103,8 +103,6 @@ private:
 	// updates the outline model matrix so it can change with the mesh
 	void updateOutlineModel();
 
-
-
 	// create instances for all control volumes
 	void createAllCVInstances();
 

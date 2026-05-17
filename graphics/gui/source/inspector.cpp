@@ -214,6 +214,8 @@ void Inspector::handleMouse() {
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
 
 		selectedIndices.clear();
+		printf("ASDA\n");
+
 
 		// update rect points
 		isRectReady = true;
@@ -241,6 +243,15 @@ void Inspector::handleMouse() {
 	}
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+
+		ImVec2 drag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
+		float dx = drag.x;
+		float dy = drag.y;
+
+		float distance = sqrtf(dx * dx + dy * dy);
+		if (distance > 1.0) {
+			ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
+		}
 
 		ImVec2 delta = io.MouseDelta;
 
@@ -279,6 +290,7 @@ void Inspector::handleMouse() {
 	drawList->AddCircle(currentMousePos, circleRadius, IM_COL32(200, 200, 200, 255), 16, 1.0f);
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 		//printf("%f\n", results.currentField->getData(dataPos));
+
 		toggleSelectedPoint(points, currentMouseIndex, currentMousePos, results.currentField->getData(glm::vec2(g.dz * currentMouseIndex.x, g.dr * currentMouseIndex.y)));
 	}
 }
@@ -291,7 +303,7 @@ void Inspector::drawToolBar() {
 	if (ImGui::ImageButton("##ResetView", (ImTextureID)(intptr_t)assets.houseIcon.getTextureID(), ImVec2(22.0f, 22.0f))) {
 		zoom = 1.0f;
 		zoomCenter = ImVec2(0.5f, 0.5f);
-		updateUV(u0, v0, u1, v1, zoomCenter, 0.5, 0.5);
+		updateUV(u0, u1, v0, v1, zoomCenter, 0.5, 0.5);
 
 	}
 

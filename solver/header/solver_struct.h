@@ -137,7 +137,7 @@ struct Coefficients {
 
 struct LinearSolverConfig {
 	LinearSolverType type = LINEAR_JACOBI;
-	int maxIter = 50;
+	int maxIter = 20;
 };
 
 struct IterationConfig {
@@ -153,8 +153,8 @@ struct IterationConfig {
 };
 
 struct ConfigSimple {
-	int maxIter = 100;
-	int checkConv = 10;
+	int maxIter = 50;
+	int checkConv = 1;
 	double momTol = 1e-8;
 	double ppTol = 1e-5;
 };

@@ -27,6 +27,7 @@ Solver::Solver(SceneView & scene, Config & config) :
     itr(config.itr),
     varUnits(config.varUnits),
     residualPlot(*this, { "Axial", "Radial" ,"Continuity"}) {
+
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
     //setDefault();
 }
