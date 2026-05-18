@@ -35,14 +35,13 @@ int main() {
 		double currentTime = glfwGetTime();
 		frameCount++;
 		if (currentTime - prevTime >= 1.0) { // If last update was more than 1 second ago
-			printf("FPS: %d\n",frameCount);
+			//printf("FPS: %d\n",frameCount);
 
 			frameCount = 0;
 			prevTime = currentTime;
 		}
 
 		gui.newFrame();
-
 
 		// draw scene
 		scene.render();

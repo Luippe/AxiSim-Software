@@ -84,9 +84,6 @@ void SceneView::handleMouse() {
 	if (io.MouseWheel != 0.0f) {
 		camera.calculateZoom(io.MouseWheel);
 	}
-
-
-
 }
 
 void SceneView::render() {

@@ -68,12 +68,13 @@ public:
 	glm::vec3 cylinderDirection = { 1.0f, 0.0f, 0.0f };
 	glm::mat4 modelOutline = glm::mat4(1.0f);
 	glm::mat4 modelOutlineInner = glm::mat4(1.0f);
+
 	bool show = true;
 	bool showOutline = false;
 	bool isReady = false;
 	bool isMultipleInstancing = false;
 
-	Field* currentField;
+	Field* currentField = nullptr;
 	Console* console = nullptr;
 
 	Shader& shader;
@@ -114,7 +115,6 @@ private:
 	
 	// copy the cv variables from the mesh class
 	void copyMeshData();
-
 
 	void drawCap();
 	void drawEdge();

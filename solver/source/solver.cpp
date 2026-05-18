@@ -338,11 +338,10 @@ void Solver::runSimple() {
         if (tCount % saveKeyFrameIter == 0) {
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
-			std::vector<double> u = copyDeviceToHostVector(simple.u, Nu);
-			std::vector<double> v = copyDeviceToHostVector(simple.v, Nv);
-            std::vector<double> p = copyDeviceToHostVector(simple.p, N);
-
-            saveBinary(out, (double)tCount * dt, u, v, p);
+            saveBinary(out, (double)tCount * dt, 
+                copyDeviceToHostVector(simple.u, Nu), 
+                copyDeviceToHostVector(simple.v, Nv),
+                copyDeviceToHostVector(simple.p, N));
         }
     }
 
@@ -362,12 +361,12 @@ void Solver::runSimple() {
     vSol = SolutionField{ copyDeviceToHostVector(simple.v, Nv), g.nr + 1, g.nz, g.dr, g.dz, CellStoreType::RADIAL };
     pSol = SolutionField{ copyDeviceToHostVector(simple.p, N), g.nr, g.nz, g.dr, g.dz, CellStoreType::CENTER };
     
-    std::vector<double> AC1 = copyDeviceToHostVector(uCoeff.AW, Nu);
-    std::vector<double> AC2 = copyDeviceToHostVector(uCoeff.AE, Nu);
+    //std::vector<double> AC1 = copyDeviceToHostVector(uCoeff.AW, Nu);
+    //std::vector<double> AC2 = copyDeviceToHostVector(uCoeff.AE, Nu);
     //printf("%f\n", vSol.field[g.nz]);
-    printFloat(uSol.field[g.nz + 1], uSol.field[g.nz + 2], uSol.field[g.nz + 3]);
-    printFloat(AC1[g.nz + 1], AC1[g.nz + 2], AC1[g.nz + 3]);
-    printFloat(AC2[g.nz + 1], AC2[g.nz + 2], AC2[g.nz + 3]);
+    //printFloat(uSol.field[g.nz + 1], uSol.field[g.nz + 2], uSol.field[g.nz + 3]);
+    //printFloat(AC1[g.nz + 1], AC1[g.nz + 2], AC1[g.nz + 3]);
+    //printFloat(AC2[g.nz + 1], AC2[g.nz + 2], AC2[g.nz + 3]);
     //printFloat(vSol.field[g.nz], vSol.field[g.nz + 1], vSol.field[g.nz + 2]);
 
     solutionReady = true;

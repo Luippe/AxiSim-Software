@@ -290,26 +290,3 @@ struct Config {
 	VariableUnits varUnits;
 
 };
-
-struct FlowFrame {
-	double time = 0.0;
-	std::vector<float> u;
-	std::vector<float> v;
-	std::vector<float> p;
-
-	std::vector<float>& operator[](int index) {
-		switch (index) {
-		case 0: return u;
-		case 1: return v;
-		case 2: return p;
-		}
-	}
-
-	const std::vector<float>& operator[](int index) const {
-		switch (index) {
-		case 0: return u;
-		case 1: return v;
-		case 2: return p;
-		}
-	}
-};

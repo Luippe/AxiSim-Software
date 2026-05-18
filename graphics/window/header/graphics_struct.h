@@ -35,7 +35,6 @@ struct VertexLine {
 
 struct AppAssets {
 	TextureBuffer houseIcon;
-
 };
 
 enum ViewTab {
@@ -56,3 +55,4 @@ struct CylinderTemplateVertex {
 	float xCoord;           // 0 = front, 1 = back
 	float radialCoord;      // 0 = inner, 1 = outer
 };
+

@@ -6,8 +6,8 @@
 class Field {
 public:
 
-	std::vector<float> processedData;
-	std::vector<float> cvValues;	// cell centered value
+	std::vector<float> vertexValues;	// vetex centered values
+	std::vector<float> cellValues;		// cell centered values
 
 	TextureBuffer textureBuffer;
 
@@ -18,6 +18,8 @@ public:
 	int nrBase = 0;
 
 	Field(int nz, int nr);
+
+	void setMinMax(float vmin, float vmax);
 
 	void generate(SolutionField& solution, BoundaryConditionConfig& bc);
 
@@ -37,7 +39,7 @@ private:
 	void createVertexValues();
 
 	// create cell centered values
-	void createCVValues();
+	void createCellValues();
 
 	// update vmin and vmax
 	void updateMinMax();

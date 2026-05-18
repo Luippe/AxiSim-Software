@@ -25,9 +25,6 @@ public:
 	// get texture ID
 	unsigned int getTextureID();
 
-	// get the color vector given a value
-	glm::vec3 getColor(double val, double vmin, double vmax);
-
 	// get name of current colormap as a std::string
 	std::string getColormap();
 

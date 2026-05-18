@@ -63,16 +63,6 @@ unsigned int Colormap::getTextureID() {
 	return colormapBuffers[currentItem].getTextureID();
 }
 
-glm::vec3 Colormap::getColor(double val, double vmin, double vmax) {
-	double val_norm = (val - vmin) / (vmax - vmin);
-	int idx = (int)(val_norm * 255.0);
-	return glm::vec3(
-		currentLUT[idx][0] / 255.0f,
-		currentLUT[idx][1] / 255.0f,
-		currentLUT[idx][2] / 255.0f
-		);
-}
-
 std::string Colormap::getColormap() {
 	return items[currentItem];
 }

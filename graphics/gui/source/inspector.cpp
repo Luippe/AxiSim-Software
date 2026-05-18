@@ -49,7 +49,6 @@ void Inspector::generate() {
 	nzBase = g.nz;
 
 	createFullScreenQuad();
-	createBuffer();
 	uploadUniforms();
 }
 
@@ -74,10 +73,6 @@ void Inspector::createFullScreenQuad() {
 
 }
 
-void Inspector::updateTextureBuffer(const void* data) {
-	textureBuffer.updateBuffer(nzBase + 1, nrBase + 1, GL_RED, GL_FLOAT, data);
-}
-
 void Inspector::uploadUniforms() {
 	inspectorShader.use();
 	inspectorShader.SetFloat("vmin", results.currentField->vmin);
@@ -86,11 +81,6 @@ void Inspector::uploadUniforms() {
 	inspectorShader.SetInt("uColormap", 1);
 }
 
-void Inspector::createBuffer() {
-
-	textureBuffer.createBuffer(GL_R32F, nzBase + 1, nrBase + 1, GL_RED, GL_FLOAT, results.currentField->processedData.data());
-
-}
 
 void Inspector::resizeImage() {
 
@@ -214,8 +204,6 @@ void Inspector::handleMouse() {
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
 
 		selectedIndices.clear();
-		printf("ASDA\n");
-
 
 		// update rect points
 		isRectReady = true;
@@ -354,7 +342,6 @@ void Inspector::render() {
 
 	resizeImage();
 	
-	updateTextureBuffer(results.currentField->processedData.data());
 	renderPreview();
 
 	frameBuffer.resolve();

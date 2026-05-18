@@ -45,7 +45,7 @@ private:
 	std::vector<float> quadVertices;
 
 	// ----------resources-----------
-	TextureBuffer textureBuffer;
+	//TextureBuffer textureBuffer;
 	AppAssets assets;
 	FrameBuffer frameBuffer;
 	VertexBuffer vertexBuffer;
@@ -89,9 +89,6 @@ private:
 
 	// render the preview onto fbo
 	void renderPreview();
-
-	// create buffer using the scalarImage
-	void createBuffer();
 
 	// resize the image so it fits the window region
 	void resizeImage();

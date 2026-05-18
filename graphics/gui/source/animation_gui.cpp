@@ -3,13 +3,12 @@
 #include "scene_view.h"
 #include "manage_file.h"
 #include "printer.h"
-
+#include "gui_manager.h"
 
 AnimationGUI::AnimationGUI(SceneView& scene) :
 scene(scene) {
 
 }
-
 
 void AnimationGUI::loadAnimation(const std::string& filename) {
 
@@ -17,7 +16,6 @@ void AnimationGUI::loadAnimation(const std::string& filename) {
 
     frames.clear();
 
-    float vmin, vmax;
     double dr, dz;
     readAll(in, nr, nz, dr, dz);
 
@@ -34,49 +32,45 @@ void AnimationGUI::loadAnimation(const std::string& filename) {
     Field vField{ nz, nr };
     Field pField{ nz, nr };
 
-    //vmin = *std::min_element(processedData.begin(), processedData.end());
-    //vmax = *std::max_element(processedData.begin(), processedData.end());
-    float vminTemp, vmaxTemp;
+    MinMaxGlobal uMinMax;
+    MinMaxGlobal vMinMax;
+    MinMaxGlobal pMinMax;
 
 	while (true) {
 		FlowFrame frame;
 
 		if (!readBinary(in, frame.time)) break;
-
         if (!readBinary(in, uSol.field, vSol.field, pSol.field)) break;
 
         uField.generate(uSol, uBC);
         vField.generate(vSol, vBC);
         pField.generate(pSol, pBC);
 
-        vminTemp = *std::min_element(uField.processedData.begin(), uField.processedData.end());
-        vmaxTemp = *std::max_element(uField.processedData.begin(), uField.processedData.end());
-        uField.vmin = std::min(uField.vmin, vminTemp);
-        uField.vmax = std::max(uField.vmax, vmaxTemp);
+        uMinMax.vmin = std::min(uField.vmin, uMinMax.vmin);
+        uMinMax.vmax = std::max(uField.vmax, uMinMax.vmax);
 
-        vminTemp = *std::min_element(vField.processedData.begin(), vField.processedData.end());
-        vmaxTemp = *std::max_element(vField.processedData.begin(), vField.processedData.end());
-        vField.vmin = std::min(vField.vmin, vminTemp);
-        vField.vmax = std::max(vField.vmax, vmaxTemp);
+        vMinMax.vmin = std::min(vField.vmin, vMinMax.vmin);
+        vMinMax.vmax = std::max(vField.vmax, vMinMax.vmax);
 
-        vminTemp = *std::min_element(pField.processedData.begin(), pField.processedData.end());
-        vmaxTemp = *std::max_element(pField.processedData.begin(), pField.processedData.end());
-        pField.vmin = std::min(pField.vmin, vminTemp);
-        pField.vmax = std::max(pField.vmax, vmaxTemp);
+        pMinMax.vmin = std::min(pField.vmin, pMinMax.vmin);
+        pMinMax.vmax = std::max(pField.vmax, pMinMax.vmax);
 
-        frame.u = uField.processedData;
-        frame.v = vField.processedData;
-        frame.p = pField.processedData;
+        frame.fields.push_back(uField);
+        frame.fields.push_back(vField);
+        frame.fields.push_back(pField);
 
 		frames.push_back(std::move(frame));
 	}
 
-    textureBuffer.createBuffer(GL_R32F, nz + 1, nr + 1, GL_RED, GL_FLOAT, nullptr);
+    minmaxGlobals.push_back(uMinMax);
+    minmaxGlobals.push_back(vMinMax);
+    minmaxGlobals.push_back(pMinMax);
 
+    updateCurrentField();
     isReady = true;
 }
 
-void AnimationGUI::updateFlowAnimation() {
+void AnimationGUI::updateCurrentFrame() {
     if (!isPlaying || frames.empty()) {
         return;
     }
@@ -97,9 +91,16 @@ void AnimationGUI::updateFlowAnimation() {
     }
 }
 
-void AnimationGUI::updateAnimationTexture() {
+void AnimationGUI::updateCurrentField() {
 
-    scene.results.currentField->textureBuffer.updateBuffer(nz + 1, nr + 1, GL_RED, GL_FLOAT, frames[currentFrame][scene.results.currentItem].data());
+    Field& currentField = frames[currentFrame].fields[scene.results.currentItem];
+    scene.results.currentField = &currentField;
+    //currentField.setMinMax(
+    //    minmaxGlobals[scene.results.currentItem].vmin,
+    //    minmaxGlobals[scene.results.currentItem].vmax
+    //);
+
+
 
 }
 
@@ -121,7 +122,6 @@ void AnimationGUI::handleEvents() {
     if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
         currentFrame = currentFrame - 1 < 0 ? 0 : currentFrame - 1;
     }
-
 }
 
 // ======================================================================
@@ -132,12 +132,7 @@ void AnimationGUI::render() {
     ImGui::SetNextWindowSize(ImVec2(scene.rectSize.x * 0.33f, 70.0f), ImGuiCond_Always);
     ImGui::SetNextWindowPos(ImVec2(scene.rectPos.x + scene.rectSize.x * 0.33f, scene.rectPos.y + scene.rectSize.y - 90), ImGuiCond_Always);
 
-    ImGui::Begin("Animation", 
-        nullptr, 
-        ImGuiWindowFlags_NoTitleBar |
-        ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoCollapse);
+    ImGui::Begin("Animation", nullptr, UIFlags::AnimationWindowFlags);
 
     if (frames.empty()) {
         ImGui::Text("No animation loaded.");
@@ -188,9 +183,12 @@ void AnimationGUI::render() {
     ImGui::PopStyleColor();
     ImGui::PopStyleVar();
 
-    if (isReady) {
-        updateFlowAnimation();
-        updateAnimationTexture();
+    updateCurrentFrame();
+
+    // update whenever frame changes
+    if (currentFrame != previousFrame && isReady) {
+        updateCurrentField();
+        previousFrame = currentFrame;
     }
 
 	ImGui::End();

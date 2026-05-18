@@ -18,5 +18,11 @@ namespace UIFlags {
 
 	inline constexpr ImGuiDockNodeFlags BaseDockspaceFlags =
 		ImGuiDockNodeFlags_NoWindowMenuButton;
+
+	inline constexpr ImGuiWindowFlags AnimationWindowFlags =
+		ImGuiWindowFlags_NoTitleBar |
+		ImGuiWindowFlags_NoResize |
+		ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_NoCollapse;
 }
 

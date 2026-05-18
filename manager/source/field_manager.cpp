@@ -34,21 +34,26 @@ void Field::generate(SolutionField& solution, BoundaryConditionConfig& bc) {
 	}
 
 	createVertexValues();
-	createCVValues();
+	createCellValues();
 	createBuffer();
 	updateMinMax();
 }
 
 void Field::updateMinMax() {
 
-	vmin = (double)*std::min_element(processedData.begin(), processedData.end());
-	vmax = (double)*std::max_element(processedData.begin(), processedData.end());
+	vmin = *std::min_element(vertexValues.begin(), vertexValues.end());
+	vmax = *std::max_element(vertexValues.begin(), vertexValues.end());
 
+}
+
+void Field::setMinMax(float vmin, float vmax) {
+	this->vmin = vmin;
+	this->vmax = vmax;
 }
 
 void Field::createVertexValues() {
 
-	processedData.clear();
+	vertexValues.clear();
 
 	for (int i = 0; i < nrBase + 1; i++) {
 		for (int j = 0; j < nzBase + 1; j++) {
@@ -57,16 +62,15 @@ void Field::createVertexValues() {
 			float r = i * dr;
 
 			glm::vec3 pos = { x, r, 0.0f };
-			float val = getData(pos);
 
-			processedData.push_back(val);
+			vertexValues.push_back(getData(pos));
 		}
 	}
-
-
 }
 
-void Field::createCVValues() {
+void Field::createCellValues() {
+
+	cellValues.clear();
 
 	for (int i = 0; i < nrBase; i++) {
 		for (int j = 0; j < nzBase; j++) {
@@ -75,15 +79,14 @@ void Field::createCVValues() {
 			float r = i * dr + 0.5 * dr;
 
 			glm::vec3 pos = { x, r, 0.0f };
-			float val = getData(pos);
 
-			cvValues.push_back(val);
+			cellValues.push_back(getData(pos));
 		}
 	}
 }
 
 void Field::createBuffer() {
-	textureBuffer.createBuffer(GL_R32F, nzBase + 1, nrBase + 1, GL_RED, GL_FLOAT, processedData.data());
+	textureBuffer.createBuffer(GL_R32F, nzBase + 1, nrBase + 1, GL_RED, GL_FLOAT, vertexValues.data());
 }
 
 double Field::sample(int i, int j) {
@@ -170,17 +173,16 @@ float Field::getData(const glm::vec2& pos) {
 	f21 = sample(i2, j1);
 	f22 = sample(i2, j2);
 
-	float A = (float)(1.0 / ((z2 - z1) * (r2 - r1)));
-	glm::vec2 B((z2 - z), (z - z1));
-	glm::mat2 C(f11, f12, f21, f22);
-	glm::vec2 D((r2 - r), (r - r1));
+	double A = (1.0 / ((z2 - z1) * (r2 - r1)));
+	glm::dvec2 B((z2 - z), (z - z1));
+	glm::dmat2 C(f11, f12, f21, f22);
+	glm::dvec2 D((r2 - r), (r - r1));
 
-	return A * glm::dot(B, (C * D));
+	return (float)(A * glm::dot(B, (C * D)));
 
 }
 
 float Field::getData(const glm::vec3& pos) {
-
 
 	double r = sqrt(pos.y * pos.y + pos.z * pos.z);
 	double z = pos.x;

@@ -168,6 +168,48 @@ void createCylinderTemplate(std::vector<CylinderTemplateVertex>& vertices, std::
 	}
 }
 
+std::vector<CylinderInstance> createRowMergedCylinderInstances(std::vector<float>& field, int nr, int nz, double dz, double dr, float selectedValue, CompareType compareType) {
+
+	std::vector<CylinderInstance> instances;
+
+	for (int i = 0; i < nr; i++) {
+		int j = 0;
+
+		while (j < nz) {
+			int n = i * nz + j;
+
+			if (!compareFloat(field[n], selectedValue, compareType)) {
+				j++;
+				continue;
+			}
+
+			// start selected run
+			int j0 = j;
+
+			while (j < nz && compareFloat(field[i * nz + j], selectedValue, compareType)) {	// we dont use n here, as we want the index to update every loop
+				j++;
+			}
+
+			int j1 = j;
+
+			CylinderInstance inst{};
+
+			inst.x0 = (float)(j0 * dz);				// front
+			inst.x1 = (float)(j1 * dz);				// back
+
+			double r = 0.5 * dr + (double)i * dr;
+
+			inst.innerR = (float)(r - 0.5 * dr);	// inner radius
+			inst.outerR = (float)(r + 0.5 * dr);	// outer radius
+
+			//printFloat(inst.x0, inst.x1, inst.innerR, inst.outerR);
+			instances.push_back(inst);
+		}
+	}
+	//printFloat(instances[0].x0, instances[0].x1, instances[0].innerR, instances[0].outerR);
+	return instances;
+}
+
 Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader) :
 
 	colormap(colormap),
@@ -259,8 +301,8 @@ void Results::generate() {
 
 	// generate all fields (values and buffers)
 	createFields();
-	console->addCompletionMessage("Completed generating field variables");
 	updateCurrentField();
+	console->addCompletionMessage("Completed generating field variables");
 
 	// generate all vertices
 	createOutlineVertices();
@@ -272,7 +314,6 @@ void Results::generate() {
 
 	// initialize outline and colormaps
 	updateOutlineModel();
-	uploadUniforms();
 	console->addCompletionMessage("Completed initializing outlines and uploading colormaps");
 
 	showOutline = true;
@@ -340,6 +381,7 @@ void Results::createOutlineBuffer() {
 void Results::uploadUniforms() {
 
 	shader.use();
+	//printFloat(currentField->vmin, currentField->vmax);
 	shader.SetFloat("vmin", currentField->vmin);
 	shader.SetFloat("vmax", currentField->vmax);
 	shader.SetFloat("R", g.R);
@@ -435,65 +477,11 @@ void Results::createAllCVInstances() {
 			allInstances.push_back({ x0, x1, r0, r1 });
 		}
 	}
-
-	//printFloat(instances[0].x0, instances[0].x1, instances[0].innerR, instances[0].outerR);
 }
 
-std::vector<CylinderInstance> createRowMergedCylinderInstances(const std::vector<float>& field, int nr, int nz, double dz, double dr, float selectedValue, CompareType type) {
+void Results::updateSelectedInstances() {	// might be heavy on the cpu, optimize if AxiSim starts lagging
 
-	std::vector<CylinderInstance> instances;
-
-	for (int i = 0; i < nr; i++) {
-		int j = 0;
-
-		while (j < nz) {
-			int n = i * nz + j;
-
-			if (field[n] <= selectedValue) {
-				j++;
-				continue;
-			}
-
-			// start selected run
-			int j0 = j;
-
-			while (j < nz && field[i * nz + j] > selectedValue) {	// we dont use n here, as we want the index to update every loop
-				j++;
-			}
-
-			int j1 = j;
-
-			CylinderInstance inst{};
-
-			inst.x0 = (float)(j0 * dz);				// front
-			inst.x1 = (float)(j1 * dz);				// back
-
-			double r = 0.5 * dr + (double)i * dr;
-
-			inst.innerR = (float)(r - 0.5 * dr);	// inner radius
-			inst.outerR = (float)(r + 0.5 * dr);	// outer radius
-
-			//printFloat(inst.x0, inst.x1, inst.innerR, inst.outerR);
-			instances.push_back(inst);
-		}
-	}
-	//printFloat(instances[0].x0, instances[0].x1, instances[0].innerR, instances[0].outerR);
-	return instances;
-}
-
-void Results::updateSelectedInstances() {
-
-	//selectedInstances = {
-	//	{
-	//		currentFront,   // x0
-	//		currentBack,    // x1
-	//		currentInner,   // innerR
-	//		currentOuter    // outerR
-	//	}
-	//};
-
-	selectedInstances.clear();
-	selectedInstances = createRowMergedCylinderInstances(currentField->cvValues, g.nr, g.nz, g.dz, g.dr, selectedValue, currentCompareType);
+	selectedInstances = createRowMergedCylinderInstances(currentField->cellValues, g.nr, g.nz, g.dz, g.dr, selectedValue, currentCompareType);
 
 	cvInstanceBuffer.bindVBO();
 	cvInstanceBuffer.bufferSubData(selectedInstances.size() * sizeof(CylinderInstance), selectedInstances.data());
@@ -526,7 +514,7 @@ void Results::drawEdge() {
 void Results::render(Shader& shaderLine, Shader& shaderEdge) {
 
 	if (!isReady) return;
-	updateSelectedInstances();	// might be heavy on the cpu, optimize if AxiSim starts lagging
+	updateSelectedInstances();
 
 	//GLuint query;
 	//glGenQueries(1, &query);
