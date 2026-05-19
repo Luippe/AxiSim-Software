@@ -90,7 +90,7 @@ void SolverGUI::drawPropertiesPanel() {
 			ImGui::EndTable();
 		}
 	}
-	else if (selectedItem == "Residual Type") {
+	else if (selectedItem == "Residuals") {
 		ImGui::SeparatorText("Residual Type");
 
 		if (ImGui::BeginTable("Residual Type Settings", 3)) {
@@ -126,6 +126,33 @@ void SolverGUI::drawPropertiesPanel() {
 			}
 			ImGui::EndTable();
 		}
+
+		ImGui::SeparatorText("Plot Residuals");
+
+		if (ImGui::BeginTable("Plot Residuals", 3)) {
+
+			ImGui::TableSetupColumn("Label1", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+			ImGui::TableSetupColumn("Label2", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+			ImGui::TableSetupColumn("Label3", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::Checkbox("U", &solver.enabledResiduals.plotU);
+			ImGui::TableNextColumn();
+			ImGui::Checkbox("V", &solver.enabledResiduals.plotV);
+			ImGui::TableNextColumn();
+			ImGui::Checkbox("P", &solver.enabledResiduals.plotP);
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::Checkbox("Continuity", &solver.enabledResiduals.plotCont);
+			ImGui::TableNextColumn();
+			ImGui::Checkbox("Temperature", &solver.enabledResiduals.plotTemp);
+			ImGui::TableNextColumn();
+			ImGui::Checkbox("Concentration", &solver.enabledResiduals.plotConc);
+
+			ImGui::EndTable();
+		}
+
 	}
 	else if (selectedItem == "Tolerance") {
 		ImGui::SeparatorText("Tolerance");
@@ -207,7 +234,7 @@ void SolverGUI::draw() {
 		changeCursorOnHover();
 
 		if (ImGui::TreeNodeEx("Convergence", UIFlags::BranchFlags)) {
-			drawLeaf("Residual Type");
+			drawLeaf("Residuals");
 			drawLeaf("Tolerance");
 			ImGui::TreePop();
 		}

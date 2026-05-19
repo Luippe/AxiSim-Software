@@ -42,14 +42,10 @@ void AnimationGUI::loadAnimation(const std::string& filename) {
 		if (!readBinary(in, frame.time)) break;
         if (!readBinary(in, uSol.field, vSol.field, pSol.field)) break;
 
-        //if (frame.time == 0.0) {
-        //    printFloat(uSol.field[15456], uSol.field[15455]);
-        //}
         uField.generate(uSol, uBC);
         vField.generate(vSol, vBC);
         pField.generate(pSol, pBC);
 
-        //uField.vmin = 0.0f;
         uMinMax.vmin = std::min(uField.vmin, uMinMax.vmin);
         uMinMax.vmax = std::max(uField.vmax, uMinMax.vmax);
 
@@ -102,23 +98,10 @@ void AnimationGUI::updateCurrentField() {
     scene.results.currentField = &currentField;
     scene.results.updateTextureBuffer(currentField.vertexValues.data());
 
-
-    //auto minIt = std::min_element(currentField.cellValues.begin(), currentField.cellValues.end());
-
-    //if (minIt != currentField.cellValues.end()) {
-    //    int minIndex = std::distance(currentField.cellValues.begin(), minIt);
-    //    float minValue = *minIt;
-
-    //    //printFloat(minValue);
-    //    //printInt(minIndex, nr, nz);
-    //    //std::cout << "Min value: " << minValue << "\n";
-    //    //std::cout << "Index: " << minIndex << "\n";
-    //}
-    //scene.results.currentField->setMinMax(
-    //    minmaxGlobals[scene.results.currentItem].vmin,
-    //    minmaxGlobals[scene.results.currentItem].vmax
-    //);
-
+    scene.results.currentField->setMinMax(
+        minmaxGlobals[scene.results.currentItem].vmin,
+        minmaxGlobals[scene.results.currentItem].vmax
+    );
 
 }
 

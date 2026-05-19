@@ -22,6 +22,7 @@ public:
 	const char* bcTypeNames[2] = {"Constant", "Flux"};
 	const char* bcInletTypeNames[3]{ "Constant", "Flux", "Fully Developed" };
 	const char* convectionDiscretizationType[3] = { "First Order Upwind", "Central Difference", "Second Order Upwind"};
+	const char* residualPlotType[6] = { "U", "V", "P", "Continuity", "Temperature", "Concentration" };
 
 	FieldType currentField = FIELD_AXIAL_VELOCITY;
 	VelocitySolverType currentVelocitySolver = SOLVER_SIMPLE;
@@ -33,6 +34,13 @@ public:
 	bool addConvectionTerm = false;
 	bool transient = false;
 	int saveKeyFrameIter = 2;
+
+	std::thread solverThread;
+	cudaStream_t stream = nullptr;
+
+	bool solverRunning = false;
+	bool continueSolver = false;
+	bool solutionReady = false;
 
 	double dt = 0.1;
 	double tEnd = 2.0;
@@ -49,6 +57,7 @@ public:
 	IterationConfig& itr;
 	VariableUnits& varUnits;
 	ResidualPlot residualPlot;
+	Console* console = nullptr;
 
 	// config for boundary conditions
 	BoundaryConditionConfig uBC;
@@ -62,12 +71,8 @@ public:
 	SolutionField pSol;
 	SolutionField concSol;
 
-	std::thread solverThread;
-	cudaStream_t stream = nullptr;
-	Console* console = nullptr;
-	bool solverRunning = false;
-	bool continueSolver = false;
-	bool solutionReady = false;
+	// which variables will the residual plot show?
+	EnabledResiduals enabledResiduals;
 
 	// config for simple algorithm
 	ConfigSimple configSimple;

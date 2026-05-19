@@ -60,6 +60,21 @@ enum ConvectionScheme {
 	CONV_QUICK
 };
 
+struct EnabledResiduals {
+	bool plotU = true;
+	bool plotV = true;
+	bool plotP = false;
+	bool plotCont = true;
+	bool plotTemp = false;
+	bool plotConc = false;
+};
+
+struct ResidualPrintItem {
+	const char* name;
+	bool enabled;
+	double* residual;
+};
+
 struct BoundaryCondition {
 	BCType type = DIRICHLET;
 	double val = 0.0;

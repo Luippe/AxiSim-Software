@@ -69,7 +69,7 @@ void GUI::changeCursorOnHover() {
 
 void GUI::drawUI() {
 	ImGui::Begin("Project");
-	if (ImGui::BeginTabBar("Main")) {
+	if (ImGui::BeginTabBar("Main"), UIFlags::TabBarFlags) {
 
 		meshGUI.draw();
 

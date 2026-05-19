@@ -84,6 +84,8 @@ void ResultsGUI::draw() {
 	if (ImGui::BeginTabItem("Results")) {
 		scene.currentTab = TAB_RESULTS;
 
+		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
+
 		if (ImGui::BeginTable("Field", 2)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
 			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
@@ -95,8 +97,6 @@ void ResultsGUI::draw() {
 
 			ImGui::EndTable();
 		}
-
-		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
 		if (ImGui::TreeNodeEx("General", UIFlags::BranchFlags)) {
 			drawLeaf("Settings");

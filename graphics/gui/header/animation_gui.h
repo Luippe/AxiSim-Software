@@ -5,7 +5,6 @@
 #include "field_manager.h"
 #include "solver_struct.h"
 
-
 struct SceneView;
 
 class AnimationGUI {

@@ -1,4 +1,9 @@
 #include "solver.h"
+
+#include <array>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
 #include "printer.h"
 #include "manage_file.h"
 #include "memory_manager.h"
@@ -8,7 +13,6 @@
 #include "scene_view.h"
 #include "residuals.cuh"
 #include "solver_util.cuh"
-#include <chrono>
 
 #define CUDA_CHECK(x) do { \
   cudaError_t err = (x); \
@@ -18,6 +22,24 @@
   } \
 } while(0)
 
+template <size_t N>
+void printResidualConsole(int currentIteration, const std::array<ResidualPrintItem, N>& residualsToPrint, Console* console) {
+    std::ostringstream line;
+
+    line << "ITERAITON: " << currentIteration;
+    line << std::scientific << std::setprecision(6);
+
+    for (const ResidualPrintItem& item : residualsToPrint) {
+        if (!item.enabled) continue;
+
+        line << "  " << item.name << ": " << *item.residual;
+
+    }
+
+    line << "\n";
+
+    console->addLine(line.str());
+}
 
 Solver::Solver(SceneView & scene, Config & config) :
     scene(scene),
@@ -26,7 +48,7 @@ Solver::Solver(SceneView & scene, Config & config) :
     f(config.f),
     itr(config.itr),
     varUnits(config.varUnits),
-    residualPlot(*this, { "Axial", "Radial" ,"Continuity"}) {
+    residualPlot(*this) {
 
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
     //setDefault();
@@ -217,8 +239,23 @@ void Solver::runSimple() {
     ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
     allocateGridConfig(configSolver.g, configSolver.f);
 
+
+    // initialize residuals
+    std::array<ResidualPrintItem, 6> residualsToPrint = { {
+        {"U",             enabledResiduals.plotU,   &uCoeff.resVal},
+        {"V",             enabledResiduals.plotV,   &vCoeff.resVal},
+        {"P",             enabledResiduals.plotP,   nullptr},
+        {"Continuity",    enabledResiduals.plotCont, &contCoeff.resVal},
+        {"Temperature",   enabledResiduals.plotTemp, nullptr},
+        {"Concentration", enabledResiduals.plotConc, nullptr}
+    } };
+
+
+
     // allocate memory
     if (!solutionReady || !continueSolver) {
+
+        residualPlot.setName(residualsToPrint);
 
         allocateCoefficients(configSolver, uCoeff, uBC, CellStoreType::AXIAL);
         allocateCoefficients(configSolver, vCoeff, vBC, CellStoreType::RADIAL);
@@ -237,7 +274,7 @@ void Solver::runSimple() {
     const int uBlocks = (Nu + threadsPerBlock - 1) / threadsPerBlock;
     const int vBlocks = (Nv + threadsPerBlock - 1) / threadsPerBlock;
     const int maxBlocks = (std::max({ uCoeff.N,vCoeff.N,ppCoeff.N }) + threadsPerBlock - 1) / threadsPerBlock;
-    double uRes, vRes, contRes;
+
 
     // open file if transient is turned on
     std::ofstream out;
@@ -248,8 +285,16 @@ void Solver::runSimple() {
         writeBoundaryConditionConfig(out, uBC);
         writeBoundaryConditionConfig(out, vBC);
         writeBoundaryConditionConfig(out, pBC);
+        
+        // save initial field
+        saveBinary(out, (double)0 * dt,
+            copyDeviceToHostVector(simple.u, Nu),
+            copyDeviceToHostVector(simple.v, Nv),
+            copyDeviceToHostVector(simple.p, N));
 
     }
+
+
 
     // record time
     CudaTimer timer;
@@ -320,16 +365,10 @@ void Solver::runSimple() {
 
                 residualAllHost(configResidual, uCoeff, vCoeff, contCoeff);
 
-                uRes = uCoeff.resVal;
-                vRes = vCoeff.resVal;
-                contRes = contCoeff.resVal;
+                residualPlot.add(currentIteration, residualsToPrint);
 
-                residualPlot.add(currentIteration, uRes, vRes, contRes);
+                printResidualConsole(currentIteration, residualsToPrint, console);
 
-                char buffer[256];
-                std::snprintf(buffer, sizeof(buffer), "ITERATION: %d   U: %e  V: %e  Continuity: %e\n", currentIteration, uRes, vRes, contRes);
-                std::string line(buffer);
-                console->addLine(line);
                 //if (contRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
             }
             currentIteration++;
@@ -338,11 +377,7 @@ void Solver::runSimple() {
         if (tCount % saveKeyFrameIter == 0) {
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
-            if (tCount == 0) {
-                std::vector<double> u = copyDeviceToHostVector(simple.u, Nu);
-                printFloat(u[15456], u[15455]);
-            }
-            saveBinary(out, (double)tCount * dt, 
+            saveBinary(out, (double)(tCount + 1) * dt, 
                 copyDeviceToHostVector(simple.u, Nu), 
                 copyDeviceToHostVector(simple.v, Nv),
                 copyDeviceToHostVector(simple.p, N));

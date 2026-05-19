@@ -16,13 +16,23 @@ namespace UIFlags {
 	inline constexpr ImGuiWindowFlags BaseDockWindowFlags =
 		ImGuiWindowFlags_NoCollapse;
 
-	inline constexpr ImGuiDockNodeFlags BaseDockspaceFlags =
-		ImGuiDockNodeFlags_NoWindowMenuButton;
-
 	inline constexpr ImGuiWindowFlags AnimationWindowFlags =
 		ImGuiWindowFlags_NoTitleBar |
 		ImGuiWindowFlags_NoResize |
 		ImGuiWindowFlags_NoMove |
 		ImGuiWindowFlags_NoCollapse;
+
+	inline constexpr ImGuiWindowFlags ResidualTabBarFlags =
+		ImGuiWindowFlags_NoCollapse |
+		ImGuiWindowFlags_NoMove;
+
+	inline constexpr ImGuiTabBarFlags TabBarFlags = ImGuiTabItemFlags_NoReorder;
+
+	inline constexpr ImGuiDockNodeFlags BaseDockspaceFlags =
+		ImGuiDockNodeFlags_NoWindowMenuButton;
+
+	inline constexpr ImGuiDockNodeFlags ResidualDockSpaceFlags =
+		ImGuiDockNodeFlags_None |
+		ImGuiDockNodeFlags_NoCloseButton;
 }
 

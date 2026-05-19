@@ -356,9 +356,6 @@ void Results::updateCurrentField() {
 		currentItem = 3;
 		break;
 	}
-
-	updateSelectedInstances();
-	uploadUniforms();
 }
 
 void Results::createOutlineBuffer() {
