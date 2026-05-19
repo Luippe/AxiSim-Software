@@ -61,7 +61,7 @@ void Field::createVertexValues() {
 			float x = j * dz;
 			float r = i * dr;
 
-			glm::vec3 pos = { x, r, 0.0f };
+			glm::vec2 pos = { x, r };
 
 			vertexValues.push_back(getData(pos));
 		}
@@ -78,7 +78,7 @@ void Field::createCellValues() {
 			float x = j * dz + 0.5 * dz;
 			float r = i * dr + 0.5 * dr;
 
-			glm::vec3 pos = { x, r, 0.0f };
+			glm::vec2 pos = { x, r };
 
 			cellValues.push_back(getData(pos));
 		}
@@ -155,8 +155,8 @@ float Field::getData(const glm::vec2& pos) {
 
 	double f11, f12, f21, f22;
 
-	double z = pos.x;
-	double r = pos.y;
+	double z = (double)pos.x;
+	double r = (double)pos.y;
 
 	int i1 = (r - yOffset) / dr;
 	int j1 = (z - xOffset) / dz;

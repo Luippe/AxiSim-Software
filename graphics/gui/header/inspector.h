@@ -21,15 +21,18 @@ public:
 	// toolbar is drawn first, then the 2D field is rendered using the remaining space
 	void render();
 
-	// update the texture buffer
-	void updateTextureBuffer(const void* data);
-
 	// upload all uniforms to shader
 	void uploadUniforms();
 
 	bool keepAspectRatio = false;
 
 private:
+
+	// structs
+	struct AppAssets {
+		TextureBuffer houseIcon;
+		TextureBuffer clearIcon;
+	};
 
 	// ----------dependencies-----------
 	SceneView& scene;
@@ -45,7 +48,6 @@ private:
 	std::vector<float> quadVertices;
 
 	// ----------resources-----------
-	//TextureBuffer textureBuffer;
 	AppAssets assets;
 	FrameBuffer frameBuffer;
 	VertexBuffer vertexBuffer;
@@ -79,7 +81,6 @@ private:
 	const float circleRadius = 3.0f;
 	std::vector<int> selectedIndices;
 	std::vector<InspectorPoint> points;
-	std::vector<ImVec2> textPos;
 
 	// create a rectangular quad
 	void createFullScreenQuad();

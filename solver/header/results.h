@@ -57,6 +57,9 @@ public:
 	// update instances for instanced rendering
 	void updateSelectedInstances();
 
+	// update current buffer with new data, as texture buffers cannot be copied over, they must be updated instead
+	void updateTextureBuffer(const void* data);
+
 	std::vector<Vertex> vertices;
 	std::vector<CylinderTemplateVertex> verticesCV;
 	std::vector<unsigned int> indicesCV;

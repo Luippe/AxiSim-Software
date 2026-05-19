@@ -15,7 +15,7 @@ Inspector::Inspector(SceneView& scene) :
 	// radial location
 	frameBuffer.createBuffer(100, 100);
 	assets.houseIcon.createBuffer("assets/icons/house.png");
-
+	assets.clearIcon.createBuffer("assets/icons/circle-x.png");
 }
 
 void updateUV(float& u0, float& u1, float& v0, float& v1, ImVec2& zoomCenter, float halfW, float halfH) {
@@ -79,6 +79,14 @@ void Inspector::uploadUniforms() {
 	inspectorShader.SetFloat("vmax", results.currentField->vmax);
 	inspectorShader.SetInt("fieldTex", 0);
 	inspectorShader.SetInt("uColormap", 1);
+
+	//float vmin = results.currentField->vmin;
+	//float vmax = results.currentField->vmax;
+
+	//float denom = std::max(vmax - vmin, 1e-12f);
+	//float value = -0.018f;
+	//float t = (value - vmin) / denom;
+	//printFloat(t);
 }
 
 
@@ -173,9 +181,9 @@ void Inspector::displayTextValue() {
 		);
 
 		std::string label = std::format(
-			"i: {:.0f}\nj: {:.0f}\nvalue: {:.3f}",
-			point.dataPos.x,
+			"i: {:.0f}\nj: {:.0f}\nvalue: {:.5f}",
 			point.dataPos.y,
+			point.dataPos.x,
 			point.value
 		);
 
@@ -292,7 +300,11 @@ void Inspector::drawToolBar() {
 		zoom = 1.0f;
 		zoomCenter = ImVec2(0.5f, 0.5f);
 		updateUV(u0, u1, v0, v1, zoomCenter, 0.5, 0.5);
+	}
 
+	ImGui::SameLine();
+	if (ImGui::ImageButton("##ClearPoints", (ImTextureID)(intptr_t)assets.clearIcon.getTextureID(), ImVec2(22.0f, 22.0f))) {
+		points.clear();
 	}
 
 	ImGui::SameLine();
@@ -309,13 +321,21 @@ void Inspector::renderPreview() {
 	glViewport(0, 0, imageWidth, imageHeight);
 	glDisable(GL_DEPTH_TEST);
 	glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT);
 
 	inspectorShader.use();
 	uploadUniforms();
 
 	glActiveTexture(GL_TEXTURE0);
 	results.currentField->textureBuffer.bind();
+
+	//float vmin = results.currentField->vmin;
+	//float vmax = results.currentField->vmax;
+
+	//float denom = std::max(vmax - vmin, 1e-12f);
+	//float value = 0.027f;
+	//float t = (value - vmin) / denom;
+	//printFloat(t);
 
 	glActiveTexture(GL_TEXTURE1);
 	results.colormap.bind();
@@ -324,7 +344,10 @@ void Inspector::renderPreview() {
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 	vertexBuffer.unbind();
 
+	glActiveTexture(GL_TEXTURE1);
 	results.colormap.unbind();
+
+	glActiveTexture(GL_TEXTURE0);
 	results.currentField->textureBuffer.unbind();
 
 	frameBuffer.unbind();

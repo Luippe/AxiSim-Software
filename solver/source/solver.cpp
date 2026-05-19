@@ -278,10 +278,10 @@ void Solver::runSimple() {
                 addVConvectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC, convectionScheme);
             }
 
-    //        if (configSolver.transient) {
-				//addUTransientCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
-				//addVTransientCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
-    //        }
+            if (configSolver.transient) {
+				addUTransientCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
+				addVTransientCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
+            }
 
             finalizeCoefficients << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff);
             finalizeCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff);
@@ -338,6 +338,10 @@ void Solver::runSimple() {
         if (tCount % saveKeyFrameIter == 0) {
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
+            if (tCount == 0) {
+                std::vector<double> u = copyDeviceToHostVector(simple.u, Nu);
+                printFloat(u[15456], u[15455]);
+            }
             saveBinary(out, (double)tCount * dt, 
                 copyDeviceToHostVector(simple.u, Nu), 
                 copyDeviceToHostVector(simple.v, Nv),

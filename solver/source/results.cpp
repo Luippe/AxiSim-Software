@@ -243,6 +243,10 @@ void Results::updateAfterLoadingFile() {
 
 }
 
+void Results::updateTextureBuffer(const void* data) {
+	currentField->textureBuffer.updateBuffer(g.nz + 1, g.nr + 1, GL_RED, GL_FLOAT, data);
+}
+
 void Results::createBuffer() {
 
 	createCylinderTemplate(verticesCV, indicesCV, nseg);
@@ -524,16 +528,26 @@ void Results::render(Shader& shaderLine, Shader& shaderEdge) {
 
 	glActiveTexture(GL_TEXTURE0);
 	currentField->textureBuffer.bind();
+
 	glActiveTexture(GL_TEXTURE1);
 	colormap.bind();
 
+	//float vmin = currentField->vmin;
+	//float vmax = currentField->vmax;
+
+	//float denom = std::max(vmax - vmin, 1e-12f);
+	//float value = 0.027f;
+	//float t = (value - vmin) / denom;
+	//printFloat(t);
+
 	cvBuffer.bind();
-
 	glDrawElementsInstanced(GL_TRIANGLES, (GLsizei)(indicesCV.size()), GL_UNSIGNED_INT, 0, (GLsizei)(selectedInstances.size()));
-
 	cvBuffer.unbind();
 
+	glActiveTexture(GL_TEXTURE1);
 	colormap.unbind();
+
+	glActiveTexture(GL_TEXTURE0);
 	currentField->textureBuffer.unbind();
 
 	shaderLine.use();

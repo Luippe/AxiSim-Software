@@ -33,9 +33,7 @@ struct VertexLine {
 	glm::vec3 color;
 };
 
-struct AppAssets {
-	TextureBuffer houseIcon;
-};
+
 
 enum ViewTab {
 	TAB_MESH = 0,
