@@ -1,6 +1,7 @@
 #include "buffer_manager.h"
 #include <cstdio>
 #include "stb_image.h"
+#include "printer.h"
 
 // ===================================================================
 // --------------------------Frame Buffer---------------------------
@@ -38,7 +39,9 @@ void FrameBuffer::createBuffer(int width, int height, int samples) {
 
 	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_2D, texture);
+
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -50,8 +53,55 @@ void FrameBuffer::createBuffer(int width, int height, int samples) {
 		printf("Resolve framebuffer is not complete\n");
 	}
 
-	unbind();
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+}
+
+void FrameBuffer::createSimpleBuffer(int width, int height) {
+
+	this->width = width;
+	this->height = height;
+
+	if (FBO) {
+		deleteBuffer();
+	}
+
+	glGenFramebuffers(1, &FBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, texture, 0);
+
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		printf("Simple framebuffer is not complete\n");
+	}
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+std::vector<unsigned char> FrameBuffer::readPixelsRGBA() {
+	std::vector<unsigned char> pixels(width * height * 4);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+	glReadBuffer(GL_COLOR_ATTACHMENT0);
+
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
+
+	glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	return pixels;
 }
 
 void FrameBuffer::deleteBuffer() {
@@ -64,6 +114,7 @@ void FrameBuffer::deleteBuffer() {
 
 void FrameBuffer::bind() {
 	glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+	glViewport(0, 0, width, height);
 }
 
 void FrameBuffer::unbind() {
@@ -77,7 +128,7 @@ void FrameBuffer::resolve() {
 
 	glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-	unbind();
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 unsigned int FrameBuffer::getTextureID() {

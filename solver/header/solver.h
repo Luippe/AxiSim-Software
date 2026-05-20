@@ -56,8 +56,10 @@ public:
 	FluidPropertyConfig& f;
 	IterationConfig& itr;
 	VariableUnits& varUnits;
-	ResidualPlot residualPlot;
+
+	// gui classes
 	Console* console = nullptr;
+	ResidualPlot* residualPlot = nullptr;
 
 	// config for boundary conditions
 	BoundaryConditionConfig uBC;

@@ -1,14 +1,18 @@
 #include "pch.h"
 #include <format>
 #include "residual_plot.h"
+#include "graphics_struct.h"
 #include "gui_manager.h"
 #include "implot.h"
 #include "solver.h"
 #include "printer.h"
+#include "clip.h"
+#include <algorithm>
 
 
-ResidualPlot::ResidualPlot(Solver& solver) :
-    solver(solver){
+ResidualPlot::ResidualPlot(Solver& solver, AppAssets& assets) :
+    solver(solver),
+    assets(assets){
 
 }
 
@@ -20,13 +24,22 @@ void ResidualPlot::resetState() {
     marker.MarkerSize = 5.0f;
     marker.LineWeight = 0.0f;
     tabs[activeTabID].plots.clear();
-
-    clickedPos.clear();
+    tabs[activeTabID].clickedPos.clear();
+    tabs[activeTabID].iterations.clear();
+    //tabs[activeTabID]
+    //clickedPos.clear();
 
 }
 
-void ResidualPlot::clearPlot() {
 
+void ResidualPlot::clearPlot(int i) {
+    tabs[i].clickedPos.clear();
+}
+
+void setToolTip(const char* text){
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", text);
+    }
 }
 
 int findClosestX(const std::vector<double>& x, double mouseX) {
@@ -80,6 +93,112 @@ int closestPlotY(std::vector<Plot>& plots, int idx, double mouseY) {
     return best;
 }
 
+bool copyRGBAToClipboard(const unsigned char* rgbaBottomUp, int width, int height) {
+
+    // flip image
+    std::vector<unsigned char> flipped(width * height * 4);
+
+    for (int y = 0; y < height; ++y) {
+        std::memcpy(&flipped[y * width * 4], &rgbaBottomUp[(height - 1 - y) * width * 4], width * 4);
+    }
+    // force image to be opaque
+    for (int i = 0; i < width * height; ++i) {
+        flipped[i * 4 + 3] = 255;
+    }
+    // make spec
+    clip::image_spec spec;
+    spec.width = width;
+    spec.height = height;
+    spec.bits_per_pixel = 32;
+    spec.bytes_per_row = width * 4;
+
+    // data layout is RGBA: R, G, B, A
+    spec.red_mask = 0x000000ff;
+    spec.green_mask = 0x0000ff00;
+    spec.blue_mask = 0x00ff0000;
+    spec.alpha_mask = 0xff000000;
+
+    spec.red_shift = 0;
+    spec.green_shift = 8;
+    spec.blue_shift = 16;
+    spec.alpha_shift = 24;
+
+    clip::image img(flipped.data(), spec);
+    return clip::set_image(img);
+}
+
+bool ResidualPlot::copyActivePlotToClipboard(int ID, int width, int height) {
+
+    // get current framebuffer and store it so we can rebind it later
+    GLint oldFBO = 0;
+    GLint oldViewport[4];
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &oldFBO);
+    glGetIntegerv(GL_VIEWPORT, oldViewport);
+
+    // bind new frame buffer
+    offScreenFBO.createSimpleBuffer(width, height);
+    offScreenFBO.bind();
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // start a temporary imgui frame
+    ImGui_ImplOpenGL3_NewFrame();
+
+    ImGuiIO& io = ImGui::GetIO();
+    ImVec2 oldDisplaySize = io.DisplaySize;
+    ImVec2 oldFramebufferScale = io.DisplayFramebufferScale;
+
+    io.DisplaySize = ImVec2((float)width, (float)height);
+    io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+
+    ImGui::NewFrame();
+
+    // build imgui draw commands
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2((float)width, (float)height));
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::Begin("##ExportWindow", nullptr, UIFlags::TemporaryWindowFlags);
+
+    // draw the plot which will be copied. but first set the axes to the correct limits
+    ImPlot::SetNextAxesLimits(
+        tabs[ID].currentLimits.X.Min,
+        tabs[ID].currentLimits.X.Max,
+        tabs[ID].currentLimits.Y.Min,
+        tabs[ID].currentLimits.Y.Max,
+        ImGuiCond_Always
+    );
+
+    if (ImPlot::BeginPlot("Solver Residuals", ImVec2((float)width, (float)height), ImPlotFlags_NoMouseText)) {
+
+        drawPlotData(tabs[ID]);
+
+        ImPlot::EndPlot();
+    }
+
+    ImGui::End();
+    ImGui::PopStyleVar();
+
+    // render the imgui frame
+    ImGui::Render();
+
+    offScreenFBO.bind();
+    glDrawBuffer(GL_COLOR_ATTACHMENT0);
+
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    std::vector<unsigned char> pixels = offScreenFBO.readPixelsRGBA();
+    bool copied = copyRGBAToClipboard(pixels.data(), width, height);
+ 
+    io.DisplaySize = oldDisplaySize;
+    io.DisplayFramebufferScale = oldFramebufferScale;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, oldFBO);
+    glViewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
+
+    return copied;
+}
+
 void ResidualPlot::setupAxes() {
     if (solver.solverRunning) {
         ImPlot::SetupAxes("Iteration", "Residual", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
@@ -98,16 +217,17 @@ void displayTextAtPos(double x, double y, ImPlotSpec& marker) {
 
 }
 
-void ResidualPlot::addTab() {
+void ResidualPlot::addTab(ImGuiID targetDockID) {
 
     ResidualPlotTab tab;
+
     tab.id = nextTabID++;
     tab.name = "Residual Plot " + std::to_string(tab.id);
     tab.newlyCreated = true;
+    tab.targetDockID = targetDockID;
 
     tabs.push_back(std::move(tab));
     activeTabID = (int)tabs.size() - 1;
-
 
 }
 
@@ -121,12 +241,11 @@ void ResidualPlot::setName(const std::array<ResidualPrintItem, 6>& residualsToPl
     }
 }
 
-void ResidualPlot::handleEvents(ResidualPlotTab& tab) {
+// ======================================================================
+// -----------------------HANDLE EVENTS----------------------------------
+// ======================================================================
+void ResidualPlot::handlePlotEvents(ResidualPlotTab& tab) {
 
-    // always draw all stored markers and text
-    for (const TextPos& textPos : clickedPos) {
-        displayTextAtPos(textPos.iteration, textPos.residual, marker);
-    }
 
     if (!ImPlot::IsPlotHovered() || tab.iterations.empty()) return;
 
@@ -144,82 +263,157 @@ void ResidualPlot::handleEvents(ResidualPlotTab& tab) {
 
         // draw text at hovered location and store it if clicked
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            clickedPos.push_back({
+            tab.clickedPos.push_back({
                 tab.iterations[idx],
                 tab.plots[p].y[idx]
                 });
         }
     }
+}
 
-    // double clicking removes all markers
-    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        clickedPos.clear();
+void ResidualPlot::handleKeyEvents() {
+
+}
+
+// ======================================================================
+// -----------------------DRAW CALLS-------------------------------------
+// ======================================================================
+void ResidualPlot::drawPlotData(ResidualPlotTab& tab) {
+
+    setupAxes();
+
+    // draw plot
+    for (const Plot& plot : tab.plots) {
+
+        int count = (int)std::min(tab.iterations.size(), plot.y.size());
+
+        if (count > 0) {
+            ImPlot::PlotLine(plot.name.c_str(), tab.iterations.data(), plot.y.data(), count);
+        }
+    }
+
+    // draw text
+    for (const TextPos& textPos : tab.clickedPos) {
+        displayTextAtPos(textPos.iteration, textPos.residual, marker);
     }
 }
 
+void ResidualPlot::drawPlot(ResidualPlotTab& tab) {
 
-void ResidualPlot::drawPlotTab(ResidualPlotTab& tab) {
+    if (tab.resetView) {
+        ImPlot::SetNextAxesToFit();
+        tab.resetView = false;
+    }
 
     if (ImPlot::BeginPlot("Solver Residuals", ImVec2(-1, 420), ImPlotFlags_NoMouseText)) {
 
-        setupAxes();
+        drawPlotData(tab);
 
-        for (const Plot& plot : tab.plots) {
+        handlePlotEvents(tab);
 
-            int count = (int)std::min(tab.iterations.size(), plot.y.size());
-
-            if (count > 0) {
-                ImPlot::PlotLine(plot.name.c_str(), tab.iterations.data(), plot.y.data(), count);
-            }
-        }
-
-        handleEvents(tab);
+        tab.currentLimits = ImPlot::GetPlotLimits();
 
         ImPlot::EndPlot();
     }
+
+    // if we want to copy the image
+    if (tab.copyImageNextFrame) {
+
+        ImVec2 plotSize = ImGui::GetItemRectSize();
+
+
+        pendingCopyTabID = activeTabID;
+        pendingCopyWidth = (int)plotSize.x;
+        pendingCopyHeight = (int)plotSize.y;
+        pendingCopy = true;
+
+        tab.copyImageNextFrame = false;
+
+    }
 }
+
+void ResidualPlot::drawToolBar(ResidualPlotTab& tab, int i, ImGuiID currentDockID, ImGuiID& pendingAddDockID, ImGuiID dockspaceID) {
+
+    ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
+
+    if (ImGui::ImageButton("##AddTab", (ImTextureID)(intptr_t)assets.plusIcon.getTextureID(), ImVec2(iconSize, iconSize))) {
+        pendingAddDockID = currentDockID != 0 ? currentDockID : dockspaceID;
+    }
+
+    setToolTip("Add new tab");
+    ImGui::SameLine();
+
+    if (ImGui::ImageButton("##ResetView", (ImTextureID)(intptr_t)assets.houseIcon.getTextureID(), ImVec2(iconSize, iconSize))) {
+        tab.resetView = true;
+    }
+
+    setToolTip("Reset view");
+    ImGui::SameLine();
+
+    if (ImGui::ImageButton("##ClearPoints", (ImTextureID)(intptr_t)assets.clearIcon.getTextureID(), ImVec2(iconSize, iconSize))) {
+        clearPlot(i);
+    }
+
+    setToolTip("Clear all selected points");
+    ImGui::SameLine();
+
+    if (ImGui::ImageButton("##CopyToClipboard", (ImTextureID)(intptr_t)assets.copyIcon.getTextureID(), ImVec2(iconSize, iconSize))) {
+        tab.copyImageNextFrame = true;
+        pendingCopy = true;
+    }
+
+    setToolTip("Copy to clipboard");
+    ImGui::SameLine();
+
+    ImGui::EndChild();
+
+}
+
 void ResidualPlot::drawTabs(ImGuiID dockspaceID, const ImGuiWindowClass& residualClass) {
 
     int tabToClose = -1;
+    ImGuiID pendingAddDockID = 0;
 
-    if (ImGui::BeginTabBar("ResidualPlotTabs", UIFlags::TabBarFlags)) {
+    for (int i = 0; i < tabs.size(); i++) {
+        ResidualPlotTab& tab = tabs[i];
 
-        for (int i = 0; i < tabs.size(); i++) {
-            ResidualPlotTab& tab = tabs[i];
+        bool open = true;
 
-            bool open = true;
+        // set window class and dock id. make newly created tabs always docked next the other tabs
+        ImGui::SetNextWindowClass(&residualClass);
 
-            // set window class and dock id. make newly created tabs always docked next the other tabs
-            ImGui::SetNextWindowClass(&residualClass);
-
-            if (tabs[i].newlyCreated) {
-                ImGui::SetNextWindowDockID(dockspaceID, ImGuiCond_Always);
-                tabs[i].newlyCreated = false;
-            }
-            else {
-                ImGui::SetNextWindowDockID(dockspaceID, ImGuiCond_FirstUseEver);
-            }
-
-
-            // draw tab
-            if (ImGui::Begin(tab.name.c_str(), &open)) {
-
-                if (ImGui::IsWindowFocused()) {
-                    activeTabID = i;
-                }
-
-                drawPlotTab(tab);
-   
-            }
-
-            ImGui::End();
-
-            if (!open) {
-                tabToClose = i;
-            }
+        if (tabs[i].newlyCreated) {
+            ImGui::SetNextWindowDockID(tab.targetDockID, ImGuiCond_Always);
+            tabs[i].newlyCreated = false;
+        }
+        else {
+            ImGui::SetNextWindowDockID(dockspaceID, ImGuiCond_FirstUseEver);
         }
 
-        ImGui::EndTabBar();
+
+        // draw plot
+        if (ImGui::Begin(tab.name.c_str(), &open)) {
+
+            ImGuiID currentDockID = ImGui::GetWindowDockID();
+       
+            ImGui::PushID(tab.id);
+
+            if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+                activeTabID = i;
+            }
+
+            drawToolBar(tab, i, currentDockID, pendingAddDockID, dockspaceID);
+            //printInt(currentDockID, pendingAddDockID);
+            drawPlot(tab);
+               
+            ImGui::PopID();
+        }
+
+        ImGui::End();
+
+        if (!open) {
+            tabToClose = i;
+        }
     }
 
     // remove tabs
@@ -229,6 +423,10 @@ void ResidualPlot::drawTabs(ImGuiID dockspaceID, const ImGuiWindowClass& residua
         activeTabID = (int)tabs.size() - 1; // move to the right tab after closing a tab
     }
 
+    // add tab if plus button was pressed
+    if (pendingAddDockID != 0 || tabs.empty()) {
+        addTab(pendingAddDockID != 0 ? pendingAddDockID : dockspaceID);
+    }
 }
 
 // ======================================================================
@@ -239,19 +437,20 @@ void ResidualPlot::draw() {
 
     std::lock_guard<std::mutex> lock(mutex); 
 
+    // create dockspace id and class
     ImGuiID dockspaceID = ImGui::GetID("ResidualPlotDockSpace");
     ImGuiID classID = ImGui::GetID("ResidualPlotDockClass");
 
     ImGuiWindowClass residualClass;
     residualClass.ClassId = classID;
+    residualClass.DockingAlwaysTabBar = true;
 
     // prevent unclassed windows from docking here, and prevents reisudal windows from docking into normal dockspace
     residualClass.DockingAllowUnclassed = false;
 
-    if (ImGui::SmallButton("+") || tabs.empty()) {
-        addTab();
-    }
-    ImGui::Separator();
+    //if (tabs.empty()) {
+    //    addTab();
+    //}
 
     ImGui::DockSpace(dockspaceID, ImGui::GetContentRegionAvail(), UIFlags::ResidualDockSpaceFlags, &residualClass);
 
@@ -259,4 +458,5 @@ void ResidualPlot::draw() {
 
     drawTabs(dockspaceID, residualClass);
 
+    handleKeyEvents();
 }

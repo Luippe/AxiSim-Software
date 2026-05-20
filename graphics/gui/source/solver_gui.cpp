@@ -4,6 +4,7 @@
 #include "graphics_struct.h"
 #include "solver_struct.h"
 #include "gui_manager.h"
+#include "printer.h"
 
 SolverGUI::SolverGUI(SceneView& scene) :
 	scene(scene),

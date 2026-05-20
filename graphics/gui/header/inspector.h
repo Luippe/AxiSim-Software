@@ -14,7 +14,7 @@ class SceneView;
 class Inspector {
 public:
 
-	Inspector(SceneView& scene);
+	Inspector(SceneView& scene, AppAssets& assets);
 
 	void generate();
 
@@ -27,12 +27,6 @@ public:
 	bool keepAspectRatio = false;
 
 private:
-
-	// structs
-	struct AppAssets {
-		TextureBuffer houseIcon;
-		TextureBuffer clearIcon;
-	};
 
 	// ----------dependencies-----------
 	SceneView& scene;
@@ -48,7 +42,7 @@ private:
 	std::vector<float> quadVertices;
 
 	// ----------resources-----------
-	AppAssets assets;
+	AppAssets& assets;
 	FrameBuffer frameBuffer;
 	VertexBuffer vertexBuffer;
 	Shader inspectorShader;

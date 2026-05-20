@@ -7,6 +7,7 @@
 #include "mesh_gui.h"
 #include "menu.h"
 #include "animation_gui.h"
+#include "residual_plot.h"
 
 class Results;
 class SceneView;
@@ -24,6 +25,8 @@ public:
 	Inspector inspector;
 	Console console;
 	Menu menu;
+	AppAssets assets;
+	ResidualPlot residualPlot;
 	Mesh& mesh;
 	Solver& solver;
 	Results& results;
@@ -47,12 +50,18 @@ public:
 	void render();
 
 private:
-	// change the cursor when hovering over certain UI elements
-	void changeCursorOnHover();
+	// main context
+	ImGuiContext* mainImGuiContext = nullptr;
+	ImPlotContext* mainImPlotContext = nullptr;
+
+	// a different context to copy images, so it doesnt affect the main app ui
+	ImGuiContext* exportImGuiContext = nullptr;
+	ImPlotContext* exportImPlotContext = nullptr;
+
 
 	void drawUI();
 
-	void initGUIBuffer(GLFWwindow* window);
+	void createAssetBuffers();
 };
 
 

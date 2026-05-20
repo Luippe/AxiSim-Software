@@ -21,7 +21,8 @@
 		"files" : 
 		[
 			"C:/Users/luits/vcpkg/scripts/buildsystems/vcpkg.cmake",
-			"CMakeLists.txt"
+			"CMakeLists.txt",
+			"externals/clip-main/CMakeLists.txt"
 		],
 		"nodes" : 
 		[
@@ -31,7 +32,7 @@
 			{
 				"command" : 1,
 				"file" : 1,
-				"line" : 140,
+				"line" : 152,
 				"parent" : 0
 			},
 			{
@@ -43,13 +44,22 @@
 			{
 				"command" : 2,
 				"file" : 1,
-				"line" : 163,
+				"line" : 175,
 				"parent" : 0
+			},
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 54,
+				"parent" : 4
 			},
 			{
 				"command" : 3,
 				"file" : 1,
-				"line" : 148,
+				"line" : 160,
 				"parent" : 0
 			}
 		]
@@ -67,58 +77,66 @@
 			[
 				{
 					"backtrace" : 3,
+					"define" : "CLIP_ENABLE_IMAGE=1"
+				},
+				{
+					"backtrace" : 3,
 					"define" : "GLFW_DLL"
 				}
 			],
 			"includes" : 
 			[
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/tinyfiledialogs"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/stb_image"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 3,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/clip-main"
+				},
+				{
+					"backtrace" : 6,
 					"isSystem" : true,
 					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"isSystem" : true,
 					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include/cccl"
 				},
@@ -190,58 +208,66 @@
 			[
 				{
 					"backtrace" : 3,
+					"define" : "CLIP_ENABLE_IMAGE=1"
+				},
+				{
+					"backtrace" : 3,
 					"define" : "GLFW_DLL"
 				}
 			],
 			"includes" : 
 			[
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/tinyfiledialogs"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/stb_image"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 3,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/clip-main"
+				},
+				{
+					"backtrace" : 6,
 					"isSystem" : true,
 					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"isSystem" : true,
 					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include/cccl"
 				},
@@ -282,58 +308,66 @@
 			[
 				{
 					"backtrace" : 3,
+					"define" : "CLIP_ENABLE_IMAGE=1"
+				},
+				{
+					"backtrace" : 3,
 					"define" : "GLFW_DLL"
 				}
 			],
 			"includes" : 
 			[
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/tinyfiledialogs"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/header"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/stb_image"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 3,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/clip-main"
+				},
+				{
+					"backtrace" : 6,
 					"isSystem" : true,
 					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include"
 				},
 				{
-					"backtrace" : 4,
+					"backtrace" : 6,
 					"isSystem" : true,
 					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include/cccl"
 				},
@@ -348,6 +382,13 @@
 			[
 				88
 			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 3,
+			"id" : "clip::@bc704873fbbc61d958f5"
 		}
 	],
 	"id" : "AxiSim::@6890427a1f51a3e7e1df",
@@ -390,6 +431,16 @@
 			{
 				"backtrace" : 3,
 				"fragment" : "\"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.0\\lib\\x64\\cudart.lib\"",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "externals\\clip-main\\clip.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 5,
+				"fragment" : "shlwapi.lib",
 				"role" : "libraries"
 			},
 			{

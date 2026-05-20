@@ -34,5 +34,15 @@ namespace UIFlags {
 	inline constexpr ImGuiDockNodeFlags ResidualDockSpaceFlags =
 		ImGuiDockNodeFlags_None |
 		ImGuiDockNodeFlags_NoCloseButton;
+
+	inline constexpr ImGuiWindowFlags TemporaryWindowFlags = 
+		ImGuiWindowFlags_NoDecoration |
+		ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_NoSavedSettings |
+		ImGuiWindowFlags_NoScrollbar |
+		ImGuiWindowFlags_NoScrollWithMouse |
+		ImGuiWindowFlags_NoInputs |
+		ImGuiWindowFlags_NoFocusOnAppearing |
+		ImGuiWindowFlags_NoBringToFrontOnFocus;
 }
 

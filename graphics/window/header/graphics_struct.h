@@ -4,6 +4,14 @@
 #include "imgui.h"
 #include "buffer_manager.h"
 
+// assets for gui icons
+struct AppAssets {
+	TextureBuffer houseIcon;
+	TextureBuffer clearIcon;
+	TextureBuffer plusIcon;
+	TextureBuffer copyIcon;
+};
+
 enum class CompareType {
 	LessThan,
 	EqualTo,

@@ -47,8 +47,7 @@ Solver::Solver(SceneView & scene, Config & config) :
     g(config.g),
     f(config.f),
     itr(config.itr),
-    varUnits(config.varUnits),
-    residualPlot(*this) {
+    varUnits(config.varUnits){
 
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
     //setDefault();
@@ -85,7 +84,7 @@ void Solver::run() {
     if (!runCheck()) return;
 
     if (!continueSolver) {
-        residualPlot.resetState();
+        residualPlot->resetState();
     }
 
     shutdown();                 // end any previous solver threads
@@ -255,7 +254,7 @@ void Solver::runSimple() {
     // allocate memory
     if (!solutionReady || !continueSolver) {
 
-        residualPlot.setName(residualsToPrint);
+        residualPlot->setName(residualsToPrint);
 
         allocateCoefficients(configSolver, uCoeff, uBC, CellStoreType::AXIAL);
         allocateCoefficients(configSolver, vCoeff, vBC, CellStoreType::RADIAL);
@@ -365,7 +364,7 @@ void Solver::runSimple() {
 
                 residualAllHost(configResidual, uCoeff, vCoeff, contCoeff);
 
-                residualPlot.add(currentIteration, residualsToPrint);
+                residualPlot->add(currentIteration, residualsToPrint);
 
                 printResidualConsole(currentIteration, residualsToPrint, console);
 

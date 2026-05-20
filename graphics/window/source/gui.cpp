@@ -12,9 +12,42 @@
 
 #include "gui_manager.h"
 
+// ======================================================================
+// -----------------------HELPER FUNCTIONS-------------------------------
+// ======================================================================
+void changeCursorOnHover() {
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+	}
+}
+
+// initialize gui buffers
+void initContext(ImGuiContext*& imguiContext, ImPlotContext*& implotContext, GLFWwindow* window = nullptr) {
+
+	imguiContext = ImGui::CreateContext();
+	implotContext = ImPlot::CreateContext();
+
+	ImGui::SetCurrentContext(imguiContext);
+	ImPlot::SetCurrentContext(implotContext);
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+	ImGui::StyleColorsDark();
+
+	if (window) {
+		ImGui_ImplGlfw_InitForOpenGL(window, true);
+	}
+
+	ImGui_ImplOpenGL3_Init("#version 330 core");
+
+}
+
+// ======================================================================
+// -----------------------INITIALIZATION---------------------------------
+// ======================================================================
 GUI::GUI(GLFWwindow* window, SceneView& scene) :
 	scene(scene),
-	inspector(scene),
+	inspector(scene, assets),
 	console(*this, scene),
 	menu(*this, scene),
 	mesh(scene.mesh),
@@ -27,6 +60,7 @@ GUI::GUI(GLFWwindow* window, SceneView& scene) :
 	meshGUI(*this, scene),
 	solverGUI(scene),
 	resultsGUI(*this, scene),
+	residualPlot(scene.solver, assets),
 	animationGUI(scene),
 	config(scene.config)
 
@@ -37,20 +71,27 @@ GUI::GUI(GLFWwindow* window, SceneView& scene) :
 	results.console = &console;
 	scene.picker.console = &console;
 
-	initGUIBuffer(window);
+	solver.residualPlot = &residualPlot;
 
+	IMGUI_CHECKVERSION();
+
+	// initialize context. make sure to finish by setting the current context to main context
+	initContext(mainImGuiContext, mainImPlotContext, window);
+	initContext(exportImGuiContext, exportImPlotContext);
+
+	ImGui::SetCurrentContext(mainImGuiContext);
+	ImPlot::SetCurrentContext(mainImPlotContext);
+
+	// initialize all icon assets
+	createAssetBuffers();
 }
 
-// initialize gui buffers
-void GUI::initGUIBuffer(GLFWwindow* window){
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImPlot::CreateContext();
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-	ImGui::StyleColorsDark();
-	ImGui_ImplGlfw_InitForOpenGL(window, true);
-	ImGui_ImplOpenGL3_Init("#version 330 core");
+void GUI::createAssetBuffers() {
+
+	assets.houseIcon.createBuffer("assets/icons/house.png");
+	assets.clearIcon.createBuffer("assets/icons/circle-x.png");
+	assets.plusIcon.createBuffer("assets/icons/plus.png");
+	assets.copyIcon.createBuffer("assets/icons/clipboard.png");
 
 }
 
@@ -61,12 +102,10 @@ void GUI::newFrame() {
 	ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), UIFlags::BaseDockspaceFlags);
 }
 
-void GUI::changeCursorOnHover() {
-	if (ImGui::IsItemHovered()) {
-		ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-	}
-}
 
+// ======================================================================
+// -----------------------DRAW CALLS-------------------------------------
+// ======================================================================
 void GUI::drawUI() {
 	ImGui::Begin("Project");
 	if (ImGui::BeginTabBar("Main"), UIFlags::TabBarFlags) {
@@ -100,6 +139,9 @@ void GUI::drawUI() {
 
 }
 
+// ======================================================================
+// -----------------------MAIN RENDER LOOP-------------------------------
+// ======================================================================
 void GUI::render() {
 
 	menu.render();
@@ -120,10 +162,30 @@ void GUI::render() {
 	}
 
 	if (scene.currentTab == TAB_SOLVER) {
-		solver.residualPlot.draw();
+		residualPlot.draw();
 	}
 
-	//printf("RUNNING IN GUI RENDER\n");
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+	// copy to clipboard if there are any pending copies
+	if (residualPlot.pendingCopy) {
+
+		ImGuiContext* oldImGuiContext = ImGui::GetCurrentContext();
+		ImPlotContext* oldImPlotContext = ImPlot::GetCurrentContext();
+
+		ImGui::SetCurrentContext(exportImGuiContext);
+		ImPlot::SetCurrentContext(exportImPlotContext);
+
+		residualPlot.pendingCopy = false;
+		residualPlot.copyActivePlotToClipboard(
+			residualPlot.pendingCopyTabID,
+			residualPlot.pendingCopyWidth,
+			residualPlot.pendingCopyHeight);
+
+
+		ImGui::SetCurrentContext(oldImGuiContext);
+		ImPlot::SetCurrentContext(oldImPlotContext);
+	}
+
 }

@@ -5,9 +5,10 @@
 #include "imgui.h"
 #include "implot.h"
 #include "solver_struct.h"
+#include "buffer_manager.h"
 
-
-struct Solver;
+class Solver;
+struct AppAssets;
 
 struct Plot {
     std::string name;
@@ -22,21 +23,31 @@ struct TextPos {
 class ResidualPlot {
 
 public:
-	ResidualPlot(Solver& solver);
+	ResidualPlot(Solver& solver, AppAssets& assets);
 
     // add structs
     struct ResidualPlotTab {
-        int id = 0;
+        int id = 0; // unique id per tab
         std::string name;
+
+        ImPlotRect currentLimits;
+
         std::vector<double> iterations;
+        std::vector<TextPos> clickedPos;
         std::vector<Plot> plots;
 
         bool newlyCreated = true;
+        bool resetView = false;
+        bool copyImageNextFrame = false;
+
+        ImGuiID targetDockID = 0;   // current dock id
     };
 
-
-
-    std::vector<std::string> names;
+    // copy to clipboard variables
+    bool pendingCopy = false;
+    int pendingCopyTabID = 0;
+    int pendingCopyWidth = 1600;
+    int pendingCopyHeight = 420;
 
     std::mutex mutex; // use lock to prevent solver thread from colliding with main thread
 
@@ -46,11 +57,14 @@ public:
     // reset state of residual plot before starting to plot
     void resetState();
 
-    // clear current plot
-    void clearPlot();
+    // clear current plot of points
+    void clearPlot(int i);
 
     // set the variables which will be plotted onto the current plot
     void setName(const std::array<ResidualPrintItem, 6>& residualsToPlot);
+
+    // copy image to clipboard. DO NOT NEST INSIDE ANOTHER IMGUI FRAME
+    bool copyActivePlotToClipboard(int ID, int width, int height);
 
     // add residuals to current plot
     template <size_t N>
@@ -69,18 +83,27 @@ public:
 
 private:
 
-
     int nextTabID = 1;
     int activeTabID = 1;
     int idx = 0;
     int p = 0;
 
-    ImPlotSpec marker;
 
+
+    // toolbar icon variables
+    float toolbarHeight = 25.0f;
+    float iconSize = 15.0f;
+
+
+    ImPlotSpec marker;
     std::vector<ResidualPlotTab> tabs;
-    std::vector<TextPos> clickedPos;
 
     Solver& solver;
+    AppAssets& assets;
+    FrameBuffer offScreenFBO;
+
+    // draw toolbar
+    void drawToolBar(ResidualPlotTab& tab, int i, ImGuiID currentDockID, ImGuiID& pendingAddDockID, ImGuiID dockspaceID);
 
     // draw tabs
     void drawTabs(ImGuiID dockspaceID, const ImGuiWindowClass& residualClass);
@@ -88,12 +111,18 @@ private:
     // setup axes
     void setupAxes();
 
-    // handle events such as mouse clicks
-    void handleEvents(ResidualPlotTab& tab);
+    // handle events on each plot such as mouse clicks
+    void handlePlotEvents(ResidualPlotTab& tab);
+
+    // handle key presses
+    void handleKeyEvents();
 
     // add a new tab
-    void addTab();
+    void addTab(ImGuiID targetDockID);
 
     // draw the specified tab
-    void drawPlotTab(ResidualPlotTab& tab);
+    void drawPlot(ResidualPlotTab& tab);
+
+    // draw only the plot data. must be inside a ImGui::BeginPlot
+    void drawPlotData(ResidualPlotTab& tab);
 };

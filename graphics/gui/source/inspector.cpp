@@ -4,18 +4,18 @@
 #include "math_func.h"
 #include <format>
 
-Inspector::Inspector(SceneView& scene) :
+Inspector::Inspector(SceneView& scene, AppAssets& assets) :
 		scene(scene),
 		mesh(scene.mesh),
 		results(scene.results),
 		colormap(scene.colormap),
 		g(mesh.g),
+		assets(assets),
 		inspectorShader("graphics/shaders/inspector.vert", "graphics/shaders/inspector.frag"){
 
 	// radial location
 	frameBuffer.createBuffer(100, 100);
-	assets.houseIcon.createBuffer("assets/icons/house.png");
-	assets.clearIcon.createBuffer("assets/icons/circle-x.png");
+
 }
 
 void updateUV(float& u0, float& u1, float& v0, float& v1, ImVec2& zoomCenter, float halfW, float halfH) {
@@ -318,7 +318,6 @@ void Inspector::renderPreview() {
 
 	frameBuffer.bind();
 
-	glViewport(0, 0, imageWidth, imageHeight);
 	glDisable(GL_DEPTH_TEST);
 	glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);

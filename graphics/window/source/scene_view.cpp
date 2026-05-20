@@ -116,7 +116,6 @@ void SceneView::render() {
 	// draw and render calls
 	frameBuffer.bind();
 
-	glViewport(0, 0, viewportWidth, viewportHeight);
 	glEnable(GL_DEPTH_TEST);
 	glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

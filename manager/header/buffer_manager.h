@@ -1,13 +1,26 @@
 #pragma once
 #include <glad/glad.h>
+#include <vector>
 
 class FrameBuffer {
 public:
 	FrameBuffer() {};
 	void bind();
 	void unbind();
+
+
+	// read the framebuffer and return rgba pixel values
+	std::vector<unsigned char> readPixelsRGBA();
+
+	// create a frame buffer with MSAA
 	void createBuffer(int width, int height, int samples = 4);
+
+	// create a frame buffer with no MSAA and colorRBO and depthRBO, useful for 2D images
+	void createSimpleBuffer(int width, int height);
+
+	// resolve frame buffer before drawing
 	void resolve();
+
 	unsigned int getTextureID();
 	int width, height;
 

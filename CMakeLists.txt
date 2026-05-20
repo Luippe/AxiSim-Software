@@ -137,6 +137,18 @@ set_source_files_properties(
 # Executable
 # ------------------------------------------------------------
 
+# ------------------------------------------------------------
+# clip clipboard library
+# ------------------------------------------------------------
+
+set(CLIP_EXAMPLES OFF CACHE BOOL "Compile clip examples")
+set(CLIP_TESTS OFF CACHE BOOL "Compile clip tests")
+
+# Only needed if you want image clipboard support later
+# set(CLIP_ENABLE_IMAGE ON CACHE BOOL "Enable image clipboard support")
+
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/externals/clip-main")
+
 add_executable(AxiSim
     ${PROJECT_SOURCES}
     ${PROJECT_HEADERS}
@@ -166,6 +178,7 @@ target_link_libraries(AxiSim PRIVATE
     glfw
     glm::glm
     CUDA::cudart
+    clip
 )
 
 set_target_properties(AxiSim PROPERTIES
