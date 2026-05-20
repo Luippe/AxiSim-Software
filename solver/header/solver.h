@@ -7,6 +7,7 @@
 
 class Console;
 class SceneView;
+struct VariableUnits;
 
 class Solver {
 public:

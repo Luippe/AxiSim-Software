@@ -6,13 +6,16 @@
 #include <sstream>
 #include "printer.h"
 #include "manage_file.h"
-#include "memory_manager.h"
+
 #include "linear_solver.cuh"
 #include "console.h"
 #include "simple.cuh"
 #include "scene_view.h"
 #include "residuals.cuh"
 #include "solver_util.cuh"
+
+#include "memory_manager.h"
+#include "unit_manager.h"
 
 #define CUDA_CHECK(x) do { \
   cudaError_t err = (x); \
@@ -250,7 +253,6 @@ void Solver::runSimple() {
     } };
 
 
-
     // allocate memory
     if (!solutionReady || !continueSolver) {
 
@@ -292,7 +294,6 @@ void Solver::runSimple() {
             copyDeviceToHostVector(simple.p, N));
 
     }
-
 
 
     // record time

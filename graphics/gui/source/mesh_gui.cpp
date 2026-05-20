@@ -51,8 +51,8 @@ void MeshGUI::drawPropertiesPanel() {
 			textAtNewRow("Segments", 0, 1);
 			ImGui::InputInt("##MeshNseg", &gridConfigEdits.nseg, 0.0, 0.0);
 
-			inputDoubleWithUnits("Length", gridConfigEdits.L, scene.config.varUnits.LUnit, lengthUnits);
-			inputDoubleWithUnits("Radius", gridConfigEdits.R, scene.config.varUnits.RUnit, lengthUnits);
+			inputDoubleWithUnits("Length", gridConfigEdits.L, scene.config.varUnits.LUnit, Units::lengthUnits);
+			inputDoubleWithUnits("Radius", gridConfigEdits.R, scene.config.varUnits.RUnit, Units::lengthUnits);
 
 			textAtNewRow("nr", 0, 1);
 			ImGui::InputInt("##Meshnr", &gridConfigEdits.nr, 0.0, 0.0);

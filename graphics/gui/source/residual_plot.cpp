@@ -26,8 +26,6 @@ void ResidualPlot::resetState() {
     tabs[activeTabID].plots.clear();
     tabs[activeTabID].clickedPos.clear();
     tabs[activeTabID].iterations.clear();
-    //tabs[activeTabID]
-    //clickedPos.clear();
 
 }
 
@@ -305,7 +303,7 @@ void ResidualPlot::drawPlot(ResidualPlotTab& tab) {
         tab.resetView = false;
     }
 
-    if (ImPlot::BeginPlot("Solver Residuals", ImVec2(-1, 420), ImPlotFlags_NoMouseText)) {
+    if (ImPlot::BeginPlot("Solver Residuals", ImVec2(-1, 400), ImPlotFlags_NoMouseText)) {
 
         drawPlotData(tab);
 
@@ -320,7 +318,6 @@ void ResidualPlot::drawPlot(ResidualPlotTab& tab) {
     if (tab.copyImageNextFrame) {
 
         ImVec2 plotSize = ImGui::GetItemRectSize();
-
 
         pendingCopyTabID = activeTabID;
         pendingCopyWidth = (int)plotSize.x;

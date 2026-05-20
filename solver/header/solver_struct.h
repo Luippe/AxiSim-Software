@@ -1,6 +1,7 @@
 #pragma once
 #include "setting.cuh"
 #include "gpu_utils.h"
+#include "unit_manager.h"
 
 // holds solvers for solving system of linear equations
 

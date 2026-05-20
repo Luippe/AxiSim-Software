@@ -1,9 +1,12 @@
 #include "solver_gui.h"
 #include "scene_view.h"		// must be in front of graphics_struct.h
 #include "solver.h"
+
 #include "graphics_struct.h"
 #include "solver_struct.h"
+
 #include "gui_manager.h"
+#include "unit_manager.h"
 #include "printer.h"
 
 SolverGUI::SolverGUI(SceneView& scene) :
@@ -185,9 +188,9 @@ void SolverGUI::drawPropertiesPanel() {
 	else if (selectedItem == "Fluid Settings") {
 		ImGui::SeparatorText("Fluid Settings");
 		if (ImGui::BeginTable("Fluid Settings", 3)) {
-			inputDoubleWithUnits("Density", solver.f.rho, solver.varUnits.rhoUnit, densityUnits);
-			inputDoubleWithUnits("Dynamic Viscosity", solver.f.mu, solver.varUnits.muUnit, dynamicViscosityUnits);
-
+			inputDoubleWithUnits("Density", solver.f.rho, solver.varUnits.rhoUnit, Units::densityUnits);
+			inputDoubleWithUnits("Dynamic Viscosity", solver.f.mu, solver.varUnits.muUnit, Units::dynamicViscosityUnits);
+			inputDoubleWithUnits("Diffusion Coefficient", solver.f.D, solver.varUnits.DUnit, Units::diffusionCoefficientUnits);
 			ImGui::EndTable();
 		}
 
