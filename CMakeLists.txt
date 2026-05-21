@@ -155,7 +155,7 @@ add_executable(AxiSim
     ${IMGUI_SOURCES}
     ${IMPLOT_SOURCES}
     ${TINYFILEDIALOGS_SOURCES}
-  "externals/stb_image/stb_image.cpp" "manager/header/gui_manager.h")
+  "externals/stb_image/stb_image.cpp" "manager/header/gui_manager.h" )
 
 target_include_directories(AxiSim PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"

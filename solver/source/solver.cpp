@@ -75,7 +75,6 @@ void Solver::setDefault() {
     concBC.outer = { BCType::NEUMANN, 0.0 };
     concBC.centerline = { BCType::NEUMANN, 0.0 };
 
-
     addConvectionTerm = false;
     transient = false;
     dt = 0.1;

@@ -1,6 +1,7 @@
 #pragma once
 #include <glad/glad.h>
 #include <vector>
+#include "imgui.h"
 
 class FrameBuffer {
 public:
@@ -11,6 +12,11 @@ public:
 
 	// read the framebuffer and return rgba pixel values
 	std::vector<unsigned char> readPixelsRGBA();
+
+	// used to copy frame buffer to clipboard. imgui widgets are drawn onto the off screen frame buffer
+	void beginOffScreenImGuiRender(GLint& oldFBO, GLint(&oldViewport)[4], ImVec2& oldDisplaySize, ImVec2& oldFramebufferScale);
+	void endOffScreenImGuiRender(const GLint& oldFBO, const GLint(&oldViewport)[4], const ImVec2& oldDisplaySize, const ImVec2 oldFramebufferScale);
+
 
 	// create a frame buffer with MSAA
 	void createBuffer(int width, int height, int samples = 4);

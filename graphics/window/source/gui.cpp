@@ -21,14 +21,18 @@ void changeCursorOnHover() {
 	}
 }
 
+void setContext(ImGuiContext* imguiContext, ImPlotContext* implotContext) {
+	ImGui::SetCurrentContext(imguiContext);
+	ImPlot::SetCurrentContext(implotContext);
+}
+
 // initialize gui buffers
 void initContext(ImGuiContext*& imguiContext, ImPlotContext*& implotContext, GLFWwindow* window = nullptr) {
 
 	imguiContext = ImGui::CreateContext();
 	implotContext = ImPlot::CreateContext();
 
-	ImGui::SetCurrentContext(imguiContext);
-	ImPlot::SetCurrentContext(implotContext);
+	setContext(imguiContext, implotContext);
 
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -41,6 +45,7 @@ void initContext(ImGuiContext*& imguiContext, ImPlotContext*& implotContext, GLF
 	ImGui_ImplOpenGL3_Init("#version 330 core");
 
 }
+
 
 // ======================================================================
 // -----------------------INITIALIZATION---------------------------------
@@ -78,8 +83,7 @@ GUI::GUI(GLFWwindow* window, SceneView& scene) :
 	initContext(mainImGuiContext, mainImPlotContext, window);
 	initContext(exportImGuiContext, exportImPlotContext);
 
-	ImGui::SetCurrentContext(mainImGuiContext);
-	ImPlot::SetCurrentContext(mainImPlotContext);
+	setContext(mainImGuiContext, mainImPlotContext);
 
 	// initialize all icon assets
 	createAssetBuffers();
@@ -169,11 +173,8 @@ void GUI::render() {
 	// copy to clipboard if there are any pending copies
 	if (residualPlot.pendingCopy) {
 
-		ImGuiContext* oldImGuiContext = ImGui::GetCurrentContext();
-		ImPlotContext* oldImPlotContext = ImPlot::GetCurrentContext();
 
-		ImGui::SetCurrentContext(exportImGuiContext);
-		ImPlot::SetCurrentContext(exportImPlotContext);
+		setContext(exportImGuiContext, exportImPlotContext);
 
 		residualPlot.pendingCopy = false;
 		residualPlot.copyActivePlotToClipboard(
@@ -181,8 +182,21 @@ void GUI::render() {
 			residualPlot.pendingCopyWidth,
 			residualPlot.pendingCopyHeight);
 
+		setContext(mainImGuiContext, mainImPlotContext);
 
-		ImGui::SetCurrentContext(oldImGuiContext);
-		ImPlot::SetCurrentContext(oldImPlotContext);
 	}
+
+	if (inspector.pendingCopy) {
+
+		setContext(exportImGuiContext, exportImPlotContext);
+
+		inspector.pendingCopy = false;
+		inspector.copyActiveSurfaceToClipboard(
+			inspector.pendingCopyWidth,
+			inspector.pendingCopyHeight);
+
+		setContext(mainImGuiContext, mainImPlotContext);
+
+	}
+
 }

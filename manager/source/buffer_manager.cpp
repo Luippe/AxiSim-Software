@@ -1,7 +1,46 @@
 #include "buffer_manager.h"
+
 #include <cstdio>
+#include <imgui_impl_opengl3.h>
+
 #include "stb_image.h"
+#include "clip.h"
 #include "printer.h"
+
+bool copyRGBAToClipboard(const unsigned char* rgbaBottomUp, int width, int height) {
+
+	// flip image
+	std::vector<unsigned char> flipped(width * height * 4);
+
+	for (int y = 0; y < height; ++y) {
+		std::memcpy(&flipped[y * width * 4], &rgbaBottomUp[(height - 1 - y) * width * 4], width * 4);
+	}
+	// force image to be opaque
+	for (int i = 0; i < width * height; ++i) {
+		flipped[i * 4 + 3] = 255;
+	}
+	// make spec
+	clip::image_spec spec;
+	spec.width = width;
+	spec.height = height;
+	spec.bits_per_pixel = 32;
+	spec.bytes_per_row = width * 4;
+
+	// data layout is RGBA: R, G, B, A
+	spec.red_mask = 0x000000ff;
+	spec.green_mask = 0x0000ff00;
+	spec.blue_mask = 0x00ff0000;
+	spec.alpha_mask = 0xff000000;
+
+	spec.red_shift = 0;
+	spec.green_shift = 8;
+	spec.blue_shift = 16;
+	spec.alpha_shift = 24;
+
+	clip::image img(flipped.data(), spec);
+	return clip::set_image(img);
+}
+
 
 // ===================================================================
 // --------------------------Frame Buffer---------------------------
@@ -66,7 +105,10 @@ void FrameBuffer::createSimpleBuffer(int width, int height, GLenum internalForma
 	if (FBO) {
 		deleteBuffer();
 	}
-
+	if (width <= 0 || height <= 0) {
+		printf("Invalid FBO size: %d x %d\n", width, height);
+		return;
+	}
 	glGenFramebuffers(1, &FBO);
 	glBindFramebuffer(GL_FRAMEBUFFER, FBO);
 	glGenTextures(1, &texture);
@@ -87,6 +129,56 @@ void FrameBuffer::createSimpleBuffer(int width, int height, GLenum internalForma
 
 	glBindTexture(GL_TEXTURE_2D, 0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void FrameBuffer::beginOffScreenImGuiRender(GLint& oldFBO, GLint (&oldViewport)[4], ImVec2& oldDisplaySize, ImVec2& oldFramebufferScale) {
+	
+	// get current framebuffer and store it so we can rebind it later
+	glGetIntegerv(GL_FRAMEBUFFER_BINDING, &oldFBO);
+	glGetIntegerv(GL_VIEWPORT, oldViewport);
+
+	// bind new frame buffer
+	bind();
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	// start a temporary imgui frame
+	ImGui_ImplOpenGL3_NewFrame();
+
+	ImGuiIO& io = ImGui::GetIO();
+	oldDisplaySize = io.DisplaySize;
+	oldFramebufferScale = io.DisplayFramebufferScale;
+
+	io.DisplaySize = ImVec2((float)width, (float)height);
+	io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+
+	ImGui::NewFrame();
+
+	// build imgui draw commands. change if needed
+	ImGui::SetNextWindowPos(ImVec2(0, 0));
+	ImGui::SetNextWindowSize(ImVec2((float)width, (float)height));
+
+}
+
+void FrameBuffer::endOffScreenImGuiRender(const GLint& oldFBO, const GLint(&oldViewport)[4], const ImVec2& oldDisplaySize, const ImVec2 oldFramebufferScale) {
+	// render the imgui frame
+	ImGui::Render();
+
+	bind();
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
+
+	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+	std::vector<unsigned char> pixels = readPixelsRGBA();
+	bool copied = copyRGBAToClipboard(pixels.data(), width, height);
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.DisplaySize = oldDisplaySize;
+	io.DisplayFramebufferScale = oldFramebufferScale;
+
+	glBindFramebuffer(GL_FRAMEBUFFER, oldFBO);
+	glViewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
+
 }
 
 std::vector<unsigned char> FrameBuffer::readPixelsRGBA() {

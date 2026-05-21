@@ -6,7 +6,6 @@
 #include "implot.h"
 #include "solver.h"
 #include "printer.h"
-#include "clip.h"
 #include <algorithm>
 
 
@@ -91,70 +90,16 @@ int closestPlotY(std::vector<Plot>& plots, int idx, double mouseY) {
     return best;
 }
 
-bool copyRGBAToClipboard(const unsigned char* rgbaBottomUp, int width, int height) {
 
-    // flip image
-    std::vector<unsigned char> flipped(width * height * 4);
-
-    for (int y = 0; y < height; ++y) {
-        std::memcpy(&flipped[y * width * 4], &rgbaBottomUp[(height - 1 - y) * width * 4], width * 4);
-    }
-    // force image to be opaque
-    for (int i = 0; i < width * height; ++i) {
-        flipped[i * 4 + 3] = 255;
-    }
-    // make spec
-    clip::image_spec spec;
-    spec.width = width;
-    spec.height = height;
-    spec.bits_per_pixel = 32;
-    spec.bytes_per_row = width * 4;
-
-    // data layout is RGBA: R, G, B, A
-    spec.red_mask = 0x000000ff;
-    spec.green_mask = 0x0000ff00;
-    spec.blue_mask = 0x00ff0000;
-    spec.alpha_mask = 0xff000000;
-
-    spec.red_shift = 0;
-    spec.green_shift = 8;
-    spec.blue_shift = 16;
-    spec.alpha_shift = 24;
-
-    clip::image img(flipped.data(), spec);
-    return clip::set_image(img);
-}
 
 bool ResidualPlot::copyActivePlotToClipboard(int ID, int width, int height) {
 
-    // get current framebuffer and store it so we can rebind it later
-    GLint oldFBO = 0;
-    GLint oldViewport[4];
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &oldFBO);
-    glGetIntegerv(GL_VIEWPORT, oldViewport);
-
-    // bind new frame buffer
+    GLint oldFBO, oldViewport[4];
+    ImVec2 oldDisplaySize, oldFramebufferSize;
     offScreenFBO.createSimpleBuffer(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
-    offScreenFBO.bind();
-    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    // start a temporary imgui frame
-    ImGui_ImplOpenGL3_NewFrame();
-
-    ImGuiIO& io = ImGui::GetIO();
-    ImVec2 oldDisplaySize = io.DisplaySize;
-    ImVec2 oldFramebufferScale = io.DisplayFramebufferScale;
-
-    io.DisplaySize = ImVec2((float)width, (float)height);
-    io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
-
-    ImGui::NewFrame();
+    offScreenFBO.beginOffScreenImGuiRender(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
 
     // build imgui draw commands
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(ImVec2((float)width, (float)height));
-
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
     ImGui::Begin("##ExportWindow", nullptr, UIFlags::TemporaryWindowFlags);
 
@@ -177,24 +122,9 @@ bool ResidualPlot::copyActivePlotToClipboard(int ID, int width, int height) {
     ImGui::End();
     ImGui::PopStyleVar();
 
-    // render the imgui frame
-    ImGui::Render();
+    offScreenFBO.endOffScreenImGuiRender(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
 
-    offScreenFBO.bind();
-    glDrawBuffer(GL_COLOR_ATTACHMENT0);
-
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-    std::vector<unsigned char> pixels = offScreenFBO.readPixelsRGBA();
-    bool copied = copyRGBAToClipboard(pixels.data(), width, height);
- 
-    io.DisplaySize = oldDisplaySize;
-    io.DisplayFramebufferScale = oldFramebufferScale;
-
-    glBindFramebuffer(GL_FRAMEBUFFER, oldFBO);
-    glViewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
-
-    return copied;
+    return true;
 }
 
 void ResidualPlot::setupAxes() {

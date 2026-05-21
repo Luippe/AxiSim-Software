@@ -55,6 +55,12 @@ void SolverGUI::drawPropertiesPanel() {
 			ImGui::Checkbox("##TransientTerm", &solver.transient);
 			ImGui::EndTable();
 
+			ImGui::Dummy(ImVec2(0.0f, 30.0f));
+			ImGui::SeparatorText("Add Solvers");
+			ImGui::Spacing();
+
+
+
 		}
 	}
 	else if (selectedItem == "Velocity BC") {

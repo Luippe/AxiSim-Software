@@ -28,9 +28,18 @@ public:
 	// upload all uniforms to shader
 	void uploadUniforms();
 
-	bool keepAspectRatio = false;
+	// reset view of inspector
+	void resetView();
+
+	// copy surface to clipboard
+	void copyActiveSurfaceToClipboard(int width, int height);
 
 	Colorbar colorbar;
+
+	// copy to clipboard variables
+	bool pendingCopy = false;
+	int pendingCopyWidth = 1600;
+	int pendingCopyHeight = 420;
 
 private:
 
@@ -50,6 +59,7 @@ private:
 	// ----------resources-----------
 	AppAssets& assets;
 	FrameBuffer frameBuffer;	// this is a simple buffer as it is 2D
+	FrameBuffer offScreenFBO;
 	VertexBuffer vertexBuffer;
 	Shader inspectorShader;
 
@@ -86,8 +96,10 @@ private:
 
 	// popup variables
 	bool openPopUp = false;
+	ImVec2 clickedMousePos;
 
 
+	
 	// create a rectangular quad
 	void createFullScreenQuad();
 
@@ -113,7 +125,7 @@ private:
 	void drawToolBar();
 
 	// draw popup menu when right clicked
-	void drawPopUp();
+	void drawPopup();
 
 	// turns i,j coordinates to pixel coordinates
 	ImVec2 gridToScreen(float i, float j);

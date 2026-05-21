@@ -5,6 +5,7 @@
 #include "scene_view.h"
 #include "colorbar.h"
 
+#include "gui_manager.h"
 #include "printer.h"
 #include "math_func.h"
 
@@ -22,6 +23,15 @@ Inspector::Inspector(SceneView& scene, AppAssets& assets) :
 	frameBuffer.createSimpleBuffer(100, 100, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
 
 }
+
+// ======================================================================
+// -----------------------HELPER FUNCTIONS-------------------------------
+// ======================================================================
+//void setToolTip(const char* text) {
+//	if (ImGui::IsItemHovered()) {
+//		ImGui::SetTooltip("%s", text);
+//	}
+//}
 
 void updateUV(float& u0, float& u1, float& v0, float& v1, ImVec2& zoomCenter, float halfW, float halfH) {
 	u0 = glm::clamp(zoomCenter.x - halfW, 0.0f, 1.0f);
@@ -56,6 +66,13 @@ void Inspector::generate() {
 	createFullScreenQuad();
 	uploadUniforms();
 }
+void Inspector::resetView() {
+
+	zoom = 1.0f;
+	zoomCenter = ImVec2(0.5f, 0.5f);
+	updateUV(u0, u1, v0, v1, zoomCenter, 0.5, 0.5);
+
+}
 
 void Inspector::createFullScreenQuad() {
 
@@ -88,7 +105,6 @@ void Inspector::uploadUniforms() {
 
 }
 
-
 void Inspector::resizeImage() {
 
 	ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -98,7 +114,6 @@ void Inspector::resizeImage() {
 	if (imageWidth != frameBuffer.width || imageHeight != frameBuffer.height) {
 		frameBuffer.createSimpleBuffer(imageWidth, imageHeight, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
 	}
-
 }
 
 ImVec2 Inspector::getMouseIndex() {
@@ -141,61 +156,9 @@ ImVec2 Inspector::gridToScreen(float j, float i) {
 	return ImVec2(x, y);
 }
 
-void Inspector::displayRect() {
-
-	if (!isRectReady) return;
-
-	ImVec2 itemMin = ImGui::GetItemRectMin();
-	ImVec2 itemMax = ImGui::GetItemRectMax();
-
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-	drawList->AddRect(rectPos1, rectPos2, IM_COL32(255, 255, 255, 255));
-}
-
-void Inspector::displayTextValue() {
-
-	ImVec2 imageMin = ImGui::GetItemRectMin();
-
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-	for (const InspectorPoint& point : points) {
-
-		// convert grid index to normalized texture coordinate
-		float u = point.dataPos.x / float(nzBase);
-		float v = point.dataPos.y / float(nrBase);
-
-		// skip points outside the current zoomed/panned view
-		if (u < u0 || u > u1 || v < v0 || v > v1) {
-			continue;
-		}
-
-		// convert normalized texture coordinate to image-local position
-		float sx = (u - u0) / (u1 - u0);
-
-		// use this if your image is drawn with ImVec2(u0, v1), ImVec2(u1, v0)
-		float sy = (v1 - v) / (v1 - v0);
-
-		ImVec2 screenPos(
-			imageMin.x + sx * imageWidth,
-			imageMin.y + sy * imageHeight
-		);
-
-		std::string label = std::format(
-			"i: {:.0f}\nj: {:.0f}\nvalue: {:.5f}",
-			point.dataPos.y,
-			point.dataPos.x,
-			point.value
-		);
-
-		drawList->AddCircleFilled(screenPos, circleRadius, IM_COL32(150, 150, 150, 255), 16);
-		drawList->AddCircle(screenPos, circleRadius, IM_COL32(200, 200, 200, 255), 16, 1.0f);
-		drawList->AddText(ImVec2(screenPos.x + 10.0f, screenPos.y), IM_COL32(0,0,0, 255), label.c_str());
-
-	}
-}
-
-
+// ======================================================================
+// -----------------------MOUSE HANDLES----------------------------------
+// ======================================================================
 void Inspector::handleMouse() {
 
 	if (!ImGui::IsItemHovered()) return;
@@ -217,6 +180,7 @@ void Inspector::handleMouse() {
 
 		openPopUp = true;
 		clickedMousePos = currentMousePos;
+		ImGui::OpenPopup("Inspector Popup");
 
 	}
 
@@ -303,38 +267,139 @@ void Inspector::handleMouse() {
 	}
 }
 
+void Inspector::copyActiveSurfaceToClipboard(int width, int height) {
+
+	GLint oldFBO, oldViewport[4];
+	ImVec2 oldDisplaySize, oldFramebufferSize;
+	offScreenFBO.createSimpleBuffer(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+	offScreenFBO.beginOffScreenImGuiRender(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
+
+	// build imgui draw commands
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+	ImGui::Begin("##ExportWindow", nullptr, UIFlags::TemporaryWindowFlags);
+	
+	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(u0, v1), ImVec2(u1, v0));
+	
+	ImGui::End();
+	ImGui::PopStyleVar();
+
+	offScreenFBO.endOffScreenImGuiRender(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
+}
+
+// ======================================================================
+// -----------------------DRAW CALLS-------------------------------------
+// ======================================================================
+void Inspector::displayRect() {
+
+	if (!isRectReady) return;
+
+	ImVec2 itemMin = ImGui::GetItemRectMin();
+	ImVec2 itemMax = ImGui::GetItemRectMax();
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	drawList->AddRect(rectPos1, rectPos2, IM_COL32(255, 255, 255, 255));
+}
+
+void Inspector::displayTextValue() {
+
+	ImVec2 imageMin = ImGui::GetItemRectMin();
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	for (const InspectorPoint& point : points) {
+
+		// convert grid index to normalized texture coordinate
+		float u = point.dataPos.x / float(nzBase);
+		float v = point.dataPos.y / float(nrBase);
+
+		// skip points outside the current zoomed/panned view
+		if (u < u0 || u > u1 || v < v0 || v > v1) {
+			continue;
+		}
+
+		// convert normalized texture coordinate to image-local position
+		float sx = (u - u0) / (u1 - u0);
+
+		// use this if your image is drawn with ImVec2(u0, v1), ImVec2(u1, v0)
+		float sy = (v1 - v) / (v1 - v0);
+
+		ImVec2 screenPos(
+			imageMin.x + sx * imageWidth,
+			imageMin.y + sy * imageHeight
+		);
+
+		std::string label = std::format(
+			"i: {:.0f}\nj: {:.0f}\nvalue: {:.5f}",
+			point.dataPos.y,
+			point.dataPos.x,
+			point.value
+		);
+
+		drawList->AddCircleFilled(screenPos, circleRadius, IM_COL32(150, 150, 150, 255), 16);
+		drawList->AddCircle(screenPos, circleRadius, IM_COL32(200, 200, 200, 255), 16, 1.0f);
+		drawList->AddText(ImVec2(screenPos.x + 10.0f, screenPos.y), IM_COL32(0, 0, 0, 255), label.c_str());
+
+	}
+}
+
 void Inspector::drawToolBar() {
 	float toolbarHeight = 32.0f;
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
 	if (ImGui::ImageButton("##ResetView", (ImTextureID)(intptr_t)assets.houseIcon.getTextureID(), ImVec2(22.0f, 22.0f))) {
-		zoom = 1.0f;
-		zoomCenter = ImVec2(0.5f, 0.5f);
-		updateUV(u0, u1, v0, v1, zoomCenter, 0.5, 0.5);
+		resetView();
 	}
 
+	//setToolTip("Reset view");
 	ImGui::SameLine();
+
 	if (ImGui::ImageButton("##ClearPoints", (ImTextureID)(intptr_t)assets.clearIcon.getTextureID(), ImVec2(22.0f, 22.0f))) {
 		points.clear();
 	}
 
 	ImGui::SameLine();
+	if (ImGui::ImageButton("##CopyToClipboard", (ImTextureID)(intptr_t)assets.copyIcon.getTextureID(), ImVec2(22.0f, 22.0f))) {
+		pendingCopyWidth = frameBuffer.width;
+		pendingCopyHeight = frameBuffer.height;
+		pendingCopy = true;
+	}
+
+	//setToolTip("Clear all selected points");
+	ImGui::SameLine();
+
 	if (ImGui::ImageButton("##ToggleSelect", (ImTextureID)(intptr_t)assets.selectRegionIcon.getTextureID(), ImVec2(22.0f, 22.0f))) {
 		toggleSelect = !toggleSelect;
 	}
 
+	//setToolTip("Select");
 	ImGui::SameLine();
+
 	ImGui::EndChild();
 	ImGui::Separator();
 }
 
-void Inspector::drawPopUp() {
+void Inspector::drawPopup() {
 
 	if (!openPopUp) return;
 
+	if (ImGui::BeginPopup("Inspector Popup")) {
 
+		if (ImGui::MenuItem("Copy to clipboard")) {
+			
+		}
 
+		if (ImGui::MenuItem("Clear Points")) {
+			points.clear();
+		}
+
+		if (ImGui::MenuItem("Reset View")) {
+			resetView();
+		}
+
+		ImGui::EndPopup();
+	}
 }
 
 void Inspector::renderPreview() {
@@ -385,6 +450,7 @@ void Inspector::render() {
 	handleMouse();
 	displayRect();
 	displayTextValue();
+	drawPopup();
 
 	ImGui::SameLine();
 	colorbar.render();
