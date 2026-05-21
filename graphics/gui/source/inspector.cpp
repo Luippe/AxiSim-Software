@@ -204,13 +204,24 @@ void Inspector::handleMouse() {
 	currentMouseIndex = getMouseIndex();		// constantly update current mouse index
 	currentMousePos = gridToScreen(currentMouseIndex.x, currentMouseIndex.y);
 
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && toggleSelect) {
+
 		rectPos1 = currentMousePos;
 		rectPos2 = currentMousePos;
 		initMouseIndex = getMouseIndex();
+
 	}
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+
+		openPopUp = true;
+		clickedMousePos = currentMousePos;
+
+	}
+
+
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && toggleSelect) {
 
 		selectedIndices.clear();
 
@@ -239,7 +250,7 @@ void Inspector::handleMouse() {
 
 	}
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && !toggleSelect) {
 
 		ImVec2 drag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
 		float dx = drag.x;
@@ -281,7 +292,9 @@ void Inspector::handleMouse() {
 
 	}
 
-	// handle mouse hovering
+	// handle mouse hovering.
+	if (toggleSelect) return;
+
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	drawList->AddCircleFilled(currentMousePos, circleRadius, IM_COL32(150, 150, 150, 255), 16);
 	drawList->AddCircle(currentMousePos, circleRadius, IM_COL32(200, 200, 200, 255), 16, 1.0f);
@@ -307,11 +320,22 @@ void Inspector::drawToolBar() {
 	}
 
 	ImGui::SameLine();
+	if (ImGui::ImageButton("##ToggleSelect", (ImTextureID)(intptr_t)assets.selectRegionIcon.getTextureID(), ImVec2(22.0f, 22.0f))) {
+		toggleSelect = !toggleSelect;
+	}
 
+	ImGui::SameLine();
 	ImGui::EndChild();
 	ImGui::Separator();
 }
 
+void Inspector::drawPopUp() {
+
+	if (!openPopUp) return;
+
+
+
+}
 
 void Inspector::renderPreview() {
 

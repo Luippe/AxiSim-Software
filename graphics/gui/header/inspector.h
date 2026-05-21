@@ -62,6 +62,8 @@ private:
 	// ----------rectangle selection-----------
 	bool dragging = false;
 	bool isRectReady = false;
+	bool toggleSelect = false;
+
 
 	float zoom = 1.0f;
 
@@ -81,6 +83,10 @@ private:
 	const float circleRadius = 3.0f;
 	std::vector<int> selectedIndices;
 	std::vector<InspectorPoint> points;
+
+	// popup variables
+	bool openPopUp = false;
+
 
 	// create a rectangular quad
 	void createFullScreenQuad();
@@ -105,6 +111,9 @@ private:
 
 	// draw toolbar at the top of the inspector, which can be used for variety of functions
 	void drawToolBar();
+
+	// draw popup menu when right clicked
+	void drawPopUp();
 
 	// turns i,j coordinates to pixel coordinates
 	ImVec2 gridToScreen(float i, float j);

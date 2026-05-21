@@ -10,6 +10,7 @@ struct AppAssets {
 	TextureBuffer clearIcon;
 	TextureBuffer plusIcon;
 	TextureBuffer copyIcon;
+	TextureBuffer selectRegionIcon;
 };
 
 enum class CompareType {
