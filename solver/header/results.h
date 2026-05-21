@@ -34,9 +34,10 @@ public:
 
 	int currentItem = 0;
 	CompareType currentCompareType = CompareType::GreaterThan;
+	ShadingType currentShadingType = ShadingType::Interp;
 	const char* fieldType[3] = { "Axial Velocity", "Radial Velocity", "Pressure" };
 	const char* compareType[5] = { "Less Than", "Equal To", "Greater Than", "Between", "Exclude"};
-
+	const char* shadingType[2] = { "Interp", "Flat" };
 	Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader);
 
 	// get all vertices for the outline

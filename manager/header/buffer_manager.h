@@ -90,6 +90,9 @@ public:
 	// update texture buffer, mostly used to update it with new data
 	void updateBuffer(int nx, int ny, GLenum format, GLenum type, const void* data);
 
+	// update shading of texture buffer
+	void setTextureShading(GLint filter);
+
 	// getter for texture id
 	unsigned int getTextureID();
 

@@ -405,7 +405,6 @@ void Inspector::drawPopup() {
 void Inspector::renderPreview() {
 
 	frameBuffer.bind();
-
 	glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 

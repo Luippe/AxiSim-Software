@@ -13,12 +13,18 @@ struct AppAssets {
 	TextureBuffer selectRegionIcon;
 };
 
+
 enum class CompareType {
 	LessThan,
 	EqualTo,
 	GreaterThan,
 	Between,
 	Exclude
+};
+
+enum class ShadingType {
+	Interp,
+	Flat
 };
 
 struct InspectorPoint {

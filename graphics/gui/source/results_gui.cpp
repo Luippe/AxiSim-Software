@@ -75,6 +75,8 @@ void ResultsGUI::drawPropertiesPanel() {
 	}
 	else if (selectedItem == "Change Colormap") {
 
+		ImGui::SeparatorText("Colormap Settings");
+
 		if (ImGui::BeginTable("Colormap", 2)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
 			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
@@ -85,6 +87,20 @@ void ResultsGUI::drawPropertiesPanel() {
 				results.uploadUniforms();
 			}
 
+			ImGui::EndTable();
+		}
+
+		ImGui::SeparatorText("Colormap Settings");
+		if (ImGui::BeginTable("Shading", 2)) {
+			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+
+			textAtNewRow("Shading", 0, 1);
+			if (createSimpleCombo("##Shading", results.shadingType, (int&)results.currentShadingType, IM_ARRAYSIZE(results.shadingType))) {
+				
+				GLint shadingMode = (results.currentShadingType == ShadingType::Interp) ? GL_LINEAR : GL_NEAREST;	// choose between flat and smooth shading
+				results.currentField->textureBuffer.setTextureShading(shadingMode);
+			}
 			ImGui::EndTable();
 		}
 	}

@@ -335,7 +335,7 @@ void TextureBuffer::createBuffer(GLenum internalFormat, int nx, int ny,  GLenum 
 	glGenTextures(1, &TBO);
 	glBindTexture(GL_TEXTURE_2D, TBO);
 
-	//	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -363,7 +363,8 @@ void TextureBuffer::createBuffer(const char* path) {
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
@@ -376,6 +377,17 @@ void TextureBuffer::updateBuffer(int nx, int ny, GLenum format, GLenum type, con
 	bind();
 	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, nx, ny, format, type, data);
 	unbind();
+}
+
+void TextureBuffer::setTextureShading(GLint filter) {
+
+	glBindTexture(GL_TEXTURE_2D, TBO);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+
+	glBindTexture(GL_TEXTURE_2D, 0);
+
 }
 
 void TextureBuffer::deleteBuffer() {
