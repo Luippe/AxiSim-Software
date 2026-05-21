@@ -16,7 +16,7 @@ public:
 	void createBuffer(int width, int height, int samples = 4);
 
 	// create a frame buffer with no MSAA and colorRBO and depthRBO, useful for 2D images
-	void createSimpleBuffer(int width, int height);
+	void createSimpleBuffer(int width, int height, GLenum internalFormat, GLenum format, GLenum type);
 
 	// resolve frame buffer before drawing
 	void resolve();

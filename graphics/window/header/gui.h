@@ -35,7 +35,6 @@ public:
 	Bounding& bound;
 	SceneView& scene;
 	Colormap& colormap;
-	Colorbar colorbar;
 	MeshGUI meshGUI;
 	SolverGUI solverGUI;
 	ResultsGUI resultsGUI;

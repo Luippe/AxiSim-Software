@@ -14,6 +14,14 @@ class Solver;
 class Results {
 public:
 
+	struct FilterValues {
+		float valueAt = 0.0;
+		float valueLower = 0.0;
+		float valueUpper = 0.0;
+	};
+
+	FilterValues filterValues;
+
 	int colFront;
 	int colBack;
 	int rowTop;
@@ -27,8 +35,7 @@ public:
 	int currentItem = 0;
 	CompareType currentCompareType = CompareType::GreaterThan;
 	const char* fieldType[3] = { "Axial Velocity", "Radial Velocity", "Pressure" };
-	const char* compareType[3] = { "Less Than", "Equal To", "Greater Than" };
-	float selectedValue = 0.0;
+	const char* compareType[5] = { "Less Than", "Equal To", "Greater Than", "Between", "Exclude"};
 
 	Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader);
 
@@ -83,11 +90,16 @@ public:
 	Shader& shader;
 	Colormap& colormap;
 
+
 private:
+
+
+
 
 	int nseg;
 	double dz;
 	double dr;
+	int nr, nz;
 
 	GridConfig g;
 
@@ -103,6 +115,11 @@ private:
 	Field concField;
 	Solver& solver;
 	Mesh& mesh;
+
+	// reduce number of instances by combining control volume for rows
+	std::vector<CylinderInstance> createRowMergedCylinderInstances(std::vector<float>& field, FilterValues& filterValues);
+
+	bool compareFloat(float value, FilterValues& filterValues);
 
 	// updates the outline model matrix so it can change with the mesh
 	void updateOutlineModel();

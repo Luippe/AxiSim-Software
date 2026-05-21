@@ -6,13 +6,15 @@
 #include "colormap.h"
 #include "graphics_struct.h"
 #include "gui_manager.h"
+#include "colorbar.h"
 
 ResultsGUI::ResultsGUI(GUI& gui, SceneView& scene) :
 	gui(gui),
 	scene(scene),
 	mesh(scene.mesh),
 	results(scene.results),
-	colormap(scene.colormap){
+	colormap(scene.colormap),
+	colorbar(gui.inspector.colorbar){
 }
 
 void ResultsGUI::drawPropertiesPanel() {
@@ -23,7 +25,7 @@ void ResultsGUI::drawPropertiesPanel() {
 
 	}
 	else if (selectedItem == "View") {
-		if (ImGui::BeginTable("Geometry", 2)) {
+		if (ImGui::BeginTable("Geometry", 3)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 45.0f);
 			ImGui::TableSetupColumn("Slider", ImGuiTableColumnFlags_WidthStretch);
 
@@ -57,7 +59,17 @@ void ResultsGUI::drawPropertiesPanel() {
 			}
 
 			textAtNewRow("Value", 0, 1);
-			ImGui::InputFloat("##Value", &results.selectedValue);
+			if (results.currentCompareType == CompareType::Between || results.currentCompareType == CompareType::Exclude) {
+				ImGui::InputFloat("##LowerBound", &results.filterValues.valueLower, 0.0f, 0.0f);
+				ImGui::TableNextColumn();
+				ImGui::InputFloat("##UpperBound", &results.filterValues.valueUpper, 0.0f, 0.0f);
+			}
+			else {
+				ImGui::SliderFloat("##Value", &results.filterValues.valueAt, results.currentField->vmin, results.currentField->vmax);
+			}
+
+
+
 			ImGui::EndTable();
 		}
 	}
@@ -72,6 +84,23 @@ void ResultsGUI::drawPropertiesPanel() {
 				colormap.setColormap(colormap.currentItem);
 				results.uploadUniforms();
 			}
+
+			ImGui::EndTable();
+		}
+	}
+	else if (selectedItem == "Display") {
+
+		ImGui::SeparatorText("Display Settings");
+
+		if (ImGui::BeginTable("Colormap", 2)) {
+			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+			ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+
+			textAtNewRow("Precision", 0, 1);
+			ImGui::InputInt("##NumberPrecision", &colorbar.currentPrecision, 0, 0);
+
+			textAtNewRow("Number Format", 0, 1);
+			createSimpleCombo("##NumberFormat", colorbar.formatOption, (int&)colorbar.currentNumberFormat, IM_ARRAYSIZE(colorbar.formatOption));
 
 			ImGui::EndTable();
 		}
@@ -107,8 +136,11 @@ void ResultsGUI::draw() {
 
 		if (ImGui::TreeNodeEx("Colormap", UIFlags::BranchFlags)) {
 			drawLeaf("Change Colormap");
+			drawLeaf("Display");
 			ImGui::TreePop();
 		}
+		changeCursorOnHover();
+
 		ImGui::EndChild();
 
 		if (ImGui::Button("Generate Results")) {

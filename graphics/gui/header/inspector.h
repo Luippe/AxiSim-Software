@@ -1,7 +1,10 @@
 #pragma once
 #include "pch.h"
-#include "buffer_manager.h"
+
 #include "shader.h"
+#include "colorbar.h"
+
+#include "buffer_manager.h"
 #include "graphics_struct.h"
 
 
@@ -10,6 +13,7 @@ class Results;
 class Colormap;
 struct GridConfig;
 class SceneView;
+
 
 class Inspector {
 public:
@@ -26,6 +30,8 @@ public:
 
 	bool keepAspectRatio = false;
 
+	Colorbar colorbar;
+
 private:
 
 	// ----------dependencies-----------
@@ -33,7 +39,7 @@ private:
 	Mesh& mesh;
 	Results& results;
 	GridConfig& g;
-	Colormap& colormap;
+
 
 	// ----------inspector region-----------
 	int nrBase = 0;
@@ -43,7 +49,7 @@ private:
 
 	// ----------resources-----------
 	AppAssets& assets;
-	FrameBuffer frameBuffer;
+	FrameBuffer frameBuffer;	// this is a simple buffer as it is 2D
 	VertexBuffer vertexBuffer;
 	Shader inspectorShader;
 

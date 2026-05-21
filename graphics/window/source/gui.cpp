@@ -56,7 +56,6 @@ GUI::GUI(GLFWwindow* window, SceneView& scene) :
 	renderer(scene.renderer),
 	bound(scene.bound),
 	colormap(scene.colormap),
-	colorbar(scene.colormap, scene.results),
 	meshGUI(*this, scene),
 	solverGUI(scene),
 	resultsGUI(*this, scene),
@@ -96,12 +95,13 @@ void GUI::createAssetBuffers() {
 }
 
 void GUI::newFrame() {
+
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 	ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), UIFlags::BaseDockspaceFlags);
-}
 
+}
 
 // ======================================================================
 // -----------------------DRAW CALLS-------------------------------------
@@ -134,9 +134,7 @@ void GUI::drawUI() {
 		}
 		ImGui::EndTabBar();
 	}
-
 	ImGui::End();
-
 }
 
 // ======================================================================
@@ -152,7 +150,6 @@ void GUI::render() {
 
 	// draw colorbar only in the results tab
 	if (scene.currentTab == TAB_RESULTS && results.isReady) {
-		colorbar.render();
 		inspector.render();
 
 		if (scene.solver.transient) {
@@ -187,5 +184,4 @@ void GUI::render() {
 		ImGui::SetCurrentContext(oldImGuiContext);
 		ImPlot::SetCurrentContext(oldImPlotContext);
 	}
-
 }

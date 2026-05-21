@@ -15,7 +15,9 @@ struct AppAssets {
 enum class CompareType {
 	LessThan,
 	EqualTo,
-	GreaterThan
+	GreaterThan,
+	Between,
+	Exclude
 };
 
 struct InspectorPoint {

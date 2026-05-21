@@ -8,20 +8,28 @@
 #include "console.h"
 #include "solver.h"
 
-bool compareFloat(float a, float b, CompareType type) {
+
+
+bool Results::compareFloat(float value, FilterValues& filterValues) {
 
 	constexpr float eps = 1e-6f;
 
-	switch (type) {
+	switch (currentCompareType) {
 
 	case CompareType::LessThan:
-		return a < b;
+		return value < filterValues.valueAt;
 
 	case CompareType::EqualTo:
-		return std::abs(a - b) < eps;
+		return std::abs(value - filterValues.valueAt) < eps;
 
 	case CompareType::GreaterThan:
-		return a > b;
+		return value > filterValues.valueAt;
+
+	case CompareType::Between:
+		return value > filterValues.valueLower && value < filterValues.valueUpper;
+
+	case CompareType::Exclude:
+		return value < filterValues.valueLower || value > filterValues.valueUpper;
 
 	}
 
@@ -168,9 +176,10 @@ void createCylinderTemplate(std::vector<CylinderTemplateVertex>& vertices, std::
 	}
 }
 
-std::vector<CylinderInstance> createRowMergedCylinderInstances(std::vector<float>& field, int nr, int nz, double dz, double dr, float selectedValue, CompareType compareType) {
+std::vector<CylinderInstance> Results::createRowMergedCylinderInstances(std::vector<float>& field, FilterValues& filterValues) {
 
 	std::vector<CylinderInstance> instances;
+
 
 	for (int i = 0; i < nr; i++) {
 		int j = 0;
@@ -178,7 +187,7 @@ std::vector<CylinderInstance> createRowMergedCylinderInstances(std::vector<float
 		while (j < nz) {
 			int n = i * nz + j;
 
-			if (!compareFloat(field[n], selectedValue, compareType)) {
+			if (!compareFloat(field[n], filterValues)) {
 				j++;
 				continue;
 			}
@@ -186,7 +195,7 @@ std::vector<CylinderInstance> createRowMergedCylinderInstances(std::vector<float
 			// start selected run
 			int j0 = j;
 
-			while (j < nz && compareFloat(field[i * nz + j], selectedValue, compareType)) {	// we dont use n here, as we want the index to update every loop
+			while (j < nz && compareFloat(field[i * nz + j], filterValues)) {	// we dont use n here, as we want the index to update every loop
 				j++;
 			}
 
@@ -263,7 +272,7 @@ void Results::createBuffer() {
 	cvBuffer.enableAttribute(2, 1, GL_FLOAT, sizeof(CylinderTemplateVertex), (void*)offsetof(CylinderTemplateVertex, radialCoord));
 
 	// ---------------- Instance VBO ----------------
-	cvInstanceBuffer.createBuffer(g.nr * g.nz * sizeof(CylinderInstance), nullptr);
+	cvInstanceBuffer.createBuffer(nr * nz * sizeof(CylinderInstance), nullptr);
 
 	// IMPORTANT:
 	cvBuffer.bind(); // bind the VAO you draw with
@@ -285,6 +294,10 @@ void Results::copyMeshData() {
 	g = mesh.g;
 	nseg = mesh.nseg;
 	vertices = mesh.vertices;
+	nr = g.nr;
+	nz = g.nz;
+	dr = g.dr;
+	dz = g.dz;
 
 }
 
@@ -482,7 +495,7 @@ void Results::createAllCVInstances() {
 
 void Results::updateSelectedInstances() {	// might be heavy on the cpu, optimize if AxiSim starts lagging
 
-	selectedInstances = createRowMergedCylinderInstances(currentField->cellValues, g.nr, g.nz, g.dz, g.dr, selectedValue, currentCompareType);
+	selectedInstances = createRowMergedCylinderInstances(currentField->cellValues, filterValues);
 
 	cvInstanceBuffer.bindVBO();
 	cvInstanceBuffer.bufferSubData(selectedInstances.size() * sizeof(CylinderInstance), selectedInstances.data());

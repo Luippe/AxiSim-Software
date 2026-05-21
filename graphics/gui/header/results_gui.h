@@ -6,6 +6,7 @@ class GUI;
 class Results;
 class Colormap;
 class Mesh;
+class Colorbar;
 
 class ResultsGUI : public BaseGUI {
 public:
@@ -22,5 +23,6 @@ private:
 	GUI& gui;
 	Results& results;
 	Colormap& colormap;
+	Colorbar& colorbar;
 	Mesh& mesh;
 };

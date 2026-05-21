@@ -134,7 +134,7 @@ bool ResidualPlot::copyActivePlotToClipboard(int ID, int width, int height) {
     glGetIntegerv(GL_VIEWPORT, oldViewport);
 
     // bind new frame buffer
-    offScreenFBO.createSimpleBuffer(width, height);
+    offScreenFBO.createSimpleBuffer(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
     offScreenFBO.bind();
     glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);

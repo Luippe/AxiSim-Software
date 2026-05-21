@@ -1,20 +1,25 @@
 #include "inspector.h"
-#include "printer.h"
-#include "scene_view.h"
-#include "math_func.h"
+
 #include <format>
+
+#include "scene_view.h"
+#include "colorbar.h"
+
+#include "printer.h"
+#include "math_func.h"
+
 
 Inspector::Inspector(SceneView& scene, AppAssets& assets) :
 		scene(scene),
 		mesh(scene.mesh),
 		results(scene.results),
-		colormap(scene.colormap),
 		g(mesh.g),
 		assets(assets),
+		colorbar(scene.colormap, scene.results),
 		inspectorShader("graphics/shaders/inspector.vert", "graphics/shaders/inspector.frag"){
 
 	// radial location
-	frameBuffer.createBuffer(100, 100);
+	frameBuffer.createSimpleBuffer(100, 100, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
 
 }
 
@@ -74,30 +79,26 @@ void Inspector::createFullScreenQuad() {
 }
 
 void Inspector::uploadUniforms() {
+
 	inspectorShader.use();
 	inspectorShader.SetFloat("vmin", results.currentField->vmin);
 	inspectorShader.SetFloat("vmax", results.currentField->vmax);
 	inspectorShader.SetInt("fieldTex", 0);
 	inspectorShader.SetInt("uColormap", 1);
 
-	//float vmin = results.currentField->vmin;
-	//float vmax = results.currentField->vmax;
-
-	//float denom = std::max(vmax - vmin, 1e-12f);
-	//float value = -0.018f;
-	//float t = (value - vmin) / denom;
-	//printFloat(t);
 }
 
 
 void Inspector::resizeImage() {
 
 	ImVec2 avail = ImGui::GetContentRegionAvail();
-	imageWidth = (int)avail.x;
+	imageWidth = (int)avail.x - (int)colorbar.width;
 	imageHeight = (int)avail.y;
+
 	if (imageWidth != frameBuffer.width || imageHeight != frameBuffer.height) {
-		frameBuffer.createBuffer(imageWidth, imageHeight);
+		frameBuffer.createSimpleBuffer(imageWidth, imageHeight, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
 	}
+
 }
 
 ImVec2 Inspector::getMouseIndex() {
@@ -285,8 +286,6 @@ void Inspector::handleMouse() {
 	drawList->AddCircleFilled(currentMousePos, circleRadius, IM_COL32(150, 150, 150, 255), 16);
 	drawList->AddCircle(currentMousePos, circleRadius, IM_COL32(200, 200, 200, 255), 16, 1.0f);
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-		//printf("%f\n", results.currentField->getData(dataPos));
-
 		toggleSelectedPoint(points, currentMouseIndex, currentMousePos, results.currentField->getData(glm::vec2(g.dz * currentMouseIndex.x, g.dr * currentMouseIndex.y)));
 	}
 }
@@ -318,7 +317,6 @@ void Inspector::renderPreview() {
 
 	frameBuffer.bind();
 
-	glDisable(GL_DEPTH_TEST);
 	glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
@@ -327,14 +325,6 @@ void Inspector::renderPreview() {
 
 	glActiveTexture(GL_TEXTURE0);
 	results.currentField->textureBuffer.bind();
-
-	//float vmin = results.currentField->vmin;
-	//float vmax = results.currentField->vmax;
-
-	//float denom = std::max(vmax - vmin, 1e-12f);
-	//float value = 0.027f;
-	//float t = (value - vmin) / denom;
-	//printFloat(t);
 
 	glActiveTexture(GL_TEXTURE1);
 	results.colormap.bind();
@@ -351,11 +341,11 @@ void Inspector::renderPreview() {
 
 	frameBuffer.unbind();
 
-	glEnable(GL_DEPTH_TEST);
 }
 
-
-
+// ======================================================================
+// -----------------------MAIN RENDER LOOP-------------------------------
+// ======================================================================
 void Inspector::render() {
 
 	ImGui::Begin("Inspector");
@@ -366,12 +356,14 @@ void Inspector::render() {
 	
 	renderPreview();
 
-	frameBuffer.resolve();
 	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(u0, v1), ImVec2(u1, v0));
 
 	handleMouse();
 	displayRect();
 	displayTextValue();
+
+	ImGui::SameLine();
+	colorbar.render();
 
 	ImGui::End();
 }

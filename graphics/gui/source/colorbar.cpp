@@ -1,12 +1,43 @@
 #include "colorbar.h"
+
+#include <sstream>
+#include <algorithm>
+
 #include "colormap.h"
-#include "printer.h"
 #include "results.h"
 
+#include "printer.h"
+
+
+// ======================================================================
+// -----------------------HELPER FUNCTION--------------------------------
+// ======================================================================
+void Colorbar::formatTickValue(char* buf, size_t bufSize, double value) {
+
+	currentPrecision = std::clamp(currentPrecision, 0, 12);
+
+	switch (currentNumberFormat) {
+	case NumberFormat::Fixed:
+		snprintf(buf, bufSize, "%.*f", currentPrecision, value);
+		break;
+
+	case NumberFormat::Scientific:
+		snprintf(buf, bufSize, "%.*e", currentPrecision, value);
+		break;
+
+	case NumberFormat::General:
+		snprintf(buf, bufSize, "%.*g", currentPrecision, value);
+		break;
+	}
+}
+
+// ======================================================================
+// -----------------------DRAW CALLS-------------------------------------
+// ======================================================================
 void Colorbar::drawBar() {
 
 	ImVec2 avail = ImGui::GetContentRegionAvail();
-	float xCenter = (avail.x - barWidth) * 0.5f;
+	float xCenter = (avail.x - barWidth) * 0.2f;
 	float yCenter = (avail.y - barHeight) * 0.5f;
 
 	ImGui::SetCursorPosX(ImGui::GetCursorPosX() + xCenter);
@@ -26,25 +57,57 @@ void Colorbar::drawTickValue() {
 	for (int i = 0; i < numTicks + 1; i++) {
 		float y = posMin.y + i * dy;
 		char buf[32];
-		snprintf(buf, sizeof(buf), "%.5f", results.currentField->vmax - i * dval);
+		double value = results.currentField->vmax - i * dval;
+
+		formatTickValue(buf, sizeof(buf), value);
 
 		ImVec2 textSize = ImGui::CalcTextSize(buf);
 		drawList->AddText(ImVec2(posMax.x + tickLen + textOffset, y - textSize.y * 0.5f), IM_COL32(255, 255, 255, 255), buf);
 	}
 }
 
+float Colorbar::getValueAtY(float localY) {
+
+	// 0 at top, 1 at bottom
+	float yNorm = localY / barHeight;
+	yNorm = std::clamp(yNorm, 0.0f, 1.0f);
+
+	// flip since 0 is at top
+	float t = 1.0f - yNorm;
+
+	return results.currentField->vmin + t * (results.currentField->vmax - results.currentField->vmin);
+}
+
 void Colorbar::drawLabel() {
 
 	const char* label = results.fieldType[results.currentItem];
 
-	ImVec2 textSize = ImGui::CalcTextSize(label);
+	std::string text = label;
+	std::vector<std::string> lines;
 
-	ImVec2 textPos(
-		posMin.x + (barWidth - textSize.x) * 0.5f,
-		posMin.y - 25.0f
-	);
+	std::stringstream ss(text);
+	std::string word;
 
-	drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), label);
+	while (ss >> word) {
+		lines.push_back(word);
+	}
+
+	float lineHeight = ImGui::GetTextLineHeight();
+	float totalHeight = lines.size() * lineHeight;	// total text height
+
+	float centerX = posMin.x + barWidth * 0.5f;
+	float y = posMin.y - totalHeight - 5.0f;
+
+	for (const std::string& line : lines) {
+
+		ImVec2 lineSize = ImGui::CalcTextSize(line.c_str());
+		ImVec2 linePos(centerX - lineSize.x * 0.5f, y);
+
+		drawList->AddText(linePos, IM_COL32(255, 255, 255, 255),line.c_str());
+
+		y += lineHeight;
+
+	}
 }
 
 void Colorbar::drawTicks() {
@@ -56,12 +119,104 @@ void Colorbar::drawTicks() {
 	}
 }
 
+void Colorbar::drawFilterTicks() {
 
+	if (filterValueAt.has_value()) {
+		drawList->AddLine(
+			ImVec2(posMin.x, filterValueAt->mouseY),
+			ImVec2(posMax.x, filterValueAt->mouseY),
+			IM_COL32(255, 255, 255, 255),
+			5.0f);
+	}
+
+	if (filterValueLower.has_value()) {
+		drawList->AddLine(
+			ImVec2(posMin.x, filterValueLower->mouseY),
+			ImVec2(posMax.x, filterValueLower->mouseY),
+			IM_COL32(255, 255, 255, 255),
+			5.0f);
+	}
+
+	if (filterValueUpper.has_value()) {
+		drawList->AddLine(
+			ImVec2(posMin.x, filterValueUpper->mouseY),
+			ImVec2(posMax.x, filterValueUpper->mouseY),
+			IM_COL32(255, 255, 255, 255),
+			5.0f);
+	}
+}
+
+// ======================================================================
+// -----------------------EVENT HANDLE-----------------------------------
+// ======================================================================
+void Colorbar::handleMouseEvent() {
+
+	if (!ImGui::IsItemHovered()) return;
+
+	// set filter value at
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+
+		// get local mouse pos and value at that position
+		ImVec2 mousePos = ImGui::GetIO().MousePos;
+		ImVec2 localPos = ImVec2(mousePos.x - posMin.x, mousePos.y - posMin.y);
+		float value = getValueAtY(localPos.y);
+
+		if (results.currentCompareType == CompareType::Between || results.currentCompareType == CompareType::Exclude) {
+			filterValueAt.reset();
+
+			if (!filterValueLower.has_value()) {
+				results.filterValues.valueLower= value;
+				filterValueLower = FilterTickData{ mousePos.y, value };
+			}
+			else if (!filterValueUpper.has_value()) {
+				results.filterValues.valueUpper = value;
+				filterValueUpper = FilterTickData{ mousePos.y, value };
+			}
+			else {
+				//check();
+				// if both are already set, set the tick that is most closest to the mouse
+				double distToLower = std::abs(mousePos.y - filterValueLower->mouseY);
+				double distToUpper = std::abs(mousePos.y - filterValueUpper->mouseY);
+
+
+				if (distToLower < distToUpper) {
+					results.filterValues.valueLower = value;
+					filterValueLower = FilterTickData{ mousePos.y, value };
+				}
+				else {
+					results.filterValues.valueUpper = value;
+					filterValueUpper = FilterTickData{ mousePos.y, value };
+				}
+			}
+
+			// check which one is upper and which is lower. reorganize if needed
+			if (filterValueLower->value > filterValueUpper->value) {
+				//check();
+				std::swap(filterValueLower, filterValueUpper);
+				std::swap(results.filterValues.valueLower, results.filterValues.valueUpper);
+			}
+		}
+		else {
+			results.filterValues.valueAt = value;
+			filterValueAt = FilterTickData{ mousePos.y, value };
+		}
+	}
+}
+
+void Colorbar::resetFilterValues() {
+	if (results.currentCompareType == CompareType::Between || results.currentCompareType == CompareType::Exclude) {
+		filterValueAt.reset();
+	}
+	else {
+		filterValueLower.reset();
+		filterValueUpper.reset();
+	}
+}
+
+// ======================================================================
+// -----------------------MAIN RENDER LOOP-------------------------------
+// ======================================================================
 void Colorbar::render() { 
-
-	if (!results.isReady) return;
-
-	ImGui::Begin("Colorbar");
 
 	drawBar();
 
@@ -69,11 +224,14 @@ void Colorbar::render() {
 	posMax = ImGui::GetItemRectMax();
 	drawList = ImGui::GetWindowDrawList();
 
+	resetFilterValues();
+
+	handleMouseEvent();
+
 	drawOutline();
 	drawLabel();
 	drawTicks();
 	drawTickValue();
-
-	ImGui::End();
+	drawFilterTicks();
 
 }
