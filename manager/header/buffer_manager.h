@@ -100,4 +100,5 @@ private:
 
 	void deleteBuffer();
 	unsigned int TBO = 0;
+
 };

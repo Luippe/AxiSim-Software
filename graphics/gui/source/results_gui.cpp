@@ -98,7 +98,7 @@ void ResultsGUI::drawPropertiesPanel() {
 			textAtNewRow("Shading", 0, 1);
 			if (createSimpleCombo("##Shading", results.shadingType, (int&)results.currentShadingType, IM_ARRAYSIZE(results.shadingType))) {
 				
-				GLint shadingMode = (results.currentShadingType == ShadingType::Interp) ? GL_LINEAR : GL_NEAREST;	// choose between flat and smooth shading
+				GLint shadingMode = (results.currentShadingType == ShadingType::Interp) ? GL_LINEAR : GL_NEAREST;	// choose lienar and flat shading
 				results.currentField->textureBuffer.setTextureShading(shadingMode);
 			}
 			ImGui::EndTable();

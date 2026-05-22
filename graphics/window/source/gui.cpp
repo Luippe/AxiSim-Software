@@ -160,7 +160,6 @@ void GUI::render() {
 		if (scene.solver.transient) {
 			animationGUI.render();
 		}
-
 	}
 
 	if (scene.currentTab == TAB_SOLVER) {

@@ -163,8 +163,8 @@ void Console::registerGetCommands() {
 			addLine("Invalid object: " + object);
 		}
 		},
-		"set <object> <value>",
-		"Sets a program setting"
+		"get <object> <value>",
+		"display a program setting"
 	);
 }
 
