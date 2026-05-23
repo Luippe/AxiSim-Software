@@ -6,7 +6,6 @@
 
 #include "scene_view.h"
 #include "console_keywords.h"
-#include "imgui.h"
 #include "printer.h"
 #include "gui.h"
 
@@ -321,62 +320,46 @@ void Console::executeCommand(const std::string& cmd) {
 	}
 }
 
-void Console::handleEvents() {
-
+int Console::textEditCallbackStub(ImGuiInputTextCallbackData* data) {
+	Console* console = static_cast<Console*>(data->UserData);
+	return console->textEditCallback(data);
 }
 
-static int inputCallback(ImGuiInputTextCallbackData* data) {
-	InputFocusData* focusData = (InputFocusData*)(data->UserData);
+int Console::textEditCallback(ImGuiInputTextCallbackData* data) {
+	if (data->EventFlag == ImGuiInputTextFlags_CallbackHistory) {
 
-	if (focusData->moveCursorToEnd) {
-		data->CursorPos = data->BufTextLen;
-		data->SelectionStart = data->BufTextLen;
-		data->SelectionEnd = data->BufTextLen;
+		const int prevHistoryPos = historyPos;
 
-		focusData->moveCursorToEnd = false;
-	}
-
-	return 0;
-}
-
-static int MultilineScrollCallback(ImGuiInputTextCallbackData* data) {
-	auto* scrollData = static_cast<MultilineScrollData*>(data->UserData);
-
-	if (scrollData->scrollToBottom) {
-
-		data->CursorPos = data->BufTextLen;
-		data->SelectionStart = data->BufTextLen;
-		data->SelectionEnd = data->BufTextLen;
-
-		scrollData->scrollToBottom = false;
-	}
-
-	return 0;
-}
-
-void appendCharToInput(char* buf, size_t bufSize, ImWchar c) {
-	if (c < 128) { // ASCII only
-		size_t len = std::strlen(buf);
-
-		if (len + 1 < bufSize) {
-			buf[len] = (char)(c);
-			buf[len + 1] = '\0';
-		}
-	}
-};
-
-void detectCharacterPress(ImGuiIO& io, static bool& outputWasFocused, ImWchar& forwardedChar, bool& focusInput) {
-	// detect character BEFORE drawing the input widgets
-	if (outputWasFocused && !io.KeyCtrl && !io.KeyAlt && !io.KeySuper) {
-		for (int i = 0; i < io.InputQueueCharacters.Size; i++) {
-			ImWchar c = io.InputQueueCharacters[i];
-
-			if (c >= 32 && c != 127) {
-				forwardedChar = c;
-				focusInput = true;
+		if (data->EventKey == ImGuiKey_UpArrow) {
+			if (historyPos == -1) {
+				historyPos = (int)commandHistory.size() - 1;
+			}
+			else if (historyPos > 0) {
+				historyPos--;
 			}
 		}
+		else if (data->EventKey == ImGuiKey_DownArrow) {
+			if (historyPos != -1) {
+				if (++historyPos >= (int)commandHistory.size()) {
+					historyPos = -1;
+				}
+			}
+		}
+
+		if (prevHistoryPos != historyPos) {
+			const char* historyStr =
+				(historyPos >= 0) ? commandHistory[historyPos].c_str() : "";
+
+			data->DeleteChars(0, data->BufTextLen);
+			data->InsertChars(0, historyStr);
+		}
 	}
+
+	return 0;
+}
+
+void Console::handleEvents() {
+
 }
 
 void drawOutput() {
@@ -414,14 +397,18 @@ void Console::draw() {
 	}
 
 	ImGui::EndChild();
-	char buf[256] = {};
-	if (ImGui::InputText("##Console", buf, sizeof(buf), UIFlags::ConsoleInputFlags)) {
-		std::string cmd = buf;
+
+	if (ImGui::InputText("##Console", inputBuffer, sizeof(inputBuffer), UIFlags::ConsoleInputFlags, &Console::textEditCallbackStub, this)) {
+		std::string cmd = inputBuffer;
 		scrollToBottom = true;
 		if (!cmd.empty()) {
 			executeCommand(cmd);
+			if (commandHistory.empty() || commandHistory.back() != cmd) {
+				commandHistory.push_back(cmd);
+			}
 		}
-		buf[0] = '\0';
+		inputBuffer[0] = '\0';
+		historyPos = -1;
 		ImGui::SetKeyboardFocusHere(-1);
 	}
 

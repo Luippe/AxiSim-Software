@@ -52,6 +52,7 @@ namespace UIFlags {
 
 	inline constexpr ImGuiInputTextFlags ConsoleInputFlags =
 		ImGuiInputTextFlags_EnterReturnsTrue |
-		ImGuiInputTextFlags_EscapeClearsAll;
+		ImGuiInputTextFlags_EscapeClearsAll |
+		ImGuiInputTextFlags_CallbackHistory;
 }
 

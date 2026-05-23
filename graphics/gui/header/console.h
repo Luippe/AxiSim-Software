@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <functional>
+#include "imgui.h"
 
 class SceneView;
 class GUI;
@@ -51,6 +52,7 @@ private:
 	std::vector<std::string> lines;
 	bool autoScroll = true;
 	bool scrollToBottom = false;
+	char inputBuffer[256] = {};
 
 	std::unordered_map<std::string, Command> commands;
 
@@ -67,6 +69,11 @@ private:
 	void addCommand(const std::string& name, CommandFn function, const std::string& usage, const std::string& description);
 
 	void handleEvents();
+
+	std::vector<std::string> commandHistory;
+	int historyPos = -1;
+	static int textEditCallbackStub(ImGuiInputTextCallbackData* data);
+	int textEditCallback(ImGuiInputTextCallbackData* data);
 
 };
 
