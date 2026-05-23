@@ -42,15 +42,15 @@ private:
 	GUI& gui;
 	SceneView& scene;
 
-	struct ConsoleLine {
-		std::string text;
-	};
-
 	struct Command {
 		CommandFn run;
 		std::string usage;
 		std::string description;
 	};
+
+	std::vector<std::string> lines;
+	bool autoScroll = true;
+	bool scrollToBottom = false;
 
 	std::unordered_map<std::string, Command> commands;
 
@@ -60,13 +60,13 @@ private:
 	void registerRunCommands();
 	void registerSetCommands();
 	void registerGetCommands();
+	void registerCopyCommands();
+	void registerSaveAndLoadCommands();
 	void registerUtilityCommands();
 
 	void addCommand(const std::string& name, CommandFn function, const std::string& usage, const std::string& description);
 
-	std::vector<ConsoleLine> lines;
-	std::string input;
-	bool autoScroll = true;
-	bool scrollToBottom = false;
+	void handleEvents();
+
 };
 

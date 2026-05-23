@@ -176,10 +176,7 @@ void GUI::render() {
 		setContext(exportImGuiContext, exportImPlotContext);
 
 		residualPlot.pendingCopy = false;
-		residualPlot.copyActivePlotToClipboard(
-			residualPlot.pendingCopyTabID,
-			residualPlot.pendingCopyWidth,
-			residualPlot.pendingCopyHeight);
+		residualPlot.copyActivePlotToClipboard();
 
 		setContext(mainImGuiContext, mainImPlotContext);
 
@@ -190,9 +187,7 @@ void GUI::render() {
 		setContext(exportImGuiContext, exportImPlotContext);
 
 		inspector.pendingCopy = false;
-		inspector.copyActiveSurfaceToClipboard(
-			inspector.pendingCopyWidth,
-			inspector.pendingCopyHeight);
+		inspector.copyActiveSurfaceToClipboard();
 
 		setContext(mainImGuiContext, mainImPlotContext);
 

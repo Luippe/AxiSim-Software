@@ -29,3 +29,6 @@ void updatePressure(Coefficients coeff, VariablesSimple simple);
 
 __global__
 void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, VariablesSimple simple, double* D);
+
+__global__
+void underRelaxEquation(Coefficients coeff, double* xOld, double alpha);

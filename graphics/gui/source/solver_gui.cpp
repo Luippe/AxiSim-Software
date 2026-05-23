@@ -59,8 +59,6 @@ void SolverGUI::drawPropertiesPanel() {
 			ImGui::SeparatorText("Add Solvers");
 			ImGui::Spacing();
 
-
-
 		}
 	}
 	else if (selectedItem == "Velocity BC") {

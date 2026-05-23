@@ -211,7 +211,7 @@ struct VariablesSimple {
 	double* vOld = nullptr;
 
 	double momentumRelaxation = 0.7;
-	double correctionRelaxation = 0.2;
+	double correctionRelaxation = 1.7;
 	double pressureRelaxation = 0.3;
 
 	void free() {

@@ -92,11 +92,11 @@ int closestPlotY(std::vector<Plot>& plots, int idx, double mouseY) {
 
 
 
-bool ResidualPlot::copyActivePlotToClipboard(int ID, int width, int height) {
+bool ResidualPlot::copyActivePlotToClipboard() {
 
     GLint oldFBO, oldViewport[4];
     ImVec2 oldDisplaySize, oldFramebufferSize;
-    offScreenFBO.createSimpleBuffer(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+    offScreenFBO.createSimpleBuffer(pendingCopyWidth, pendingCopyHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
     offScreenFBO.beginOffScreenImGuiRender(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
 
     // build imgui draw commands
@@ -105,16 +105,16 @@ bool ResidualPlot::copyActivePlotToClipboard(int ID, int width, int height) {
 
     // draw the plot which will be copied. but first set the axes to the correct limits
     ImPlot::SetNextAxesLimits(
-        tabs[ID].currentLimits.X.Min,
-        tabs[ID].currentLimits.X.Max,
-        tabs[ID].currentLimits.Y.Min,
-        tabs[ID].currentLimits.Y.Max,
+        tabs[pendingCopyTabID].currentLimits.X.Min,
+        tabs[pendingCopyTabID].currentLimits.X.Max,
+        tabs[pendingCopyTabID].currentLimits.Y.Min,
+        tabs[pendingCopyTabID].currentLimits.Y.Max,
         ImGuiCond_Always
     );
 
-    if (ImPlot::BeginPlot("Solver Residuals", ImVec2((float)width, (float)height), ImPlotFlags_NoMouseText)) {
+    if (ImPlot::BeginPlot("Solver Residuals", ImVec2((float)pendingCopyWidth, (float)pendingCopyHeight), ImPlotFlags_NoMouseText)) {
 
-        drawPlotData(tabs[ID]);
+        drawPlotData(tabs[pendingCopyTabID]);
 
         ImPlot::EndPlot();
     }
@@ -284,9 +284,10 @@ void ResidualPlot::drawToolBar(ResidualPlotTab& tab, int i, ImGuiID currentDockI
     setToolTip("Clear all selected points");
     ImGui::SameLine();
 
-    if (ImGui::ImageButton("##CopyToClipboard", (ImTextureID)(intptr_t)assets.copyIcon.getTextureID(), ImVec2(iconSize, iconSize))) {
+    if (ImGui::ImageButton("##CopyToClipboard", (ImTextureID)(intptr_t)assets.copyIcon.getTextureID(), ImVec2(iconSize, iconSize)) || consoleCopy) {
         tab.copyImageNextFrame = true;
         pendingCopy = true;
+        consoleCopy = false;
     }
 
     setToolTip("Copy to clipboard");

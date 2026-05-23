@@ -13,7 +13,7 @@ static void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 class Display {
 public:
 
-	int monitorIndex = 2;	// on release, this would run on a nvidia gpu
+	int monitorIndex = 1;	// on release, this would run on a nvidia gpu
 	int monitorCount = 0;
 	bool fullScreen = false;
 

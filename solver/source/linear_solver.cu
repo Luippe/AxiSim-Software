@@ -2,38 +2,29 @@
 #include "device_launch_parameters.h"
 #include <utility>
 
-void solveLinearSystem(Coefficients& coeff, const LinearSolverConfig& config, cudaStream_t stream, double*& x, double*& xTemp, int threadsPerBlock, double relaxation) {
+void solveLinearSystem(Coefficients& coeff, const LinearSolverConfig& config, cudaStream_t stream, double*& x, double*& xTemp, int threadsPerBlock) {
 
 	int blocks = (coeff.N + threadsPerBlock - 1) / threadsPerBlock;
 
 	switch (config.type) {
 	case LINEAR_JACOBI:
-
-		if (relaxation == 1.0) {
-			for (int k = 0; k < config.maxIter; k++) {
-				jacobiPP << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, xTemp, relaxation);
-				std::swap(x, xTemp);
-			}
-		}
-		else {
-			for (int k = 0; k < config.maxIter; k++) {
-				jacobi << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, xTemp, relaxation);
-				std::swap(x, xTemp);
-			}
+		for (int k = 0; k < config.maxIter; k++) {
+			jacobi << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, xTemp);
+			std::swap(x, xTemp);
 		}
 		break;
 
 	case LINEAR_GS_RB:
 		for (int k = 0; k < config.maxIter; k++) {
-			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, relaxation, 0);
-			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, relaxation, 1);
+			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, 0);
+			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, 1);
 		}
 		break;
 	}
 }
 
 __global__
-void jacobi(Coefficients coeff, double* xOld, double* xNew, double relaxation)  {
+void jacobi(Coefficients coeff, double* xOld, double* xNew)  {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -54,8 +45,6 @@ void jacobi(Coefficients coeff, double* xOld, double* xNew, double relaxation)  
 
 	double val = b[n];
 
-	val += ((1 - relaxation) / (relaxation)) * AC[n] * xOld[n];
-
 	if (j != nz - 1) {
 		val -= AE[n] * xOld[n + 1];
 	}
@@ -72,14 +61,14 @@ void jacobi(Coefficients coeff, double* xOld, double* xNew, double relaxation)  
 		val -= AS[n] * xOld[n - nz];
 	}
 
-	val *= (relaxation / AC[n]);
+	val /= AC[n];
 
 	xNew[n] = val;
 
 }
 
 __global__
-void gaussSeidelRB(Coefficients coeff, double* x, double relaxation, int color) {
+void gaussSeidelRB(Coefficients coeff, double* x, int color) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -103,7 +92,6 @@ void gaussSeidelRB(Coefficients coeff, double* x, double relaxation, int color) 
 
 	double val = b[n];
 
-	val += ((1 - relaxation) / (relaxation)) * AC[n] * x[n];
 
 	if (j != nz - 1) {
 		val -= AE[n] * x[n + 1];
@@ -121,7 +109,7 @@ void gaussSeidelRB(Coefficients coeff, double* x, double relaxation, int color) 
 		val -= AS[n] * x[n - nz];
 	}
 
-	val *= (relaxation / AC[n]);
+	val /= AC[n];
 
 	x[n] = val;
 }

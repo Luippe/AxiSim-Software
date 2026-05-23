@@ -194,7 +194,7 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 	int N = nr * nz;
 	double dz = g.L / nz;
 	double dr = g.R / nr;
-
+	
 	double Umax = f.Umax;
 	double R = g.R;
 	double cell_top = g.cell_top;
@@ -220,7 +220,7 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 			double yf = i * dr;
 			double xc = (dz / 2) + xf;
 			double yc = (dr / 2) + yf;
-			if (xc >= cell_left && xc <= cell_right && yc <= cell_top && i != nr && j != nz) {
+			if (xc >= cell_left && xc <= cell_right && yc <= cell_top) {
 				c_cell[n] = 1;
 			}
 		}
@@ -433,7 +433,6 @@ void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& 
 	double h_snorm_val = 1.0;
 	double h_resnorm_val = 0.0;
 	double h_OCR_num_val = 0.0;
-
 
 	vars.jw_num_val = copyHostToDevice(&h_jw_num_val, 1);
 	vars.jw_den_val = copyHostToDevice(&h_jw_den_val, 1);

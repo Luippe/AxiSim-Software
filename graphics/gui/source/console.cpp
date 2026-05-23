@@ -10,7 +10,15 @@
 #include "printer.h"
 #include "gui.h"
 
+#include "manage_file.h"
 #include "gui_manager.h"
+
+struct InputFocusData {
+	bool moveCursorToEnd = false;
+};
+struct MultilineScrollData {
+	bool scrollToBottom = false;
+};
 
 // parse words separated by space
 std::vector<std::string> parseWords(const std::string& line) {
@@ -24,6 +32,9 @@ std::vector<std::string> parseWords(const std::string& line) {
 	}
 	return words;
 }
+
+
+
 
 // format a double to a specific precision and return it as a string
 std::string formatPrecision(double value) {
@@ -68,6 +79,8 @@ void Console::registerCommands() {
 	registerRunCommands();
 	registerSetCommands();
 	registerGetCommands();
+	registerCopyCommands();
+	registerSaveAndLoadCommands();
 	registerUtilityCommands();
 }
 
@@ -99,6 +112,10 @@ void Console::registerSetCommands() {
 	addCommand("set", [this](const std::vector<std::string>& words) {
 		std::string object = getWord(words, 1);
 		std::string value = getWord(words, 2);
+
+		// set shading
+		
+		// set precision
 
 		// check which colormap to set
 		if (object == "colormap" || object == "cmap") {
@@ -168,6 +185,70 @@ void Console::registerGetCommands() {
 	);
 }
 
+void Console::registerCopyCommands() {
+	addCommand("copy", [this](const std::vector<std::string>& words) {
+		std::string object = getWord(words, 1);
+
+		if (object == "residual") {
+			gui.residualPlot.consoleCopy = true;
+		}
+		else if (object == "inspector") {
+			gui.inspector.consoleCopy = true;
+		}
+		else {
+			addLine("Invalid object: " + object);
+		}
+		},
+		"copy <object>",
+		"copies object to clipboard"
+	);
+}
+
+void Console::registerSaveAndLoadCommands() {
+	addCommand("save", [this](const std::vector<std::string>& words) {
+		std::string object = getWord(words, 1);
+
+		if (object == "mesh") {
+			saveFromExplorerMesh(scene.mesh);
+		}
+		else if (object == "solver") {
+			saveFromExplorerSolver(scene.solver);
+		}
+		else if (object == "residual") {
+		
+		}
+		else {
+			addLine("Invalid object: " + object);
+		}
+		},
+		"save <object>",
+		"save object to folder"
+	);
+
+	addCommand("load", [this](const std::vector<std::string>& words) {
+		std::string object = getWord(words, 1);
+
+		if (object == "mesh") {
+			loadFromExplorerMesh(scene.mesh);
+			scene.mesh.updateAfterLoadingFile();
+			gui.meshGUI.getGridConfigEdits();
+		}
+		else if (object == "solver") {
+			loadFromExplorerSolver(scene.solver);
+		}
+		else if (object == "residual") {
+
+		}
+		else {
+			addLine("Invalid object: " + object);
+		}
+		},
+		"load <object>",
+		"load object from folder"
+	);
+
+}
+
 void Console::registerUtilityCommands() {
 	auto clearCommand = [this](const std::vector<std::string>& words) {
 		clear();
@@ -185,6 +266,13 @@ void Console::registerUtilityCommands() {
 		},
 		"help",
 		"Shows all available commands"
+	);
+
+	addCommand("ping", [this](const std::vector<std::string>& words) {
+		addLine("pong!");
+		},
+		"pong!",
+		"pong!"
 	);
 }
 
@@ -233,14 +321,71 @@ void Console::executeCommand(const std::string& cmd) {
 	}
 }
 
+void Console::handleEvents() {
+
+}
+
+static int inputCallback(ImGuiInputTextCallbackData* data) {
+	InputFocusData* focusData = (InputFocusData*)(data->UserData);
+
+	if (focusData->moveCursorToEnd) {
+		data->CursorPos = data->BufTextLen;
+		data->SelectionStart = data->BufTextLen;
+		data->SelectionEnd = data->BufTextLen;
+
+		focusData->moveCursorToEnd = false;
+	}
+
+	return 0;
+}
+
+static int MultilineScrollCallback(ImGuiInputTextCallbackData* data) {
+	auto* scrollData = static_cast<MultilineScrollData*>(data->UserData);
+
+	if (scrollData->scrollToBottom) {
+
+		data->CursorPos = data->BufTextLen;
+		data->SelectionStart = data->BufTextLen;
+		data->SelectionEnd = data->BufTextLen;
+
+		scrollData->scrollToBottom = false;
+	}
+
+	return 0;
+}
+
+void appendCharToInput(char* buf, size_t bufSize, ImWchar c) {
+	if (c < 128) { // ASCII only
+		size_t len = std::strlen(buf);
+
+		if (len + 1 < bufSize) {
+			buf[len] = (char)(c);
+			buf[len + 1] = '\0';
+		}
+	}
+};
+
+void detectCharacterPress(ImGuiIO& io, static bool& outputWasFocused, ImWchar& forwardedChar, bool& focusInput) {
+	// detect character BEFORE drawing the input widgets
+	if (outputWasFocused && !io.KeyCtrl && !io.KeyAlt && !io.KeySuper) {
+		for (int i = 0; i < io.InputQueueCharacters.Size; i++) {
+			ImWchar c = io.InputQueueCharacters[i];
+
+			if (c >= 32 && c != 127) {
+				forwardedChar = c;
+				focusInput = true;
+			}
+		}
+	}
+}
+
+void drawOutput() {
+
+}
+
 void Console::draw() {
 
 	ImGui::Begin("Console");
-
-	//if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) &&
-	//	ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-	//	focusInputNextFrame = true;
-	//}
 
 	ImGuiIO& io = ImGui::GetIO();
 
@@ -252,41 +397,33 @@ void Console::draw() {
 	ImGui::Checkbox("Auto scroll", &autoScroll);
 	ImGui::Separator();
 
-	ImGui::BeginChild("ScrollingRegion", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()), false, ImGuiWindowFlags_HorizontalScrollbar);
+	ImGui::BeginChild(
+		"ConsoleOutput",
+		ImVec2(0, -ImGui::GetFrameHeightWithSpacing()),
+		false,
+		ImGuiWindowFlags_HorizontalScrollbar
+	);
 
-	for (const auto& line : lines) {
-		ImGui::TextUnformatted(line.text.c_str());
+	for (const std::string& line : lines) {
+		ImGui::TextUnformatted(line.c_str());
 	}
 
-	// autoscroll
-	if (scrollToBottom || (autoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())) {
+	if (scrollToBottom || autoScroll) {
 		ImGui::SetScrollHereY(1.0f);
+		scrollToBottom = false;
 	}
-
-	scrollToBottom = false;
 
 	ImGui::EndChild();
-	ImGui::Separator();
-	//if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-	//	ImGui::SetKeyboardFocusHere();
-	//}
-
 	char buf[256] = {};
-	bool reclaimFocus = false;
-	std::snprintf(buf, sizeof(buf), "%s", input.c_str());
-	if (ImGui::InputText(" ", buf, sizeof(buf), ImGuiInputTextFlags_EnterReturnsTrue)) {
+	if (ImGui::InputText("##Console", buf, sizeof(buf), UIFlags::ConsoleInputFlags)) {
 		std::string cmd = buf;
+		scrollToBottom = true;
 		if (!cmd.empty()) {
 			executeCommand(cmd);
 		}
-		input.clear();
-		reclaimFocus = true;
-	}
-
-	// once enter is pressed, go back and get focus on the input box
-	ImGui::SetItemDefaultFocus();
-	if (reclaimFocus) {
+		buf[0] = '\0';
 		ImGui::SetKeyboardFocusHere(-1);
 	}
+
 	ImGui::End();
 }

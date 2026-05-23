@@ -44,5 +44,14 @@ namespace UIFlags {
 		ImGuiWindowFlags_NoInputs |
 		ImGuiWindowFlags_NoFocusOnAppearing |
 		ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+	inline constexpr ImGuiInputTextFlags ConsoleMultilineInputFlags =
+		ImGuiInputTextFlags_ReadOnly |
+		ImGuiInputTextFlags_NoUndoRedo |
+		ImGuiInputTextFlags_CallbackAlways;
+
+	inline constexpr ImGuiInputTextFlags ConsoleInputFlags =
+		ImGuiInputTextFlags_EnterReturnsTrue |
+		ImGuiInputTextFlags_EscapeClearsAll;
 }
 

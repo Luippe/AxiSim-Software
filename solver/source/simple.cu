@@ -39,8 +39,7 @@ void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, Variables
 	}
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	D[n] = Az * dz * simple.momentumRelaxation / AC[n];
-
+	D[n] = Az * dz / AC[n];
 }
 
 __global__
@@ -282,3 +281,17 @@ void updatePressure(Coefficients coeff, VariablesSimple simple) {
 	p[n] += pressureRelaxation * pp[n];
 }
 
+__global__
+void underRelaxEquation(Coefficients coeff, double* xOld, double alpha) {
+
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (n >= coeff.N) return;
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
+
+
+	double AC_old = coeff.AC[n];
+
+	coeff.AC[n] = AC_old / alpha;
+	coeff.b[n] += ((1.0 - alpha) / alpha) * AC_old * xOld[n];
+}

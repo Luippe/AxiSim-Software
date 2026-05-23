@@ -116,7 +116,7 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	if (j == nz - 1) {
 		AE[n] = 0.0;
 		if (isBCDirichlet(bc.outlet.type)) {
-			double K = mu * Az / (0.5 * dz);
+			double K = mu * Az / dz;
 			AC[n] += K;
 			b[n] += K * bc.outlet.val;
 		}
@@ -247,7 +247,7 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	}
 	else if (cell[n + nz] == 0) {
 		AN[n] = 0.0;
-		AC[n] += (mu * Ar2 / (0.5 * dr));
+		AC[n] += (mu * Ar2 / dr);
 	}
 	else {
 		AN[n] = -(mu * Ar2 / dr);
@@ -257,14 +257,14 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	if (i == 0) {
 		AS[n] = 0.0;
 		if (isBCDirichlet(bc.centerline.type)) {
-			double K = mu * Ar1 / (0.5 * dr);
+			double K = mu * Ar1 / dr;
 			AC[n] += K;
 			b[n] += K * bc.centerline.val;
 		}
 	}
 	else if (cell[n - nz] == 0) {
 		AS[n] = 0.0;
-		AC[n] += (mu * Ar1 / (0.5 * dr));
+		AC[n] += (mu * Ar1 / dr);
 	}
 	else {
 		AS[n] = -(mu * Ar1 / dr);
@@ -385,16 +385,16 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 		break;
 	case CONV_CENTRAL:
 		b[n] -= centralCorrection(Fe, u[n], u[n + 1]);
-		b[n] -= centralCorrection(Fw, u[n], u[n - 1]);
+		b[n] += centralCorrection(Fw, u[n], u[n - 1]);
 		b[n] -= centralCorrection(Fn, u[n], u[n + nz]);
-		b[n] -= centralCorrection(Fs, u[n], u[n - nz]);
+		b[n] += centralCorrection(Fs, u[n], u[n - nz]);
 		break;
 	case CONV_SECOND_ORDER_UPWIND:
 
 		if (j > 0 && j < nz - 2) 		b[n] -= secondOrderUpwindCorrection(Fe, u[n - 1], u[n], u[n + 1], u[n + 2], j > 0, j < nz - 2);
-		if (j > 1 && j < nz - 1)		b[n] -= secondOrderUpwindCorrection(Fw, u[n - 2], u[n - 1], u[n], u[n + 1], j > 1, j < nz - 1);
+		if (j > 1 && j < nz - 1)		b[n] += secondOrderUpwindCorrection(Fw, u[n - 2], u[n - 1], u[n], u[n + 1], j > 1, j < nz - 1);
 		if (i > 0 && i < nr - 2)		b[n] -= secondOrderUpwindCorrection(Fn, u[n - nz], u[n], u[n + nz], u[n + 2 * nz], i > 0, i < nr - 2);
-		if (i > 1 && i < nr - 1)		b[n] -= secondOrderUpwindCorrection(Fs, u[n - 2 * nz], u[n - nz], u[n], u[n + nz], i > 1, i < nr - 1);
+		if (i > 1 && i < nr - 1)		b[n] += secondOrderUpwindCorrection(Fs, u[n - 2 * nz], u[n - nz], u[n], u[n + nz], i > 1, i < nr - 1);
 		break;
 	}
 }

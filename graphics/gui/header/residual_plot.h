@@ -45,6 +45,7 @@ public:
 
     // copy to clipboard variables
     bool pendingCopy = false;
+    bool consoleCopy = false;
     int pendingCopyTabID = 0;
     int pendingCopyWidth = 1600;
     int pendingCopyHeight = 420;
@@ -64,7 +65,7 @@ public:
     void setName(const std::array<ResidualPrintItem, 6>& residualsToPlot);
 
     // copy image to clipboard. DO NOT NEST INSIDE ANOTHER IMGUI FRAME
-    bool copyActivePlotToClipboard(int ID, int width, int height);
+    bool copyActivePlotToClipboard();
 
     // add residuals to current plot
     template <size_t N>

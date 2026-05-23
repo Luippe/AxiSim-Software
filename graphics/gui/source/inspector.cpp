@@ -267,11 +267,11 @@ void Inspector::handleMouse() {
 	}
 }
 
-void Inspector::copyActiveSurfaceToClipboard(int width, int height) {
+void Inspector::copyActiveSurfaceToClipboard() {
 
 	GLint oldFBO, oldViewport[4];
 	ImVec2 oldDisplaySize, oldFramebufferSize;
-	offScreenFBO.createSimpleBuffer(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+	offScreenFBO.createSimpleBuffer(pendingCopyWidth, pendingCopyHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
 	offScreenFBO.beginOffScreenImGuiRender(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
 
 	// build imgui draw commands
@@ -360,10 +360,11 @@ void Inspector::drawToolBar() {
 	}
 
 	ImGui::SameLine();
-	if (ImGui::ImageButton("##CopyToClipboard", (ImTextureID)(intptr_t)assets.copyIcon.getTextureID(), ImVec2(22.0f, 22.0f))) {
+	if (ImGui::ImageButton("##CopyToClipboard", (ImTextureID)(intptr_t)assets.copyIcon.getTextureID(), ImVec2(22.0f, 22.0f)) || consoleCopy) {
 		pendingCopyWidth = frameBuffer.width;
 		pendingCopyHeight = frameBuffer.height;
 		pendingCopy = true;
+		consoleCopy = false;
 	}
 
 	//setToolTip("Clear all selected points");

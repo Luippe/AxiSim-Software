@@ -16,6 +16,8 @@ struct GridConfig {
 	double L = 10.0;
 	double dz;
 	double dr;
+	//std::vector<double> dz;
+	//std::vector<double> dr;
 	int N = 0;
 
 	int n_cell = 0;

@@ -330,6 +330,9 @@ void Solver::runSimple() {
             finalizeCoefficients << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff);
             finalizeCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff);
 
+            underRelaxEquation << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff, simple.u, simple.momentumRelaxation);
+            underRelaxEquation << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff, simple.v, simple.momentumRelaxation);
+
             getCorrectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple, simple.DU);
             getCorrectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple, simple.DV);
 
@@ -337,14 +340,14 @@ void Solver::runSimple() {
             createURhs << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
             createVRhs << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
 
-            solveLinearSystem(uCoeff, linearSolverConfig, stream, simple.u, simple.uTemp, threadsPerBlock, simple.momentumRelaxation);
-            solveLinearSystem(vCoeff, linearSolverConfig, stream, simple.v, simple.vTemp, threadsPerBlock, simple.momentumRelaxation);
+            solveLinearSystem(uCoeff, linearSolverConfig, stream, simple.u, simple.uTemp, threadsPerBlock);
+            solveLinearSystem(vCoeff, linearSolverConfig, stream, simple.v, simple.vTemp, threadsPerBlock);
 
             // solve pressure correction
             createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
             createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
             finalizeCoefficients << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
-            solveLinearSystem(ppCoeff, linearSolverConfig, stream, simple.pp, simple.ppTemp, threadsPerBlock, simple.correctionRelaxation);
+            solveLinearSystem(ppCoeff, linearSolverConfig, stream, simple.pp, simple.ppTemp, threadsPerBlock);
 
             // update field variables
             updateUVelocity << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);

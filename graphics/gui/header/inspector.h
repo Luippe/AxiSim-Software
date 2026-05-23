@@ -32,12 +32,13 @@ public:
 	void resetView();
 
 	// copy surface to clipboard
-	void copyActiveSurfaceToClipboard(int width, int height);
+	void copyActiveSurfaceToClipboard();
 
 	Colorbar colorbar;
 
 	// copy to clipboard variables
 	bool pendingCopy = false;
+	bool consoleCopy = false;
 	int pendingCopyWidth = 1600;
 	int pendingCopyHeight = 420;
 
