@@ -1,6 +1,6 @@
 #include "menu.h"
 #include "scene_view.h"
-#include "manage_file.h"
+#include "file_manager.h"
 #include "gui.h"
 
 Menu::Menu(GUI& gui, SceneView& scene) :

@@ -4,12 +4,14 @@
 #include <iomanip>
 #include <format>
 
+#include "clip.h"
+
 #include "scene_view.h"
 #include "console_keywords.h"
 #include "printer.h"
 #include "gui.h"
 
-#include "manage_file.h"
+#include "file_manager.h"
 #include "gui_manager.h"
 
 struct InputFocusData {
@@ -123,7 +125,6 @@ void Console::registerSetCommands() {
 			for (int i = 0; i < IM_ARRAYSIZE(scene.colormap.items); i++) {
 				if (value == scene.colormap.items[i]) {
 					scene.colormap.setColormap(i);
-					gui.inspector.generate();
 					addLine("Set colormap to " + value);
 					found = true;
 					break;
@@ -173,7 +174,28 @@ void Console::registerGetCommands() {
 			}
 		}
 		else if (object == "colormap") {
-			addLine("Current colormap: " + scene.colormap.getColormap());
+
+			if (value.empty()) {
+				addLine("Current colormap: " + scene.colormap.getColormap());
+			}
+			else {
+				const auto& cmap  = scene.colormap.getColormapValue(value);
+
+				if (scene.colormap.isBlankColormap(cmap)) {
+					addLine("Unknown colormap: " + value);
+					return;
+				}
+				for (int i = 0; i < 256; i++) {
+					std::ostringstream ss;
+
+					ss << "{ "
+						<< std::setw(3) << (int)cmap[i][0] << ", "
+						<< std::setw(3) << (int)cmap[i][1] << ", "
+						<< std::setw(3) << (int)cmap[i][2] << " }";
+
+					addLine((ss.str()));
+				}
+			}
 		}
 		else {
 			addLine("Invalid object: " + object);
@@ -187,12 +209,30 @@ void Console::registerGetCommands() {
 void Console::registerCopyCommands() {
 	addCommand("copy", [this](const std::vector<std::string>& words) {
 		std::string object = getWord(words, 1);
+		std::string value = getWord(words, 2);
 
 		if (object == "residual") {
 			gui.residualPlot.consoleCopy = true;
+			addLine("copied to clipboard");
 		}
 		else if (object == "inspector") {
 			gui.inspector.consoleCopy = true;
+			addLine("copied to clipboard");
+		}
+		else if (object == "colormap") {
+
+			std::ostringstream ss;
+
+			const auto& cmap = value.empty() ? scene.colormap.getColormapValue() : scene.colormap.getColormapValue(value);
+
+			for (int i = 0; i < 256; i++) {
+				ss << "{ "
+					<< std::setw(3) << (int)cmap[i][0] << ", "
+					<< std::setw(3) << (int)cmap[i][1] << ", "
+					<< std::setw(3) << (int)cmap[i][2] << " }\n";
+			}
+			clip::set_text(ss.str());
+			addLine("copied to clipboard");
 		}
 		else {
 			addLine("Invalid object: " + object);
@@ -214,7 +254,7 @@ void Console::registerSaveAndLoadCommands() {
 			saveFromExplorerSolver(scene.solver);
 		}
 		else if (object == "residual") {
-		
+			
 		}
 		else {
 			addLine("Invalid object: " + object);

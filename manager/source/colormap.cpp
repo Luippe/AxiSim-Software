@@ -1,6 +1,11 @@
 #include "pch.h"
+
+#include <stdexcept>
+
 #include "colormap.h"
+
 #include "colormap_manager.h"
+#include "math_func.h"
 
 Colormap::Colormap() {
 
@@ -20,6 +25,37 @@ Colormap::Colormap() {
 
 	currentLUT = Turbo;
 }
+
+const Colormap::ColormapLUT& Colormap::getColormapValue(std::string colormap) {
+	
+	std::string cmap = toLower(colormap);
+
+	if (cmap == "turbo") {
+		return Turbo;
+	}
+	else if (cmap == "parula") {
+		return Parula;
+	}
+	else if (cmap == "hsv") {
+		return HSV;
+	}
+	else if (cmap == "gray") {
+		return Gray;
+	}
+	else if (cmap == "sky") {
+		return Sky;
+	}
+	else if (cmap == "abyss") {
+		return Abyss;
+	}
+
+	throw Blank;
+}
+
+const Colormap::ColormapLUT& Colormap::getColormapValue() {
+	return getColormapValue(items[currentItem]);
+}
+
 
 void Colormap::setColormap(int itemIndex) {
 
@@ -65,4 +101,8 @@ unsigned int Colormap::getTextureID() {
 
 std::string Colormap::getColormap() {
 	return items[currentItem];
+}
+
+bool Colormap::isBlankColormap(const ColormapLUT& cmap) {
+	return &cmap == &Blank;
 }

@@ -1,4 +1,7 @@
 #include "math_func.h"
+
+#include <algorithm>
+#include <cctype>
 #include <glm/vec3.hpp>
 #include <glm/vec2.hpp>
 #include <iostream>
@@ -51,4 +54,11 @@ glm::vec2 getNormalizedDeviceCoords(float xpos, float ypos, int width, int heigh
 	float x = ((2.0f * xpos / (float)width) - 1.0f);
 	float y = (1.0f - (2.0f * ypos) / (float)height);
 	return glm::vec2(x, y);
+}
+
+std::string toLower(std::string str) {
+	for (char& c : str) {
+		c = (char)std::tolower((unsigned char)c);
+	}
+	return str;
 }

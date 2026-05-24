@@ -773,7 +773,7 @@
 		{
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
-			"path" : "manager/source/manage_file.cpp",
+			"path" : "manager/source/file_manager.cpp",
 			"sourceGroupIndex" : 2
 		},
 		{
@@ -987,17 +987,17 @@
 		},
 		{
 			"backtrace" : 2,
+			"path" : "manager/header/file_manager.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
 			"path" : "manager/header/gpu_utils.h",
 			"sourceGroupIndex" : 8
 		},
 		{
 			"backtrace" : 2,
 			"path" : "manager/header/gui_manager.h",
-			"sourceGroupIndex" : 8
-		},
-		{
-			"backtrace" : 2,
-			"path" : "manager/header/manage_file.h",
 			"sourceGroupIndex" : 8
 		},
 		{

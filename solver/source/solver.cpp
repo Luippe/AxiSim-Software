@@ -5,7 +5,7 @@
 #include <iomanip>
 #include <sstream>
 #include "printer.h"
-#include "manage_file.h"
+#include "file_manager.h"
 
 #include "linear_solver.cuh"
 #include "console.h"

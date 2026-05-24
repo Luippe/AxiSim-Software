@@ -3,11 +3,12 @@
 #include "colormap.h"
 #include "shader.h"
 #include <glm/gtc/matrix_transform.hpp>
+
 #include "printer.h"
 #include "time_manager.h"
+
 #include "console.h"
 #include "solver.h"
-
 
 
 bool Results::compareFloat(float value, FilterValues& filterValues) {

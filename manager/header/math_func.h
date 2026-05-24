@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <string>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/quaternion.hpp>
 #include <glm/fwd.hpp>
@@ -19,3 +20,5 @@ glm::quat getQuat(glm::vec3 A, glm::vec3 B);
 // convert given mouse coordinates to device coordinates
 glm::vec2 getNormalizedDeviceCoords(float xpos, float ypos, int width, int height);
 
+// converts a string to lower case
+std::string toLower(std::string str);

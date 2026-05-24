@@ -84,7 +84,6 @@ void ResultsGUI::drawPropertiesPanel() {
 			textAtNewRow("Colormap", 0, 1);
 			if (createSimpleCombo("##Colormap", colormap.items, colormap.currentItem, IM_ARRAYSIZE(colormap.items))) {
 				colormap.setColormap(colormap.currentItem);
-				results.uploadUniforms();
 			}
 
 			ImGui::EndTable();
@@ -108,7 +107,7 @@ void ResultsGUI::drawPropertiesPanel() {
 
 		ImGui::SeparatorText("Display Settings");
 
-		if (ImGui::BeginTable("Colormap", 2)) {
+		if (ImGui::BeginTable("Display Settings", 2)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 80.0f);
 			ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 

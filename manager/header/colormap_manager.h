@@ -1553,3 +1553,5 @@ static const unsigned char Sky[256][3] = {
     {  17, 113, 190 }
 };
 
+
+static const unsigned char Blank[256][3] = {};

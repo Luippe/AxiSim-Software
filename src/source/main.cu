@@ -1,6 +1,6 @@
 #include "mesh.h"
 #include "camera.h"
-#include "manage_file.h"
+#include "file_manager.h"
 #include "setting.cuh"
 #include "display.h"
 #include "shader.h"
