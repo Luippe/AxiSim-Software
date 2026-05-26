@@ -9,11 +9,9 @@ SceneView::SceneView(Display& disp, Camera& camera, Renderer& renderer, Bounding
 	camera(camera),
 	renderer(renderer),
 	bound(bound),
-	shaderMesh("graphics/shaders/mesh.vert", "graphics/shaders/mesh.frag"),
-	shaderEdge("graphics/shaders/edge.vert", "graphics/shaders/edge.frag"),
-	shaderLine("graphics/shaders/line.vert", "graphics/shaders/line.frag"),
 	shaderResults("graphics/shaders/results.vert", "graphics/shaders/results.frag"),
-	mesh(shaderMesh, config),
+	shaderLine("graphics/shaders/line.vert", "graphics/shaders/line.frag"),
+	mesh(config),
 	results(mesh, solver, colormap, shaderResults),
 	solver(*this, config),
 	picker(*this)
@@ -88,7 +86,7 @@ void SceneView::handleMouse() {
 
 void SceneView::render() {
 
-	if (currentTab == TAB_SOLVER) return;
+	if (currentTab == TAB_SOLVER || currentTab == TAB_MESH) return;
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 	ImGui::Begin("Scene");
@@ -120,30 +118,17 @@ void SceneView::render() {
 	glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	if (currentTab == TAB_MESH) {
-		// load transformation matrix for mesh shader
-		shaderMesh.loadTransformationMatrix(camera.model, camera.view, camera.projection);
-		shaderLine.loadTransformationMatrix(camera.model, camera.view, camera.projection);
-
-		// update picker
-		picker.update();
-
-		// draw mesh
-		mesh.render();
-
-	}
-	else if (currentTab == TAB_RESULTS) {
+	if (currentTab == TAB_RESULTS) {
 
 		// load transformation matrix for solution shader
 		shaderResults.loadTransformationMatrix(camera.model, camera.view, camera.projection);
 		shaderLine.loadTransformationMatrix(camera.model, camera.view, camera.projection);
-		shaderEdge.loadTransformationMatrix(camera.model, camera.view, camera.projection);
 
 		// update picker
 		picker.update();
 
 		// draw results
-		results.render(shaderLine, shaderEdge);
+		results.render();
 		
 	}
 

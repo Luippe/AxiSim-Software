@@ -31,26 +31,22 @@ void ResultsGUI::drawPropertiesPanel() {
 
 			textAtNewRow("Front", 0, 1);
 			if (ImGui::SliderInt("##Front", &results.colFront, 0, mesh.g.nz)) {
-				results.currentFront = (float)results.colFront * (float)mesh.g.dz;
-				results.updateModel();
+				results.currentFront = (float)results.colFront * (float)mesh.g.dz[results.colFront];
 			}
 
 			textAtNewRow("Back", 0, 1);
 			if (ImGui::SliderInt("##Back", &results.colBack, 0, mesh.g.nz)) {
-				results.currentBack = (float)results.colBack * (float)mesh.g.dz;
-				results.updateModel();
+				results.currentBack = (float)results.colBack * (float)mesh.g.dz[results.colBack];
 			}
 
 			textAtNewRow("Outer", 0, 1);
 			if (ImGui::SliderInt("##Outer", &results.rowTop, 0, mesh.g.nr)) {
-				results.currentOuter = (float)results.rowTop * (float)mesh.g.dr;
-				results.updateModel();
+				results.currentOuter = (float)results.rowTop * (float)mesh.g.dr[results.rowTop];
 			}
 
 			textAtNewRow("Inner", 0, 1);
 			if (ImGui::SliderInt("##Inner", &results.rowBot, 0, mesh.g.nr)) {
-				results.currentInner = (float)results.rowBot * (float)mesh.g.dr;
-				results.updateModel();
+				results.currentInner = (float)results.rowBot * (float)mesh.g.dr[results.rowBot];
 			}
 
 			textAtNewRow("Filter", 0, 1);

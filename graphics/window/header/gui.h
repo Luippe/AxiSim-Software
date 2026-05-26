@@ -8,6 +8,7 @@
 #include "menu.h"
 #include "animation_gui.h"
 #include "residual_plot.h"
+#include "mesh_inspector.h"
 
 class Results;
 class SceneView;
@@ -22,9 +23,10 @@ struct Config;
 // class for managing GUI
 class GUI {
 public:
+	Menu menu;			// menu must come before anything else since it loads the mesh/solver/results
 	Inspector inspector;
+	MeshInspector meshInspector;
 	Console console;
-	Menu menu;
 	AppAssets assets;
 	ResidualPlot residualPlot;
 	Mesh& mesh;

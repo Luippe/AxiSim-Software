@@ -1,8 +1,26 @@
 #include "memory_manager.h"
 #include "setting.cuh"
+
+#include <unordered_set>
+
 #include "math_func.h"
 #include "solver.h"
 #include "printer.h"
+
+bool isObstacleCell(
+	const std::unordered_set<int>& obstacleSet,
+	int nrBase,
+	int nzBase,
+	int iCell,
+	int jCell
+) {
+	if (iCell < 0 || iCell >= nrBase) return false;
+	if (jCell < 0 || jCell >= nzBase) return false;
+
+	int nCell = iCell * nzBase + jCell;
+
+	return obstacleSet.find(nCell) != obstacleSet.end();
+}
 
 void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryConditionConfig& bc, CellStoreType storeType) {
 
@@ -30,11 +48,13 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 	int N = nr * nz;
 	double x = 0.0;
 	double y = 0.0;
-	double dz = config.g.dz;
-	double dr = config.g.dr;
-	double cell_left = config.g.cell_left;
-	double cell_right = config.g.cell_right;
-	double cell_top = config.g.cell_top;
+	std::vector<double> dz = config.g.dz;
+	std::vector<double> dr = config.g.dr;
+	std::vector<double> r = config.g.r;
+	std::vector<double> z = config.g.z;
+	std::vector<double> rFace = config.g.rFace;
+	std::vector<double> zFace = config.g.zFace;
+	std::vector<int> obstacleIndices = config.g.obstacleIndices;
 
 	coeff.AE = deviceAlloc<double>(N);
 	coeff.AW = deviceAlloc<double>(N);
@@ -57,6 +77,12 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 	// find which cells should be active or not. 1 = active, 0 = deactive
 	std::vector<uint8_t> activeCell (N, 1);
 	std::vector<uint8_t> activeBC(N, 1);
+
+	std::unordered_set<int> obstacleSet(
+		obstacleIndices.begin(),
+		obstacleIndices.end()
+	);
+
 
 	for (int i = 0; i < nr; ++i) {
 		for (int j = 0; j < nz; ++j) {
@@ -82,23 +108,22 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 				activeBC[n] = 0;
 			}
 
-			// cells
-			if (storeType == CellStoreType::AXIAL) {
-				x = j * dz;
-				y = i * dr + 0.5 * dr;
+			// obstacles
+			bool isSolid = false;
+			if (storeType == CellStoreType::CENTER) {
+				isSolid = isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i, j);
+			}
+			else if (storeType == CellStoreType::AXIAL) {
+				isSolid = isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i, j - 1) || isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i, j);
 			}
 			else if (storeType == CellStoreType::RADIAL) {
-				x = j * dz + 0.5 * dz;
-				y = i * dr;
-			}
-			else if (storeType == CellStoreType::CENTER) {
-				x = j * dz + 0.5 * dz;
-				y = i * dr + 0.5 * dr;
+				isSolid = isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i - 1, j) || isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i, j);
 			}
 
-			if (x >= cell_left && x <= cell_right && y <= cell_top) {
+			if (isSolid) {
 				activeCell[n] = 0;
 			}
+
 		}
 	}
 	coeff.activeCell = copyHostToDevice(activeCell.data(), activeCell.size());
@@ -110,14 +135,19 @@ std::vector<double> getInitializedVelocity(ConfigSolver& config, BoundaryConditi
 
 	int nz = config.g.nz;
 	int nr = config.g.nr;
-	double dr = config.g.dr;
-	double dz = config.g.dz;
+	std::vector<double> dr = config.g.dr;
+	std::vector<double> dz = config.g.dz;
+	std::vector<double> r = config.g.r;
+	std::vector<double> zFace = config.g.zFace;
+	std::vector<int> obstacleIndices = config.g.obstacleIndices;
+
 	double R = config.g.R;
 	double Umax = config.f.Umax;
 
-	double cell_left = config.g.cell_left;
-	double cell_right = config.g.cell_right;
-	double cell_top = config.g.cell_top;
+	std::unordered_set<int> obstacleSet(
+		obstacleIndices.begin(),
+		obstacleIndices.end()
+	);
 
 	// initialize axial velocity
 	std::vector<double> u(nr * (nz + 1), 0.0);
@@ -128,18 +158,21 @@ std::vector<double> getInitializedVelocity(ConfigSolver& config, BoundaryConditi
 			int n = i * (nz + 1) + j;
 
 			//if (j != 0) continue;
+			bool isSolid;
 
-			double x = j * dz;
-			double r = 0.5 * dr + i * dr;
+			double localZ = zFace[j];
+			double localR = r[i];
 
 			if (uBC.inlet.type == BCType::DIRICHLET) {
 				u[n] = uBC.inlet.val;
 			}
 			else if (uBC.inlet.type == BCType::FULLY_DEVELOPED) {
-				u[n] = uBC.inlet.val * (1.0 - (r / R) * (r / R));
+				u[n] = uBC.inlet.val * (1.0 - (localR / R) * (localR / R));
 			}
 
-			if (x >= cell_left && x <= cell_right && r <= cell_top) {
+			// check if u face is on a solid boundary
+			isSolid = isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i, j - 1) || isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i, j);
+			if (isSolid) {
 				u[n] = 0.0;
 			}
 		}
@@ -192,68 +225,104 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 	int nr = g.nr;
 	int nz = g.nz;
 	int N = nr * nz;
-	double dz = g.L / nz;
-	double dr = g.R / nr;
-	
+
+	std::vector<double> dz = g.dz;
+	std::vector<double> dr = g.dr;
+	std::vector<double> zFace = g.zFace;
+	std::vector<double> rFace = g.rFace;
+	std::vector<double> r = g.r;
+	std::vector<double> z = g.z;
+	std::vector<int> obstacleIndices = g.obstacleIndices;
+
 	double Umax = f.Umax;
 	double R = g.R;
-	double cell_top = g.cell_top;
-	double cell_left = g.cell_left;
-	double cell_right = g.cell_right;
+	//double cell_top = g.cell_top;
+	//double cell_left = g.cell_left;
+	//double cell_right = g.cell_right;
 	double D = f.D;
 	double D_isf = f.D_isf;
 	double d = f.d;
+	
+	// dz and dr for u and v
+	std::vector<double> z_dz;
+	std::vector<double> r_dr;
 
-	// radial location
-	std::vector<double> r = linspace(dr / 2, R - (dr / 2), nr);
+	for (int i = 0; i < nr + 1; ++i) {
+		if (i == 0) {
+			r_dr.push_back(dr[i]);
+		}
+		else if (i == nr) {
+			r_dr.push_back(dr[i - 1]);
+		}
+		else {
+			r_dr.push_back(0.5 * (dr[i] + dr[i - 1]));
+		}
+	}
+
+	for (int j = 0; j < nz + 1; ++j) {
+		if (j == 0) {
+			z_dz.push_back(dz[j]);
+		}
+		else if (j == nz) {
+			z_dz.push_back(dz[j - 1]);
+		}
+		else {
+			z_dz.push_back(0.5 * (dz[j] + dz[j - 1]));
+		}
+	}
 
 	// fill in cell data
-	std::vector<int> z_cell(nr * (nz + 1), 0.0);
-	std::vector<int> r_cell((nr + 1) * nz, 0.0);
-	std::vector<int> c_cell(nr * nz, 0.0);
+	std::vector<int> c_cell(nr * nz, 0);
 
-	// cell center
+	// cell center check
 	for (int i = 0; i < nr; ++i) {
 		for (int j = 0; j < nz; ++j) {
 			int n = i * nz + j;
-			double xf = j * dz;
-			double yf = i * dr;
-			double xc = (dz / 2) + xf;
-			double yc = (dr / 2) + yf;
-			if (xc >= cell_left && xc <= cell_right && yc <= cell_top) {
+
+			double zc = 0.5 * (zFace[j] + zFace[j + 1]);
+			double rc = 0.5 * (rFace[i] + rFace[i + 1]);
+
+			//if (zc >= cell_left && zc <= cell_right && rc <= cell_top) {
+			//	c_cell[n] = 1;
+			//}
+
+			auto it = std::find(obstacleIndices.begin(), obstacleIndices.end(), n);
+			if (it != obstacleIndices.end()) {
 				c_cell[n] = 1;
 			}
 		}
 	}
 
-	// axial face
-	for (int i = 0; i < nr; ++i) {
-		for (int j = 0; j < nz + 1; ++j) {
-			int n = i * (nz + 1) + j;
 
-			double xf = j * dz;
-			double yc = i * dr + 0.5 * dr;
 
-			if (xf >= cell_left && xf <= cell_right && yc <= cell_top) {
-				z_cell[n] = 1;
-			}
-		}
-	}
+	//// axial face
+	//for (int i = 0; i < nr; ++i) {
+	//	for (int j = 0; j < nz + 1; ++j) {
+	//		int n = i * (nz + 1) + j;
 
-	// radial face
-	for (int i = 0; i < nr + 1; ++i) {
-		for (int j = 0; j < nz; ++j) {
+	//		double xf = j * dz;
+	//		double yc = i * dr + 0.5 * dr;
 
-			int n = i * nz + j;
+	//		if (xf >= cell_left && xf <= cell_right && yc <= cell_top) {
+	//			z_cell[n] = 1;
+	//		}
+	//	}
+	//}
 
-			double xc = j * dz + 0.5 * dz;
-			double yf = i * dr;
+	//// radial face
+	//for (int i = 0; i < nr + 1; ++i) {
+	//	for (int j = 0; j < nz; ++j) {
 
-			if (xc >= cell_left && xc <= cell_right && yf <= cell_top) {
-				r_cell[n] = 1;
-			}
-		}
-	}
+	//		int n = i * nz + j;
+
+	//		double xc = j * dz + 0.5 * dz;
+	//		double yf = i * dr;
+
+	//		if (xc >= cell_left && xc <= cell_right && yf <= cell_top) {
+	//			r_cell[n] = 1;
+	//		}
+	//	}
+	//}
 
 	// get cell adjacent surface area and its index
 	double A_tot = 0.0;
@@ -263,59 +332,62 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 	std::vector<double> kf;
 	std::vector<int> wall_cell(nr * nz, -1);
 
-	for (int i = 0; i < nr; ++i) {
-		for (int j = 0; j < nz; ++j) {
-			int n = i * nz + j;
-			if (c_cell[n] != 1) {
-				double r1 = r[i] - (dr / 2);
-				double r2 = r[i] + (dr / 2);
 
-				double Az = PI * (r2 * r2 - r1 * r1);
-				double Ar2 = 2 * PI * r2 * dz;
-				double Ar1 = 2 * PI * r1 * dz;
+	//for (int i = 0; i < nr; ++i) {
+	//	for (int j = 0; j < nz; ++j) {
+	//		int n = i * nz + j;
+	//		if (c_cell[n] != 1) {
 
-				// east
-				if (j != nz - 1) {
-					if (c_cell[n + 1] == 1) {
-						A_tot += Az;
-						A.push_back(Az);
-						surf_index.push_back(n);
-						dist.push_back(0.5 * dz);
-						kf.push_back(D / (0.5 * dz));
-					}
-				}
+	//			double localDr = dr[i];
+	//			double localDz = dz[i];
 
-				// west
-				if (j != 0) {
-					if (c_cell[n - 1] == 1) {
-						A_tot += Az;
-						A.push_back(Az);
-						surf_index.push_back(n);
-						dist.push_back(0.5 * dz);
-						kf.push_back(D / (0.5 * dz));
-					}
-				}
+	//			double r1 = rFace[i];
+	//			double r2 = rFace[i + 1];
 
-				// south
-				if (i != 0) {
-					if (c_cell[n - nz] == 1) {
-						A_tot += Ar1;
-						A.push_back(Ar1);
-						surf_index.push_back(n);
-						dist.push_back(0.5 * dr);
-						kf.push_back(D / (0.5 * dr));
-					}
-				}
-			}
-		}
-	}
+	//			double Az = PI * (r2 * r2 - r1 * r1);
+	//			double Ar2 = 2 * PI * r2 * localDr;
+	//			double Ar1 = 2 * PI * r1 * localDz;
+
+	//			// east
+	//			if (j != nz - 1) {
+	//				if (c_cell[n + 1] == 1) {
+	//					A_tot += Az;
+	//					A.push_back(Az);
+	//					surf_index.push_back(n);
+	//					dist.push_back(cell_left - z[j]);
+	//					kf.push_back(D / (cell_left - z[j]));
+	//				}
+	//			}
+
+	//			// west
+	//			if (j != 0) {
+	//				if (c_cell[n - 1] == 1) {
+	//					A_tot += Az;
+	//					A.push_back(Az);
+	//					surf_index.push_back(n);
+	//					dist.push_back(z[j] - cell_right);
+	//					kf.push_back(D / (cell_right - z[j]));
+	//				}
+	//			}
+
+	//			// south
+	//			if (i != 0) {
+	//				if (c_cell[n - nz] == 1) {
+	//					A_tot += Ar1;
+	//					A.push_back(Ar1);
+	//					surf_index.push_back(n);
+	//					dist.push_back(r[i] - cell_top);
+	//					kf.push_back(D / (r[i] - cell_top));
+	//				}
+	//			}
+	//		}
+	//	}
+	//}
 
 	g.N = N;
-	g.dr = dr;
-	g.dz = dz;
+
 
 	int n_cell = surf_index.size();
-	g.c_cell_vec = c_cell;
 	g.A_tot = A_tot;
 	g.n_cell = n_cell;
 	double kl = D_isf / d;
@@ -325,11 +397,18 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 		wall_cell[cell] = num;
 	}
 
+
 	// allocate GridConfig variables and kf
-	g.r = copyHostToDevice(r.data(), r.size());
+	g.z_dz = copyHostToDevice(z_dz.data(), z_dz.size());
+	g.r_dr = copyHostToDevice(r_dr.data(), r_dr.size());
+	g.d_r = copyHostToDevice(r.data(), r.size());
+	g.d_z = copyHostToDevice(z.data(), z.size());
+	g.d_rFace = copyHostToDevice(rFace.data(), rFace.size());
+	g.d_zFace = copyHostToDevice(zFace.data(), zFace.size());
+	g.d_dz = copyHostToDevice(dz.data(), dz.size());
+	g.d_dr = copyHostToDevice(dr.data(), dr.size());
+
 	g.c_cell = copyHostToDevice(c_cell.data(), c_cell.size());
-	g.z_cell = copyHostToDevice(z_cell.data(), z_cell.size());
-	g.r_cell = copyHostToDevice(r_cell.data(), r_cell.size());
 	g.wall_cell = copyHostToDevice(wall_cell.data(), wall_cell.size());
 	g.A = copyHostToDevice(A.data(), A.size());
 	g.surf_index = copyHostToDevice(surf_index.data(), surf_index.size());
@@ -459,10 +538,19 @@ void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& 
 void free_GridConfig(GridConfig& g) {
 
 	// Device arrays
-	freeDev(g.r);
+	freeDev(g.d_r);
+	freeDev(g.d_z);
+	freeDev(g.d_dr);
+	freeDev(g.d_dz);
+	freeDev(g.d_rFace);
+	freeDev(g.d_zFace);
+	freeDev(g.z_dz);
+	freeDev(g.r_dr);
+
 	freeDev(g.c_cell);
 	freeDev(g.z_cell);
 	freeDev(g.r_cell);
+
 	freeDev(g.wall_cell);
 	freeDev(g.A);
 	freeDev(g.surf_index);
@@ -472,8 +560,4 @@ void free_GridConfig(GridConfig& g) {
 	g.n_cell = 0;
 	g.A_tot = 0.0;
 	g.kl = 0.0;
-
-	g.c_cell_vec.clear();
-	g.v_cell_vec.clear();
-
 }

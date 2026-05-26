@@ -16,7 +16,7 @@ void AnimationGUI::loadAnimation(const std::string& filename) {
 
     frames.clear();
 
-    double dr, dz;
+    std::vector<double> dr, dz;
     readAll(in, nr, nz, dr, dz);
 
     BoundaryConditionConfig uBC;

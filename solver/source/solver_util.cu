@@ -2,6 +2,10 @@
 #include "device_launch_parameters.h"
 #include <math_constants.h>
 #include "printer.h"
+
+// ==============================================================
+// ==================HELPER FUNCTIONS============================
+// ==============================================================
 __device__
 bool isStoredCenter(CellStoreType& storeType) {
 	return storeType == CellStoreType::CENTER;
@@ -39,6 +43,12 @@ void copyVector(double* vec1, double* vec2, int N) {
 	if (n >= N) return;
 
 	vec1[n] = vec2[n];
+}
+
+__device__
+double faceValue(double phiC, double phiF, double dFf, double dFC) {
+	double gC = dFf / dFC;
+	return phiC * gC + (1 - gC) * phiF;
 }
 
 // ==============================================================
@@ -81,9 +91,15 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 
 	int nr = coeff.nr;
 	int nz = coeff.nz;
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dr = g.d_dr;
+	double* dz = g.d_dz;
+	double* r = g.d_r;
+	double* z = g.d_z;
+	double* rFace = g.d_rFace;
+	double* zFace = g.d_zFace;
+	double* r_dr = g.r_dr;
+	double* z_dz = g.z_dz;
+
 	double mu = f.mu;
 
 	double* AC = coeff.AC;
@@ -94,39 +110,37 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	double* b = coeff.b;
 	uint8_t* cell = coeff.activeCell;
 
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
+
 	int j = n % nz;
 	int i = n / nz;
-
-	if (!coeff.activeCell[n] || !coeff.activeBC[n]) {
-		return;
-	}
 
 	double r1 = 0.0;
 	double r2 = 0.0;
 
-	r1 = r[i] - (dr / 2);
-	r2 = r[i] + (dr / 2);
+	r1 = rFace[i];
+	r2 = rFace[i + 1];
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2 * CUDART_PI * r2 * dz;
-	double Ar1 = 2 * CUDART_PI * r1 * dz;
+	double Ar2 = 2 * CUDART_PI * r2 * z_dz[j];
+	double Ar1 = 2 * CUDART_PI * r1 * z_dz[j];
 
 	// ----------ADD Diffusion Term--------------
 	// east
 	if (j == nz - 1) {
 		AE[n] = 0.0;
 		if (isBCDirichlet(bc.outlet.type)) {
-			double K = mu * Az / dz;
+			double K = mu * Az / z_dz[j];
 			AC[n] += K;
 			b[n] += K * bc.outlet.val;
 		}
 	}
 	else if (cell[n + 1] == 0) {
 		AE[n] = 0.0;
-		AC[n] += (mu * Az / dz);
+		AC[n] += (mu * Az / (dz[j]));
 	}
 	else {
-		AE[n] = -(mu * Az / dz);
+		AE[n] = -(mu * Az / dz[j]);
 	}
 
 	// west
@@ -135,27 +149,27 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	}
 	else if (cell[n - 1] == 0) {
 		AW[n] = 0.0;
-		AC[n] += (mu * Az / dz);
+		AC[n] += (mu * Az / dz[j - 1]);
 	}
 	else {
-		AW[n] = -(mu * Az / dz);
+		AW[n] = -(mu * Az / dz[j - 1]);
 	}
 
 	// north
 	if (i == nr - 1) {
 		AN[n] = 0.0;
 		if (isBCDirichlet(bc.outer.type)) {
-			double K = mu * Ar2 / (0.5 * dr);
+			double K = mu * Ar2 / (0.5 * dr[i]);
 			AC[n] += K;
 			b[n] += K * bc.outer.val;
 		}	
 	}
 	else if (cell[n + nz] == 0) {
 		AN[n] = 0.0;
-		AC[n] += (mu * Ar2 / (0.5 * dr));
+		AC[n] += (mu * Ar2 / (0.5 * r_dr[i]));
 	}
 	else {
-		AN[n] = -(mu * Ar2 / dr);
+		AN[n] = -(mu * Ar2 / r_dr[i + 1]);
 	}
 
 	// south
@@ -164,10 +178,10 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	}
 	else if (cell[n - nz] == 0) {
 		AS[n] = 0.0;
-		AC[n] += (mu * Ar1 / (0.5 * dr));
+		AC[n] += (mu * Ar1 / (0.5 * dr[i]));
 	}
 	else {
-		AS[n] = -(mu * Ar1 / dr);
+		AS[n] = -(mu * Ar1 / r_dr[i]);
 	}
 }
 
@@ -183,9 +197,13 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 
 	int nr = coeff.nr;
 	int nz = coeff.nz;
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dr = g.d_dr;
+	double* dz = g.d_dz;
+	double* r = g.d_r;
+	double* z = g.d_z;
+	double* rFace = g.d_rFace;
+	double* r_dr = g.r_dr;
+	double* z_dz = g.z_dz;
 	double mu = f.mu;
 
 	double* AC = coeff.AC;
@@ -194,12 +212,13 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	double* AN = coeff.AN;
 	double* AS = coeff.AS;
 	double* b = coeff.b;
+
 	uint8_t* cell = coeff.activeCell;
+
+	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	int j = n % nz;
 	int i = n / nz;
-
-	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	double r1 = 0.0;
 	double r2 = 0.0;
@@ -208,8 +227,8 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	r2 = r[i];
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2 * CUDART_PI * r2 * dz;
-	double Ar1 = 2 * CUDART_PI * r1 * dz;
+	double Ar2 = 2 * CUDART_PI * r2 * dz[j];
+	double Ar1 = 2 * CUDART_PI * r1 * dz[j];
 
 	// east
 	if (j == nz - 1) {
@@ -217,57 +236,57 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	}
 	else if (cell[n + 1] == 0) {
 		AE[n] = 0.0;
-		AC[n] += (mu * Az / (0.5 * dz));
+		AC[n] += (mu * Az / (0.5 * dz[j]));
 	}
 	else {
-		AE[n] = -(mu * Az / dz);
+		AE[n] = -(mu * Az / z_dz[j + 1]);
 	}
 
 	// west
 	if (j == 0) {
 		AW[n] = 0.0;
-		AC[n] += mu * Az / (0.5 * dz);
+		AC[n] += mu * Az / (z_dz[j]);
 	}
 	else if (cell[n - 1] == 0) {
 		AW[n] = 0.0;
-		AC[n] += (mu * Az / dz);
+		AC[n] += (mu * Az / (0.5 * dz[j]));
 	}
 	else {
-		AW[n] = -(mu * Az / dz);
+		AW[n] = -(mu * Az / z_dz[j]);
 	}
 
 	// north
 	if (i == nr - 1) {
 		AN[n] = 0.0;
 		if (isBCDirichlet(bc.outer.type)) {
-			double K = mu * Ar2 / (0.5 * dr);
+			double K = mu * Ar2 / (0.5 * dr[i - 1]);
 			AC[n] += K;
 			b[n] += K * bc.outer.val;
 		}
 	}
 	else if (cell[n + nz] == 0) {
 		AN[n] = 0.0;
-		AC[n] += (mu * Ar2 / dr);
+		AC[n] += (mu * Ar2 / dr[i]);
 	}
 	else {
-		AN[n] = -(mu * Ar2 / dr);
+		AN[n] = -(mu * Ar2 / dr[i]);
 	}
 
 	// south
 	if (i == 0) {
 		AS[n] = 0.0;
 		if (isBCDirichlet(bc.centerline.type)) {
-			double K = mu * Ar1 / dr;
+			double K = mu * Ar1 / dr[i];
 			AC[n] += K;
 			b[n] += K * bc.centerline.val;
 		}
 	}
 	else if (cell[n - nz] == 0) {
 		AS[n] = 0.0;
-		AC[n] += (mu * Ar1 / dr);
+		AC[n] += (mu * Ar1 / dr[i - 1]);
 	}
 	else {
-		AS[n] = -(mu * Ar1 / dr);
+		AS[n] = -(mu * Ar1 / dr[i - 1]);
 	}
 }
 
@@ -286,9 +305,14 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 
 	int nr = uCoeff.nr;
 	int nz = uCoeff.nz;
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dr = g.d_dr;
+	double* dz = g.d_dz;
+	double* r = g.d_r;
+	double* z = g.d_z;
+	double* rFace = g.d_rFace;
+	double* zFace = g.d_zFace;
+	double* r_dr = g.r_dr;
+	double* z_dz = g.z_dz;
 	double mu = f.mu;
 	double rho = f.rho;
 
@@ -300,20 +324,20 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	double* b = uCoeff.b;
 	uint8_t* cell = uCoeff.activeCell;
 
+	if (!uCoeff.activeCell[n] || !uCoeff.activeBC[n]) return;
+
 	int j = n % nz;
 	int i = n / nz;
-
-	if (!uCoeff.activeCell[n] || !uCoeff.activeBC[n]) return;
 
 	double r1 = 0.0;
 	double r2 = 0.0;
 
-	r1 = r[i] - (dr / 2);
-	r2 = r[i] + (dr / 2);
+	r1 = rFace[i];
+	r2 = rFace[i + 1];
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2.0 * CUDART_PI * r2 * dz;
-	double Ar1 = 2.0 * CUDART_PI * r1 * dz;
+	double Ar2 = 2.0 * CUDART_PI * r2 * z_dz[j];
+	double Ar1 = 2.0 * CUDART_PI * r1 * z_dz[j];
 
 	double ue = 0.0;
 	double uw = 0.0;
@@ -326,7 +350,7 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 		ue = u[n];	// not correct but just for test
 	}
 	else {
-		ue = 0.5 * (u[n] + u[n + 1]);
+		ue = faceValue(u[n], u[n+1], 0.5 * dz[j], dz[j]);
 	}
 
 	// west
@@ -334,37 +358,37 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 		uw = u[n];	// not correct but just for test
 	}
 	else {
-		uw = 0.5 * (u[n] + u[n - 1]);
+		uw = faceValue(u[n], u[n - 1], 0.5 * dz[j - 1], dz[j - 1]);
 	}
 
 	// north
 	if (j == nz - 1) {
-		int vN2 = (i + 1) * g.nz + j - 1;
-		vn = v[vN2];
-	}
-	else if (j == 0) {
-		int vN1 = (i + 1) * g.nz + j;
+		int vN1 = (i + 1) * g.nz + j - 1;
 		vn = v[vN1];
 	}
+	else if (j == 0) {
+		int vN2 = (i + 1) * g.nz + j;
+		vn = v[vN2];
+	}
 	else {
-		int vN1 = (i + 1) * g.nz + j;
-		int vN2 = vN1 - 1;
-		vn = 0.5 * (v[vN1] + v[vN2]);
+		int vN2 = (i + 1) * g.nz + j;
+		int vN1 = vN2 - 1;
+		vn = faceValue(v[vN1], v[vN2], 0.5 * dz[j], z_dz[j]);
 	}
 
 	// south
 	if (j == nz - 1) {
-		int vS2 = i * g.nz + j - 1;
-		vs = v[vS2];
-	}
-	else if (j == 0) {
-		int vS1 = i * g.nz + j;
+		int vS1 = i * g.nz + j - 1;
 		vs = v[vS1];
 	}
+	else if (j == 0) {
+		int vS2 = i * g.nz + j;
+		vs = v[vS2];
+	}
 	else {
-		int vS1 = i * g.nz + j;
-		int vS2 = vS1 - 1;
-		vs = 0.5 * (v[vS1] + v[vS2]);
+		int vS2 = i * g.nz + j;
+		int vS1 = vS2 - 1;
+		vs = faceValue(v[vS1], v[vS2], 0.5 * dz[j], z_dz[j]);
 	}
 
 	double Fe = rho * ue * Az;
@@ -411,9 +435,14 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 
 	int nr = vCoeff.nr;
 	int nz = vCoeff.nz;
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dr = g.d_dr;
+	double* dz = g.d_dz;
+	double* r = g.d_r;
+	double* z = g.d_z;
+	double* rFace = g.d_rFace;
+	double* zFace = g.d_zFace;
+	double* r_dr = g.r_dr;
+	double* z_dz = g.z_dz;
 	double mu = f.mu;
 	double rho = f.rho;
 
@@ -424,10 +453,11 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	double* AS = vCoeff.AS;
 	double* b = vCoeff.b;
 	uint8_t* cell = vCoeff.activeCell;
-	int j = n % nz;
-	int i = n / nz;
 
 	if (!vCoeff.activeCell[n] || !vCoeff.activeBC[n]) return;
+
+	int j = n % nz;
+	int i = n / nz;
 
 	double r1 = 0.0;
 	double r2 = 0.0;
@@ -436,8 +466,8 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	r2 = r[i];
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2 * CUDART_PI * r2 * dz;
-	double Ar1 = 2 * CUDART_PI * r1 * dz;
+	double Ar2 = 2 * CUDART_PI * r2 * dz[j];
+	double Ar1 = 2 * CUDART_PI * r1 * dz[j];
 
 	double ue = 0.0;
 	double uw = 0.0;
@@ -458,7 +488,7 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	else {
 		int uE2 = i * (g.nz + 1) + j + 1;
 		int uE1 = (i - 1) * (g.nz + 1) + j + 1;
-		ue = 0.5 * (u[uE1] + u[uE2]);
+		ue = faceValue(u[uE1], u[uE2], 0.5 * dr[i], r_dr[i]);
 	}
 
 	// west
@@ -473,14 +503,14 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	else {
 		int uW2 = i * (g.nz + 1) + j;
 		int uW1 = (i - 1) * (g.nz + 1) + j;
-		uw = 0.5 * (u[uW1] + u[uW2]);
+		uw = faceValue(u[uW1], u[uW2], 0.5 * dr[i], r_dr[i]);
 	}
 
 	// north
-	vn = 0.5 * (v[n] + v[n + nz]);
+	vn = faceValue(v[n], v[n + nz], 0.5 * dr[i], dr[i]);
 
 	// south
-	vs = 0.5 * (v[n] + v[n - nz]);
+	vs = faceValue(v[n], v[n - nz], 0.5 * dr[i - 1], dr[i - 1]);
 
 	double Fe = rho * ue * Az;
 	double Fw = rho * uw * Az;
@@ -503,17 +533,17 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	case CONV_CENTRAL:
 
 		b[n] -= centralCorrection(Fe, v[n], v[n + 1]);
-		b[n] -= centralCorrection(Fw, v[n], v[n - 1]);
+		b[n] += centralCorrection(Fw, v[n], v[n - 1]);
 		b[n] -= centralCorrection(Fn, v[n], v[n + nz]);
-		b[n] -= centralCorrection(Fs, v[n], v[n - nz]);
+		b[n] += centralCorrection(Fs, v[n], v[n - nz]);
 		break;
 
 	case CONV_SECOND_ORDER_UPWIND:
 
 		if (j > 0 && j < nz - 2) 		b[n] -= secondOrderUpwindCorrection(Fe, v[n - 1], v[n], v[n + 1], v[n + 2], j > 0, j < nz - 2);
-		if (j > 1 && j < nz - 1)		b[n] -= secondOrderUpwindCorrection(Fw, v[n - 2], v[n - 1], v[n], v[n + 1], j > 1, j < nz - 1);
+		if (j > 1 && j < nz - 1)		b[n] += secondOrderUpwindCorrection(Fw, v[n - 2], v[n - 1], v[n], v[n + 1], j > 1, j < nz - 1);
 		if (i > 0 && i < nr - 2)		b[n] -= secondOrderUpwindCorrection(Fn, v[n - nz], v[n], v[n + nz], v[n + 2 * nz], i > 0, i < nr - 2);
-		if (i > 1 && i < nr - 1)		b[n] -= secondOrderUpwindCorrection(Fs, v[n - 2 * nz], v[n - nz], v[n], v[n + nz], i > 1, i < nr - 1);
+		if (i > 1 && i < nr - 1)		b[n] += secondOrderUpwindCorrection(Fs, v[n - 2 * nz], v[n - nz], v[n], v[n + nz], i > 1, i < nr - 1);
 		break;
 
 	}
@@ -534,9 +564,11 @@ void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, Variable
 
 	int nr = uCoeff.nr;
 	int nz = uCoeff.nz;
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dr = g.d_dr;
+	double* dz = g.d_dz;
+	double* rFace = g.d_rFace;
+	double* z_dz = g.z_dz;
+	double* r = g.d_r;
 	double rho = f.rho;
 
 	double* AC = uCoeff.AC;
@@ -544,21 +576,24 @@ void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, Variable
 	uint8_t* cell = uCoeff.activeCell;
 	double* uOld = simple.uOld;
 
+	if (!uCoeff.activeCell[n] || !uCoeff.activeBC[n]) return;
+
 	int j = n % nz;
 	int i = n / nz;
-
-	if (!uCoeff.activeCell[n] || !uCoeff.activeBC[n]) return;
 
 	double r1 = 0.0;
 	double r2 = 0.0;
 
-	r1 = r[i] - (dr / 2);
-	r2 = r[i] + (dr / 2);
+
+	r1 = rFace[i];
+	r2 = rFace[i + 1];
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
+	double Ar2 = 2.0 * CUDART_PI * r2 * z_dz[j];
+	double Ar1 = 2.0 * CUDART_PI * r1 * z_dz[j];
 
-	AC[n] += (rho * Az * dz) / config.dt;
-	b[n] += (rho * Az * dz * uOld[n]) / config.dt;
+	AC[n] += (rho * Az * z_dz[j]) / config.dt;
+	b[n] += (rho * Az * z_dz[j] * uOld[n]) / config.dt;
 }
 
 __global__
@@ -572,9 +607,9 @@ void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, Variable
 
 	int nr = vCoeff.nr;
 	int nz = vCoeff.nz;
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dr = g.d_dr;
+	double* dz = g.d_dz;
+	double* r = g.d_r;
 	double mu = f.mu;
 	double rho = f.rho;
 
@@ -596,8 +631,8 @@ void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, Variable
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
 
-	AC[n] += (rho * Az * dz) / config.dt;
-	b[n] += (rho * Az * dz * vOld[n]) / config.dt;
+	AC[n] += (rho * Az * dz[i]) / config.dt;
+	b[n] += (rho * Az * dz[i] * vOld[n]) / config.dt;
 }
 
 __global__

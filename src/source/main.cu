@@ -11,6 +11,7 @@
 #include "solver.h"
 #include <GLFW/glfw3.h>
 #include "imgui_impl_opengl3.h"
+#include "printer.h"
 
 int main() {
 
@@ -27,7 +28,6 @@ int main() {
 	int frameCount = 0;
 
 	int counter = 0;
-
 
 	while (!glfwWindowShouldClose(disp.window)) {
 		glfwPollEvents();

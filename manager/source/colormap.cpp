@@ -6,6 +6,7 @@
 
 #include "colormap_manager.h"
 #include "math_func.h"
+#include "printer.h"
 
 Colormap::Colormap() {
 
@@ -24,6 +25,7 @@ Colormap::Colormap() {
 	colormapBuffers.push_back(abyssBuffer);
 
 	currentLUT = Turbo;
+
 }
 
 const Colormap::ColormapLUT& Colormap::getColormapValue(std::string colormap) {

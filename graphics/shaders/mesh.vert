@@ -1,16 +1,14 @@
 #version 330 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in float aVal;
 
-out float val;
+layout(location = 0) in vec2 aPos;
 
-uniform mat4 model;
-uniform mat4 view;
-uniform mat4 projection;
-uniform int white;
+uniform vec2 viewMin;
+uniform vec2 viewMax;
 
 void main()
 {
-	val = white;
-	gl_Position = projection * view * model * vec4(aPos, 1.0);
+    vec2 p = (aPos - viewMin) / (viewMax - viewMin);
+    p = p * 2.0 - 1.0;
+
+    gl_Position = vec4(p, 0.0, 1.0);
 }

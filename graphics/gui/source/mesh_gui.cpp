@@ -4,9 +4,11 @@
 #include "results.h"
 #include "colormap.h"
 #include "mesh.h"
+
 #include "solver_struct.h"
 #include "unit_manager.h"
 #include "gui_manager.h"
+#include "printer.h"
 
 MeshGUI::MeshGUI(GUI& gui, SceneView& scene) :
 	gui(gui),
@@ -15,6 +17,7 @@ MeshGUI::MeshGUI(GUI& gui, SceneView& scene) :
 	results(scene.results),
 	colormap(scene.colormap),
 	config(scene.config){
+
 	getGridConfigEdits();
 }
 
@@ -33,8 +36,8 @@ void MeshGUI::setGridConfigEdits() {
 	config.g.nr = gridConfigEdits.nr;
 	config.g.nz = gridConfigEdits.nz;
 	config.g.N = gridConfigEdits.nr * gridConfigEdits.nz;
-	config.g.dz = gridConfigEdits.L / gridConfigEdits.nz;
-	config.g.dr = gridConfigEdits.R / gridConfigEdits.nr;
+	//config.g.dz = gridConfigEdits.L / gridConfigEdits.nz;
+	//config.g.dr = gridConfigEdits.R / gridConfigEdits.nr;
 }
 
 void MeshGUI::drawPropertiesPanel() {
@@ -60,6 +63,12 @@ void MeshGUI::drawPropertiesPanel() {
 			textAtNewRow("nz", 0, 1);
 			ImGui::InputInt("##Meshnz", &gridConfigEdits.nz, 0.0, 0.0);
 
+			textAtNewRow("Radial Bias Factor", 0, 1);
+			ImGui::InputDouble("##MeshRadialBias", &config.g.rBias, 0.0, 0.0);
+
+			textAtNewRow("Axial Bias Factor", 0, 1);
+			ImGui::InputDouble("##MeshAxialBias", &config.g.zBias, 0.0, 0.0);
+
 			ImGui::EndTable();
 		}
 	}
@@ -83,6 +92,7 @@ void MeshGUI::draw() {
 		if (ImGui::Button("Generate Mesh")) {
 			setGridConfigEdits();
 			mesh.generate();
+			gui.meshInspector.createGridBuffer();
 		}
 		changeCursorOnHover();
 

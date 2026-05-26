@@ -8,28 +8,59 @@ Field::Field(int nz, int nr) :
 	nrBase(nr){
 }
 
+std::vector<double> buildFaces(const std::vector<double>& widths) {
+	std::vector<double> faces(widths.size() + 1, 0.0);
+
+	for (int i = 0; i < widths.size(); i++) {
+		faces[i + 1] = faces[i] + widths[i];
+	}
+
+	return faces;
+}
+
+std::vector<double> buildCenters(const std::vector<double>& faces) {
+	std::vector<double> centers(faces.size() - 1);
+
+	for (int i = 0; i < centers.size(); i++) {
+		centers[i] = 0.5 * (faces[i] + faces[i + 1]);
+	}
+
+	return centers;
+}
+
 void Field::generate(SolutionField& solution, BoundaryConditionConfig& bc) {
 
 	this->bc = bc;
 	unProcessedData = solution.field;
+
 	nr = solution.nr;
 	nz = solution.nz;
+
 	dr = solution.dr;
 	dz = solution.dz;
+
 	type = solution.type;
 
-	switch (solution.type) {
+	rFace = buildFaces(dr);
+	zFace = buildFaces(dz);
+
+	rCell = buildCenters(rFace);
+	zCell = buildCenters(zFace);
+
+	switch (type) {
 	case CellStoreType::CENTER:
-		xOffset = 0.5 * dz;
-		yOffset = 0.5 * dr;
+		dataR = rCell;
+		dataZ = zCell;
 		break;
+
 	case CellStoreType::AXIAL:
-		xOffset = 0.0;
-		yOffset = 0.5 * dr;
+		dataR = rCell;
+		dataZ = zFace;
 		break;
+
 	case CellStoreType::RADIAL:
-		xOffset = 0.5 * dz;
-		yOffset = 0.0;
+		dataR = rFace;
+		dataZ = zCell;
 		break;
 	}
 
@@ -58,12 +89,10 @@ void Field::createVertexValues() {
 	for (int i = 0; i < nrBase + 1; i++) {
 		for (int j = 0; j < nzBase + 1; j++) {
 
-			float x = j * dz;
-			float r = i * dr;
+			float x = static_cast<float>(zFace[j]);
+			float r = static_cast<float>(rFace[i]);
 
-			glm::vec2 pos = { x, r };
-
-			vertexValues.push_back(getData(pos));
+			vertexValues.push_back(getData(glm::vec2(x, r)));
 		}
 	}
 }
@@ -75,14 +104,22 @@ void Field::createCellValues() {
 	for (int i = 0; i < nrBase; i++) {
 		for (int j = 0; j < nzBase; j++) {
 
-			float x = j * dz + 0.5 * dz;
-			float r = i * dr + 0.5 * dr;
+			float x = static_cast<float>(zCell[j]);
+			float r = static_cast<float>(rCell[i]);
 
-			glm::vec2 pos = { x, r };
-
-			cellValues.push_back(getData(pos));
+			cellValues.push_back(getData(glm::vec2(x, r)));
 		}
 	}
+}
+
+int findIndex(const std::vector<double>& coords, double x) {
+	auto it = std::upper_bound(coords.begin(), coords.end(), x);
+
+	int idx = static_cast<int>(it - coords.begin()) - 1;
+
+	idx = std::clamp(idx, 0, static_cast<int>(coords.size()) - 2);
+
+	return idx;
 }
 
 void Field::createBuffer() {
@@ -153,33 +190,39 @@ double Field::sample(int i, int j) {
 
 float Field::getData(const glm::vec2& pos) {
 
-	double f11, f12, f21, f22;
+	double z = pos.x;
+	double r = pos.y;
 
-	double z = (double)pos.x;
-	double r = (double)pos.y;
+	int j1 = findIndex(dataZ, z);
+	int i1 = findIndex(dataR, r);
 
-	int i1 = (r - yOffset) / dr;
-	int j1 = (z - xOffset) / dz;
-	int i2 = i1 + 1;
 	int j2 = j1 + 1;
+	int i2 = i1 + 1;
 
-	double r1 = std::clamp(i1 * dr + yOffset, 0.0, nr * dr);
-	double z1 = std::clamp(j1 * dz + xOffset, 0.0, nz * dz);
-	double r2 = std::clamp(i2 * dr + yOffset, 0.0, nr * dr);
-	double z2 = std::clamp(j2 * dz + xOffset, 0.0, nz * dz);
+	double z1 = dataZ[j1];
+	double z2 = dataZ[j2];
 
-	f11 = sample(i1, j1);
-	f12 = sample(i1, j2);
-	f21 = sample(i2, j1);
-	f22 = sample(i2, j2);
+	double r1 = dataR[i1];
+	double r2 = dataR[i2];
 
-	double A = (1.0 / ((z2 - z1) * (r2 - r1)));
-	glm::dvec2 B((z2 - z), (z - z1));
-	glm::dmat2 C(f11, f12, f21, f22);
-	glm::dvec2 D((r2 - r), (r - r1));
+	double f11 = sample(i1, j1);
+	double f12 = sample(i1, j2);
+	double f21 = sample(i2, j1);
+	double f22 = sample(i2, j2);
 
-	return (float)(A * glm::dot(B, (C * D)));
+	double tz = (z - z1) / (z2 - z1);
+	double tr = (r - r1) / (r2 - r1);
 
+	tz = std::clamp(tz, 0.0, 1.0);
+	tr = std::clamp(tr, 0.0, 1.0);
+
+	double value =
+		(1.0 - tz) * (1.0 - tr) * f11 +
+		tz * (1.0 - tr) * f12 +
+		(1.0 - tz) * tr * f21 +
+		tz * tr * f22;
+
+	return (float)(value);
 }
 
 float Field::getData(const glm::vec3& pos) {

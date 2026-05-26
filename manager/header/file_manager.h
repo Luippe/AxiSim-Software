@@ -18,6 +18,9 @@ bool fileExists(const std::string& filename);
 // open .bin file and return stream
 std::ofstream openBinaryFile(const char* path);
 
+// ======================================================================
+// -----------------------MESH-------------------------------------------
+// ======================================================================
 // save mesh by opening explorer
 void saveFromExplorerMesh(Mesh& mesh);
 
@@ -30,6 +33,12 @@ void loadFromExplorerMesh(Mesh& mesh);
 // load mesh from given path
 void loadFromPathMesh(const char* path, Mesh& mesh);
 
+// save mesh which will be launched when application opens
+void saveLaunchMesh(Mesh& mesh);
+
+// ======================================================================
+// -----------------------SOLVER-----------------------------------------
+// ======================================================================
 // save solver by opening explorer
 void saveFromExplorerSolver(Solver& solver);
 
@@ -41,9 +50,6 @@ void loadFromPathSolver(const char* path, Solver& solver);
 
 // load solver after opening explorer
 void loadFromExplorerSolver(Solver& solver);
-
-// save mesh which will be launched when application opens
-void saveLaunchMesh(Mesh& mesh);
 
 // save solver which will be launched when application oepns
 void saveLaunchSolver(Solver& solver);

@@ -47,12 +47,21 @@ void saveFromPathMesh(const char* path, Mesh& mesh) {
 	writeAll(
 		out,
 		mesh.nseg,
+		mesh.gridVertices,
+		mesh.gridLineVertices,
+		mesh.g.obstacleIndices,
 		mesh.g.R,
 		mesh.g.L,
 		mesh.g.nr,
 		mesh.g.nz,
 		mesh.g.dr,
-		mesh.g.dz
+		mesh.g.dz,
+		mesh.g.rBias,
+		mesh.g.zBias,
+		mesh.g.r,
+		mesh.g.z,
+		mesh.g.rFace,
+		mesh.g.zFace
 	);
 	out.close();
 }
@@ -83,13 +92,22 @@ void loadFromPathMesh(const char* path, Mesh& mesh) {
 	// load dimensions
 	readBinary(path,
 		mesh.nseg,
+		mesh.gridVertices,
+		mesh.gridLineVertices,
+		mesh.g.obstacleIndices,
 		mesh.g.R,
 		mesh.g.L,
 		mesh.g.nr,
 		mesh.g.nz,
 		mesh.g.dr,
-		mesh.g.dz);
-
+		mesh.g.dz,
+		mesh.g.rBias,
+		mesh.g.zBias,
+		mesh.g.r,
+		mesh.g.z,
+		mesh.g.rFace,
+		mesh.g.zFace
+	);
 }
 
 void saveLaunchMesh(Mesh& mesh) {

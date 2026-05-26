@@ -35,8 +35,6 @@ std::vector<std::string> parseWords(const std::string& line) {
 }
 
 
-
-
 // format a double to a specific precision and return it as a string
 std::string formatPrecision(double value) {
 	//std::ostringstream ss;

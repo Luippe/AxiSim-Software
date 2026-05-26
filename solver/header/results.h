@@ -40,18 +40,13 @@ public:
 	const char* shadingType[2] = { "Interp", "Flat" };
 	Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader);
 
-	// get all vertices for the outline
-	void createOutlineVertices();
-
 	// create buffer for the cylinder outline
 	void createOutlineBuffer();
 
-	void render(Shader& shaderLine, Shader& shaderEdge);
+	void render();
 
 	// generate results using mesh and solution
 	void generate();
-
-	void updateModel();
 
 	// upload colormap to shader
 	void uploadUniforms();
@@ -98,8 +93,8 @@ private:
 
 
 	int nseg;
-	double dz;
-	double dr;
+	std::vector<double> dz;
+	std::vector<double> dr;
 	int nr, nz;
 
 	GridConfig g;
@@ -121,9 +116,6 @@ private:
 	std::vector<CylinderInstance> createRowMergedCylinderInstances(std::vector<float>& field, FilterValues& filterValues);
 
 	bool compareFloat(float value, FilterValues& filterValues);
-
-	// updates the outline model matrix so it can change with the mesh
-	void updateOutlineModel();
 
 	// create instances for all control volumes
 	void createAllCVInstances();

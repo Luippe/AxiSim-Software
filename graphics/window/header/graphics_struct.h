@@ -27,9 +27,13 @@ enum class ShadingType {
 	Flat
 };
 
-struct InspectorPoint {
-	ImVec2 mousePos;
+struct SurfacePoint {
+
+	// i and j indices
 	ImVec2 dataPos;
+
+	// optional data
+	ImVec2 vecValue;
 	float value;
 };
 

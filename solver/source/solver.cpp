@@ -79,6 +79,10 @@ void Solver::setDefault() {
     transient = false;
     dt = 0.1;
     tEnd = 2.0;
+    configSimple.maxIter = 10;
+    linearSolverConfig.maxIter = 10;
+
+
 }
 
 void Solver::run() {
@@ -307,6 +311,7 @@ void Solver::runSimple() {
         cudaMemcpyAsync(simple.vOld, simple.v, Nv * sizeof(double), cudaMemcpyDeviceToDevice, stream);
 
         for (int k = 0; k < configSimple.maxIter; k++) {
+            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             clearCoefficients << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff);
             clearCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff);
@@ -315,7 +320,10 @@ void Solver::runSimple() {
 
             // create coefficients for velocity and pressure correction equations
             addUDiffusionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, uBC);
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+
             addVDiffusionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, vBC);
+            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             if (configSolver.addConvectionTerm) {
                 addUConvectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC, convectionScheme);
@@ -348,12 +356,12 @@ void Solver::runSimple() {
             createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
             finalizeCoefficients << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
             solveLinearSystem(ppCoeff, linearSolverConfig, stream, simple.pp, simple.ppTemp, threadsPerBlock);
-
+            CUDA_CHECK(cudaStreamSynchronize(stream));
             // update field variables
             updateUVelocity << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
             updateVVelocity << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
             updatePressure << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff, simple);
-
+            CUDA_CHECK(cudaStreamSynchronize(stream));
             // check for convergence and print residual to console
             if (k % configSimple.checkConv == 0) {
 
@@ -397,7 +405,7 @@ void Solver::runSimple() {
     console->addCompletionTime("Solver", ms);
 
     // copy all necessary variables back to host
-    cudaStreamSynchronize(stream);
+            CUDA_CHECK(cudaStreamSynchronize(stream));
     uSol = SolutionField{ copyDeviceToHostVector(simple.u, Nu), g.nr, g.nz + 1, g.dr, g.dz, CellStoreType::AXIAL };
     vSol = SolutionField{ copyDeviceToHostVector(simple.v, Nv), g.nr + 1, g.nz, g.dr, g.dz, CellStoreType::RADIAL };
     pSol = SolutionField{ copyDeviceToHostVector(simple.p, N), g.nr, g.nz, g.dr, g.dz, CellStoreType::CENTER };

@@ -20,6 +20,9 @@ bool isFullyDeveloped(BCType& type);
 __global__
 void copyVector(double* vec1, double* vec2, int N);
 
+__device__
+double faceValue(double phiC, double phiF, double dFf, double dFC);
+
 __global__
 void finalizeCoefficients(Coefficients coeff);
 

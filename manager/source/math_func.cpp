@@ -6,27 +6,32 @@
 #include <glm/vec2.hpp>
 #include <iostream>
 
-std::vector<double> linspace(double start, double end, std::size_t num) {
+std::vector<double> linspace(double start, double end, std::size_t N, double bias) {
 
 	// reserve space
-	std::vector<double> x;
-	x.reserve(num);
+	std::vector<double> values;
+	values.reserve(N);
 
-	if (num == 0) {
-		return x;
+	if (N <= 0) {
+		return values;
 	}
 
-	if (num == 1) {
-		x.push_back(start);
+	if (N == 1) {
+		values.push_back(start);
+		return values;
 	}
 
-	double step = (end - start) / static_cast<double>(num - 1);
+	for (int i = 0; i < N; i++) {
+		double t = (double)(i) / (double)(N - 1);
 
-	for (std::size_t i = 0; i < num; ++i) {
-		x.push_back(start + step * static_cast<double>(i));
+		double biasedT = std::pow(t, bias);
+
+		double x = start + biasedT * (end - start);
+
+		values.push_back(x);
 	}
 
-	return x;
+	return values;
 }
 
 

@@ -63,22 +63,24 @@ void continuityResidual(ConfigSolver config, Coefficients coeff, VariablesSimple
 	const FluidPropertyConfig& f = config.f;
 
 	int nz = g.nz;
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dr = g.d_dr;
+	double* dz = g.d_dz;
+	double* r = g.d_r;
+	double* rFace = g.d_rFace;
 	double rho = f.rho;
 	double* u = simple.u;
 	double* v = simple.v;
 	double* res = coeff.res;
 
 	int i = n / nz;
+	int j = n % nz;
 
-	double r1 = r[i] - (dr / 2);
-	double r2 = r[i] + (dr / 2);
+	double r1 = rFace[i];
+	double r2 = rFace[i + 1];
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2 * CUDART_PI * r2 * dz;
-	double Ar1 = 2 * CUDART_PI * r1 * dz;
+	double Ar2 = 2 * CUDART_PI * r2 * dz[j];
+	double Ar1 = 2 * CUDART_PI * r1 * dz[j];
 
 	// east
 	double me = rho * u[n + i + 1] * Az;

@@ -6,7 +6,7 @@
 #include <glm/fwd.hpp>
 
 // create spaced 1d vector
-std::vector<double> linspace(double start, double end, std::size_t num);
+std::vector<double> linspace(double start, double end, std::size_t N, double bias);
 
 // multiply a vector and a constant
 std::vector<double> vec_const_mul(std::vector<double> v, double c);

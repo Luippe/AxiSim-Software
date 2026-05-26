@@ -48,8 +48,6 @@ private:
 
 	Display& disp;
 	FrameBuffer frameBuffer;
-	Shader shaderMesh;
-	Shader shaderEdge;
 	Shader shaderLine;
 	Shader shaderResults;
 };

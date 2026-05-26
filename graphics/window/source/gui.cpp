@@ -12,6 +12,7 @@
 
 #include "gui_manager.h"
 
+
 // ======================================================================
 // -----------------------HELPER FUNCTIONS-------------------------------
 // ======================================================================
@@ -46,15 +47,34 @@ void initContext(ImGuiContext*& imguiContext, ImPlotContext*& implotContext, GLF
 
 }
 
+void GUI::createAssetBuffers() {
+
+	assets.houseIcon.createBuffer("assets/icons/house.png");
+	assets.clearIcon.createBuffer("assets/icons/circle-x.png");
+	assets.plusIcon.createBuffer("assets/icons/plus.png");
+	assets.copyIcon.createBuffer("assets/icons/clipboard.png");
+	assets.selectRegionIcon.createBuffer("assets/icons/square-dashed-mouse-pointer.png");
+
+}
+
+void GUI::newFrame() {
+
+	ImGui_ImplOpenGL3_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+	ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), UIFlags::BaseDockspaceFlags);
+
+}
 
 // ======================================================================
 // -----------------------INITIALIZATION---------------------------------
 // ======================================================================
 GUI::GUI(GLFWwindow* window, SceneView& scene) :
 	scene(scene),
-	inspector(scene, assets),
-	console(*this, scene),
 	menu(*this, scene),
+	inspector(scene, assets),
+	meshInspector(scene.mesh, assets),
+	console(*this, scene),
 	mesh(scene.mesh),
 	solver(scene.solver),
 	results(scene.results),
@@ -89,24 +109,6 @@ GUI::GUI(GLFWwindow* window, SceneView& scene) :
 	createAssetBuffers();
 }
 
-void GUI::createAssetBuffers() {
-
-	assets.houseIcon.createBuffer("assets/icons/house.png");
-	assets.clearIcon.createBuffer("assets/icons/circle-x.png");
-	assets.plusIcon.createBuffer("assets/icons/plus.png");
-	assets.copyIcon.createBuffer("assets/icons/clipboard.png");
-	assets.selectRegionIcon.createBuffer("assets/icons/square-dashed-mouse-pointer.png");
-
-}
-
-void GUI::newFrame() {
-
-	ImGui_ImplOpenGL3_NewFrame();
-	ImGui_ImplGlfw_NewFrame();
-	ImGui::NewFrame();
-	ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), UIFlags::BaseDockspaceFlags);
-
-}
 
 // ======================================================================
 // -----------------------DRAW CALLS-------------------------------------
@@ -153,7 +155,17 @@ void GUI::render() {
 
 	drawUI();
 
-	// draw colorbar only in the results tab
+	// mesh GUI render
+	if (scene.currentTab == TAB_MESH && mesh.isReady) {
+		meshInspector.render();
+	}
+
+	// solver GUI render
+	if (scene.currentTab == TAB_SOLVER) {
+		residualPlot.draw();
+	}
+
+	// results GUI render
 	if (scene.currentTab == TAB_RESULTS && results.isReady) {
 		inspector.render();
 
@@ -162,16 +174,11 @@ void GUI::render() {
 		}
 	}
 
-	if (scene.currentTab == TAB_SOLVER) {
-		residualPlot.draw();
-	}
-
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 	// copy to clipboard if there are any pending copies
 	if (residualPlot.pendingCopy) {
-
 
 		setContext(exportImGuiContext, exportImPlotContext);
 
@@ -193,4 +200,14 @@ void GUI::render() {
 
 	}
 
+	if (meshInspector.pendingCopy) {
+
+		setContext(exportImGuiContext, exportImPlotContext);
+
+		meshInspector.pendingCopy = false;
+		meshInspector.copyActiveSurfaceToClipboard();
+
+		setContext(mainImGuiContext, mainImPlotContext);
+
+	}
 }

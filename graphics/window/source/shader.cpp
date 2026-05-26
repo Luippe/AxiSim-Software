@@ -29,6 +29,14 @@ void Shader::SetInt(const char* name, int value) {
 	glUniform1i(getUniformLocation(name), value);
 }
 
+void Shader::SetVec2(const char* name, float x, float y) {
+	glUniform2f(getUniformLocation(name), x, y);
+}
+
+void Shader::SetVec2(const char* name, glm::vec2& value) {
+	glUniform2fv(getUniformLocation(name), 1, &value[0]);
+}
+
 void Shader::SetVec3(const char *name, float x, float y, float z) {
 	glUniform3f(getUniformLocation(name), x, y, z);
 }

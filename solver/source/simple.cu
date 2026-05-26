@@ -14,9 +14,9 @@ void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, Variables
 
 	int nr = coeff.nr;
 	int nz = coeff.nz;
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dr = g.d_dr;
+	double* dz = g.d_dz;
+	double* r = g.d_r;
 	double* AC = coeff.AC;
 
 	D[n] = 0.0;
@@ -30,8 +30,8 @@ void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, Variables
 	double r2 = 0.0;
 
 	if (isStoredAxial(coeff.storeType)) {
-		r1 = r[i] - (dr / 2.0);
-		r2 = r[i] + (dr / 2.0);
+		r1 = r[i] - (dr[i] / 2.0);
+		r2 = r[i] + (dr[i] / 2.0);
 	}
 	else if (isStoredRadial(coeff.storeType)) {
 		r1 = r[i - 1];
@@ -39,7 +39,7 @@ void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, Variables
 	}
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	D[n] = Az * dz / AC[n];
+	D[n] = Az * dz[j] / AC[n];
 }
 
 __global__
@@ -53,9 +53,10 @@ void createURhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 	const FluidPropertyConfig& f = config.f;
 
 	int nz = coeff.nz;
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dr = g.d_dr;
+	double* dz = g.d_dz;
+	double* r = g.d_r;
+	double* rFace = g.d_rFace;
 
 	double* b = coeff.b;
 	double* p = simple.p;
@@ -67,8 +68,8 @@ void createURhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 
 	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
-	double r1 = r[i] - (dr / 2.0);
-	double r2 = r[i] + (dr / 2.0);
+	double r1 = rFace[i];
+	double r2 = rFace[i + 1];
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
 
 	// outlet
@@ -92,19 +93,22 @@ void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 
 	int nr = coeff.nr;
 	int nz = coeff.nz;
-	double dz = g.dz;
-	double dr = g.dr;
-	double* r = g.r;
+	double* dz = g.d_dz;
+	double* dr = g.d_dr;
+	double* r = g.d_r;
 	double* b = coeff.b;
 	double* p = simple.p;
 
-	int i = n / nz;
+
 
 	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
+	int i = n / nz;
+	int j = n % nz;
+
 	double r1 = r[i - 1];
 	double r2 = r[i];
-	double Ar = 2.0 * CUDART_PI * (0.5 * (r1 + r2)) * dz;
+	double Ar = 2.0 * CUDART_PI * (0.5 * (r1 + r2)) * dz[j];
 	b[n] += -Ar * (p[n] - p[n - nz]);
 
 }
@@ -121,9 +125,13 @@ void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simp
 
 	int nr = coeff.nr;
 	int nz = coeff.nz;
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dz = g.d_dz;
+	double* dr = g.d_dr;
+	double* r = g.d_r;
+	double* rFace = g.d_rFace;
+	double* r_dr = g.r_dr;
+	double* z_dz = g.z_dz;
+
 	double mu = f.mu;
 	double rho = f.rho;
 
@@ -140,29 +148,29 @@ void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simp
 
 	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
-	double r1 = r[i] - (dr / 2.0);
-	double r2 = r[i] + (dr / 2.0);
+	double r1 = rFace[i];
+	double r2 = rFace[i + 1];
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2.0 * CUDART_PI * r2 * dz;
-	double Ar1 = 2.0 * CUDART_PI * r1 * dz;
+	double Ar2 = 2.0 * CUDART_PI * r2 * dz[j];
+	double Ar1 = 2.0 * CUDART_PI * r1 * dz[j];
 
 	// east
 	if (j == nz - 1) {
-		AC[n] += (2.0 * rho * DU[n + i + 1] * Az / dz);
+		AC[n] += (2.0 * rho * DU[n + i + 1] * Az / z_dz[j + 1]);
 	}
 	else {
-		AE[n] = -rho * DU[n + i + 1] * Az / dz;
+		AE[n] = -rho * DU[n + i + 1] * Az / z_dz[j + 1];
 	}
 
 	// west
-	AW[n] = -rho * DU[n + i] * Az / dz;
+	AW[n] = -rho * DU[n + i] * Az / z_dz[j];
 
 	// north
-	AN[n] = -rho * DV[n + nz] * Ar2 / dr;
+	AN[n] = -rho * DV[n + nz] * Ar2 / r_dr[i + 1];
 
 	// south
-	AS[n] = -rho * DV[n] * Ar1 / dr;
+	AS[n] = -rho * DV[n] * Ar1 / r_dr[i];
 
 }
 
@@ -177,9 +185,10 @@ void createPPRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple
 	const FluidPropertyConfig& f = config.f;
 
 	int nz = g.nz;
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dr = g.d_dr;
+	double* dz = g.d_dz;
+	double* r = g.d_r;
+	double* rFace = g.d_rFace;
 	double rho = f.rho;
 	double* b = coeff.b;
 	double* pp = simple.pp;
@@ -188,18 +197,19 @@ void createPPRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple
 	double* v = simple.v;
 
 	int i = n / nz;
+	int j = n % nz;
 
 	pp[n] = 0.0;
 	ppTemp[n] = 0.0;
 
 	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
-	double r1 = r[i] - (dr / 2.0);
-	double r2 = r[i] + (dr / 2.0);
+	double r1 = rFace[i];
+	double r2 = rFace[i + 1];
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2.0 * CUDART_PI * r2 * dz;
-	double Ar1 = 2.0 * CUDART_PI * r1 * dz;
+	double Ar2 = 2.0 * CUDART_PI * r2 * dz[j];
+	double Ar1 = 2.0 * CUDART_PI * r1 * dz[j];
 
 	// east
 	double me = rho * u[n + i + 1] * Az;
@@ -228,7 +238,7 @@ void updateUVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple si
 	const GridConfig& g = config.g;
 
 	int nz = coeff.nz;
-	double dz = g.dz;
+	double* dz = g.d_dz;
 
 	double* u = simple.u;
 	double* pp = simple.pp;
@@ -237,11 +247,14 @@ void updateUVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple si
 	int j = n % nz;
 	int i = n / nz;
 
+
 	if (j == nz - 1) {
-		u[n] -= (DU[n] / dz) * (-2.0 * pp[n - i - 1]);
+		double dzHalf = 0.5 * dz[j - 1];
+		u[n] -= (DU[n] / dzHalf) * (0.0 - pp[n - i - 1]);
 	}
 	else {
-		u[n] -= (DU[n] / dz) * (pp[n - i] - pp[n - i - 1]);
+		double dzCenter = 0.5 * (dz[j] + dz[j + 1]);
+		u[n] -= (DU[n] / dzCenter) * (pp[n - i] - pp[n - i - 1]);
 	}
 }
 
@@ -257,13 +270,16 @@ void updateVVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple si
 
 	int nr = coeff.nr;
 	int nz = coeff.nz;
-	double dr = g.dr;
+	double* dr = g.d_dr;
 
 	double* v = simple.v;
 	double* pp = simple.pp;
 	double* DV = simple.DV;
 
-	v[n] -= (DV[n] / dr) * (pp[n] - pp[n - nz]);
+	int i = n / nz;
+
+	double drCenter = 0.5 * (dr[i] + dr[i - 1]);
+	v[n] -= (DV[n] / drCenter) * (pp[n] - pp[n - nz]);
 }
 
 __global__

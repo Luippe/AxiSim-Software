@@ -108,9 +108,10 @@ void get_oxy_coeffj(const Config& config, VariablesBiCGStab& vars, int i, int j,
 	int nr = g.nr;
 	int nz = g.nz;
 	//printf("%d, %d\n", nr, nz);
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dr = g.d_dr;
+	double* dz = g.d_dz;
+	double* r = g.d_r;
+	double* rFace = g.d_rFace;
 
 	double* ACnew = vars.ACnew;
 	double* AKE = vars.AKE;
@@ -131,11 +132,11 @@ void get_oxy_coeffj(const Config& config, VariablesBiCGStab& vars, int i, int j,
 
 	if (cell[n] != 1) {
 		// calculate radius and surfACnewe area
-		double r1 = r[i] - (0.5 * dr);
-		double r2 = r[i] + (0.5 * dr);
+		double r1 = rFace[i];
+		double r2 = rFace[i + 1];
 		double Az = PI * (r2 * r2 - r1 * r1);
-		double Ar2 = 2 * PI * r2 * dz;
-		double Ar1 = 2 * PI * r1 * dz;
+		double Ar2 = 2 * PI * r2 * dz[j];
+		double Ar1 = 2 * PI * r1 * dz[j];
 
 		// east
 		if (j == nz - 1) {
@@ -146,21 +147,21 @@ void get_oxy_coeffj(const Config& config, VariablesBiCGStab& vars, int i, int j,
 		}
 		else {
 			double me = Az * u[n + i + 1];
-			AKE[n] += -(D * Az / dz) - fmax(-me, 0.0);
+			AKE[n] += -(D * Az / dz[j]) - fmax(-me, 0.0);
 		}
 
 		// west
 		if (j == 0) {
 			AKW[n] = 0.0;
 			double mw = Az * u[n + i];
-			ACnew[n] += (D * Az / (0.5 * dz)) + fmax(mw, 0.0);
+			ACnew[n] += (D * Az / (0.5 * dz[j])) + fmax(mw, 0.0);
 		}
 		else if (cell[n - 1] == 1) {
 			AKW[n] = 0.0;
 		}
 		else {
 			double mw = Az * u[n + i];
-			AKW[n] += -(D * Az / dz) - fmax(mw, 0.0);
+			AKW[n] += -(D * Az / dz[j]) - fmax(mw, 0.0);
 		}
 
 		// north
@@ -172,7 +173,7 @@ void get_oxy_coeffj(const Config& config, VariablesBiCGStab& vars, int i, int j,
 		}
 		else {
 			double mn = Ar2 * v[n + nz];
-			AKN[n] += -(D * Ar2 / dr) - fmax(-mn, 0.0);
+			AKN[n] += -(D * Ar2 / dr[i]) - fmax(-mn, 0.0);
 		}
 
 		// south
@@ -184,7 +185,7 @@ void get_oxy_coeffj(const Config& config, VariablesBiCGStab& vars, int i, int j,
 		}
 		else {
 			double ms = Ar1 * v[n];
-			AKS[n] += -(D * Ar1 / dr) - fmax(ms, 0.0);
+			AKS[n] += -(D * Ar1 / dr[i]) - fmax(ms, 0.0);
 		}
 		ACnew[n] += -(AKE[n] + AKW[n] + AKN[n] + AKS[n]);
 	}
@@ -196,9 +197,10 @@ void get_oxy_rhsj(const Config& config, VariablesBiCGStab& vars, double oxy_in, 
 	const GridConfig& g = config.g;
 	const FluidPropertyConfig& f = config.f;
 
-	double dr = g.dr;
-	double dz = g.dz;
-	double* r = g.r;
+	double* dr = g.d_dr;
+	double* dz = g.d_dz;
+	double* r = g.d_r;
+	double* rFace = g.d_rFace;
 	double* rhsnew = vars.foxynew;
 	double* u = vars.AKS;			// MUST CHANGE
 	double* v = vars.AKS;			// MUST CHANGE 
@@ -209,13 +211,13 @@ void get_oxy_rhsj(const Config& config, VariablesBiCGStab& vars, double oxy_in, 
 	// add inlet contribution
 	if (j == 0) {
 
-		double r1 = r[i] - (0.5 * dr);
-		double r2 = r[i] + (0.5 * dr);
+		double r1 = rFace[i];
+		double r2 = rFace[i + 1];
 
 		double Az = PI * (r2 * r2 - r1 * r1);
 
 		double m_in = Az * u[n + i];
-		rhsnew[n] += ((D * Az / (0.5 * dz)) + m_in) * oxy_in;
+		rhsnew[n] += ((D * Az / (0.5 * dz[j])) + m_in) * oxy_in;
 
 	}
 }

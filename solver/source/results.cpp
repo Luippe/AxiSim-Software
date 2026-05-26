@@ -181,7 +181,6 @@ std::vector<CylinderInstance> Results::createRowMergedCylinderInstances(std::vec
 
 	std::vector<CylinderInstance> instances;
 
-
 	for (int i = 0; i < nr; i++) {
 		int j = 0;
 
@@ -193,30 +192,30 @@ std::vector<CylinderInstance> Results::createRowMergedCylinderInstances(std::vec
 				continue;
 			}
 
-			// start selected run
+			// Start selected run
 			int j0 = j;
 
-			while (j < nz && compareFloat(field[i * nz + j], filterValues)) {	// we dont use n here, as we want the index to update every loop
+			while (j < nz && compareFloat(field[i * nz + j], filterValues)) {
 				j++;
 			}
 
+			// j1 is one past the last selected cell
 			int j1 = j;
 
 			CylinderInstance inst{};
 
-			inst.x0 = (float)(j0 * dz);				// front
-			inst.x1 = (float)(j1 * dz);				// back
+			// Axial bounds from face locations
+			inst.x0 = static_cast<float>(g.zFace[j0]);
+			inst.x1 = static_cast<float>(g.zFace[j1]);
 
-			double r = 0.5 * dr + (double)i * dr;
+			// Radial bounds from face locations
+			inst.innerR = static_cast<float>(g.rFace[i]);
+			inst.outerR = static_cast<float>(g.rFace[i + 1]);
 
-			inst.innerR = (float)(r - 0.5 * dr);	// inner radius
-			inst.outerR = (float)(r + 0.5 * dr);	// outer radius
-
-			//printFloat(inst.x0, inst.x1, inst.innerR, inst.outerR);
 			instances.push_back(inst);
 		}
 	}
-	//printFloat(instances[0].x0, instances[0].x1, instances[0].innerR, instances[0].outerR);
+
 	return instances;
 }
 
@@ -237,16 +236,15 @@ Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader)
 	rowTop = solver.config.g.nr;
 	rowBot = 0;
 
-	currentFront = (float)colFront * (float)solver.g.dz;
-	currentBack = (float)colBack * (float)solver.g.dz;
-	currentOuter = (float)rowTop * (float)solver.g.dr;
-	currentInner = (float)rowBot * (float)solver.g.dr;
+	currentFront = 0.0f;
+	currentBack = 0.0f;
+	currentOuter = 0.0f;
+	currentInner = 0.0f;
 
 }
 
 void Results::updateAfterLoadingFile() {
 
-	createOutlineVertices();
 	createOutlineBuffer();
 	createFields();
 	isReady = true;
@@ -322,17 +320,10 @@ void Results::generate() {
 	updateCurrentField();
 	console->addCompletionMessage("Completed generating field variables");
 
-	// generate all vertices
-	createOutlineVertices();
-	console->addCompletionMessage("Completed generating vertices");
 
 	// make buffer for outline
 	createOutlineBuffer();
 	console->addCompletionMessage("Completed generating buffers");
-
-	// initialize outline and colormaps
-	updateOutlineModel();
-	console->addCompletionMessage("Completed initializing outlines and uploading colormaps");
 
 	showOutline = true;
 	isReady = true;
@@ -406,74 +397,6 @@ void Results::uploadUniforms() {
 
 }
 
-void Results::createOutlineVertices() {
-
-	float ntheta = 360.0f / (float)nseg;
-
-	glm::vec3 c0, c1, p0, p1;
-	glm::vec3 color = { 0.0f, 0.0f, 0.0f };
-	float dr = (float)g.dr;
-	float dz = (float)g.dz;
-
-	verticesCap.clear();
-	verticesEdge.clear();
-
-	// front cap
-	for (int n = 0; n < nseg; n++) {
-		p0 = { currentFront, currentOuter * cos(glm::radians(ntheta * n)),		  currentOuter * sin(glm::radians(ntheta * n)) };
-		c0 = { currentFront, currentOuter * cos(glm::radians(ntheta * (n + 1))),  currentOuter * sin(glm::radians(ntheta * (n + 1))) };
-
-		verticesCap.push_back({ p0, color });
-		verticesCap.push_back({ c0, color });
-	}
-
-	// back cap
-	for (int n = 0; n < nseg; n++) {
-		c0 = { (float)colBack * dz, (float)rowTop * dr * cos(glm::radians(ntheta * (n + 1))), (float)rowTop * dr * sin(glm::radians(ntheta * (n + 1))) };
-		p0 = { (float)colBack * dz, (float)rowTop * dr * cos(glm::radians(ntheta * n)),	   (float)rowTop * dr * sin(glm::radians(ntheta * n)) };
-
-		verticesCap.push_back({ p0, color });
-		verticesCap.push_back({ c0, color });
-	}
-
-	// edges
-	for (int n = 0; n < nseg; n++) {
-		c0 = { (float)colFront * dz, (float)rowTop * dr * cos(glm::radians(ntheta * (n - 1))), (float)rowTop * dr * sin(glm::radians(ntheta * (n - 1))) };
-		c1 = { (float)colFront * dz, (float)rowTop * dr * cos(glm::radians(ntheta * (n + 1))), (float)rowTop * dr * sin(glm::radians(ntheta * (n + 1))) };
-		p0 = { (float)colFront * dz, (float)rowTop * dr * cos(glm::radians(ntheta * n)),		(float)rowTop * dr * sin(glm::radians(ntheta * n)) };
-		p1 = { (float)colBack * dz, (float)rowTop * dr * cos(glm::radians(ntheta * n)),		(float)rowTop * dr * sin(glm::radians(ntheta * n)) };
-
-		verticesEdge.push_back({ p0, p1, c0, c1, color });
-
-		c0 += (colBack - colFront) * dz * cylinderDirection;
-		c1 += (colBack - colFront) * dz * cylinderDirection;
-
-		verticesEdge.push_back({ p1, p0, c0, c1, color });
-	}
-}
-
-void Results::updateModel() {
-
-	updateOutlineModel();
-	updateSelectedInstances();
-
-}
-
-void Results::updateOutlineModel() {
-	float dr = (float)g.dr;
-	float dz = (float)g.dz;
-
-	float zScale = (currentBack - currentFront) / g.L;
-	float rScaleOuter = (currentOuter) / g.R;
-	float rScaleInner = (currentInner) / g.R;
-	glm::vec3 t = glm::vec3({ currentFront, 0.0f, 0.0f });
-	glm::vec3 sOuter = glm::vec3({ zScale, rScaleOuter, rScaleOuter });
-	glm::vec3 sInner = glm::vec3({ zScale, rScaleInner, rScaleInner });
-	modelOutline = glm::translate(glm::mat4(1.0f), t);
-
-	modelOutlineInner = glm::scale(modelOutline, sInner);	// make sure to compute this before modelOutline
-	modelOutline = glm::scale(modelOutline, sOuter);
-}
 
 void Results::createAllCVInstances() {
 
@@ -483,24 +406,25 @@ void Results::createAllCVInstances() {
 		for (int j = 0; j < g.nz; j++) {
 			int n = i * g.nz + j;
 
-			float x0 = (float)j * (float)g.dz;
-			float x1 = (float)(j + 1) * (float)g.dz;
 
-			float r0 = (float)i * (float)g.dr;
-			float r1 = (float)(i + 1) * (float)g.dr;
+			float x0 = (float)g.zFace[j];
+			float x1 = (float)g.zFace[j + 1];
+
+			float r0 = (float)g.rFace[i];
+			float r1 = (float)g.rFace[i + 1];
 
 			allInstances.push_back({ x0, x1, r0, r1 });
 		}
 	}
+	check();
 }
 
 void Results::updateSelectedInstances() {	// might be heavy on the cpu, optimize if AxiSim starts lagging
 
 	selectedInstances = createRowMergedCylinderInstances(currentField->cellValues, filterValues);
 
-	cvInstanceBuffer.bindVBO();
+
 	cvInstanceBuffer.bufferSubData(selectedInstances.size() * sizeof(CylinderInstance), selectedInstances.data());
-	cvInstanceBuffer.unbindVBO();
 
 }
 
@@ -526,7 +450,7 @@ void Results::drawEdge() {
 	}
 }
 
-void Results::render(Shader& shaderLine, Shader& shaderEdge) {
+void Results::render() {
 
 	if (!isReady) return;
 	updateSelectedInstances();
@@ -561,17 +485,17 @@ void Results::render(Shader& shaderLine, Shader& shaderEdge) {
 	glActiveTexture(GL_TEXTURE0);
 	currentField->textureBuffer.unbind();
 
-	shaderLine.use();
-	shaderLine.SetMat4("model", modelOutline);
-	drawCap();
-	shaderLine.SetMat4("model", modelOutlineInner);
-	drawCap();
-	shaderLine.SetMat4("model", glm::mat4(1.0));
+	//shaderLine.use();
+	//shaderLine.SetMat4("model", modelOutline);
+	//drawCap();
+	//shaderLine.SetMat4("model", modelOutlineInner);
+	//drawCap();
+	//shaderLine.SetMat4("model", glm::mat4(1.0));
 
-	shaderEdge.use();
-	shaderEdge.SetMat4("model", modelOutline);
-	drawEdge();
-	shaderEdge.SetMat4("model", glm::mat4(1.0));
+	//shaderEdge.use();
+	//shaderEdge.SetMat4("model", modelOutline);
+	//drawEdge();
+	//shaderEdge.SetMat4("model", glm::mat4(1.0));
 
 
 	//// End GPU timer

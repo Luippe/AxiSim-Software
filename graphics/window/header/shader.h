@@ -18,6 +18,8 @@ public:
 	void use();
 	void SetFloat(const char* name, float value);
 	void SetInt(const char* name, int value);
+	void SetVec2(const char* name, float x, float y);
+	void SetVec2(const char* name, glm::vec2& value);
 	void SetVec3(const char* name, float x, float y, float z);
 	void SetVec3(const char* name, glm::vec3& value);
 	void SetMat4(const char* name, const glm::mat4& matrix);

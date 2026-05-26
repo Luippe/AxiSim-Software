@@ -48,7 +48,17 @@ private:
 	CellStoreType type;
 	std::vector<double> unProcessedData;
 
-	double dr, dz;
+	std::vector<double> dr; // cell widths
+	std::vector<double> dz;
+
+	std::vector<double> rFace;
+	std::vector<double> zFace;
+
+	std::vector<double> rCell;
+	std::vector<double> zCell;
+
+	std::vector<double> dataR;
+	std::vector<double> dataZ;
 	double xOffset, yOffset;	// offset of the field from (0,0)
 	
 };

@@ -1,6 +1,7 @@
 #pragma once
 //#include "device_launch_parameters.h"
 #include <vector>
+
 #ifdef __INTELLISENSE__
 void __syncthreads();
 #endif
@@ -14,32 +15,44 @@ struct GridConfig {
 	int nz = 100;
 	double R = 1.7;
 	double L = 10.0;
-	double dz;
-	double dr;
-	//std::vector<double> dz;
-	//std::vector<double> dr;
-	int N = 0;
+	std::vector<double> dz;
+	std::vector<double> dr;
+	std::vector<double> r;
+	std::vector<double> z;
+	std::vector<double> rFace;
+	std::vector<double> zFace;
+	std::vector<int> obstacleIndices;
 
+	double zBias = 1.0;
+	double rBias = 1.0;
+
+	int N = 0;
 	int n_cell = 0;
-	double cell_top = 1.5;
-	double cell_left = 4.0;
-	double cell_thickness = 0.5;
-	double cell_right = 4.5;
+	//double cell_top = 1.5;
+	//double cell_left = 4.0;
+	//double cell_right = 4.5;
+	//double cell_bot = 0.0;
 	double A_tot = 0.0;
 	double kl = 0.0;
 
 	int* c_cell;
 	int* z_cell;
 	int* r_cell;
-	double* r;
+
+	double* d_dr;
+	double* d_dz;
+	double* d_r;
+	double* d_z;
+	double* d_rFace;
+	double* d_zFace;
+	double* z_dz;
+	double* r_dr;
+
 	double* A;	// cell surface area
 	int* surf_index;	// list of n indices which belong to cell adjacent cells
 	double* dist;	// distance from adjacent cell to cell surface
 	int* wall_cell;	// -1 = fluid cell. store index number of surf_index on cell adjacent cells
 	double* kf;
-
-	std::vector<int> c_cell_vec;
-	std::vector<int> v_cell_vec;
 
 };
 
@@ -47,8 +60,6 @@ struct MemoryConfig {
 	int threadsPerBlock = 512;
 	int shmem = threadsPerBlock * sizeof(double);
 };
-
-
 
 // fluid variables
 struct FluidPropertyConfig {

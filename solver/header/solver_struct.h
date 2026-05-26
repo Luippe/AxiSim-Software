@@ -91,7 +91,7 @@ struct BoundaryConditionConfig {
 struct SolutionField {
 	std::vector<double> field;
 	int nr, nz;
-	double dr, dz;
+	std::vector<double> dr, dz;
 	CellStoreType type;
 };
 

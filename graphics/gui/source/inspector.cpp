@@ -9,7 +9,6 @@
 #include "printer.h"
 #include "math_func.h"
 
-
 Inspector::Inspector(SceneView& scene, AppAssets& assets) :
 		scene(scene),
 		mesh(scene.mesh),
@@ -17,61 +16,20 @@ Inspector::Inspector(SceneView& scene, AppAssets& assets) :
 		g(mesh.g),
 		assets(assets),
 		colorbar(scene.colormap, scene.results),
-		inspectorShader("graphics/shaders/inspector.vert", "graphics/shaders/inspector.frag"){
+		BaseSurfaceViewer("graphics/shaders/inspector.vert", "graphics/shaders/inspector.frag") {
 
 	// radial location
 	frameBuffer.createSimpleBuffer(100, 100, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
+	createFullScreenQuad();
 
 }
 
 // ======================================================================
 // -----------------------HELPER FUNCTIONS-------------------------------
 // ======================================================================
-//void setToolTip(const char* text) {
-//	if (ImGui::IsItemHovered()) {
-//		ImGui::SetTooltip("%s", text);
-//	}
-//}
-
-void updateUV(float& u0, float& u1, float& v0, float& v1, ImVec2& zoomCenter, float halfW, float halfH) {
-	u0 = glm::clamp(zoomCenter.x - halfW, 0.0f, 1.0f);
-	u1 = glm::clamp(zoomCenter.x + halfW, 0.0f, 1.0f);
-	v0 = glm::clamp(zoomCenter.y - halfH, 0.0f, 1.0f);
-	v1 = glm::clamp(zoomCenter.y + halfH, 0.0f, 1.0f);
-}
-
-void clampZoomCenter(ImVec2& zoomCenter, float& halfW, float& halfH) {
-	zoomCenter.x = glm::clamp(zoomCenter.x, halfW, 1.0f - halfW);
-	zoomCenter.y = glm::clamp(zoomCenter.y, halfH, 1.0f - halfH);
-}
-
-void toggleSelectedPoint(std::vector<InspectorPoint>& points, ImVec2& dataPos, ImVec2& mousePos, float value) {
-	auto it = std::find_if(points.begin(), points.end(),
-		[&](const InspectorPoint& p) {
-			return (p.dataPos.x == dataPos.x && p.dataPos.y == dataPos.y);
-		});
-
-	if (it != points.end()) {
-		points.erase(it);
-	}
-	else {
-		points.push_back({ mousePos, dataPos, value });
-	}
-}
-
 void Inspector::generate() {
 	nrBase = g.nr;
 	nzBase = g.nz;
-
-	createFullScreenQuad();
-	uploadUniforms();
-}
-void Inspector::resetView() {
-
-	zoom = 1.0f;
-	zoomCenter = ImVec2(0.5f, 0.5f);
-	updateUV(u0, u1, v0, v1, zoomCenter, 0.5, 0.5);
-
 }
 
 void Inspector::createFullScreenQuad() {
@@ -97,64 +55,14 @@ void Inspector::createFullScreenQuad() {
 
 void Inspector::uploadUniforms() {
 
-	inspectorShader.use();
-	inspectorShader.SetFloat("vmin", results.currentField->vmin);
-	inspectorShader.SetFloat("vmax", results.currentField->vmax);
-	inspectorShader.SetInt("fieldTex", 0);
-	inspectorShader.SetInt("uColormap", 1);
+	shader.use();
+	shader.SetFloat("vmin", results.currentField->vmin);
+	shader.SetFloat("vmax", results.currentField->vmax);
+	shader.SetInt("fieldTex", 0);
+	shader.SetInt("uColormap", 1);
 
 }
 
-void Inspector::resizeImage() {
-
-	ImVec2 avail = ImGui::GetContentRegionAvail();
-	imageWidth = (int)avail.x - (int)colorbar.width;
-	imageHeight = (int)avail.y;
-
-	if (imageWidth != frameBuffer.width || imageHeight != frameBuffer.height) {
-		frameBuffer.createSimpleBuffer(imageWidth, imageHeight, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
-	}
-}
-
-ImVec2 Inspector::getMouseIndex() {
-
-	ImVec2 mousePos = ImGui::GetIO().MousePos;
-	ImVec2 itemMin = ImGui::GetItemRectMin();
-	ImVec2 itemMax = ImGui::GetItemRectMax();
-
-	float viewW = 1.0f / zoom;
-	float viewH = 1.0f / zoom;
-
-	ImVec2 localPos = ImVec2(mousePos.x - itemMin.x, itemMax.y - mousePos.y);
-
-	float localU = localPos.x / imageWidth;
-	float localV = localPos.y / imageHeight;
-
-	float texU = u0 + localU * (u1 - u0);
-	float texV = v0 + localV * (v1 - v0);
-
-	float i = (float)glm::clamp((int)std::round(texV * (nrBase + 1)), 0,  nrBase + 1);
-	float j = (float)glm::clamp((int)std::round(texU * (nzBase + 1)), 0,  nzBase + 1);
-
-	return { j , i };
-}
-
-ImVec2 Inspector::gridToScreen(float j, float i) {
-
-	ImVec2 itemMin = ImGui::GetItemRectMin();
-	ImVec2 itemMax = ImGui::GetItemRectMax();
-
-	float texU = j / (float)(nzBase + 1);
-	float texV = i / (float)(nrBase + 1);
-
-	float localU = (texU - u0) / (u1 - u0);
-	float localV = (texV - v0) / (v1 - v0);
-
-	float x = itemMin.x + localU * imageWidth;
-	float y = itemMax.y - localV * imageHeight;
-
-	return ImVec2(x, y);
-}
 
 // ======================================================================
 // -----------------------MOUSE HANDLES----------------------------------
@@ -164,22 +72,21 @@ void Inspector::handleMouse() {
 	if (!ImGui::IsItemHovered()) return;
 
 	ImGuiIO& io = ImGui::GetIO();
-	currentMouseIndex = getMouseIndex();		// constantly update current mouse index
-	currentMousePos = gridToScreen(currentMouseIndex.x, currentMouseIndex.y);
+	currentMouseIndex = getMouseIndex(g.rFace, g.zFace);		// constantly update current mouse index
+	currentMousePos = gridToScreen((int)currentMouseIndex.x, (int)currentMouseIndex.y, g.rFace, g.zFace);
 
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && toggleSelect) {
 
-		rectPos1 = currentMousePos;
-		rectPos2 = currentMousePos;
-		initMouseIndex = getMouseIndex();
-
+		rectPos1 = screenToUV(currentMousePos);
+		rectPos2 = rectPos1;
+		initMouseIndex = getMouseIndex(g.rFace, g.zFace);
+		isRectReady = true;
 	}
 
 
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
 
 		openPopUp = true;
-		clickedMousePos = currentMousePos;
 		ImGui::OpenPopup("Inspector Popup");
 
 	}
@@ -187,11 +94,7 @@ void Inspector::handleMouse() {
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && toggleSelect) {
 
-		selectedIndices.clear();
-
-		// update rect points
-		isRectReady = true;
-		rectPos2 = currentMousePos;
+		handleRectSelection(io);
 
 		// update displaying region
 		startX = std::min(initMouseIndex.x, currentMouseIndex.x);
@@ -205,55 +108,23 @@ void Inspector::handleMouse() {
 		results.rowTop = endY;
 		results.rowBot = startY;
 
-		results.currentFront = (float)startX * (float)g.dz;
-		results.currentBack = (float)endX * (float)g.dz;
-		results.currentOuter = (float)endY * (float)g.dr;
-		results.currentInner = (float)startY * (float)g.dr;
-
-		results.updateModel();
+		float currentDz = (float)g.dz[currentMouseIndex.x];
+		float currentDr = (float)g.dr[currentMouseIndex.y];
+		results.currentFront = (float)startX * currentDz;
+		results.currentBack = (float)endX * currentDz;
+		results.currentOuter = (float)endY * currentDr;
+		results.currentInner = (float)startY * currentDr;
 
 	}
 
+
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && !toggleSelect) {
-
-		ImVec2 drag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
-		float dx = drag.x;
-		float dy = drag.y;
-
-		float distance = sqrtf(dx * dx + dy * dy);
-		if (distance > 1.0) {
-			ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
-		}
-
-		ImVec2 delta = io.MouseDelta;
-
-		float viewW = 1.0f / zoom;
-		float viewH = 1.0f / zoom;
-
-		zoomCenter.x -= (delta.x / imageWidth) * viewW;
-		zoomCenter.y += (delta.y / imageHeight) * viewH;
-
-		float halfW = viewW * 0.5f;
-		float halfH = viewH * 0.5f;
-
-		clampZoomCenter(zoomCenter, halfW, halfH);
-
-		updateUV(u0, u1, v0, v1, zoomCenter, halfW, halfH);
+		handlePan(io);
 	}
 
 	// handle zooming in/out
 	if (io.MouseWheel != 0.0f) {
-
-		zoom *= (io.MouseWheel > 0.0f) ? 1.1f : 0.9f;
-		zoom = glm::clamp(zoom, 1.0f, 20.0f);
-
-		float halfW = 0.5f / zoom;
-		float halfH = 0.5f / zoom;
-
-		clampZoomCenter(zoomCenter, halfW, halfH);
-
-		updateUV(u0, u1, v0, v1, zoomCenter, halfW, halfH);
-
+		handleZoom(io);
 	}
 
 	// handle mouse hovering.
@@ -263,7 +134,9 @@ void Inspector::handleMouse() {
 	drawList->AddCircleFilled(currentMousePos, circleRadius, IM_COL32(150, 150, 150, 255), 16);
 	drawList->AddCircle(currentMousePos, circleRadius, IM_COL32(200, 200, 200, 255), 16, 1.0f);
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-		toggleSelectedPoint(points, currentMouseIndex, currentMousePos, results.currentField->getData(glm::vec2(g.dz * currentMouseIndex.x, g.dr * currentMouseIndex.y)));
+		float currentDz = (float)g.dz[currentMouseIndex.x];
+		float currentDr = (float)g.dr[currentMouseIndex.y];
+		toggleSelectedPoint(points, currentMouseIndex, currentMousePos, results.currentField->getData(glm::vec2(currentDz * currentMouseIndex.x, currentDr * currentMouseIndex.y)));
 	}
 }
 
@@ -289,29 +162,20 @@ void Inspector::copyActiveSurfaceToClipboard() {
 // ======================================================================
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
-void Inspector::displayRect() {
-
-	if (!isRectReady) return;
-
-	ImVec2 itemMin = ImGui::GetItemRectMin();
-	ImVec2 itemMax = ImGui::GetItemRectMax();
-
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-	drawList->AddRect(rectPos1, rectPos2, IM_COL32(255, 255, 255, 255));
-}
-
 void Inspector::displayTextValue() {
 
 	ImVec2 imageMin = ImGui::GetItemRectMin();
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-	for (const InspectorPoint& point : points) {
+	for (const SurfacePoint& point : points) {
 
 		// convert grid index to normalized texture coordinate
-		float u = point.dataPos.x / float(nzBase);
-		float v = point.dataPos.y / float(nrBase);
+		int j = static_cast<int>(point.dataPos.x);
+		int i = static_cast<int>(point.dataPos.y);
+
+		float u = static_cast<float>(g.zFace[j] / g.L);
+		float v = static_cast<float>(g.rFace[i] / g.R);
 
 		// skip points outside the current zoomed/panned view
 		if (u < u0 || u > u1 || v < v0 || v > v1) {
@@ -348,33 +212,20 @@ void Inspector::drawToolBar() {
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
-	if (ImGui::ImageButton("##ResetView", (ImTextureID)(intptr_t)assets.houseIcon.getTextureID(), ImVec2(22.0f, 22.0f))) {
-		resetView();
-	}
-
-	//setToolTip("Reset view");
+	addImageButtonResetView(assets.houseIcon, ImVec2(22.0f, 22.0f));
+	setToolTip("Reset view");
 	ImGui::SameLine();
 
-	if (ImGui::ImageButton("##ClearPoints", (ImTextureID)(intptr_t)assets.clearIcon.getTextureID(), ImVec2(22.0f, 22.0f))) {
-		points.clear();
-	}
-
-	ImGui::SameLine();
-	if (ImGui::ImageButton("##CopyToClipboard", (ImTextureID)(intptr_t)assets.copyIcon.getTextureID(), ImVec2(22.0f, 22.0f)) || consoleCopy) {
-		pendingCopyWidth = frameBuffer.width;
-		pendingCopyHeight = frameBuffer.height;
-		pendingCopy = true;
-		consoleCopy = false;
-	}
-
-	//setToolTip("Clear all selected points");
+	addImageButtonClearVector("##ClearPoints",assets.clearIcon, ImVec2(22.0f, 22.0f), points);
+	setToolTip("Clear all selected points");
 	ImGui::SameLine();
 
-	if (ImGui::ImageButton("##ToggleSelect", (ImTextureID)(intptr_t)assets.selectRegionIcon.getTextureID(), ImVec2(22.0f, 22.0f))) {
-		toggleSelect = !toggleSelect;
-	}
+	addImageButtonToggleBool(assets.selectRegionIcon, ImVec2(22.0f, 22.0f),toggleSelect);
+	setToolTip("Select");
+	ImGui::SameLine();
 
-	//setToolTip("Select");
+	addImageButtonCopyToClipboard(assets.copyIcon, ImVec2(22.0f, 22.0f));
+	setToolTip("Copy to clipboard");
 	ImGui::SameLine();
 
 	ImGui::EndChild();
@@ -387,17 +238,12 @@ void Inspector::drawPopup() {
 
 	if (ImGui::BeginPopup("Inspector Popup")) {
 
-		if (ImGui::MenuItem("Copy to clipboard")) {
-			
-		}
+		addMenuItemCopyToClipboard("Copy to clipboard");
 
-		if (ImGui::MenuItem("Clear Points")) {
-			points.clear();
-		}
+		addMenuItemClearPoints("Clear points");
+		
+		addMenuItemResetView("Reset view");
 
-		if (ImGui::MenuItem("Reset View")) {
-			resetView();
-		}
 
 		ImGui::EndPopup();
 	}
@@ -409,7 +255,7 @@ void Inspector::renderPreview() {
 	glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
 
-	inspectorShader.use();
+	shader.use();
 	uploadUniforms();
 
 	glActiveTexture(GL_TEXTURE0);
@@ -441,14 +287,14 @@ void Inspector::render() {
 
 	drawToolBar();
 
-	resizeImage();
+	resizeImage((int)colorbar.width, 0.0f);
 	
 	renderPreview();
 
 	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(u0, v1), ImVec2(u1, v0));
 
 	handleMouse();
-	displayRect();
+	displayRect(nrBase, nzBase);
 	displayTextValue();
 	drawPopup();
 
