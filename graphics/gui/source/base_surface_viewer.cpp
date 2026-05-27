@@ -161,7 +161,7 @@ void BaseSurfaceViewer::resizeImage(int padx, int pady) {
 	imageHeight = (int)avail.y - pady;
 
 	if (imageWidth != frameBuffer.width || imageHeight != frameBuffer.height) {
-		frameBuffer.createSimpleBuffer(imageWidth, imageHeight, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
+		frameBuffer.create2DBuffer(imageWidth, imageHeight, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
 	}
 }
 

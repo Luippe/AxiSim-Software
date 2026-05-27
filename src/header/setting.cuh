@@ -28,10 +28,6 @@ struct GridConfig {
 
 	int N = 0;
 	int n_cell = 0;
-	//double cell_top = 1.5;
-	//double cell_left = 4.0;
-	//double cell_right = 4.5;
-	//double cell_bot = 0.0;
 	double A_tot = 0.0;
 	double kl = 0.0;
 

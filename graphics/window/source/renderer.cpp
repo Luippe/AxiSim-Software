@@ -24,7 +24,7 @@ void Renderer::createAxisBuffer() {
 
 void Renderer::renderAxis(Shader& shaderLine) {
 	shaderLine.use();
-	glLineWidth(6.0f);
+	glLineWidth(lineWidth);
 	axisBuffer.bind();
 	glDrawArrays(GL_LINES, 0, 6);
 	axisBuffer.unbind();

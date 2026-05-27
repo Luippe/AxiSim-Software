@@ -96,7 +96,7 @@ bool ResidualPlot::copyActivePlotToClipboard() {
 
     GLint oldFBO, oldViewport[4];
     ImVec2 oldDisplaySize, oldFramebufferSize;
-    offScreenFBO.createSimpleBuffer(pendingCopyWidth, pendingCopyHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+    offScreenFBO.create2DBuffer(pendingCopyWidth, pendingCopyHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
     offScreenFBO.beginOffScreenImGuiRender(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
 
     // build imgui draw commands

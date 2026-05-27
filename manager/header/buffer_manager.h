@@ -9,7 +9,6 @@ public:
 	void bind();
 	void unbind();
 
-
 	// read the framebuffer and return rgba pixel values
 	std::vector<unsigned char> readPixelsRGBA();
 
@@ -17,21 +16,26 @@ public:
 	void beginOffScreenImGuiRender(GLint& oldFBO, GLint(&oldViewport)[4], ImVec2& oldDisplaySize, ImVec2& oldFramebufferScale);
 	void endOffScreenImGuiRender(const GLint& oldFBO, const GLint(&oldViewport)[4], const ImVec2& oldDisplaySize, const ImVec2 oldFramebufferScale);
 
-
 	// create a frame buffer with MSAA
-	void createBuffer(int width, int height, int samples = 4);
+	void createBuffer(int width, int height, int samples);
 
 	// create a frame buffer with no MSAA and colorRBO and depthRBO, useful for 2D images
-	void createSimpleBuffer(int width, int height, GLenum internalFormat, GLenum format, GLenum type);
+	void create2DBuffer(int width, int height, GLenum internalFormat, GLenum format, GLenum type);
 
-	// resolve frame buffer before drawing
+	// if using MSAA, resolve frame buffer before drawing
 	void resolve();
 
 	unsigned int getTextureID();
 	int width, height;
 
 private:
+
+	void createMSAABuffer(int width, int height, int samples);
+
+	void createNoMSAABuffer(int width, int height);
+
 	void deleteBuffer();
+	unsigned int samples = 0;
 	unsigned int FBO = 0;
 	unsigned int resolveFBO = 0;
 	unsigned int colorRBO = 0;

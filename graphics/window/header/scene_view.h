@@ -43,6 +43,8 @@ private:
 	float initX = 0.0f;
 	float initY = 0.0f;
 
+	unsigned int samples = 4;
+
 	// handle mouse inputs
 	void handleMouse();
 

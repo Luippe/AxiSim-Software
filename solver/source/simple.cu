@@ -4,7 +4,7 @@
 #include "solver_util.cuh"
 
 __global__
-void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, VariablesSimple simple, double* D) {
+void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, VariablesSimple simple, double* D, BoundaryConditionConfig bc) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= coeff.N) return;
@@ -79,11 +79,10 @@ void createURhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 	else {
 		b[n] += -Az * (p[n - i] - p[n - i - 1]);
 	}
-
 }
 
 __global__
-void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple) {
+void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple, BoundaryConditionConfig vBC) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -99,8 +98,6 @@ void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 	double* b = coeff.b;
 	double* p = simple.p;
 
-
-
 	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	int i = n / nz;
@@ -114,7 +111,7 @@ void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 }
 
 __global__
-void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simple) {
+void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simple, BoundaryConditionConfig vBC) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -167,8 +164,12 @@ void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simp
 	AW[n] = -rho * DU[n + i] * Az / z_dz[j];
 
 	// north
-	AN[n] = -rho * DV[n + nz] * Ar2 / r_dr[i + 1];
-
+	if (i < nr - 1) {
+		AN[n] = -rho * DV[n + nz] * Ar2 / r_dr[i + 1];
+	}
+	else {
+		AN[n] = 0.0;
+	}
 	// south
 	AS[n] = -rho * DV[n] * Ar1 / r_dr[i];
 
@@ -185,6 +186,8 @@ void createPPRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple
 	const FluidPropertyConfig& f = config.f;
 
 	int nz = g.nz;
+	int nr = g.nr;
+
 	double* dr = g.d_dr;
 	double* dz = g.d_dz;
 	double* r = g.d_r;
@@ -246,7 +249,6 @@ void updateUVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple si
 
 	int j = n % nz;
 	int i = n / nz;
-
 
 	if (j == nz - 1) {
 		double dzHalf = 0.5 * dz[j - 1];

@@ -21,7 +21,7 @@ public:
 	const float width = 100.0f;
 	int currentPrecision = 3;
 	const char* formatOption[3] = { "Fixed", "Scientific", "General" };
-	NumberFormat currentNumberFormat = NumberFormat::Fixed;
+	NumberFormat currentNumberFormat = NumberFormat::General;
 
 private:
 

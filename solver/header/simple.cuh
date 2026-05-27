@@ -8,11 +8,11 @@ void createURhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple)
 
 // ------------radial velocity-------------
 __global__
-void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
+void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple, BoundaryConditionConfig vBC);
 
 // ---------------pressure correction----------------
 __global__
-void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
+void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simple, BoundaryConditionConfig vBC);
 
 __global__
 void createPPRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
@@ -28,7 +28,7 @@ __global__
 void updatePressure(Coefficients coeff, VariablesSimple simple);
 
 __global__
-void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, VariablesSimple simple, double* D);
+void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, VariablesSimple simple, double* D, BoundaryConditionConfig bc);
 
 __global__
 void underRelaxEquation(Coefficients coeff, double* xOld, double alpha);

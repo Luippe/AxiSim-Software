@@ -16,7 +16,7 @@ SceneView::SceneView(Display& disp, Camera& camera, Renderer& renderer, Bounding
 	solver(*this, config),
 	picker(*this)
 {
-	frameBuffer.createBuffer(disp.width, disp.height);
+	frameBuffer.createBuffer(disp.width, disp.height, samples);
 };
 
 void SceneView::handleMouse() {
@@ -95,11 +95,10 @@ void SceneView::render() {
 	int viewportWidth = (int)rectSize.x;
 	int viewportHeight = (int)rectSize.y;
 
-	if (viewportWidth != frameBuffer.width || viewportHeight != frameBuffer.height)
-	{
+	if (viewportWidth != frameBuffer.width || viewportHeight != frameBuffer.height) {
 
 		// resize scene framebuffer
-		frameBuffer.createBuffer(viewportWidth, viewportHeight);
+		frameBuffer.createBuffer(viewportWidth, viewportHeight, samples);
 
 		//update camera and picker width and height and position
 		rectPos = ImGui::GetCursorScreenPos();

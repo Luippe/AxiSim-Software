@@ -19,7 +19,7 @@ Inspector::Inspector(SceneView& scene, AppAssets& assets) :
 		BaseSurfaceViewer("graphics/shaders/inspector.vert", "graphics/shaders/inspector.frag") {
 
 	// radial location
-	frameBuffer.createSimpleBuffer(100, 100, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
+	frameBuffer.create2DBuffer(100, 100, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
 	createFullScreenQuad();
 
 }
@@ -75,6 +75,11 @@ void Inspector::handleMouse() {
 	currentMouseIndex = getMouseIndex(g.rFace, g.zFace);		// constantly update current mouse index
 	currentMousePos = gridToScreen((int)currentMouseIndex.x, (int)currentMouseIndex.y, g.rFace, g.zFace);
 
+	// handle zooming in/out
+	if (io.MouseWheel != 0.0f) {
+		handleZoom(io);
+	}
+
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && toggleSelect) {
 
 		rectPos1 = screenToUV(currentMousePos);
@@ -83,14 +88,12 @@ void Inspector::handleMouse() {
 		isRectReady = true;
 	}
 
-
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
 
 		openPopUp = true;
 		ImGui::OpenPopup("Inspector Popup");
 
 	}
-
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && toggleSelect) {
 
@@ -118,17 +121,11 @@ void Inspector::handleMouse() {
 	}
 
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && !toggleSelect) {
+	if (toggleSelect) return;
+
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 		handlePan(io);
 	}
-
-	// handle zooming in/out
-	if (io.MouseWheel != 0.0f) {
-		handleZoom(io);
-	}
-
-	// handle mouse hovering.
-	if (toggleSelect) return;
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	drawList->AddCircleFilled(currentMousePos, circleRadius, IM_COL32(150, 150, 150, 255), 16);
@@ -144,7 +141,7 @@ void Inspector::copyActiveSurfaceToClipboard() {
 
 	GLint oldFBO, oldViewport[4];
 	ImVec2 oldDisplaySize, oldFramebufferSize;
-	offScreenFBO.createSimpleBuffer(pendingCopyWidth, pendingCopyHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+	offScreenFBO.create2DBuffer(pendingCopyWidth, pendingCopyHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
 	offScreenFBO.beginOffScreenImGuiRender(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
 
 	// build imgui draw commands

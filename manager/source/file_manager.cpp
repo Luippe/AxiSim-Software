@@ -66,8 +66,6 @@ void saveFromPathMesh(const char* path, Mesh& mesh) {
 	out.close();
 }
 
-
-
 void loadFromExplorerMesh(Mesh& mesh) {
 	const char* filters[] = { "*.bin" };
 

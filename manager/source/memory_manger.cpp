@@ -88,24 +88,30 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 		for (int j = 0; j < nz; ++j) {
 			int n = i * nz + j;
 
-			// inlet
-			if (j == 0 && storeType == CellStoreType::AXIAL && !(bc.inlet.type == BCType::NEUMANN)) {
-				activeBC[n] = 0;
+			if (storeType == CellStoreType::AXIAL) {
+
+				// inlet u boundary
+				if (j == 0 && (bc.inlet.type == BCType::DIRICHLET || bc.inlet.type == FULLY_DEVELOPED)) {
+					activeBC[n] = 0;
+				}
+
+				// outlet u boundary
+				if (j == nz - 1 && bc.outlet.type == BCType::DIRICHLET) {
+					activeBC[n] = 0;
+				}
 			}
 
-			// outlet
-			if (j == nz - 1 && storeType == CellStoreType::AXIAL && bc.outlet.type == BCType::DIRICHLET) {
-				activeBC[n] = 0;
-			}
+			else if (storeType == CellStoreType::RADIAL) {
 
-			// centerline
-			if (i == 0 && storeType == CellStoreType::RADIAL && bc.centerline.type == BCType::DIRICHLET) {
-				activeBC[n] = 0;
-			}
+				// centerline v boundary
+				if (i == 0 && bc.centerline.type == BCType::DIRICHLET) {
+					activeBC[n] = 0;
+				}
 
-			// outer
-			if (i == nr - 1 && storeType == CellStoreType::RADIAL && bc.outer.type == BCType::DIRICHLET) {
-				activeBC[n] = 0;
+				// outer v boundary
+				if (i == nr - 1 && (bc.outer.type == BCType::DIRICHLET || bc.outer.type == BCType::NEUMANN)) {
+					activeBC[n] = 0;
+				}
 			}
 
 			// obstacles

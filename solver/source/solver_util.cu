@@ -51,6 +51,18 @@ double faceValue(double phiC, double phiF, double dFf, double dFC) {
 	return phiC * gC + (1 - gC) * phiF;
 }
 
+__global__
+void applyOuterNeumannV(double* v, int nr, int nz) {
+
+	int j = blockIdx.x * blockDim.x + threadIdx.x;
+	if (j >= nz) return;
+
+	int boundary = (nr - 1) * nz + j;
+	int inside = (nr - 2) * nz + j;
+
+	v[boundary] = v[inside];
+}
+
 // ==============================================================
 // ==================DEFERRED CORRECTION=========================
 // ==============================================================
@@ -110,6 +122,7 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	double* b = coeff.b;
 	uint8_t* cell = coeff.activeCell;
 
+	// filter out all east and west obstacles and dirichlet boundaries
 	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	int j = n % nz;
@@ -129,11 +142,6 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	// east
 	if (j == nz - 1) {
 		AE[n] = 0.0;
-		if (isBCDirichlet(bc.outlet.type)) {
-			double K = mu * Az / z_dz[j];
-			AC[n] += K;
-			b[n] += K * bc.outlet.val;
-		}
 	}
 	else if (cell[n + 1] == 0) {
 		AE[n] = 0.0;
@@ -178,7 +186,7 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	}
 	else if (cell[n - nz] == 0) {
 		AS[n] = 0.0;
-		AC[n] += (mu * Ar1 / (0.5 * dr[i]));
+		AC[n] += (mu * Ar1 / (0.5 * r_dr[i]));
 	}
 	else {
 		AS[n] = -(mu * Ar1 / r_dr[i]);
@@ -215,6 +223,7 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 
 	uint8_t* cell = coeff.activeCell;
 
+	// filter out all north and south obstacle cells and dirichlet boundaries
 	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
 
 	int j = n % nz;
@@ -258,11 +267,6 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	// north
 	if (i == nr - 1) {
 		AN[n] = 0.0;
-		if (isBCDirichlet(bc.outer.type)) {
-			double K = mu * Ar2 / (0.5 * dr[i - 1]);
-			AC[n] += K;
-			b[n] += K * bc.outer.val;
-		}
 	}
 	else if (cell[n + nz] == 0) {
 		AN[n] = 0.0;
@@ -275,11 +279,6 @@ void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	// south
 	if (i == 0) {
 		AS[n] = 0.0;
-		if (isBCDirichlet(bc.centerline.type)) {
-			double K = mu * Ar1 / dr[i];
-			AC[n] += K;
-			b[n] += K * bc.centerline.val;
-		}
 	}
 	else if (cell[n - nz] == 0) {
 		AS[n] = 0.0;
@@ -346,8 +345,10 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 
 	// ----------Add Convection Term--------------
 	// east
-	if (j == nz - 1) {
-		ue = u[n];	// not correct but just for test
+	bool outletBoundary = (j == nz - 1);
+	bool outletNeumann = outletBoundary && uBC.outlet.type == NEUMANN;
+	if (outletNeumann) {
+		ue = u[n];	
 	}
 	else {
 		ue = faceValue(u[n], u[n+1], 0.5 * dz[j], dz[j]);
@@ -396,7 +397,9 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	double Fn = rho * vn * Ar2;
 	double Fs = rho * vs * Ar1;
 
-	AE[n] += -fmax(-Fe, 0.0);
+	if (!outletNeumann) {
+		AE[n] += -fmax(-Fe, 0.0);
+	}
 	AW[n] += -fmax(Fw, 0.0);
 	AN[n] += -fmax(-Fn, 0.0);
 	AS[n] += -fmax(Fs, 0.0);
@@ -408,7 +411,9 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	case CONV_UPWIND:
 		break;
 	case CONV_CENTRAL:
-		b[n] -= centralCorrection(Fe, u[n], u[n + 1]);
+		if (!outletNeumann) {
+			b[n] -= centralCorrection(Fe, u[n], u[n + 1]);
+		}
 		b[n] += centralCorrection(Fw, u[n], u[n - 1]);
 		b[n] -= centralCorrection(Fn, u[n], u[n + nz]);
 		b[n] += centralCorrection(Fs, u[n], u[n - nz]);
@@ -507,7 +512,14 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	}
 
 	// north
-	vn = faceValue(v[n], v[n + nz], 0.5 * dr[i], dr[i]);
+	bool northBoundary = (i == nr - 1);
+	bool northNeumann = northBoundary && vBC.outer.type == NEUMANN;
+	if (northNeumann) {
+		vn = v[n];
+	}
+	else {
+		vn = faceValue(v[n], v[n + nz], 0.5 * dr[i], dr[i]);
+	}
 
 	// south
 	vs = faceValue(v[n], v[n - nz], 0.5 * dr[i - 1], dr[i - 1]);
@@ -519,7 +531,9 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 
 	AE[n] += -fmax(-Fe, 0.0);
 	AW[n] += -fmax(Fw, 0.0);
-	AN[n] += -fmax(-Fn, 0.0);
+	if (!northNeumann) {
+		AN[n] += -fmax(-Fn, 0.0);
+	}
 	AS[n] += -fmax(Fs, 0.0);
 
 	AC[n] += (Fe - Fw + Fn - Fs);
@@ -534,7 +548,9 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 
 		b[n] -= centralCorrection(Fe, v[n], v[n + 1]);
 		b[n] += centralCorrection(Fw, v[n], v[n - 1]);
-		b[n] -= centralCorrection(Fn, v[n], v[n + nz]);
+		if (!northNeumann) {
+			b[n] -= centralCorrection(Fn, v[n], v[n + nz]);
+		}
 		b[n] += centralCorrection(Fs, v[n], v[n - nz]);
 		break;
 
@@ -548,6 +564,7 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 
 	}
 }
+
 
 // ==============================================================
 // ==================TRANSIENT TERM==============================
@@ -575,6 +592,7 @@ void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, Variable
 	double* b = uCoeff.b;
 	uint8_t* cell = uCoeff.activeCell;
 	double* uOld = simple.uOld;
+	double dt = config.dt;
 
 	if (!uCoeff.activeCell[n] || !uCoeff.activeBC[n]) return;
 
@@ -592,8 +610,8 @@ void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, Variable
 	double Ar2 = 2.0 * CUDART_PI * r2 * z_dz[j];
 	double Ar1 = 2.0 * CUDART_PI * r1 * z_dz[j];
 
-	AC[n] += (rho * Az * z_dz[j]) / config.dt;
-	b[n] += (rho * Az * z_dz[j] * uOld[n]) / config.dt;
+	AC[n] += (rho * Az * z_dz[j]) / dt;
+	b[n] += (rho * Az * z_dz[j] * uOld[n]) / dt;
 }
 
 __global__
@@ -631,8 +649,8 @@ void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, Variable
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
 
-	AC[n] += (rho * Az * dz[i]) / config.dt;
-	b[n] += (rho * Az * dz[i] * vOld[n]) / config.dt;
+	AC[n] += (rho * Az * dz[j]) / config.dt;
+	b[n] += (rho * Az * dz[j] * vOld[n]) / config.dt;
 }
 
 __global__
@@ -669,4 +687,12 @@ void clearCoefficients(Coefficients coeff) {
 
 }
 
+__global__
+void applyOuterWallV(double* v, int nrV, int nz) {
 
+	int j = blockIdx.x * blockDim.x + threadIdx.x;
+	if (j >= nz) return;
+
+	int iOuter = nrV - 1;
+	v[iOuter * nz + j] = 0.0;
+}

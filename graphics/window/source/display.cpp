@@ -25,8 +25,8 @@ Display::Display(Camera& camera) : camera(camera) {	// initialize shader
 	//		<< "size=" << mode->width << "x" << mode->height
 	//		<< "\n";
 	//}
-
-	glfwWindowHint(GLFW_SAMPLES, 4);
+	
+	//glfwWindowHint(GLFW_SAMPLES, 4); only enable if you want MSAA on the actual glfw window framebuffer
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);

@@ -61,8 +61,8 @@ void SolverGUI::drawPropertiesPanel() {
 
 		}
 	}
-	else if (selectedItem == "Velocity BC") {
-		ImGui::SeparatorText("Velocity BC");
+	else if (selectedItem == "BC") {
+		ImGui::SeparatorText("Axial Velocity");
 
 		if (ImGui::BeginTable("Boundary Conditions", 3)) {
 
@@ -76,13 +76,32 @@ void SolverGUI::drawPropertiesPanel() {
 			tableNextColumn();
 			createInputDouble("##InletBCValue", &solver.uBC.inlet.val);
 
+			textAtNewRow("Outer", 0, 1);
+			createSimpleCombo("##OuterBCType", solver.bcTypeNames, (int&)(solver.uBC.outer.type), IM_ARRAYSIZE(solver.bcTypeNames));
+
+			tableNextColumn();
+			createInputDouble("##OuterBCValue", &solver.uBC.outer.val);
+
 			ImGui::EndTable();
 		}
 
-	}
-	else if (selectedItem == "Pressure BC") {
-		ImGui::SeparatorText("Pressure BC");
+		ImGui::SeparatorText("Radial Velocity");
+		if (ImGui::BeginTable("Boundary Conditions", 3)) {
 
+			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+			ImGui::TableSetupColumn("BC Type", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+
+			textAtNewRow("Outer", 0, 1);
+			createSimpleCombo("##OuterBCType", solver.bcTypeNames, (int&)(solver.vBC.outer.type), IM_ARRAYSIZE(solver.bcTypeNames));
+
+			tableNextColumn();
+			createInputDouble("##OuterBCValue", &solver.vBC.outer.val);
+
+			ImGui::EndTable();
+		}
+
+		ImGui::SeparatorText("Pressure BC");
 		if (ImGui::BeginTable("Boundary Conditions", 3)) {
 
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
@@ -235,8 +254,7 @@ void SolverGUI::draw() {
 		changeCursorOnHover();
 
 		if (ImGui::TreeNodeEx("Boundary Conditions", UIFlags::BranchFlags)) {
-			drawLeaf("Velocity BC");
-			drawLeaf("Pressure BC");
+			drawLeaf("BC");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();

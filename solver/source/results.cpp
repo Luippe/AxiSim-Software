@@ -416,7 +416,6 @@ void Results::createAllCVInstances() {
 			allInstances.push_back({ x0, x1, r0, r1 });
 		}
 	}
-	check();
 }
 
 void Results::updateSelectedInstances() {	// might be heavy on the cpu, optimize if AxiSim starts lagging
@@ -452,6 +451,7 @@ void Results::drawEdge() {
 
 void Results::render() {
 
+	//return;
 	if (!isReady) return;
 	updateSelectedInstances();
 

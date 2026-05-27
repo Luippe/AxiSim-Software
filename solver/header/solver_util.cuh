@@ -24,6 +24,9 @@ __device__
 double faceValue(double phiC, double phiF, double dFf, double dFC);
 
 __global__
+void applyOuterNeumannV(double* v, int nr, int nz);
+
+__global__
 void finalizeCoefficients(Coefficients coeff);
 
 __global__
@@ -46,3 +49,7 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 
 __global__
 void clearCoefficients(Coefficients coeff);
+
+
+__global__
+void applyOuterWallV(double* v, int nrV, int nz);

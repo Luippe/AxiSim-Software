@@ -17,7 +17,7 @@ MeshInspector::MeshInspector(Mesh& mesh, AppAssets& assets) :
 	BaseSurfaceViewer("graphics/shaders/mesh.vert", "graphics/shaders/mesh.frag") {
 
 	// radial location
-	frameBuffer.createSimpleBuffer(500, 500, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
+	frameBuffer.create2DBuffer(500, 500, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
 	createGridBuffer();
 }
 
@@ -52,7 +52,6 @@ void MeshInspector::handleMouse() {
 	currentMousePos = gridToScreen((int)currentMouseIndex.x, (int)currentMouseIndex.y, g.rFace, g.zFace);
 
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && toggleSelect) {
-
 
 		addHighlightCell(g.obstacleIndices, (int)currentMouseIndex.y * nzBase + (int)currentMouseIndex.x);
 		initMouseIndex = currentMouseIndex;
@@ -100,7 +99,7 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 
 	GLint oldFBO, oldViewport[4];
 	ImVec2 oldDisplaySize, oldFramebufferSize;
-	offScreenFBO.createSimpleBuffer(pendingCopyWidth, pendingCopyHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+	offScreenFBO.create2DBuffer(pendingCopyWidth, pendingCopyHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
 	offScreenFBO.beginOffScreenImGuiRender(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
 
 	// build imgui draw commands

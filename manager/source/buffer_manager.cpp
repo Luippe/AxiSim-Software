@@ -49,10 +49,76 @@ void FrameBuffer::createBuffer(int width, int height, int samples) {
 
 	this->width = width;
 	this->height = height;
+	this->samples = samples;
 
 	if (FBO) {
 		deleteBuffer();
 	}
+
+	bool useMSAA = samples > 1;
+
+	if (useMSAA) {
+		createMSAABuffer(width, height, samples);
+	}
+	else {
+		createNoMSAABuffer(width, height);
+	}
+
+}
+
+void FrameBuffer::createNoMSAABuffer(int width, int height) {
+
+	glGenFramebuffers(1, &FBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+
+	// Color texture, directly usable by ImGui::Image
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	glFramebufferTexture2D(
+		GL_FRAMEBUFFER,
+		GL_COLOR_ATTACHMENT0,
+		GL_TEXTURE_2D,
+		texture,
+		0
+	);
+
+	// Normal, non-MSAA depth/stencil renderbuffer
+	glGenRenderbuffers(1, &depthRBO);
+	glBindRenderbuffer(GL_RENDERBUFFER, depthRBO);
+
+	glRenderbufferStorage(
+		GL_RENDERBUFFER,
+		GL_DEPTH24_STENCIL8,
+		width,
+		height
+	);
+
+	glFramebufferRenderbuffer(
+		GL_FRAMEBUFFER,
+		GL_DEPTH_STENCIL_ATTACHMENT,
+		GL_RENDERBUFFER,
+		depthRBO
+	);
+
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+		printf("Non-MSAA framebuffer is not complete\n");
+	}
+
+	glBindRenderbuffer(GL_RENDERBUFFER, 0);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+}
+
+void FrameBuffer::createMSAABuffer(int width, int height, int samples) {
 
 	glGenFramebuffers(1, &FBO);
 	glBindFramebuffer(GL_FRAMEBUFFER, FBO);
@@ -71,7 +137,7 @@ void FrameBuffer::createBuffer(int width, int height, int samples) {
 
 	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
 		printf("MSAA framebuffer is not yet complete\n");
-	} 
+	}
 	// resolve framebuffer
 	glGenFramebuffers(1, &resolveFBO);
 	glBindFramebuffer(GL_FRAMEBUFFER, resolveFBO);
@@ -97,7 +163,7 @@ void FrameBuffer::createBuffer(int width, int height, int samples) {
 
 }
 
-void FrameBuffer::createSimpleBuffer(int width, int height, GLenum internalFormat, GLenum format, GLenum type) {
+void FrameBuffer::create2DBuffer(int width, int height, GLenum internalFormat, GLenum format, GLenum type) {
 
 	this->width = width;
 	this->height = height;
@@ -109,6 +175,7 @@ void FrameBuffer::createSimpleBuffer(int width, int height, GLenum internalForma
 		printf("Invalid FBO size: %d x %d\n", width, height);
 		return;
 	}
+
 	glGenFramebuffers(1, &FBO);
 	glBindFramebuffer(GL_FRAMEBUFFER, FBO);
 	glGenTextures(1, &texture);
@@ -216,6 +283,8 @@ void FrameBuffer::unbind() {
 }
 
 void FrameBuffer::resolve() {
+
+	if (samples <= 1) return;
 
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, FBO);
 	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, resolveFBO);

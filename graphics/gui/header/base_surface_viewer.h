@@ -52,6 +52,11 @@ protected:
 	float u1 = 1.0f;
 	float v1 = 1.0f;
 
+	// ======================================================================
+	// -----------------------HELPER FUNCTION--------------------------------
+	// ======================================================================
+	void setImagePadding(ImVec2& padding);
+
 	void updateUV(float halfW, float halfH);
 
 	void clampZoomCenter(float& halfW, float& halfH);
@@ -73,6 +78,17 @@ protected:
 
 	ImVec2 gridFaceToScreen(int jFace, int iFace, const std::vector<double>& zFace, const std::vector<double>& rFace);
 
+	ImVec2 getMouseIndex(const std::vector<double>& rFace, const std::vector<double> zFace);
+
+	// turns i,j coordinates to pixel coordinates
+	ImVec2 gridToScreen(int jFace, int iFace, const std::vector<double>& rFace, const std::vector<double> zFace);
+
+	// add tooltip to image button when hovered
+	void setToolTip(const char* text);
+
+	// ======================================================================
+	// -----------------------HANDLE INPUT-----------------------------------
+	// ======================================================================
 	void handleZoom(ImGuiIO& io);
 
 	void handlePan(ImGuiIO& io);
@@ -83,19 +99,19 @@ protected:
 
 	void resizeImage(int padx, int pady);
 
+	// ======================================================================
+	// -----------------------DRAW CALLS-------------------------------------
+	// ======================================================================
 	// draw rectangle when mouse is dragged
 	void displayRect(int nrBase, int nzBase);
 
 	void drawHighlightedCells(std::vector<int>& indices, const std::vector<double>& zFace, const std::vector<double>& rFace);
 
-	ImVec2 getMouseIndex(const std::vector<double>& rFace, const std::vector<double> zFace);
 
-	// turns i,j coordinates to pixel coordinates
-	ImVec2 gridToScreen(int jFace, int iFace, const std::vector<double>& rFace, const std::vector<double> zFace);
 
-	// add tooltip to image button when hovered
-	void setToolTip(const char* text);
-
+	// ======================================================================
+	// -----------------------MENU ITEM HANDLES------------------------------
+	// ======================================================================
 	// add menu items
 	void addMenuItemResetView(const char* text);
 

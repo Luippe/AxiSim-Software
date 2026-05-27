@@ -56,5 +56,4 @@ private:
 
 	void setBaseNrNz();
 
-
 };
