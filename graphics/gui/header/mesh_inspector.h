@@ -14,6 +14,11 @@ public:
 
 	MeshInspector(Mesh& mesh, AppAssets& assets);
 
+	VertexBuffer vertexBuffer;
+	// create dockspace to have multiple tabs
+	DockingSpace meshDockSpace{ "Mesh Inspector" };
+
+
 	void generate();
 
 	// toolbar is drawn first, then the 2D field is rendered using the remaining space
@@ -37,7 +42,7 @@ private:
 
 	// ----------resources-----------
 	AppAssets& assets;
-	VertexBuffer vertexBuffer;
+
 
 	// render the preview onto fbo
 	void renderPreview();

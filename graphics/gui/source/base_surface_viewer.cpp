@@ -2,8 +2,107 @@
 
 #include <algorithm>
 #include <glm/glm.hpp>
+#include "imgui_internal.h"
 
 #include "printer.h"
+
+DockingSpace::DockingSpace(const char* name) : dockName(name) {
+}
+
+int DockingSpace::getActiveTabID() {
+	return activeTabID;
+}
+
+DockingSpace::DockSpaceInfo DockingSpace::renderDockSpace() {
+
+	ImGui::Begin(dockName.c_str());
+
+	ImGuiID dockspaceID = ImGui::GetID("ResidualPlotDockSpace");
+	ImGuiID classID = ImGui::GetID("ResidualPlotDockClass");
+
+	ImGuiWindowClass windowClass{};
+	windowClass.ClassId = classID;
+	windowClass.DockingAlwaysTabBar = true;
+	windowClass.DockingAllowUnclassed = false;
+
+	ImGui::DockSpace(
+		dockspaceID,
+		ImGui::GetContentRegionAvail(),
+		0,
+		&windowClass
+	);
+
+	ImGui::End();
+
+	return DockSpaceInfo{ dockspaceID, windowClass };
+}
+
+bool DockingSpace::isCurrentDockTabDoubleClicked() {
+	ImGuiWindow* window = ImGui::GetCurrentWindowRead();
+
+	if (!window) return false;
+
+	// case 1: docked window tab
+	if (window->DockNode && window->DockNode->TabBar) {
+		ImGuiTabBar* tabBar = window->DockNode->TabBar;
+
+		for (int i = 0; i < tabBar->Tabs.Size; i++) {
+			ImGuiTabItem* tab = &tabBar->Tabs[i];
+
+			if (tab->ID == window->TabId) {
+
+				ImRect tabRect;
+				tabRect.Min.x = tabBar->BarRect.Min.x + tab->Offset;
+				tabRect.Min.y = tabBar->BarRect.Min.y;
+				tabRect.Max.x = tabRect.Min.x + tab->Width;
+				tabRect.Max.y = tabBar->BarRect.Max.y;
+
+				bool hovered = ImGui::IsMouseHoveringRect(tabRect.Min, tabRect.Max, false);
+
+				return hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+			}
+		}
+	}
+
+	// case 2: undocked window
+	ImRect titleBarRect = window->TitleBarRect();
+
+	bool hoveredTitleBar = ImGui::IsMouseHoveringRect(
+		titleBarRect.Min,
+		titleBarRect.Max,
+		true
+	);
+
+	return hoveredTitleBar && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 BaseSurfaceViewer::BaseSurfaceViewer(const char* vertexPath, const char* fragmentPath) :
 	shader(vertexPath, fragmentPath) {
@@ -400,6 +499,12 @@ void BaseSurfaceViewer::addMenuItemToggleBool(const char* text, bool& toggle) {
 void BaseSurfaceViewer::addImageButtonResetView(TextureBuffer& icon, ImVec2 buttonSize) {
 	if (ImGui::ImageButton("##ResetView", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
 		resetView();
+	}
+}
+
+void BaseSurfaceViewer::addImageButtonNewTab(TextureBuffer& icon, ImVec2 buttonSize, ImGuiID currentDockID, ImGuiID& pendingAddDockID, ImGuiID dockspaceID) {
+	if (ImGui::ImageButton("##NewTab", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
+		pendingAddDockID = currentDockID != 0 ? currentDockID : dockspaceID;
 	}
 }
 

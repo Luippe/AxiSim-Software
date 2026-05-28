@@ -66,10 +66,20 @@ void MeshGUI::drawOverview() {
 			);
 
 			labelRow("Length");
-			inputDoubleWithUnits(gridConfigEdits.L, config.varUnits.LUnit, Units::lengthUnits);
+			inputDoubleWithUnits(
+				"##Length",
+				gridConfigEdits.L,
+				config.varUnits.LUnit,
+				Units::lengthUnits
+			);
 
 			labelRow("Radius");
-			inputDoubleWithUnits(gridConfigEdits.R, config.varUnits.RUnit, Units::lengthUnits);
+			inputDoubleWithUnits(
+				"##Radius",
+				gridConfigEdits.R,
+				config.varUnits.RUnit,
+				Units::lengthUnits
+			);
 
 			ImGui::EndTable();
 		}

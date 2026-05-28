@@ -197,6 +197,7 @@ void MeshInspector::drawPopup() {
 
 	if (ImGui::BeginPopup("MeshInspector Popup")) {
 
+		//addMenuItem
 		addMenuItemCopyToClipboard("Copy to clipboard");
 
 		addMenuItemClearPoints("Clear points");
@@ -237,6 +238,9 @@ void MeshInspector::renderPreview() {
 
 	frameBuffer.unbind();
 
+	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
+
+
 }
 
 // ======================================================================
@@ -244,26 +248,18 @@ void MeshInspector::renderPreview() {
 // ======================================================================
 void MeshInspector::render() {
 
-	ImGui::Begin("Mesh Inspector");
-
 	setBaseNrNz();
+
+	ImGui::Begin("Mesh Inspector");
 
 	vertexBuffer.bufferSubData(mesh.gridLineVertices.size() * sizeof(float), mesh.gridLineVertices.data());
 
 	drawToolBar();
-
 	resizeImage(0.0f, 0.0f);
-
 	renderPreview();
-
-	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
-
 	handleMouse();
-
 	drawHighlightedCells(g.obstacleIndices, g.zFace, g.rFace);
-
 	drawTextAtSurfacePoint();
-	//displayRect(nrBase, nzBase);
 	drawPopup();
 
 	ImGui::End();

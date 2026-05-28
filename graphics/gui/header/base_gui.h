@@ -58,11 +58,13 @@ public:
 
 	// draw label, input, units in a 3 column table
 	template <typename T, size_t N>
-	void inputDoubleWithUnits(T& value, std::uint8_t& unitIndex, const std::array<UnitOption, N>& units, const char* format = "%.3g") {
+	void inputDoubleWithUnits(const char* label, T& value, std::uint8_t& unitIndex, const std::array<UnitOption, N>& units, const char* format = "%.3g") {
 		
 		const UnitOption& unit = units[unitIndex];
 
 		double displayValue = (double)value / unit.toBase;
+
+		ImGui::PushID(label);	// dont have to build unique settings with this
 
 		// convert display value back to solver/base value
 		ImGui::SetNextItemWidth(-FLT_MIN);
@@ -89,6 +91,7 @@ public:
 
 			ImGui::EndCombo();
 		}
+		ImGui::PopID();
 	}
 
 

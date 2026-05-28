@@ -16,7 +16,6 @@ private:
 	// draw properties panel when a tree node is clicked on
 	void drawPropertiesPanel();
 
-
 	SceneView& scene;
 	Solver& solver;
 	VariableUnits& varUnits;

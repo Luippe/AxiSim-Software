@@ -98,13 +98,23 @@ void SolverGUI::drawPropertiesPanel() {
 			createSimpleCombo("##InletBCType", solver.bcInletTypeNames, (int&)(solver.uBC.inlet.type), IM_ARRAYSIZE(solver.bcInletTypeNames));
 
 			tableNextColumn();
-			inputDoubleWithUnits(solver.uBC.inlet.val, varUnits.axialUnit, Units::velocityUnits);
+			inputDoubleWithUnits(
+				"AxialInlet",
+				solver.uBC.inlet.val,
+				varUnits.axialUnit,
+				Units::velocityUnits
+			);
 
 			labelRow("Outer");
 			createSimpleCombo("##OuterBCType", solver.bcTypeNames, (int&)(solver.uBC.outer.type), IM_ARRAYSIZE(solver.bcTypeNames));
 
 			tableNextColumn();
-			inputDoubleWithUnits(solver.uBC.outer.val, varUnits.axialUnit, Units::velocityUnits);
+			inputDoubleWithUnits(
+				"AxialOuter",
+				solver.uBC.outer.val,
+				varUnits.axialUnit,
+				Units::velocityUnits
+			);
 
 			ImGui::EndTable();
 		}
@@ -132,6 +142,7 @@ void SolverGUI::drawPropertiesPanel() {
 
 			tableNextColumn();
 			inputDoubleWithUnits(
+				"##RadialVelocity",
 				solver.vBC.outer.val,
 				varUnits.radialUnit,
 				Units::velocityUnits
@@ -166,6 +177,7 @@ void SolverGUI::drawPropertiesPanel() {
 
 			tableNextColumn();
 			inputDoubleWithUnits(
+				"##Pressure",
 				solver.pBC.outer.val,
 				varUnits.pressureUnit,
 				Units::pressureUnits
@@ -282,19 +294,18 @@ void SolverGUI::drawPropertiesPanel() {
 		if (ImGui::BeginTable("Fluid Settings", 3)) {
 
 			labelRow("Density");
-			inputDoubleWithUnits(solver.f.rho, varUnits.rhoUnit, Units::densityUnits, "%.6g");
+			inputDoubleWithUnits("##Density", solver.f.rho, varUnits.rhoUnit, Units::densityUnits, "%.6g");
 
 			labelRow("Dynamic Viscosity");
-			inputDoubleWithUnits(solver.f.mu, varUnits.muUnit, Units::dynamicViscosityUnits, "%.6g");
+			inputDoubleWithUnits("##DynamicViscosity", solver.f.mu, varUnits.muUnit, Units::dynamicViscosityUnits, "%.6g");
 
 			labelRow("Diffusion Coefficient");
-			inputDoubleWithUnits(solver.f.D, varUnits.DUnit, Units::diffusionCoefficientUnits, "%.6g");
+			inputDoubleWithUnits("##Diffusion Coefficient", solver.f.D, varUnits.DUnit, Units::diffusionCoefficientUnits, "%.6g");
 
 			ImGui::EndTable();
 		}
-
-
 	}
+
 	else if (selectedItem == "Transient Settings") {
 		ImGui::SeparatorText("Transient Settings");
 

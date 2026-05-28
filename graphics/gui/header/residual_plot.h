@@ -4,6 +4,8 @@
 #include <array>
 #include "imgui.h"
 #include "implot.h"
+
+#include "base_surface_viewer.h"
 #include "solver_struct.h"
 #include "buffer_manager.h"
 
@@ -25,30 +27,15 @@ class ResidualPlot {
 public:
 	ResidualPlot(Solver& solver, AppAssets& assets);
 
+    // create dockspace to have multiple tabs
+    DockingSpace residualDockSpace{ "Residual Plot" };
+
     // add structs
-    struct ResidualPlotTab {
-
-        // docking
-        int id = 0; // unique id per tab
-        ImGuiID targetDockID = 0;   // current dock id
-
-        // plotting variables
+    struct ResidualPlotTab : public DockingSpace::DockTab {
         ImPlotRect currentLimits;
-
         std::vector<double> iterations;
         std::vector<TextPos> clickedPos;
         std::vector<Plot> plots;
-
-        bool newlyCreated = true;
-        bool resetView = false;
-        bool copyImageNextFrame = false;
-
-        // renaming variables
-        std::string name;
-
-        bool renaming = false;
-
-        char renameBuffer[128] = {};
     };
 
     // copy to clipboard variables
@@ -81,6 +68,8 @@ public:
 
         std::lock_guard<std::mutex> lock(mutex);
         size_t idx = 0;
+        int activeTabID = residualDockSpace.getActiveTabID();
+
         tabs[activeTabID].iterations.push_back((double)currentIteration);
         for (const ResidualPrintItem& item : residualsToPrint) {
             if (!item.enabled) continue;
@@ -92,12 +81,8 @@ public:
 
 private:
 
-    int nextTabID = 1;
-    int activeTabID = 1;
     int idx = 0;
     int p = 0;
-
-
 
     // toolbar icon variables
     float toolbarHeight = 25.0f;
@@ -114,12 +99,6 @@ private:
     // draw toolbar
     void drawToolBar(ResidualPlotTab& tab, int i, ImGuiID currentDockID, ImGuiID& pendingAddDockID, ImGuiID dockspaceID);
 
-    // draw tabs
-    void drawTabs(ImGuiID dockspaceID, const ImGuiWindowClass& residualClass);
-
-    // draw popup when renaming tab
-    void drawRenamePopup(ResidualPlotTab& tab);
-
     // setup axes
     void setupAxes();
 
@@ -128,9 +107,6 @@ private:
 
     // handle key presses
     void handleKeyEvents();
-
-    // add a new tab
-    void addTab(ImGuiID targetDockID);
 
     // draw the specified tab
     void drawPlot(ResidualPlotTab& tab);

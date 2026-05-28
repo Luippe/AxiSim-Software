@@ -244,7 +244,6 @@ void Solver::runSimple() {
     ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
     allocateGridConfig(configSolver.g, configSolver.f);
 
-
     // initialize residuals
     std::array<ResidualPrintItem, 6> residualsToPrint = { {
         {"U",             enabledResiduals.plotU,   &uCoeff.resVal},
