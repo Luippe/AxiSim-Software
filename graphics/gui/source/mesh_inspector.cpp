@@ -6,7 +6,7 @@
 #include "scene_view.h"
 #include "colorbar.h"
 
-#include "gui_manager.h"
+#include "flag_manager.h"
 #include "printer.h"
 #include "math_func.h"
 

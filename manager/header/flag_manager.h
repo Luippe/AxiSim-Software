@@ -45,6 +45,10 @@ namespace UIFlags {
 		ImGuiWindowFlags_NoFocusOnAppearing |
 		ImGuiWindowFlags_NoBringToFrontOnFocus;
 
+
+	//inline constexpr ImGuiComboFlags UnitComboFlags =
+	//	ImGuiComboFlags_NoArrowButton;
+
 	inline constexpr ImGuiInputTextFlags ConsoleMultilineInputFlags =
 		ImGuiInputTextFlags_ReadOnly |
 		ImGuiInputTextFlags_NoUndoRedo |

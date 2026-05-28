@@ -22,6 +22,8 @@ public:
 
 	void draw();
 
+	void drawSections();
+
 	void getGridConfigEdits();
 
 	void setGridConfigEdits();
@@ -29,7 +31,7 @@ public:
 private:
 
 	// draw properties panel when a tree node is clicked on
-	void drawPropertiesPanel();
+	void drawOverview();
 
 	GridConfigEdits gridConfigEdits;
 	SceneView& scene;

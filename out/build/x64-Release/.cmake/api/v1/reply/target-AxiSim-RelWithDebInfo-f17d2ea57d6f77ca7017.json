@@ -1020,12 +1020,12 @@
 		},
 		{
 			"backtrace" : 2,
-			"path" : "manager/header/gpu_utils.h",
+			"path" : "manager/header/flag_manager.h",
 			"sourceGroupIndex" : 8
 		},
 		{
 			"backtrace" : 2,
-			"path" : "manager/header/gui_manager.h",
+			"path" : "manager/header/gpu_utils.h",
 			"sourceGroupIndex" : 8
 		},
 		{

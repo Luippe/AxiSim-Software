@@ -1,12 +1,14 @@
 #include "pch.h"
 #include <format>
+#include <algorithm>
+
 #include "residual_plot.h"
 #include "graphics_struct.h"
-#include "gui_manager.h"
-#include "implot.h"
 #include "solver.h"
+#include "flag_manager.h"
+#include "imgui_internal.h"
 #include "printer.h"
-#include <algorithm>
+
 
 
 ResidualPlot::ResidualPlot(Solver& solver, AppAssets& assets) :
@@ -199,6 +201,47 @@ void ResidualPlot::handlePlotEvents(ResidualPlotTab& tab) {
     }
 }
 
+bool isCurrentDockTabDoubleClicked() {
+
+    ImGuiWindow* window = ImGui::GetCurrentWindowRead();
+
+    if (!window) return false;
+
+    // case 1: docked window tab
+    if (window->DockNode && window->DockNode->TabBar) {
+        ImGuiTabBar* tabBar = window->DockNode->TabBar;
+
+        for (int i = 0; i < tabBar->Tabs.Size; i++) {
+            ImGuiTabItem* tab = &tabBar->Tabs[i];
+
+            if (tab->ID == window->TabId) {
+
+                ImRect tabRect;
+                tabRect.Min.x = tabBar->BarRect.Min.x + tab->Offset;
+                tabRect.Min.y = tabBar->BarRect.Min.y;
+                tabRect.Max.x = tabRect.Min.x + tab->Width;
+                tabRect.Max.y = tabBar->BarRect.Max.y;
+
+                bool hovered = ImGui::IsMouseHoveringRect(tabRect.Min, tabRect.Max, false);
+
+                return hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+            }
+        }
+    }
+
+    // case 2: undocked window
+    ImRect titleBarRect = window->TitleBarRect();
+
+    bool hoveredTitleBar = ImGui::IsMouseHoveringRect(
+        titleBarRect.Min,
+        titleBarRect.Max,
+        true
+    );
+
+    return hoveredTitleBar && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+
+}
+
 void ResidualPlot::handleKeyEvents() {
 
 }
@@ -330,6 +373,17 @@ void ResidualPlot::drawTabs(ImGuiID dockspaceID, const ImGuiWindowClass& residua
                 activeTabID = i;
             }
 
+            // check double click for renaming tab
+            if (isCurrentDockTabDoubleClicked()) {
+
+                std::snprintf(tab.renameBuffer,
+                    sizeof(tab.renameBuffer),
+                    "%s",
+                    tab.name.c_str());
+
+                ImGui::OpenPopup("Rename Residual Plot");
+            }
+            drawRenamePopup(tab);
             drawToolBar(tab, i, currentDockID, pendingAddDockID, dockspaceID);
             //printInt(currentDockID, pendingAddDockID);
             drawPlot(tab);
@@ -342,6 +396,8 @@ void ResidualPlot::drawTabs(ImGuiID dockspaceID, const ImGuiWindowClass& residua
         if (!open) {
             tabToClose = i;
         }
+
+
     }
 
     // remove tabs
@@ -354,6 +410,58 @@ void ResidualPlot::drawTabs(ImGuiID dockspaceID, const ImGuiWindowClass& residua
     // add tab if plus button was pressed
     if (pendingAddDockID != 0 || tabs.empty()) {
         addTab(pendingAddDockID != 0 ? pendingAddDockID : dockspaceID);
+    }
+}
+
+void ResidualPlot::drawRenamePopup(ResidualPlotTab& tab) {
+
+    if (ImGui::BeginPopupModal("Rename Residual Plot", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
+
+        bool justOpened = ImGui::IsWindowAppearing();
+
+        bool clickedOutside =
+            !justOpened &&
+            ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+            !ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+
+        bool pressedEscape =
+            ImGui::IsKeyPressed(ImGuiKey_Escape);
+
+        ImGui::SetNextItemWidth(250.0f);
+
+        bool enterPressed = ImGui::InputText(
+            "##RenameResidualPlotInput",
+            tab.renameBuffer,
+            sizeof(tab.renameBuffer),
+            ImGuiInputTextFlags_EnterReturnsTrue |
+            ImGuiInputTextFlags_AutoSelectAll
+
+        );
+
+        if (justOpened) {
+            ImGui::SetKeyboardFocusHere(-1);
+        }
+
+        if (clickedOutside || pressedEscape)
+        {
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::Spacing();
+
+        if (enterPressed) {
+            if (tab.renameBuffer[0] != '\0') {
+                tab.name = tab.renameBuffer;
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            ImGui::CloseCurrentPopup();
+        }
+
+        ImGui::EndPopup();
     }
 }
 
@@ -375,10 +483,6 @@ void ResidualPlot::draw() {
 
     // prevent unclassed windows from docking here, and prevents reisudal windows from docking into normal dockspace
     residualClass.DockingAllowUnclassed = false;
-
-    //if (tabs.empty()) {
-    //    addTab();
-    //}
 
     ImGui::DockSpace(dockspaceID, ImGui::GetContentRegionAvail(), UIFlags::ResidualDockSpaceFlags, &residualClass);
 

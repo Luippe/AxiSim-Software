@@ -5,7 +5,7 @@
 #include "mesh.h"
 #include "colormap.h"
 #include "graphics_struct.h"
-#include "gui_manager.h"
+#include "flag_manager.h"
 #include "colorbar.h"
 
 ResultsGUI::ResultsGUI(GUI& gui, SceneView& scene) :
@@ -29,32 +29,32 @@ void ResultsGUI::drawPropertiesPanel() {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 45.0f);
 			ImGui::TableSetupColumn("Slider", ImGuiTableColumnFlags_WidthStretch);
 
-			textAtNewRow("Front", 0, 1);
+			labelRow("Front");
 			if (ImGui::SliderInt("##Front", &results.colFront, 0, mesh.g.nz)) {
 				results.currentFront = (float)results.colFront * (float)mesh.g.dz[results.colFront];
 			}
 
-			textAtNewRow("Back", 0, 1);
+			labelRow("Back");
 			if (ImGui::SliderInt("##Back", &results.colBack, 0, mesh.g.nz)) {
 				results.currentBack = (float)results.colBack * (float)mesh.g.dz[results.colBack];
 			}
 
-			textAtNewRow("Outer", 0, 1);
+			labelRow("Outer");
 			if (ImGui::SliderInt("##Outer", &results.rowTop, 0, mesh.g.nr)) {
 				results.currentOuter = (float)results.rowTop * (float)mesh.g.dr[results.rowTop];
 			}
 
-			textAtNewRow("Inner", 0, 1);
+			labelRow("Inner");
 			if (ImGui::SliderInt("##Inner", &results.rowBot, 0, mesh.g.nr)) {
 				results.currentInner = (float)results.rowBot * (float)mesh.g.dr[results.rowBot];
 			}
 
-			textAtNewRow("Filter", 0, 1);
+			labelRow("Filter");
 			if (createSimpleCombo("##Filter", results.compareType, (int&)results.currentCompareType, IM_ARRAYSIZE(results.compareType))) {
 				results.updateSelectedInstances();
 			}
 
-			textAtNewRow("Value", 0, 1);
+			labelRow("Value");
 			if (results.currentCompareType == CompareType::Between || results.currentCompareType == CompareType::Exclude) {
 				ImGui::InputFloat("##LowerBound", &results.filterValues.valueLower, 0.0f, 0.0f);
 				ImGui::TableNextColumn();
@@ -77,7 +77,7 @@ void ResultsGUI::drawPropertiesPanel() {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
 			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 
-			textAtNewRow("Colormap", 0, 1);
+			labelRow("Colormap");
 			if (createSimpleCombo("##Colormap", colormap.items, colormap.currentItem, IM_ARRAYSIZE(colormap.items))) {
 				colormap.setColormap(colormap.currentItem);
 			}
@@ -90,7 +90,7 @@ void ResultsGUI::drawPropertiesPanel() {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
 			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 
-			textAtNewRow("Shading", 0, 1);
+			labelRow("Shading");
 			if (createSimpleCombo("##Shading", results.shadingType, (int&)results.currentShadingType, IM_ARRAYSIZE(results.shadingType))) {
 				
 				GLint shadingMode = (results.currentShadingType == ShadingType::Interp) ? GL_LINEAR : GL_NEAREST;	// choose lienar and flat shading
@@ -107,10 +107,10 @@ void ResultsGUI::drawPropertiesPanel() {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 80.0f);
 			ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 
-			textAtNewRow("Precision", 0, 1);
+			labelRow("Precision");
 			ImGui::InputInt("##NumberPrecision", &colorbar.currentPrecision, 0, 0);
 
-			textAtNewRow("Number Format", 0, 1);
+			labelRow("Number Format");
 			createSimpleCombo("##NumberFormat", colorbar.formatOption, (int&)colorbar.currentNumberFormat, IM_ARRAYSIZE(colorbar.formatOption));
 
 			ImGui::EndTable();
@@ -130,7 +130,7 @@ void ResultsGUI::draw() {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
 			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 
-			textAtNewRow("Field", 0, 1);
+			labelRow("Field");
 			if (createSimpleCombo("##SelectField", results.fieldType, results.currentItem, IM_ARRAYSIZE(results.fieldType))) {
 				results.updateCurrentField();
 			}

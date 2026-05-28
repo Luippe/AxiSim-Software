@@ -10,7 +10,7 @@
 #include "solver_struct.h"
 #include "implot.h"
 
-#include "gui_manager.h"
+#include "flag_manager.h"
 
 
 // ======================================================================
@@ -53,7 +53,7 @@ void GUI::createAssetBuffers() {
 	assets.clearIcon.createBuffer("assets/icons/circle-x.png");
 	assets.plusIcon.createBuffer("assets/icons/plus.png");
 	assets.copyIcon.createBuffer("assets/icons/clipboard.png");
-	assets.selectRegionIcon.createBuffer("assets/icons/square-dashed-mouse-pointer.png");
+	assets.selectRegionIcon.createBuffer("assets/icons/select-area.png");
 
 }
 

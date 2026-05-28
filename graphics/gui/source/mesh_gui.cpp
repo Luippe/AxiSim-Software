@@ -7,7 +7,7 @@
 
 #include "solver_struct.h"
 #include "unit_manager.h"
-#include "gui_manager.h"
+#include "flag_manager.h"
 #include "printer.h"
 
 MeshGUI::MeshGUI(GUI& gui, SceneView& scene) :
@@ -19,6 +19,19 @@ MeshGUI::MeshGUI(GUI& gui, SceneView& scene) :
 	config(scene.config){
 
 	getGridConfigEdits();
+}
+
+void MeshGUI::drawSections() {
+
+	if (ImGui::BeginChild("HELLO", ImVec2(0, 110), true)) {
+		ImGui::TextUnformatted("ASDASDa");
+		ImGui::Separator();
+
+
+
+	}
+	ImGui::EndChild();
+
 }
 
 void MeshGUI::getGridConfigEdits() {
@@ -36,41 +49,57 @@ void MeshGUI::setGridConfigEdits() {
 	config.g.nr = gridConfigEdits.nr;
 	config.g.nz = gridConfigEdits.nz;
 	config.g.N = gridConfigEdits.nr * gridConfigEdits.nz;
-	//config.g.dz = gridConfigEdits.L / gridConfigEdits.nz;
-	//config.g.dr = gridConfigEdits.R / gridConfigEdits.nr;
 }
 
-void MeshGUI::drawPropertiesPanel() {
+void MeshGUI::drawOverview() {
 	ImGui::Begin("Overview");
-
 	if (selectedItem == "Edit") {
-		ImGui::SeparatorText("Mesh Settings");
-		if (ImGui::BeginTable("Input", 3)) {
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-			ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-			ImGui::TableSetupColumn("Units", ImGuiTableColumnFlags_WidthFixed, 100.0f);
 
+		ImGui::TextUnformatted("Geometry");
+		ImGui::BeginChild("Geometry", ImVec2(330.0f, 62.0f), true);	// total width = sum of table width + 10 * num of columns to account for padding
+		if (ImGui::BeginTable("Geometry", 3)) {
 
-			textAtNewRow("Segments", 0, 1);
-			ImGui::InputInt("##MeshNseg", &gridConfigEdits.nseg, 0.0, 0.0);
+			setupTableColumns(
+				column("Label", 150.0f),
+				column("Input", 100.0f),
+				column("Units", 50.0f)
+			);
 
-			inputDoubleWithUnits("Length", gridConfigEdits.L, scene.config.varUnits.LUnit, Units::lengthUnits);
-			inputDoubleWithUnits("Radius", gridConfigEdits.R, scene.config.varUnits.RUnit, Units::lengthUnits);
+			labelRow("Length");
+			inputDoubleWithUnits(gridConfigEdits.L, config.varUnits.LUnit, Units::lengthUnits);
 
-			textAtNewRow("nr", 0, 1);
-			ImGui::InputInt("##Meshnr", &gridConfigEdits.nr, 0.0, 0.0);
-
-			textAtNewRow("nz", 0, 1);
-			ImGui::InputInt("##Meshnz", &gridConfigEdits.nz, 0.0, 0.0);
-
-			textAtNewRow("Radial Bias Factor", 0, 1);
-			ImGui::InputDouble("##MeshRadialBias", &config.g.rBias, 0.0, 0.0);
-
-			textAtNewRow("Axial Bias Factor", 0, 1);
-			ImGui::InputDouble("##MeshAxialBias", &config.g.zBias, 0.0, 0.0);
+			labelRow("Radius");
+			inputDoubleWithUnits(gridConfigEdits.R, config.varUnits.RUnit, Units::lengthUnits);
 
 			ImGui::EndTable();
 		}
+		ImGui::EndChild();
+
+		ImGui::Spacing();
+		ImGui::TextUnformatted("Mesh");
+		ImGui::BeginChild("Mesh", ImVec2(270, 110), true);
+		if (ImGui::BeginTable("Mesh", 2)) {
+
+			setupTableColumns(
+				column("Label", 150.0f),
+				column("Input", 100.0f)
+			);
+
+			labelRow("Axial Segments");
+			inputInt("##Meshnz", &gridConfigEdits.nz);
+
+			labelRow("Radial Segments");
+			inputInt("##Meshnr", &gridConfigEdits.nr);
+
+			labelRow("Axial Bias Factor");
+			inputDouble("##MeshAxialBias", &config.g.zBias);
+
+			labelRow("Radial Bias Factor");
+			inputDouble("##MeshRadialBias", &config.g.rBias);
+
+			ImGui::EndTable();
+		}
+		ImGui::EndChild();
 	}
 	ImGui::End();
 }
@@ -96,7 +125,7 @@ void MeshGUI::draw() {
 		}
 		changeCursorOnHover();
 
-		drawPropertiesPanel();
+		drawOverview();
 
 		ImGui::EndTabItem();
 	}

@@ -3,7 +3,7 @@
 #include "scene_view.h"
 #include "file_manager.h"
 #include "printer.h"
-#include "gui_manager.h"
+#include "flag_manager.h"
 
 AnimationGUI::AnimationGUI(SceneView& scene) :
 scene(scene) {

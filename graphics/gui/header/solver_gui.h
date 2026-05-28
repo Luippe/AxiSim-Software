@@ -19,5 +19,6 @@ private:
 
 	SceneView& scene;
 	Solver& solver;
+	VariableUnits& varUnits;
 
 };

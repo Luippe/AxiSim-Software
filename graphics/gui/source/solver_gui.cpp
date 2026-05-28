@@ -5,13 +5,14 @@
 #include "graphics_struct.h"
 #include "solver_struct.h"
 
-#include "gui_manager.h"
+#include "flag_manager.h"
 #include "unit_manager.h"
 #include "printer.h"
 
 SolverGUI::SolverGUI(SceneView& scene) :
 	scene(scene),
-	solver(scene.solver){
+	solver(scene.solver),
+	varUnits(scene.solver.varUnits) {
 }
 
 void SolverGUI::setResidualDefault() {
@@ -32,101 +33,161 @@ void SolverGUI::drawPropertiesPanel() {
 	ImGui::Begin("Overview");
 
 	if (selectedItem == "Solver Settings") {
-		ImGui::SeparatorText("Solver Settings");
+		ImGui::TextUnformatted("Solver");
 
-		if (ImGui::BeginTable("Geometry", 2)) {
+		// total width = sum of table width + 10 * num of columns to account for padding
+		// total height = number of rows * 31
+		ImGui::BeginChild("Solver", ImVec2(220.0f, 62.0f), true);	
+		if (ImGui::BeginTable("Solver", 2)) {
 
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
-			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
+			setupTableColumns(
+				column("Label", 100.0f),
+				column("Combo", 100.0f)
+			);
 
-			textAtNewRow("Solver", 0, 1);
+			labelRow("Solver");
 			createSimpleCombo("##Solver", solver.velocitySolverType, (int&)solver.currentVelocitySolver, IM_ARRAYSIZE(solver.velocitySolverType));
 
-			textAtNewRow("Linear Solver", 0, 1);
+			labelRow("Linear Solver");
 			createSimpleCombo("##LinearSolverType", solver.linearSolverType, (int&)(solver.linearSolverConfig.type), IM_ARRAYSIZE(solver.linearSolverType));
-			
-			textAtNewRow("Convection Discretization Scheme", 0, 1);
+
+			ImGui::EndTable();
+		}
+		ImGui::EndChild();
+
+		ImGui::Dummy(ImVec2(0.0f, 10.0f));
+		ImGui::TextUnformatted("Options");
+		ImGui::BeginChild("Options", ImVec2(380.0f, 90.0f), true);
+		if (ImGui::BeginTable("Options", 2)) {
+
+			setupTableColumns(
+				column("Label", 200.0f),
+				column("Combo", 160.0f)
+			);
+
+			labelRow("Convection Discretization");
 			createSimpleCombo("##ConvectionScheme", solver.convectionDiscretizationType, (int&)(solver.convectionScheme), IM_ARRAYSIZE(solver.convectionDiscretizationType));
 
-			textAtNewRow("Add Convection Term", 0, 1);
-			ImGui::Checkbox("##ConvectionTerm", &solver.addConvectionTerm);
-			
-			textAtNewRow("Transient", 0, 1);
-			ImGui::Checkbox("##TransientTerm", &solver.transient);
+			labelRow("Add Convection Term");
+			checkBox("##ConvectionTerm", &solver.addConvectionTerm);
+
+			labelRow("Transient");
+			checkBox("##TransientTerm", &solver.transient);
+
 			ImGui::EndTable();
 
-			ImGui::Dummy(ImVec2(0.0f, 30.0f));
-			ImGui::SeparatorText("Add Solvers");
-			ImGui::Spacing();
-
 		}
+		ImGui::EndChild();
 	}
+
 	else if (selectedItem == "BC") {
-		ImGui::SeparatorText("Axial Velocity");
 
-		if (ImGui::BeginTable("Boundary Conditions", 3)) {
+		// total width = sum of table width + 10 * num of columns to account for padding
+		// total height = number of rows * 31
+		ImGui::TextUnformatted("Axial Velocity");
+		ImGui::BeginChild("Axial Velocity", ImVec2(440.0f, 62.0f), true);
+		if (ImGui::BeginTable("Axial Velocity", 4)) {
 
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-			ImGui::TableSetupColumn("BC Type", ImGuiTableColumnFlags_WidthFixed, 200.0f);
-			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+			setupTableColumns(
+				column("Label", 100.0f),
+				column("BC Type", 100.0f),
+				column("Value", 100.0f),
+				column("Units", 100.0f));
 
-			textAtNewRow("Inlet", 0, 1);
+			labelRow("Inlet");
 			createSimpleCombo("##InletBCType", solver.bcInletTypeNames, (int&)(solver.uBC.inlet.type), IM_ARRAYSIZE(solver.bcInletTypeNames));
 
 			tableNextColumn();
-			createInputDouble("##InletBCValue", &solver.uBC.inlet.val);
+			inputDoubleWithUnits(solver.uBC.inlet.val, varUnits.axialUnit, Units::velocityUnits);
 
-			textAtNewRow("Outer", 0, 1);
+			labelRow("Outer");
 			createSimpleCombo("##OuterBCType", solver.bcTypeNames, (int&)(solver.uBC.outer.type), IM_ARRAYSIZE(solver.bcTypeNames));
 
 			tableNextColumn();
-			createInputDouble("##OuterBCValue", &solver.uBC.outer.val);
+			inputDoubleWithUnits(solver.uBC.outer.val, varUnits.axialUnit, Units::velocityUnits);
 
 			ImGui::EndTable();
 		}
+		ImGui::EndChild();
 
-		ImGui::SeparatorText("Radial Velocity");
-		if (ImGui::BeginTable("Boundary Conditions", 3)) {
+		ImGui::Dummy(ImVec2(0.0f, 30.0f));
+		ImGui::TextUnformatted("Radial Velocity");
+		ImGui::BeginChild("Radial Velocity", ImVec2(440.0f, 40.0f), true);
+		if (ImGui::BeginTable("Boundary Conditions", 4)) {
 
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-			ImGui::TableSetupColumn("BC Type", ImGuiTableColumnFlags_WidthFixed, 200.0f);
-			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+			setupTableColumns(
+				column("Label", 100.0f),
+				column("BC Type", 100.0f),
+				column("Value", 100.0f),
+				column("Units", 100.0f)
+			);
 
-			textAtNewRow("Outer", 0, 1);
-			createSimpleCombo("##OuterBCType", solver.bcTypeNames, (int&)(solver.vBC.outer.type), IM_ARRAYSIZE(solver.bcTypeNames));
+			labelRow("Outer");
+			createSimpleCombo(
+				"##OuterBCType",
+				solver.bcTypeNames,
+				(int&)(solver.vBC.outer.type),
+				IM_ARRAYSIZE(solver.bcTypeNames)
+			);
 
 			tableNextColumn();
-			createInputDouble("##OuterBCValue", &solver.vBC.outer.val);
+			inputDoubleWithUnits(
+				solver.vBC.outer.val,
+				varUnits.radialUnit,
+				Units::velocityUnits
+			);
 
 			ImGui::EndTable();
 		}
+		ImGui::EndChild();
 
-		ImGui::SeparatorText("Pressure BC");
-		if (ImGui::BeginTable("Boundary Conditions", 3)) {
 
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-			ImGui::TableSetupColumn("BC Type", ImGuiTableColumnFlags_WidthFixed, 200.0f);
-			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
 
-			textAtNewRow("Outlet", 0, 1);
-			createSimpleCombo("##OutletBCType", solver.bcTypeNames, (int&)(solver.pBC.outlet.type), IM_ARRAYSIZE(solver.bcTypeNames));
+
+		ImGui::Dummy(ImVec2(0.0f, 30.0f));
+		ImGui::TextUnformatted("Pressure");
+		ImGui::BeginChild("Pressure", ImVec2(440.0f, 40.0f), true);
+		if (ImGui::BeginTable("Boundary Conditions", 4)) {
+
+			setupTableColumns(
+				column("Label", 100.0f),
+				column("BC Type", 100.0f),
+				column("Value", 100.0f),
+				column("Units", 100.0f)
+			);
+
+			labelRow("Outlet");
+			createSimpleCombo(
+				"##OutletBCType",
+				solver.bcTypeNames,
+				(int&)(solver.pBC.outlet.type),
+				IM_ARRAYSIZE(solver.bcTypeNames)
+			);
 
 			tableNextColumn();
-			createInputDouble("##OutletBCValue", &solver.pBC.outlet.val);
+			inputDoubleWithUnits(
+				solver.pBC.outer.val,
+				varUnits.pressureUnit,
+				Units::pressureUnits
+			);
 
 			ImGui::EndTable();
 		}
+		ImGui::EndChild();
+
 	}
 	else if (selectedItem == "Residuals") {
 		ImGui::SeparatorText("Residual Type");
 
 		if (ImGui::BeginTable("Residual Type Settings", 3)) {
 
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 300.0f);
-			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
-			ImGui::TableSetupColumn("Advanced", ImGuiTableColumnFlags_WidthFixed, 50.0f);
+			setupTableColumns(
+				column("Label", 300.0f),
+				column("Value", 200.0f),
+				column("Advanced", 50.0f)
+			);
 
-			textAtNewRow("Residual Type", 0, 1);
+			labelRow("Residual Type");
 			if (createSimpleCombo("##ResidualType", solver.residualType, (int&)solver.currentResidual, IM_ARRAYSIZE(solver.residualType))) {
 				setResidualDefault();
 			}
@@ -138,13 +199,16 @@ void SolverGUI::drawPropertiesPanel() {
 
 			if (ImGui::BeginPopup("Advanced Settings")) {
 				if (ImGui::BeginTable("Residual Type Settings", 2)) {
-					ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 130.0f);
-					ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 130.0f);
 
-					textAtNewRow("Residual Norm Type", 0, 1);
+					setupTableColumns(
+						column("Label", 130.0f),
+						column("Value", 100.0f)
+					);
+
+					labelRow("Residual Norm Type");
 					createSimpleCombo("##ResidualNorm", solver.residualNormType, (int&)solver.currentResidualNorm, IM_ARRAYSIZE(solver.residualNormType));
 
-					textAtNewRow("Residual Scaling", 0, 1);
+					labelRow("Residual Scaling");
 					createSimpleCombo("##ResidualScaling", solver.residualScalingType, (int&)solver.currentResidualScaling, IM_ARRAYSIZE(solver.residualScalingType));
 
 					ImGui::EndTable();
@@ -158,9 +222,11 @@ void SolverGUI::drawPropertiesPanel() {
 
 		if (ImGui::BeginTable("Plot Residuals", 3)) {
 
-			ImGui::TableSetupColumn("Label1", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-			ImGui::TableSetupColumn("Label2", ImGuiTableColumnFlags_WidthFixed, 100.0f);
-			ImGui::TableSetupColumn("Label3", ImGuiTableColumnFlags_WidthFixed, 100.0f);
+			setupTableColumns(
+				column("Label1", 100.0f),
+				column("Label2", 100.0f),
+				column("Label3", 100.0f)
+			);
 
 			ImGui::TableNextRow();
 			ImGui::TableSetColumnIndex(0);
@@ -186,22 +252,25 @@ void SolverGUI::drawPropertiesPanel() {
 
 		if (ImGui::BeginTable("Iteration Settings", 2)) {
 			if (solver.currentVelocitySolver == SOLVER_SIMPLE) {
-				ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 300.0f);
-				ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 150.0f);
 
-				textAtNewRow("Maximum Iterations", 0, 1);
+				setupTableColumns(
+					column("Label", 300.0f),
+					column("Value", 150.0f)
+				);
+
+				labelRow("Maximum Iterations");
 				ImGui::InputInt("##SimpleMaxIter", &scene.solver.configSimple.maxIter, 0.0, 0.0);
 
-				textAtNewRow("Plot Residual Every # Iterations", 0, 1);
-				ImGui::InputInt("##SimpleCheckConv", &scene.solver.configSimple.checkConv, 0.0, 0.0);
+				labelRow("Plot Residual Every # Iterations");
+				inputInt("##SimpleCheckConv", &scene.solver.configSimple.checkConv);
 
-				textAtNewRow("Momentum Tolerance", 0, 1);
+				labelRow("Momentum Tolerance");
 				ImGui::InputDouble("##SimpleMomTol", &scene.solver.configSimple.momTol, 0.0, 0.0, "%.3e");
 
-				textAtNewRow("Continuity Tolerance", 0, 1);
+				labelRow("Continuity Tolerance");
 				ImGui::InputDouble("##SimpleContTol", &scene.solver.configSimple.ppTol, 0.0, 0.0, "%.3e");
 			
-				textAtNewRow("Linear Solver Max Iteration", 0, 1);
+				labelRow("Linear Solver Max Iteration");
 				ImGui::InputInt("##LinearSolverIteration", &scene.solver.linearSolverConfig.maxIter, 0.0, 0.0);
 			
 			}
@@ -211,9 +280,16 @@ void SolverGUI::drawPropertiesPanel() {
 	else if (selectedItem == "Fluid Settings") {
 		ImGui::SeparatorText("Fluid Settings");
 		if (ImGui::BeginTable("Fluid Settings", 3)) {
-			inputDoubleWithUnits("Density", solver.f.rho, solver.varUnits.rhoUnit, Units::densityUnits);
-			inputDoubleWithUnits("Dynamic Viscosity", solver.f.mu, solver.varUnits.muUnit, Units::dynamicViscosityUnits);
-			inputDoubleWithUnits("Diffusion Coefficient", solver.f.D, solver.varUnits.DUnit, Units::diffusionCoefficientUnits);
+
+			labelRow("Density");
+			inputDoubleWithUnits(solver.f.rho, varUnits.rhoUnit, Units::densityUnits, "%.6g");
+
+			labelRow("Dynamic Viscosity");
+			inputDoubleWithUnits(solver.f.mu, varUnits.muUnit, Units::dynamicViscosityUnits, "%.6g");
+
+			labelRow("Diffusion Coefficient");
+			inputDoubleWithUnits(solver.f.D, varUnits.DUnit, Units::diffusionCoefficientUnits, "%.6g");
+
 			ImGui::EndTable();
 		}
 
@@ -223,16 +299,19 @@ void SolverGUI::drawPropertiesPanel() {
 		ImGui::SeparatorText("Transient Settings");
 
 		if (ImGui::BeginTable("Transient Settings", 2)) {
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 300.0f);
-			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthFixed, 200.0f);
+
+			setupTableColumns(
+				column("Label", 300.0f),
+				column("Value", 150.0f)
+			);
 			
-			textAtNewRow("dt", 0, 1);
+			labelRow("dt");
 			ImGui::InputDouble("##timeStep", &scene.solver.dt, 0.0, 0.0, "%.3f");
 
-			textAtNewRow("tEnd", 0, 1);
+			labelRow("tEnd");
 			ImGui::InputDouble("##endTime", &scene.solver.tEnd, 0.0, 0.0, "%.3f");
 
-			textAtNewRow("Save keyframe every # Iterations", 0, 1);
+			labelRow("Save keyframe every # Iterations");
 			ImGui::InputInt("##saveKeyFrameIter", &scene.solver.saveKeyFrameIter, 0.0, 0.0);
 
 			ImGui::EndTable();

@@ -1,0 +1,696 @@
+{
+	"globsDependent" : 
+	[
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/*.cpp",
+			"paths" : 
+			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/animation_gui.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/base_gui.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/base_surface_viewer.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/colorbar.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/console.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/inspector.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/menu.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/mesh_gui.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/mesh_inspector.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/residual_plot.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/results_gui.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/solver_gui.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_allegro5.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_android.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_dx10.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_dx11.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_dx12.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_dx9.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_glfw.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_glut.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_null.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_opengl2.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_opengl3.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_sdl2.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_sdl3.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_sdlgpu3.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_sdlrenderer2.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_sdlrenderer3.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_vulkan.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_wgpu.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_win32.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_allegro5/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_android_opengl3/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_glfw_opengl2/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_glfw_opengl3/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_glfw_vulkan/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_glfw_wgpu/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_glut_opengl2/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_null/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_sdl2_directx11/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_sdl2_opengl2/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_sdl2_opengl3/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_sdl2_sdlrenderer2/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_sdl2_vulkan/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_sdl2_wgpu/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_sdl3_directx11/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_sdl3_opengl3/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_sdl3_sdlgpu3/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_sdl3_sdlrenderer3/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_sdl3_vulkan/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_sdl3_wgpu/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_win32_directx10/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_win32_directx11/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_win32_directx12/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_win32_directx9/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_win32_opengl3/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_win32_vulkan/main.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imgui.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imgui_demo.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imgui_draw.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imgui_impl_glfw.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imgui_impl_opengl3.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imgui_tables.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imgui_widgets.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/implot.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/implot_items.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/misc/cpp/imgui_stdlib.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/misc/fonts/binary_to_compressed_c.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/misc/freetype/imgui_freetype.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/bounding.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/camera.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/display.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/gui.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/mouse_picker.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/renderer.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/scene_view.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/shader.cpp"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/*.cu",
+			"paths" : [],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/*.cuh",
+			"paths" : [],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/*.h",
+			"paths" : 
+			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/animation_gui.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/base_gui.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/base_surface_viewer.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/colorbar.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/console.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/console_keywords.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/inspector.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/menu.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/mesh_gui.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/mesh_inspector.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/residual_plot.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/results_gui.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/solver_gui.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_allegro5.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_android.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_dx10.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_dx11.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_dx12.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_dx9.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_glfw.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_glut.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_metal.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_null.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_opengl2.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_opengl3.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_opengl3_loader.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_osx.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_sdl2.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_sdl3.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_sdlgpu3.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_sdlgpu3_shaders.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_sdlrenderer2.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_sdlrenderer3.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_vulkan.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_wgpu.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_win32.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/example_allegro5/imconfig_allegro5.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/libs/emscripten/emscripten_mainloop_stub.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/libs/glfw/include/GLFW/glfw3.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/libs/glfw/include/GLFW/glfw3native.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/examples/libs/usynergy/uSynergy.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imconfig.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imgui.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imgui_impl_glfw.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imgui_impl_opengl3.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imgui_impl_opengl3_loader.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imgui_internal.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/implot.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/implot_internal.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imstb_rectpack.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imstb_textedit.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/imstb_truetype.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/misc/cpp/imgui_stdlib.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/misc/freetype/imgui_freetype.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/misc/single_file/imgui_single_file.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/tinyfiledialogs/tinyfiledialogs.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/bounding.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/camera.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/display.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/graphics_struct.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/gui.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/mouse_picker.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/renderer.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/scene_view.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/shader.h"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/*.cpp",
+			"paths" : 
+			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/buffer_manager.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/colormap.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/field_manager.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/file_manager.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/math_func.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/memory_manger.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/pch.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/printer.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/time_manager.cpp"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/*.cu",
+			"paths" : [],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/*.cuh",
+			"paths" : [],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/*.h",
+			"paths" : 
+			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/buffer_manager.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/colormap.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/colormap_manager.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/field_manager.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/file_manager.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/flag_manager.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/gpu_utils.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/math_func.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/memory_manager.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/pch.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/printer.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/time_manager.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/unit_manager.h"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cpp",
+			"paths" : 
+			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/mesh.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/results.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/solver.cpp"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cu",
+			"paths" : 
+			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/jacobi_pcg.cu",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/linear_solver.cu",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/residuals.cu",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/simple.cu",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/solver_util.cu"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cuh",
+			"paths" : 
+			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/jacobi_pcg.cuh",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/linear_solver.cuh",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/residuals.cuh",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/simple.cuh",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/solver_util.cuh"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.h",
+			"paths" : 
+			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/mesh.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/results.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/solver.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/solver_struct.h"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/*.cpp",
+			"paths" : [],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/*.cu",
+			"paths" : 
+			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/source/main.cu"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/*.cuh",
+			"paths" : 
+			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/header/setting.cuh"
+			],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/*.h",
+			"paths" : [],
+			"recurse" : true
+		}
+	],
+	"inputs" : 
+	[
+		{
+			"path" : "CMakeLists.txt"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "out/build/x64-Release/CMakeFiles/3.31.6-msvc6/CMakeSystem.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/scripts/buildsystems/vcpkg.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeDependentOption.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeSystemSpecificInitialize.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Windows-Initialize.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "out/build/x64-Release/CMakeFiles/3.31.6-msvc6/CMakeCCompiler.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "out/build/x64-Release/CMakeFiles/3.31.6-msvc6/CMakeCXXCompiler.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "out/build/x64-Release/CMakeFiles/3.31.6-msvc6/CMakeCUDACompiler.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeSystemSpecificInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeGenericSystem.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeInitializeConfigs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Windows.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/WindowsPaths.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeCInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeLanguageInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Compiler/MSVC-C.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Compiler/MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Compiler/CMakeCommonCompilerMacros.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Windows-MSVC-C.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Windows-MSVC.cmake"
+		},
+		{
+			"isGenerated" : true,
+			"path" : "out/build/x64-Release/CMakeFiles/3.31.6-msvc6/CMakeRCCompiler.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeRCInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeCommonLanguageInclude.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Internal/CMakeCLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Internal/CMakeCommonLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Linker/Windows-MSVC-C.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Linker/Windows-MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeCXXInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeLanguageInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Compiler/MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Compiler/MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Compiler/CMakeCommonCompilerMacros.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Windows-MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Windows-MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeCommonLanguageInclude.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Internal/CMakeCXXLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Internal/CMakeCommonLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Linker/Windows-MSVC-CXX.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Linker/Windows-MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeCUDAInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Compiler/NVIDIA-CUDA.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Compiler/NVIDIA.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Compiler/CMakeCommonCompilerMacros.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Windows-NVIDIA-CUDA.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Windows-MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeCommonLanguageInclude.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Internal/CMakeCUDALinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Internal/CMakeCommonLinkerInformation.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Linker/Windows-MSVC-CUDA.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Platform/Linker/Windows-MSVC.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/FindOpenGL.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/FindPackageHandleStandardArgs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/FindPackageMessage.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glad/gladConfigVersion.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glad/gladConfig.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glad/gladTargets.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glad/gladTargets-debug.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glad/gladTargets-release.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glfw3/glfw3ConfigVersion.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glfw3/glfw3Config.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakeFindDependencyMacro.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/FindThreads.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CheckLibraryExists.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CheckIncludeFile.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CheckCSourceCompiles.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/Internal/CheckSourceCompiles.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/FindPackageHandleStandardArgs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/FindPackageMessage.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glfw3/glfw3Targets.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glfw3/glfw3Targets-debug.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glfw3/glfw3Targets-release.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glm/glmConfigVersion.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glm/glmConfig.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glm/glmConfig-debug.cmake"
+		},
+		{
+			"isExternal" : true,
+			"path" : "C:/Users/luits/vcpkg/installed/x64-windows/share/glm/glmConfig-release.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/FindCUDAToolkit.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/FindPackageHandleStandardArgs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/FindPackageMessage.cmake"
+		},
+		{
+			"path" : "externals/clip-main/CMakeLists.txt"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/GNUInstallDirs.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakePackageConfigHelpers.cmake"
+		},
+		{
+			"isCMake" : true,
+			"isExternal" : true,
+			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/WriteBasicConfigVersionFile.cmake"
+		},
+		{
+			"path" : "externals/clip-main/clip-config.cmake.in"
+		}
+	],
+	"kind" : "cmakeFiles",
+	"paths" : 
+	{
+		"build" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release",
+		"source" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
+	},
+	"version" : 
+	{
+		"major" : 1,
+		"minor" : 1
+	}
+}

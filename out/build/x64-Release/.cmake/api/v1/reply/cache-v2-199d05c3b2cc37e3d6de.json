@@ -367,10 +367,10 @@
 				},
 				{
 					"name" : "HELPSTRING",
-					"value" : "CXX compiler"
+					"value" : "No help, variable specified on the command line."
 				}
 			],
-			"type" : "STRING",
+			"type" : "FILEPATH",
 			"value" : "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe"
 		},
 		{
@@ -479,10 +479,10 @@
 				},
 				{
 					"name" : "HELPSTRING",
-					"value" : "C compiler"
+					"value" : "No help, variable specified on the command line."
 				}
 			],
-			"type" : "STRING",
+			"type" : "FILEPATH",
 			"value" : "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe"
 		},
 		{
@@ -1611,10 +1611,10 @@
 				},
 				{
 					"name" : "HELPSTRING",
-					"value" : "The CMake toolchain file"
+					"value" : "No help, variable specified on the command line."
 				}
 			],
-			"type" : "FILEPATH",
+			"type" : "UNINITIALIZED",
 			"value" : "C:/Users/luits/vcpkg/scripts/buildsystems/vcpkg.cmake"
 		},
 		{
@@ -1647,7 +1647,7 @@
 				}
 			],
 			"type" : "PATH",
-			"value" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include/../extras/CUPTI/include"
+			"value" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/extras/CUPTI/include"
 		},
 		{
 			"name" : "CUDA_CUDART",

@@ -12,7 +12,7 @@
 #include "gui.h"
 
 #include "file_manager.h"
-#include "gui_manager.h"
+#include "flag_manager.h"
 
 struct InputFocusData {
 	bool moveCursorToEnd = false;

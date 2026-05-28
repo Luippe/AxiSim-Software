@@ -43,8 +43,6 @@ private:
 	int numTicks = 6;
 	float dy = barHeight / (numTicks);
 
-
-
 	ImVec2 posMin;
 	ImVec2 posMax;
 	ImDrawList* drawList;

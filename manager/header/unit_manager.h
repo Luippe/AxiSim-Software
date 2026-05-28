@@ -8,9 +8,13 @@ struct VariableUnits {
     std::uint8_t RUnit = 0;
 
     // solver
+    std::uint8_t axialUnit = 0;
+    std::uint8_t radialUnit = 0;
+    std::uint8_t pressureUnit = 0;
     std::uint8_t  rhoUnit = 0;
     std::uint8_t  muUnit = 0;
     std::uint8_t  DUnit = 0;
+
 };
 
 struct UnitOption {
@@ -30,6 +34,15 @@ namespace Units {
         { "m/s",  1000.0 },
         { "cm/s", 10.0   },
         { "um/s", 0.001  }
+    } };
+
+    inline constexpr std::array<UnitOption, 6> pressureUnits = { {
+        { "kg*mm^-1*s^-2", 1.0        },
+        { "Pa",            1.0e-3     },
+        { "kPa",           1.0        },
+        { "MPa",           1.0e3      },
+        { "bar",           100.0      },
+        { "atm",           101.325    }
     } };
 
     inline constexpr std::array<UnitOption, 4> diffusionUnits = { {

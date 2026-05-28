@@ -27,9 +27,12 @@ public:
 
     // add structs
     struct ResidualPlotTab {
-        int id = 0; // unique id per tab
-        std::string name;
 
+        // docking
+        int id = 0; // unique id per tab
+        ImGuiID targetDockID = 0;   // current dock id
+
+        // plotting variables
         ImPlotRect currentLimits;
 
         std::vector<double> iterations;
@@ -40,7 +43,12 @@ public:
         bool resetView = false;
         bool copyImageNextFrame = false;
 
-        ImGuiID targetDockID = 0;   // current dock id
+        // renaming variables
+        std::string name;
+
+        bool renaming = false;
+
+        char renameBuffer[128] = {};
     };
 
     // copy to clipboard variables
@@ -108,6 +116,9 @@ private:
 
     // draw tabs
     void drawTabs(ImGuiID dockspaceID, const ImGuiWindowClass& residualClass);
+
+    // draw popup when renaming tab
+    void drawRenamePopup(ResidualPlotTab& tab);
 
     // setup axes
     void setupAxes();
