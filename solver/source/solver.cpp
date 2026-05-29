@@ -77,6 +77,7 @@ void Solver::setDefault() {
 
     addConvectionTerm = false;
     transient = false;
+    energyEquation = false;
     dt = 0.1;
     tEnd = 2.0;
     configSimple.maxIter = 10;

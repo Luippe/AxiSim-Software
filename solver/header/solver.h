@@ -34,6 +34,7 @@ public:
 
 	bool addConvectionTerm = false;
 	bool transient = false;
+	bool energyEquation = false;
 	int saveKeyFrameIter = 2;
 
 	std::thread solverThread;

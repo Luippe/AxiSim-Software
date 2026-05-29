@@ -57,7 +57,7 @@ void SolverGUI::drawPropertiesPanel() {
 
 		ImGui::Dummy(ImVec2(0.0f, 10.0f));
 		ImGui::TextUnformatted("Options");
-		ImGui::BeginChild("Options", ImVec2(380.0f, 90.0f), true);
+		ImGui::BeginChild("Options", ImVec2(380.0f, 120.0f), true);
 		if (ImGui::BeginTable("Options", 2)) {
 
 			setupTableColumns(
@@ -70,6 +70,9 @@ void SolverGUI::drawPropertiesPanel() {
 
 			labelRow("Add Convection Term");
 			checkBox("##ConvectionTerm", &solver.addConvectionTerm);
+
+			labelRow("Energy Equation");
+			checkBox("##EnergyEquation", &solver.energyEquation);
 
 			labelRow("Transient");
 			checkBox("##TransientTerm", &solver.transient);

@@ -17,12 +17,11 @@ public:
 
 private:
 
-
-
 	SceneView& scene;
 	GUI& gui;
 	Results& results;
 	Colormap& colormap;
 	Colorbar& colorbar;
 	Mesh& mesh;
+
 };

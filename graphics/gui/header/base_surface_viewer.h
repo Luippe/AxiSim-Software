@@ -1,6 +1,9 @@
 #pragma once
 #include "imgui.h"
 
+#include <optional>
+#include <unordered_set>
+
 #include "graphics_struct.h"
 #include "shader.h"
 
@@ -255,6 +258,8 @@ protected:
 	// ======================================================================
 	void setImagePadding(ImVec2& padding);
 
+	std::optional<ImVec2> mouseToGridPoint(int nrBase, int nzBase);
+
 	void updateUV(float halfW, float halfH);
 
 	void clampZoomCenter(float& halfW, float& halfH);
@@ -263,9 +268,9 @@ protected:
 
 	void resetView();
 
-	void addHighlightCell(std::vector<int>& indices, int n);
+	void addHighlightCell(std::unordered_set<int>& indices, int n);
 
-	void highlightCellsInRect(std::vector<int>& indices, ImVec2 cellA, ImVec2 cellB, int nzBase, int nrBase);
+	void highlightCellsInRect(std::unordered_set<int>& indices, ImVec2 cellA, ImVec2 cellB, int nzBase, int nrBase);
 
 	// get physical z and r coordinates at mouse position
 	void getMousePhysicalCoord(ImVec2& mousePos, const std::vector<double>& rFace, const std::vector<double> zFace, double& r, double& z);
@@ -279,7 +284,7 @@ protected:
 	ImVec2 getMouseIndex(const std::vector<double>& rFace, const std::vector<double> zFace);
 
 	// turns i,j coordinates to pixel coordinates
-	ImVec2 gridToScreen(int jFace, int iFace, const std::vector<double>& rFace, const std::vector<double> zFace);
+	ImVec2 gridToScreen(int jFace, int iFace, const std::vector<double>& rFace, const std::vector<double>& zFace);
 
 	// add tooltip to image button when hovered
 	void setToolTip(const char* text);
@@ -303,7 +308,7 @@ protected:
 	// draw rectangle when mouse is dragged
 	void displayRect(int nrBase, int nzBase);
 
-	void drawHighlightedCells(std::vector<int>& indices, const std::vector<double>& zFace, const std::vector<double>& rFace);
+	void drawHighlightedCells(std::unordered_set<int>& indices, const std::vector<double>& rFace, const std::vector<double>& zFace);
 
 
 
@@ -324,14 +329,21 @@ protected:
 
 	void addImageButtonNewTab(TextureBuffer& icon, ImVec2 buttonSize, ImGuiID currentDockID, ImGuiID& pendingAddDockID, ImGuiID dockspaceID);
 
-	void addImageButtonToggleBool(TextureBuffer& icon, ImVec2 buttonSize, bool& toggle);
+	void addImageButtonToggleBool(const char* id, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle);
 
-	void addImageButtonCopyToClipboard(TextureBuffer& icon, ImVec2 buttonSize);
+	void addImageButtonCopyToClipboard(const char* id, TextureBuffer& icon, ImVec2 buttonSize);
 
 	template<typename T>
 	void addImageButtonClearVector(const char* id, TextureBuffer& icon, ImVec2 buttonSize, std::vector<T>& vec) {
 		if (ImGui::ImageButton(id, (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
 			vec.clear();
+		}
+	}
+
+	template<typename T>
+	void addImageButtonClearSet(const char* id, TextureBuffer& icon, ImVec2 buttonSize, std::unordered_set<T>& set) {
+		if (ImGui::ImageButton(id, (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
+			set.clear();
 		}
 	}
 };

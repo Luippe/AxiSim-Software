@@ -1,6 +1,7 @@
 #include "mesh_inspector.h"
 
 #include <format>
+#include <algorithm>
 #include <glm/glm.hpp>
 
 #include "scene_view.h"
@@ -9,6 +10,7 @@
 #include "flag_manager.h"
 #include "printer.h"
 #include "math_func.h"
+
 
 MeshInspector::MeshInspector(Mesh& mesh, AppAssets& assets) :
 	mesh(mesh),
@@ -24,6 +26,305 @@ MeshInspector::MeshInspector(Mesh& mesh, AppAssets& assets) :
 // ======================================================================
 // -----------------------HELPER FUNCTIONS-------------------------------
 // ======================================================================
+bool isAxisAligned(const GridVertex& a, const GridVertex& b) {
+	return a.i == b.i || a.j == b.j;
+}
+
+GridVertexEdge makeUndirectedEdge(GridVertex a, GridVertex b) {
+	// canonical ordering
+	if (a.i > b.i || (a.i == b.i && a.j > b.j)) {
+		std::swap(a, b);
+	}
+
+	return { a, b };
+}
+
+int MeshInspector::cellIndex(int i, int j) const {
+	return i * nzBase + j;
+}
+
+bool MeshInspector::isInsideCellGrid(int i, int j) const {
+	return i >= 0 && i < nrBase &&
+		j >= 0 && j < nzBase;
+}
+
+bool MeshInspector::isSolidCell(
+	int i,
+	int j,
+	const std::unordered_set<int>& obstacleIndices
+) const {
+	if (!isInsideCellGrid(i, j)) {
+		return false;
+	}
+
+	int n = cellIndex(i, j);
+
+	return obstacleIndices.find(n) != obstacleIndices.end();
+}
+
+void MeshInspector::rebuildSelectableOuterEdges(
+	const std::unordered_set<int>& obstacleIndices
+) {
+	selectableOuterEdges.clear();
+
+	for (int n : obstacleIndices) {
+		if (n < 0 || n >= nrBase * nzBase) {
+			continue;
+		}
+
+		int i = n / nzBase;
+		int j = n % nzBase;
+
+		// Top face of solid cell
+		if (!isSolidCell(i - 1, j, obstacleIndices)) {
+			selectableOuterEdges.insert({
+				EdgeOrient::Horizontal,
+				i,
+				j
+				});
+		}
+
+		// Bottom face of solid cell
+		if (!isSolidCell(i + 1, j, obstacleIndices)) {
+			selectableOuterEdges.insert({
+				EdgeOrient::Horizontal,
+				i + 1,
+				j
+				});
+		}
+
+		// Left face of solid cell
+		if (!isSolidCell(i, j - 1, obstacleIndices)) {
+			selectableOuterEdges.insert({
+				EdgeOrient::Vertical,
+				i,
+				j
+				});
+		}
+
+		// Right face of solid cell
+		if (!isSolidCell(i, j + 1, obstacleIndices)) {
+			selectableOuterEdges.insert({
+				EdgeOrient::Vertical,
+				i,
+				j + 1
+				});
+		}
+	}
+}
+
+BoundarySegment meshEdgeToSegment(const MeshEdge& e) {
+	if (e.orient == EdgeOrient::Horizontal) {
+		return {
+			GridVertex{ e.i, e.j },
+			GridVertex{ e.i, e.j + 1 }
+		};
+	}
+	else {
+		return {
+			GridVertex{ e.i,     e.j },
+			GridVertex{ e.i + 1, e.j }
+		};
+	}
+}
+
+using BoundaryGraph =
+std::unordered_map<GridVertex, std::vector<GridVertex>, GridVertexHash>;
+
+BoundaryGraph buildBoundaryGraph(
+	const std::unordered_set<MeshEdge, MeshEdgeHash>& outerEdges
+) {
+	BoundaryGraph graph;
+
+	for (const MeshEdge& edge : outerEdges) {
+		BoundarySegment seg = meshEdgeToSegment(edge);
+
+		graph[seg.a].push_back(seg.b);
+		graph[seg.b].push_back(seg.a);
+	}
+
+	return graph;
+}
+
+std::vector<std::vector<GridVertex>> traceAllBoundaryLoops(
+	const std::unordered_set<MeshEdge, MeshEdgeHash>& outerEdges
+) {
+	BoundaryGraph graph = buildBoundaryGraph(outerEdges);
+
+	std::vector<std::vector<GridVertex>> loops;
+	std::unordered_set<GridVertexEdge, VertexEdgeHash> visitedEdges;
+
+	for (const auto& [startVertex, neighbors] : graph) {
+		for (const GridVertex& firstNeighbor : neighbors) {
+			GridVertexEdge firstEdge = makeUndirectedEdge(startVertex, firstNeighbor);
+
+			if (visitedEdges.find(firstEdge) != visitedEdges.end()) {
+				continue;
+			}
+
+			std::vector<GridVertex> loop;
+
+			GridVertex start = startVertex;
+			GridVertex prev = startVertex;
+			GridVertex current = firstNeighbor;
+
+			loop.push_back(start);
+
+			visitedEdges.insert(firstEdge);
+
+			while (true) {
+				loop.push_back(current);
+
+				auto it = graph.find(current);
+				if (it == graph.end()) {
+					break;
+				}
+
+				const std::vector<GridVertex>& currentNeighbors = it->second;
+
+				GridVertex next{ -1, -1 };
+
+				for (const GridVertex& candidate : currentNeighbors) {
+					if (!(candidate == prev)) {
+						next = candidate;
+						break;
+					}
+				}
+
+				if (next.i == -1) {
+					break;
+				}
+
+				GridVertexEdge edgeKey = makeUndirectedEdge(current, next);
+
+				if (visitedEdges.find(edgeKey) != visitedEdges.end()) {
+					break;
+				}
+
+				visitedEdges.insert(edgeKey);
+
+				prev = current;
+				current = next;
+
+				if (current == start) {
+					break;
+				}
+			}
+
+			if (loop.size() >= 3) {
+				loops.push_back(loop);
+			}
+		}
+	}
+
+	return loops;
+}
+
+bool sameDirection(
+	const GridVertex& a,
+	const GridVertex& b,
+	const GridVertex& c
+) {
+	int di1 = b.i - a.i;
+	int dj1 = b.j - a.j;
+
+	int di2 = c.i - b.i;
+	int dj2 = c.j - b.j;
+
+	return di1 == di2 && dj1 == dj2;
+}
+
+std::vector<GridVertex> simplifyLoop(
+	const std::vector<GridVertex>& loop
+) {
+	if (loop.size() < 3) {
+		return loop;
+	}
+
+	std::vector<GridVertex> simplified;
+
+	for (std::size_t k = 0; k < loop.size(); k++) {
+		const GridVertex& prev = loop[(k + loop.size() - 1) % loop.size()];
+		const GridVertex& curr = loop[k];
+		const GridVertex& next = loop[(k + 1) % loop.size()];
+
+		if (!sameDirection(prev, curr, next)) {
+			simplified.push_back(curr);
+		}
+	}
+
+	return simplified;
+}
+
+std::vector<BoundarySegment> makeBoundarySegments(
+	const std::vector<GridVertex>& simplifiedLoop
+) {
+	std::vector<BoundarySegment> segments;
+
+	if (simplifiedLoop.size() < 2) {
+		return segments;
+	}
+
+	for (std::size_t k = 0; k < simplifiedLoop.size(); k++) {
+		const GridVertex& a = simplifiedLoop[k];
+		const GridVertex& b = simplifiedLoop[(k + 1) % simplifiedLoop.size()];
+
+		// Boundary segments on this mesh should never be diagonal.
+		if (!isAxisAligned(a, b)) {
+			continue;
+		}
+
+		segments.push_back({ a, b });
+	}
+
+	return segments;
+}
+
+std::vector<BoundarySegment> buildDisplayBoundaries(
+	const std::unordered_set<MeshEdge, MeshEdgeHash>& outerEdges
+) {
+	std::vector<BoundarySegment> allSegments;
+
+	std::vector<std::vector<GridVertex>> loops =
+		traceAllBoundaryLoops(outerEdges);
+
+	for (const std::vector<GridVertex>& loop : loops) {
+		std::vector<GridVertex> simplifiedLoop = simplifyLoop(loop);
+
+		std::vector<BoundarySegment> segments =
+			makeBoundarySegments(simplifiedLoop);
+
+		allSegments.insert(
+			allSegments.end(),
+			segments.begin(),
+			segments.end()
+		);
+	}
+
+	return allSegments;
+}
+
+
+
+void MeshInspector::drawBoundarySegments(
+	const std::vector<BoundarySegment>& segments,
+	const std::vector<double>& rFace,
+	const std::vector<double>& zFace
+) {
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	for (const BoundarySegment& seg : segments) {
+		ImVec2 p0 = gridToScreen(seg.a.j, seg.a.i, rFace, zFace);
+		ImVec2 p1 = gridToScreen(seg.b.j, seg.b.i, rFace, zFace);
+
+		drawList->AddLine(
+			p0,
+			p1,
+			IM_COL32(255, 80, 80, 255),
+			3.0f
+		);
+	}
+}
+
 void MeshInspector::setBaseNrNz() {
 	nrBase = g.nr;
 	nzBase = g.nz;
@@ -36,6 +337,37 @@ void MeshInspector::createGridBuffer() {
 	vertexBuffer.enableAttribute(0, 2, GL_FLOAT, 2 * sizeof(float), (void*)0);
 	vertexBuffer.unbind();
 
+}
+
+MeshEdge MeshInspector::nearestEdgeFromGridPoint(const ImVec2& p) {
+
+	int jFace = std::clamp(int(std::round(p.x)), 0, nzBase);
+	int iFace = std::clamp(int(std::round(p.y)), 0, nrBase);
+
+	int jCell = std::clamp(int(std::floor(p.x)), 0, nzBase - 1);
+	int iCell = std::clamp(int(std::floor(p.y)), 0, nrBase - 1);
+
+	float distToVertical = std::abs(p.x - float(jFace));
+	float distToHorizontal = std::abs(p.y - float(iFace));
+
+	if (distToVertical < distToHorizontal) {
+		// Vertical face at axial face jFace,
+		// spanning radial cell iCell.
+		return MeshEdge{
+			EdgeOrient::Vertical,
+			iCell,
+			jFace
+		};
+	}
+	else {
+		// Horizontal face at radial face iFace,
+		// spanning axial cell jCell.
+		return MeshEdge{
+			EdgeOrient::Horizontal,
+			iFace,
+			jCell
+		};
+	}
 }
 
 // ======================================================================
@@ -58,6 +390,8 @@ void MeshInspector::handleMouse() {
 
 	}
 
+
+
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && toggleSelect) {
 		addHighlightCell(g.obstacleIndices, (int)currentMouseIndex.y * nzBase + (int)currentMouseIndex.x);
 	}
@@ -66,13 +400,20 @@ void MeshInspector::handleMouse() {
 		highlightCellsInRect(g.obstacleIndices, initMouseIndex, currentMouseIndex, nzBase, nrBase);
 	}
 
+	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && toggleSelect) {
+		rebuildSelectableOuterEdges(g.obstacleIndices);
+		//printInt(selectableOuterEdges.size());
+	}
+
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
 		handlePopup();
 	}
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && !toggleSelect) {
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && !toggleSelect && !toggleConnecting) {
 		handlePan(io);
 	}
+
+
 
 	// handle zooming in/out
 	if (io.MouseWheel != 0.0f) {
@@ -123,6 +464,10 @@ void MeshInspector::drawToolBar() {
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
+	addImageButtonToggleBool("Connect", assets.connectIcon, ImVec2(22.0f, 22.0f), toggleConnecting);
+	setToolTip("Draw Lines");
+	ImGui::SameLine();
+
 	addImageButtonResetView(assets.houseIcon, ImVec2(22.0f, 22.0f));
 	setToolTip("Reset view");
 	ImGui::SameLine();
@@ -131,15 +476,15 @@ void MeshInspector::drawToolBar() {
 	setToolTip("Clear all selected points");
 	ImGui::SameLine();
 
-	addImageButtonClearVector("##ClearObstacle", assets.clearIcon, ImVec2(22.0f, 22.0f), g.obstacleIndices);
+	addImageButtonClearSet("##ClearObstacle", assets.clearIcon, ImVec2(22.0f, 22.0f), g.obstacleIndices);
 	setToolTip("Clear all selected cells");
 	ImGui::SameLine();
 
-	addImageButtonToggleBool(assets.selectRegionIcon, ImVec2(22.0f, 22.0f), toggleSelect);
+	addImageButtonToggleBool("Select", assets.selectRegionIcon, ImVec2(22.0f, 22.0f), toggleSelect);
 	setToolTip("Select");
 	ImGui::SameLine();
 
-	addImageButtonCopyToClipboard(assets.copyIcon, ImVec2(22.0f, 22.0f));
+	addImageButtonCopyToClipboard("Copy", assets.copyIcon, ImVec2(22.0f, 22.0f));
 	setToolTip("Copy to clipboard");
 	ImGui::SameLine();
 
@@ -190,6 +535,7 @@ void MeshInspector::drawTextAtSurfacePoint() {
 
 	}
 }
+
 
 void MeshInspector::drawPopup() {
 
@@ -254,11 +600,25 @@ void MeshInspector::render() {
 
 	vertexBuffer.bufferSubData(mesh.gridLineVertices.size() * sizeof(float), mesh.gridLineVertices.data());
 
+
+
 	drawToolBar();
 	resizeImage(0.0f, 0.0f);
 	renderPreview();
+
+
 	handleMouse();
-	drawHighlightedCells(g.obstacleIndices, g.zFace, g.rFace);
+
+	std::vector<BoundarySegment> displayBoundaries =
+		buildDisplayBoundaries(selectableOuterEdges);
+
+	drawBoundarySegments(
+		displayBoundaries,
+		g.rFace,
+		g.zFace
+	);
+
+	drawHighlightedCells(g.obstacleIndices, g.rFace, g.zFace);
 	drawTextAtSurfacePoint();
 	drawPopup();
 

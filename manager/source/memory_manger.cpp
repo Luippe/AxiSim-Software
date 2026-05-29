@@ -54,7 +54,7 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 	std::vector<double> z = config.g.z;
 	std::vector<double> rFace = config.g.rFace;
 	std::vector<double> zFace = config.g.zFace;
-	std::vector<int> obstacleIndices = config.g.obstacleIndices;
+	std::unordered_set<int> obstacleIndices = config.g.obstacleIndices;
 
 	coeff.AE = deviceAlloc<double>(N);
 	coeff.AW = deviceAlloc<double>(N);
@@ -77,12 +77,6 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 	// find which cells should be active or not. 1 = active, 0 = deactive
 	std::vector<uint8_t> activeCell (N, 1);
 	std::vector<uint8_t> activeBC(N, 1);
-
-	std::unordered_set<int> obstacleSet(
-		obstacleIndices.begin(),
-		obstacleIndices.end()
-	);
-
 
 	for (int i = 0; i < nr; ++i) {
 		for (int j = 0; j < nz; ++j) {
@@ -117,13 +111,13 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 			// obstacles
 			bool isSolid = false;
 			if (storeType == CellStoreType::CENTER) {
-				isSolid = isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i, j);
+				isSolid = isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i, j);
 			}
 			else if (storeType == CellStoreType::AXIAL) {
-				isSolid = isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i, j - 1) || isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i, j);
+				isSolid = isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i, j - 1) || isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i, j);
 			}
 			else if (storeType == CellStoreType::RADIAL) {
-				isSolid = isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i - 1, j) || isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i, j);
+				isSolid = isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i - 1, j) || isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i, j);
 			}
 
 			if (isSolid) {
@@ -145,15 +139,10 @@ std::vector<double> getInitializedVelocity(ConfigSolver& config, BoundaryConditi
 	std::vector<double> dz = config.g.dz;
 	std::vector<double> r = config.g.r;
 	std::vector<double> zFace = config.g.zFace;
-	std::vector<int> obstacleIndices = config.g.obstacleIndices;
+	std::unordered_set<int> obstacleIndices = config.g.obstacleIndices;
 
 	double R = config.g.R;
 	double Umax = config.f.Umax;
-
-	std::unordered_set<int> obstacleSet(
-		obstacleIndices.begin(),
-		obstacleIndices.end()
-	);
 
 	// initialize axial velocity
 	std::vector<double> u(nr * (nz + 1), 0.0);
@@ -177,13 +166,12 @@ std::vector<double> getInitializedVelocity(ConfigSolver& config, BoundaryConditi
 			}
 
 			// check if u face is on a solid boundary
-			isSolid = isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i, j - 1) || isObstacleCell(obstacleSet, config.g.nr, config.g.nz, i, j);
+			isSolid = isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i, j - 1) || isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i, j);
 			if (isSolid) {
 				u[n] = 0.0;
 			}
 		}
 	}
-
 	return u;
 }
 
@@ -238,7 +226,7 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 	std::vector<double> rFace = g.rFace;
 	std::vector<double> r = g.r;
 	std::vector<double> z = g.z;
-	std::vector<int> obstacleIndices = g.obstacleIndices;
+	std::unordered_set<int> obstacleIndices = g.obstacleIndices;
 
 	double Umax = f.Umax;
 	double R = g.R;
@@ -292,8 +280,7 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 			//	c_cell[n] = 1;
 			//}
 
-			auto it = std::find(obstacleIndices.begin(), obstacleIndices.end(), n);
-			if (it != obstacleIndices.end()) {
+			if (obstacleIndices.contains(n)) {
 				c_cell[n] = 1;
 			}
 		}

@@ -54,6 +54,7 @@ void GUI::createAssetBuffers() {
 	assets.plusIcon.createBuffer("assets/icons/plus.png");
 	assets.copyIcon.createBuffer("assets/icons/clipboard.png");
 	assets.selectRegionIcon.createBuffer("assets/icons/select-area.png");
+	assets.connectIcon.createBuffer("assets/icons/connect-line.png");
 
 }
 

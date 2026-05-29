@@ -114,15 +114,28 @@ BaseSurfaceViewer::BaseSurfaceViewer(const char* vertexPath, const char* fragmen
 // -----------------------HELPER FUNCTION--------------------------------
 // ======================================================================
 int findCellIndex(const std::vector<double>& face, double x) {
-	int nCells = static_cast<int>(face.size()) - 1;
+	int nFaces = static_cast<int>(face.size());
+
+	if (nFaces == 0) return -1;
+	if (nFaces == 1) return 0;
 
 	if (x <= face.front()) return 0;
-	if (x >= face.back())  return nCells - 1;
+	if (x >= face.back())  return nFaces - 1;
 
-	auto it = std::upper_bound(face.begin(), face.end(), x);
+	auto it = std::lower_bound(face.begin(), face.end(), x);
 
-	int idx = static_cast<int>(it - face.begin()) - 1;
-	return std::clamp(idx, 0, nCells - 1);
+	int right = static_cast<int>(it - face.begin());
+	int left = right - 1;
+
+	double dLeft = std::abs(x - face[left]);
+	double dRight = std::abs(x - face[right]);
+
+	if (dLeft <= dRight) {
+		return left;
+	}
+	else {
+		return right;
+	}
 }
 
 void BaseSurfaceViewer::updateUV(float halfW, float halfH) {
@@ -152,7 +165,7 @@ void BaseSurfaceViewer::toggleSelectedPoint(std::vector<SurfacePoint>& points, I
 }
 
 
-ImVec2 BaseSurfaceViewer::gridToScreen(int jFace, int iFace, const std::vector<double>& rFace, const std::vector<double> zFace) {
+ImVec2 BaseSurfaceViewer::gridToScreen(int jFace, int iFace, const std::vector<double>& rFace, const std::vector<double>& zFace) {
 
 	ImVec2 itemMin = ImGui::GetItemRectMin();
 	ImVec2 itemMax = ImGui::GetItemRectMax();
@@ -227,6 +240,36 @@ ImVec2 BaseSurfaceViewer::getMouseIndex(const std::vector<double>& rFace, const 
 	return ImVec2(j, i);
 }
 
+std::optional<ImVec2> BaseSurfaceViewer::mouseToGridPoint(int nrBase, int nzBase) {
+	ImVec2 imageMin = ImGui::GetItemRectMin();
+	ImVec2 imageMax = ImGui::GetItemRectMax();
+	ImVec2 mouse = ImGui::GetIO().MousePos;
+
+	float imageW = imageMax.x - imageMin.x;
+	float imageH = imageMax.y - imageMin.y;
+
+	if (imageW <= 0.0f || imageH <= 0.0f) {
+		return std::nullopt;
+	}
+
+	float sx = (mouse.x - imageMin.x) / imageW;
+	float sy = (mouse.y - imageMin.y) / imageH;
+
+	if (sx < 0.0f || sx > 1.0f || sy < 0.0f || sy > 1.0f) {
+		return std::nullopt;
+	}
+
+	// Assuming your image uses:
+	// ImGui::Image(texture, size, ImVec2(u0, v1), ImVec2(u1, v0));
+	float u = u0 + sx * (u1 - u0);
+	float v = v1 - sy * (v1 - v0);
+
+	return ImVec2(
+		u * float(nzBase),
+		v * float(nrBase)
+	);
+}
+
 ImVec2 BaseSurfaceViewer::uvToScreen(const ImVec2& uv) {
 	ImVec2 imageMin = ImGui::GetItemRectMin();
 
@@ -264,15 +307,11 @@ void BaseSurfaceViewer::resizeImage(int padx, int pady) {
 	}
 }
 
-void BaseSurfaceViewer::addHighlightCell(std::vector<int>& indices, int n) {
-	auto it = std::find(indices.begin(), indices.end(), n);
-
-	if (it == indices.end()) {
-		indices.push_back(n);
-	}
+void BaseSurfaceViewer::addHighlightCell(std::unordered_set<int>& indices, int n) {
+	indices.insert(n);
 }
 
-void BaseSurfaceViewer::highlightCellsInRect(std::vector<int>& indices, ImVec2 cellA, ImVec2 cellB, int nzBase, int nrBase) {
+void BaseSurfaceViewer::highlightCellsInRect(std::unordered_set<int>& indices, ImVec2 cellA, ImVec2 cellB, int nzBase, int nrBase) {
 	int j0 = static_cast<int>(cellA.x);
 	int i0 = static_cast<int>(cellA.y);
 
@@ -411,18 +450,18 @@ void BaseSurfaceViewer::displayRect(int nrBase, int nzBase) {
 	drawList->AddRect(p1, p2, IM_COL32(255, 255, 255, 255));
 }
 
-void BaseSurfaceViewer::drawHighlightedCells(std::vector<int>& indices, const std::vector<double>& zFace, const std::vector<double>& rFace) {
+void BaseSurfaceViewer::drawHighlightedCells(std::unordered_set<int>& indices, const std::vector<double>& rFace, const std::vector<double>& zFace) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 	ImVec2 imageMin = ImGui::GetItemRectMin();
 	ImVec2 imageMax = ImGui::GetItemRectMax();
 
-	int nzBase = static_cast<int>(zFace.size()) - 1;
-	int nrBase = static_cast<int>(rFace.size()) - 1;
+	int nzBase = (int)(zFace.size()) - 1;
+	int nrBase = (int)(rFace.size()) - 1;
 
 	// Prevent highlights from drawing outside the image
 	drawList->PushClipRect(imageMin, imageMax, true);
-	//printInt(highlightedCells.size());
+
 	for (int n : indices) {
 
 		int i = n / nzBase;
@@ -508,7 +547,9 @@ void BaseSurfaceViewer::addImageButtonNewTab(TextureBuffer& icon, ImVec2 buttonS
 	}
 }
 
-void BaseSurfaceViewer::addImageButtonToggleBool(TextureBuffer& icon, ImVec2 buttonSize, bool& toggle) {
+void BaseSurfaceViewer::addImageButtonToggleBool(const char* id, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle) {
+
+	ImGui::PushID(id);
 
 	// highlight button when toggle is on
 	bool pushedStyle = toggle;
@@ -526,13 +567,20 @@ void BaseSurfaceViewer::addImageButtonToggleBool(TextureBuffer& icon, ImVec2 but
 	if (pushedStyle) {
 		ImGui::PopStyleColor(3);
 	}
+
+	ImGui::PopID();
 }
 
-void BaseSurfaceViewer::addImageButtonCopyToClipboard(TextureBuffer& icon, ImVec2 buttonSize) {
+void BaseSurfaceViewer::addImageButtonCopyToClipboard(const char* id, TextureBuffer& icon, ImVec2 buttonSize) {
+	
+	ImGui::PushID(id);
+
 	if (ImGui::ImageButton("##CopyToClipboard", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize) || consoleCopy) {
 		pendingCopyWidth = frameBuffer.width;
 		pendingCopyHeight = frameBuffer.height;
 		pendingCopy = true;
 		consoleCopy = false;
 	}
+
+	ImGui::PopID();
 }

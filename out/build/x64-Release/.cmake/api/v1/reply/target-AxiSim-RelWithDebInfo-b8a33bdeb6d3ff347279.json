@@ -186,17 +186,17 @@
 				26,
 				27,
 				28,
-				31,
-				33,
-				84,
-				85,
+				32,
+				34,
 				86,
 				87,
 				88,
 				89,
 				90,
 				91,
-				93
+				92,
+				93,
+				95
 			]
 		},
 		{
@@ -292,11 +292,12 @@
 			[
 				29,
 				30,
-				32,
-				34,
+				31,
+				33,
 				35,
 				36,
-				37
+				37,
+				38
 			]
 		},
 		{
@@ -382,7 +383,7 @@
 			"language" : "C",
 			"sourceIndexes" : 
 			[
-				92
+				94
 			]
 		}
 	],
@@ -527,21 +528,21 @@
 				33,
 				34,
 				35,
-				36
+				36,
+				37
 			]
 		},
 		{
 			"name" : "src\\source",
 			"sourceIndexes" : 
 			[
-				37
+				38
 			]
 		},
 		{
 			"name" : "graphics\\gui\\header",
 			"sourceIndexes" : 
 			[
-				38,
 				39,
 				40,
 				41,
@@ -553,22 +554,22 @@
 				47,
 				48,
 				49,
-				50
+				50,
+				51
 			]
 		},
 		{
 			"name" : "graphics\\tinyfiledialogs",
 			"sourceIndexes" : 
 			[
-				51,
-				92
+				52,
+				94
 			]
 		},
 		{
 			"name" : "graphics\\window\\header",
 			"sourceIndexes" : 
 			[
-				52,
 				53,
 				54,
 				55,
@@ -576,14 +577,14 @@
 				57,
 				58,
 				59,
-				60
+				60,
+				61
 			]
 		},
 		{
 			"name" : "manager\\header",
 			"sourceIndexes" : 
 			[
-				61,
 				62,
 				63,
 				64,
@@ -595,14 +596,14 @@
 				70,
 				71,
 				72,
-				73
+				73,
+				74
 			]
 		},
 		{
 			"name" : "solver\\header",
 			"sourceIndexes" : 
 			[
-				74,
 				75,
 				76,
 				77,
@@ -610,41 +611,43 @@
 				79,
 				80,
 				81,
-				82
+				82,
+				83,
+				84
 			]
 		},
 		{
 			"name" : "src\\header",
 			"sourceIndexes" : 
 			[
-				83
+				85
 			]
 		},
 		{
 			"name" : "graphics\\imgui",
 			"sourceIndexes" : 
 			[
-				84,
-				85,
 				86,
 				87,
-				90,
-				91
+				88,
+				89,
+				92,
+				93
 			]
 		},
 		{
 			"name" : "graphics\\imgui\\backends",
 			"sourceIndexes" : 
 			[
-				88,
-				89
+				90,
+				91
 			]
 		},
 		{
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				93
+				95
 			]
 		}
 	],
@@ -823,6 +826,12 @@
 			"compileGroupIndex" : 0,
 			"path" : "manager/source/time_manager.cpp",
 			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
+			"path" : "solver/source/energy_equation.cu",
+			"sourceGroupIndex" : 3
 		},
 		{
 			"backtrace" : 2,
@@ -1057,6 +1066,11 @@
 			"backtrace" : 2,
 			"path" : "manager/header/unit_manager.h",
 			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/energy_equation.cuh",
+			"sourceGroupIndex" : 9
 		},
 		{
 			"backtrace" : 2,

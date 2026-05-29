@@ -217,11 +217,11 @@ void Inspector::drawToolBar() {
 	setToolTip("Clear all selected points");
 	ImGui::SameLine();
 
-	addImageButtonToggleBool(assets.selectRegionIcon, ImVec2(22.0f, 22.0f),toggleSelect);
+	addImageButtonToggleBool("Select", assets.selectRegionIcon, ImVec2(22.0f, 22.0f), toggleSelect);
 	setToolTip("Select");
 	ImGui::SameLine();
 
-	addImageButtonCopyToClipboard(assets.copyIcon, ImVec2(22.0f, 22.0f));
+	addImageButtonCopyToClipboard("Copy", assets.copyIcon, ImVec2(22.0f, 22.0f));
 	setToolTip("Copy to clipboard");
 	ImGui::SameLine();
 

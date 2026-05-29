@@ -1,6 +1,7 @@
 #pragma once
 //#include "device_launch_parameters.h"
 #include <vector>
+#include <unordered_set>
 
 #ifdef __INTELLISENSE__
 void __syncthreads();
@@ -21,7 +22,7 @@ struct GridConfig {
 	std::vector<double> z;
 	std::vector<double> rFace;
 	std::vector<double> zFace;
-	std::vector<int> obstacleIndices;
+	std::unordered_set<int> obstacleIndices;
 
 	double zBias = 1.0;
 	double rBias = 1.0;

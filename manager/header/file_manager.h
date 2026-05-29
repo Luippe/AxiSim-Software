@@ -3,6 +3,7 @@
 #include <string>
 #include <fstream>
 #include <filesystem>
+#include <unordered_set>
 
 class Solution;
 class Mesh;
@@ -98,6 +99,31 @@ bool readVar(std::ifstream& in, std::vector<T>& vec) {
 	return (bool)in.read((char*)vec.data(), size * sizeof(T));
 }
 
+template<typename T>
+bool readVar(std::ifstream& in, std::unordered_set<T>& set) {
+
+	size_t size = 0;
+
+	if (!in.read((char*)&size, sizeof(size))) {
+		return false;
+	}
+
+	set.clear();
+	set.reserve(size);
+
+	for (size_t k = 0; k < size; k++) {
+		T value{};
+
+		if (!in.read((char*)(&value), sizeof(T))) {
+			return false;
+		}
+		set.insert(value);
+	}
+
+	return true;
+
+}
+
 // load several values
 template<typename... Args>
 bool readAll(std::ifstream& in, Args&... args) {
@@ -131,17 +157,29 @@ bool readBinary(std::ifstream& in, Args&... args) {
 // -------------------SAVING FILE----------------------
 // ====================================================
 
+// save any single object
 template <typename T>
 void writeVar(std::ofstream& out, const T& value) {
 	out.write((const char*)(&value), sizeof(T));
 }
 
-// save one std::vector
+// save std::vector
 template <typename T>
 void writeVar(std::ofstream& out, const std::vector<T>& vec) {
 	size_t size = vec.size();
 	out.write((const char*)&size, sizeof(size));
 	out.write((const char*)vec.data(), size * sizeof(T));
+}
+
+// save std::unordered_set
+template <typename T>
+void writeVar(std::ofstream& out, const std::unordered_set<T>& set) {
+	size_t size = set.size();
+	out.write((const char*)&size, sizeof(size));
+
+	for (const T& value : set) {
+		out.write((const char*)&value, sizeof(T));
+	}
 }
 
 template <typename... Args>
