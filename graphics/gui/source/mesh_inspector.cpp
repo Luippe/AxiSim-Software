@@ -11,6 +11,7 @@
 #include "printer.h"
 #include "math_func.h"
 
+#include <iostream>
 
 MeshInspector::MeshInspector(Mesh& mesh, AppAssets& assets) :
 	mesh(mesh),
@@ -26,17 +27,52 @@ MeshInspector::MeshInspector(Mesh& mesh, AppAssets& assets) :
 // ======================================================================
 // -----------------------HELPER FUNCTIONS-------------------------------
 // ======================================================================
-bool isAxisAligned(const GridVertex& a, const GridVertex& b) {
-	return a.i == b.i || a.j == b.j;
+int edgeLengthInFaces(const BoundarySegment& seg) {
+	int di = std::abs(seg.b.i - seg.a.i);
+	int dj = std::abs(seg.b.j - seg.a.j);
+
+	return di + dj;
 }
 
-GridVertexEdge makeUndirectedEdge(GridVertex a, GridVertex b) {
-	// canonical ordering
-	if (a.i > b.i || (a.i == b.i && a.j > b.j)) {
-		std::swap(a, b);
+bool MeshInspector::isDomainBoundaryEdge(const MeshEdge& e) const {
+	if (e.orient == EdgeOrient::Horizontal) {
+		return e.i == 0 || e.i == nrBase;
+	}
+	else {
+		return e.j == 0 || e.j == nzBase;
+	}
+}
+
+void debugCheckBoundaryMerge(
+	const std::unordered_set<MeshEdge, MeshEdgeHash>& rawEdges,
+	const std::vector<BoundarySegment>& segments
+) {
+	int rawCount = static_cast<int>(rawEdges.size());
+	int mergedFaceCount = 0;
+
+	for (const BoundarySegment& seg : segments) {
+		bool diagonal =
+			seg.a.i != seg.b.i &&
+			seg.a.j != seg.b.j;
+
+		if (diagonal) {
+			std::cout << "ERROR: diagonal boundary segment found\n";
+			std::cout << "a = (" << seg.a.i << ", " << seg.a.j << ")\n";
+			std::cout << "b = (" << seg.b.i << ", " << seg.b.j << ")\n";
+		}
+
+		mergedFaceCount += edgeLengthInFaces(seg);
 	}
 
-	return { a, b };
+	if (rawCount != mergedFaceCount) {
+		std::cout << "ERROR: boundary merge lost or added edges\n";
+		std::cout << "raw edge count: " << rawCount << "\n";
+		std::cout << "merged face count: " << mergedFaceCount << "\n";
+	}
+}
+
+bool isAxisAligned(const GridVertex& a, const GridVertex& b) {
+	return a.i == b.i || a.j == b.j;
 }
 
 int MeshInspector::cellIndex(int i, int j) const {
@@ -62,10 +98,23 @@ bool MeshInspector::isSolidCell(
 	return obstacleIndices.find(n) != obstacleIndices.end();
 }
 
+GridVertex edgeStart(const MeshEdge& e) {
+	return GridVertex{ e.i, e.j };
+}
+
+GridVertex edgeEnd(const MeshEdge& e) {
+	if (e.orient == EdgeOrient::Horizontal) {
+		return GridVertex{ e.i, e.j + 1 };
+	}
+	else {
+		return GridVertex{ e.i + 1, e.j };
+	}
+}
+
 void MeshInspector::rebuildSelectableOuterEdges(
 	const std::unordered_set<int>& obstacleIndices
 ) {
-	selectableOuterEdges.clear();
+	mesh.selectableOuterEdges.clear();
 
 	for (int n : obstacleIndices) {
 		if (n < 0 || n >= nrBase * nzBase) {
@@ -77,7 +126,7 @@ void MeshInspector::rebuildSelectableOuterEdges(
 
 		// Top face of solid cell
 		if (!isSolidCell(i - 1, j, obstacleIndices)) {
-			selectableOuterEdges.insert({
+			mesh.selectableOuterEdges.insert({
 				EdgeOrient::Horizontal,
 				i,
 				j
@@ -86,7 +135,7 @@ void MeshInspector::rebuildSelectableOuterEdges(
 
 		// Bottom face of solid cell
 		if (!isSolidCell(i + 1, j, obstacleIndices)) {
-			selectableOuterEdges.insert({
+			mesh.selectableOuterEdges.insert({
 				EdgeOrient::Horizontal,
 				i + 1,
 				j
@@ -95,7 +144,7 @@ void MeshInspector::rebuildSelectableOuterEdges(
 
 		// Left face of solid cell
 		if (!isSolidCell(i, j - 1, obstacleIndices)) {
-			selectableOuterEdges.insert({
+			mesh.selectableOuterEdges.insert({
 				EdgeOrient::Vertical,
 				i,
 				j
@@ -104,7 +153,7 @@ void MeshInspector::rebuildSelectableOuterEdges(
 
 		// Right face of solid cell
 		if (!isSolidCell(i, j + 1, obstacleIndices)) {
-			selectableOuterEdges.insert({
+			mesh.selectableOuterEdges.insert({
 				EdgeOrient::Vertical,
 				i,
 				j + 1
@@ -113,217 +162,209 @@ void MeshInspector::rebuildSelectableOuterEdges(
 	}
 }
 
-BoundarySegment meshEdgeToSegment(const MeshEdge& e) {
+
+
+std::unordered_map<GridVertex, int, GridVertexHash>
+buildVertexDegreeMap(
+	const std::unordered_set<MeshEdge, MeshEdgeHash>& edges
+) {
+	std::unordered_map<GridVertex, int, GridVertexHash> degree;
+
+	for (const MeshEdge& e : edges) {
+		GridVertex a = edgeStart(e);
+		GridVertex b = edgeEnd(e);
+
+		degree[a]++;
+		degree[b]++;
+	}
+
+	return degree;
+}
+
+bool MeshInspector::domainEdgeTouchesSolid(
+	const MeshEdge& e,
+	const std::unordered_set<int>& obstacleIndices
+) const {
 	if (e.orient == EdgeOrient::Horizontal) {
-		return {
-			GridVertex{ e.i, e.j },
-			GridVertex{ e.i, e.j + 1 }
-		};
+		// Top domain boundary
+		if (e.i == 0) {
+			int cellI = 0;
+			int cellJ = e.j;
+			return isSolidCell(cellI, cellJ, obstacleIndices);
+		}
+
+		// Bottom domain boundary
+		if (e.i == nrBase) {
+			int cellI = nrBase - 1;
+			int cellJ = e.j;
+			return isSolidCell(cellI, cellJ, obstacleIndices);
+		}
 	}
 	else {
-		return {
-			GridVertex{ e.i,     e.j },
-			GridVertex{ e.i + 1, e.j }
-		};
-	}
-}
+		// Left domain boundary
+		if (e.j == 0) {
+			int cellI = e.i;
+			int cellJ = 0;
+			return isSolidCell(cellI, cellJ, obstacleIndices);
+		}
 
-using BoundaryGraph =
-std::unordered_map<GridVertex, std::vector<GridVertex>, GridVertexHash>;
-
-BoundaryGraph buildBoundaryGraph(
-	const std::unordered_set<MeshEdge, MeshEdgeHash>& outerEdges
-) {
-	BoundaryGraph graph;
-
-	for (const MeshEdge& edge : outerEdges) {
-		BoundarySegment seg = meshEdgeToSegment(edge);
-
-		graph[seg.a].push_back(seg.b);
-		graph[seg.b].push_back(seg.a);
-	}
-
-	return graph;
-}
-
-std::vector<std::vector<GridVertex>> traceAllBoundaryLoops(
-	const std::unordered_set<MeshEdge, MeshEdgeHash>& outerEdges
-) {
-	BoundaryGraph graph = buildBoundaryGraph(outerEdges);
-
-	std::vector<std::vector<GridVertex>> loops;
-	std::unordered_set<GridVertexEdge, VertexEdgeHash> visitedEdges;
-
-	for (const auto& [startVertex, neighbors] : graph) {
-		for (const GridVertex& firstNeighbor : neighbors) {
-			GridVertexEdge firstEdge = makeUndirectedEdge(startVertex, firstNeighbor);
-
-			if (visitedEdges.find(firstEdge) != visitedEdges.end()) {
-				continue;
-			}
-
-			std::vector<GridVertex> loop;
-
-			GridVertex start = startVertex;
-			GridVertex prev = startVertex;
-			GridVertex current = firstNeighbor;
-
-			loop.push_back(start);
-
-			visitedEdges.insert(firstEdge);
-
-			while (true) {
-				loop.push_back(current);
-
-				auto it = graph.find(current);
-				if (it == graph.end()) {
-					break;
-				}
-
-				const std::vector<GridVertex>& currentNeighbors = it->second;
-
-				GridVertex next{ -1, -1 };
-
-				for (const GridVertex& candidate : currentNeighbors) {
-					if (!(candidate == prev)) {
-						next = candidate;
-						break;
-					}
-				}
-
-				if (next.i == -1) {
-					break;
-				}
-
-				GridVertexEdge edgeKey = makeUndirectedEdge(current, next);
-
-				if (visitedEdges.find(edgeKey) != visitedEdges.end()) {
-					break;
-				}
-
-				visitedEdges.insert(edgeKey);
-
-				prev = current;
-				current = next;
-
-				if (current == start) {
-					break;
-				}
-			}
-
-			if (loop.size() >= 3) {
-				loops.push_back(loop);
-			}
+		// Right domain boundary
+		if (e.j == nzBase) {
+			int cellI = e.i;
+			int cellJ = nzBase - 1;
+			return isSolidCell(cellI, cellJ, obstacleIndices);
 		}
 	}
 
-	return loops;
+	return false;
 }
 
-bool sameDirection(
-	const GridVertex& a,
-	const GridVertex& b,
-	const GridVertex& c
-) {
-	int di1 = b.i - a.i;
-	int dj1 = b.j - a.j;
-
-	int di2 = c.i - b.i;
-	int dj2 = c.j - b.j;
-
-	return di1 == di2 && dj1 == dj2;
-}
-
-std::vector<GridVertex> simplifyLoop(
-	const std::vector<GridVertex>& loop
-) {
-	if (loop.size() < 3) {
-		return loop;
-	}
-
-	std::vector<GridVertex> simplified;
-
-	for (std::size_t k = 0; k < loop.size(); k++) {
-		const GridVertex& prev = loop[(k + loop.size() - 1) % loop.size()];
-		const GridVertex& curr = loop[k];
-		const GridVertex& next = loop[(k + 1) % loop.size()];
-
-		if (!sameDirection(prev, curr, next)) {
-			simplified.push_back(curr);
-		}
-	}
-
-	return simplified;
-}
-
-std::vector<BoundarySegment> makeBoundarySegments(
-	const std::vector<GridVertex>& simplifiedLoop
+std::vector<BoundarySegment> buildDisplayBoundaries(
+	const std::unordered_set<MeshEdge, MeshEdgeHash>& edges
 ) {
 	std::vector<BoundarySegment> segments;
 
-	if (simplifiedLoop.size() < 2) {
+	if (edges.empty()) {
 		return segments;
 	}
 
-	for (std::size_t k = 0; k < simplifiedLoop.size(); k++) {
-		const GridVertex& a = simplifiedLoop[k];
-		const GridVertex& b = simplifiedLoop[(k + 1) % simplifiedLoop.size()];
+	std::unordered_map<GridVertex, int, GridVertexHash> degree =
+		buildVertexDegreeMap(edges);
 
-		// Boundary segments on this mesh should never be diagonal.
-		if (!isAxisAligned(a, b)) {
-			continue;
+	std::vector<MeshEdge> sortedEdges(edges.begin(), edges.end());
+
+	std::sort(
+		sortedEdges.begin(),
+		sortedEdges.end(),
+		[](const MeshEdge& a, const MeshEdge& b) {
+			if (a.orient != b.orient) {
+				return static_cast<int>(a.orient) <
+					static_cast<int>(b.orient);
+			}
+
+			if (a.orient == EdgeOrient::Horizontal) {
+				if (a.i != b.i) {
+					return a.i < b.i;
+				}
+
+				return a.j < b.j;
+			}
+			else {
+				if (a.j != b.j) {
+					return a.j < b.j;
+				}
+
+				return a.i < b.i;
+			}
+		}
+	);
+
+	MeshEdge first = sortedEdges[0];
+
+	EdgeOrient currentOrient = first.orient;
+
+	int fixed = 0;
+	int start = 0;
+	int prev = 0;
+
+	if (first.orient == EdgeOrient::Horizontal) {
+		fixed = first.i; // fixed row
+		start = first.j;
+		prev = first.j;
+	}
+	else {
+		fixed = first.j; // fixed column
+		start = first.i;
+		prev = first.i;
+	}
+
+	auto pushSegment = [&]() {
+		if (currentOrient == EdgeOrient::Horizontal) {
+			segments.push_back({
+				GridVertex{ fixed, start },
+				GridVertex{ fixed, prev + 1 }
+				});
+		}
+		else {
+			segments.push_back({
+				GridVertex{ start,     fixed },
+				GridVertex{ prev + 1, fixed }
+				});
+		}
+		};
+
+	for (std::size_t k = 1; k < sortedEdges.size(); k++) {
+		const MeshEdge& e = sortedEdges[k];
+
+		int eFixed = 0;
+		int ePos = 0;
+
+		if (e.orient == EdgeOrient::Horizontal) {
+			eFixed = e.i;
+			ePos = e.j;
+		}
+		else {
+			eFixed = e.j;
+			ePos = e.i;
 		}
 
-		segments.push_back({ a, b });
+		bool sameLine =
+			e.orient == currentOrient &&
+			eFixed == fixed;
+
+		bool adjacent =
+			ePos == prev + 1;
+
+		bool safeToMerge = false;
+
+		if (sameLine && adjacent) {
+			GridVertex sharedVertex;
+
+			if (currentOrient == EdgeOrient::Horizontal) {
+				sharedVertex = GridVertex{ fixed, ePos };
+			}
+			else {
+				sharedVertex = GridVertex{ ePos, fixed };
+			}
+
+			auto it = degree.find(sharedVertex);
+
+			int vertexDegree = 0;
+			if (it != degree.end()) {
+				vertexDegree = it->second;
+			}
+
+			// Only merge through simple vertices.
+			// If degree is not 2, it is a corner/junction/diagonal-touch point.
+			safeToMerge = vertexDegree == 2;
+		}
+
+		if (sameLine && adjacent && safeToMerge) {
+			prev = ePos;
+		}
+		else {
+			pushSegment();
+
+			currentOrient = e.orient;
+
+			if (e.orient == EdgeOrient::Horizontal) {
+				fixed = e.i;
+				start = e.j;
+				prev = e.j;
+			}
+			else {
+				fixed = e.j;
+				start = e.i;
+				prev = e.i;
+			}
+		}
 	}
+
+	pushSegment();
 
 	return segments;
 }
 
-std::vector<BoundarySegment> buildDisplayBoundaries(
-	const std::unordered_set<MeshEdge, MeshEdgeHash>& outerEdges
-) {
-	std::vector<BoundarySegment> allSegments;
-
-	std::vector<std::vector<GridVertex>> loops =
-		traceAllBoundaryLoops(outerEdges);
-
-	for (const std::vector<GridVertex>& loop : loops) {
-		std::vector<GridVertex> simplifiedLoop = simplifyLoop(loop);
-
-		std::vector<BoundarySegment> segments =
-			makeBoundarySegments(simplifiedLoop);
-
-		allSegments.insert(
-			allSegments.end(),
-			segments.begin(),
-			segments.end()
-		);
-	}
-
-	return allSegments;
-}
-
-
-
-void MeshInspector::drawBoundarySegments(
-	const std::vector<BoundarySegment>& segments,
-	const std::vector<double>& rFace,
-	const std::vector<double>& zFace
-) {
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	for (const BoundarySegment& seg : segments) {
-		ImVec2 p0 = gridToScreen(seg.a.j, seg.a.i, rFace, zFace);
-		ImVec2 p1 = gridToScreen(seg.b.j, seg.b.i, rFace, zFace);
-
-		drawList->AddLine(
-			p0,
-			p1,
-			IM_COL32(255, 80, 80, 255),
-			3.0f
-		);
-	}
-}
 
 void MeshInspector::setBaseNrNz() {
 	nrBase = g.nr;
@@ -370,18 +411,37 @@ MeshEdge MeshInspector::nearestEdgeFromGridPoint(const ImVec2& p) {
 	}
 }
 
+float distPointToSegment(ImVec2 p, ImVec2 a, ImVec2 b) {
+	ImVec2 ab(b.x - a.x, b.y - a.y);
+	ImVec2 ap(p.x - a.x, p.y - a.y);
+
+	float ab2 = ab.x * ab.x + ab.y * ab.y;
+
+	if (ab2 <= 1e-8f) {
+		float dx = p.x - a.x;
+		float dy = p.y - a.y;
+		return std::sqrt(dx * dx + dy * dy);
+	}
+
+	float t = (ap.x * ab.x + ap.y * ab.y) / ab2;
+	t = std::clamp(t, 0.0f, 1.0f);
+
+	ImVec2 closest(
+		a.x + t * ab.x,
+		a.y + t * ab.y
+	);
+
+	float dx = p.x - closest.x;
+	float dy = p.y - closest.y;
+
+	return std::sqrt(dx * dx + dy * dy);
+}
+
 // ======================================================================
 // -----------------------MOUSE HANDLES----------------------------------
 // ======================================================================
-void MeshInspector::handleMouse() {
-
-	if (!ImGui::IsItemHovered()) return;
-
-	ImGuiIO& io = ImGui::GetIO();
-
-	// constantly update current mouse position and mouse index (cell centered, i think)
-	currentMouseIndex = getMouseIndex(g.rFace,g.zFace);
-	currentMousePos = gridToScreen((int)currentMouseIndex.x, (int)currentMouseIndex.y, g.rFace, g.zFace);
+void MeshInspector::handleItemButtonSelect() {
+	if (!toggleSelect) return;
 
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && toggleSelect) {
 
@@ -389,8 +449,6 @@ void MeshInspector::handleMouse() {
 		initMouseIndex = currentMouseIndex;
 
 	}
-
-
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && toggleSelect) {
 		addHighlightCell(g.obstacleIndices, (int)currentMouseIndex.y * nzBase + (int)currentMouseIndex.x);
@@ -402,38 +460,114 @@ void MeshInspector::handleMouse() {
 
 	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && toggleSelect) {
 		rebuildSelectableOuterEdges(g.obstacleIndices);
-		//printInt(selectableOuterEdges.size());
+		//printInt(mesh.selectableOuterEdges.size());
 	}
 
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-		handlePopup();
-	}
+}
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && !toggleSelect && !toggleConnecting) {
+void MeshInspector::handleItemButtonConnecting() {
+
+	if (!toggleConnecting) return;
+
+
+}
+
+void MeshInspector::handleCursor(ImGuiIO& io) {
+	if (toggleSelect || toggleConnecting) return;
+
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 		handlePan(io);
 	}
 
 
+
+	auto hoveredId = findHoveredBoundarySegment(g.rFace, g.zFace);
+
+
+
+	if (!hoveredId.has_value()) {
+
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		drawList->AddCircleFilled(currentMousePos, circleRadius, IM_COL32(150, 150, 150, 255), 16);
+		drawList->AddCircle(currentMousePos, circleRadius, IM_COL32(200, 200, 200, 255), 16, 1.0f);
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !hoveredId.has_value()) {
+
+			double zPos, rPos;
+			getMousePhysicalCoord(currentMousePos, g.rFace, g.zFace, rPos, zPos);
+			ImVec2 vecValue = ImVec2((float)zPos, (float)rPos);
+
+			toggleSelectedPoint(points, currentMouseIndex, vecValue, 0.0f);	// value is 0.0f for now
+		}
+
+	}
+	else {
+		
+		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hoveredId.has_value()) {
+			check();
+			auto it = selectedBoundaryIds.find(*hoveredId);
+
+			if (it == selectedBoundaryIds.end()) {
+				selectedBoundaryIds.insert(*hoveredId);
+			}
+			else {
+				selectedBoundaryIds.erase(it);
+			}
+		}
+	}
+}
+
+void MeshInspector::handleMouse() {
+
+	if (!ImGui::IsItemHovered()) return;
+
+	ImGuiIO& io = ImGui::GetIO();
+
+	// constantly update current mouse position and mouse index (cell centered, i think)
+	currentMouseIndex = getMouseIndex(g.rFace,g.zFace);
+	currentMousePos = gridToScreen((int)currentMouseIndex.x, (int)currentMouseIndex.y, g.rFace, g.zFace);
+
+	handleItemButtonSelect();
+
+	handleCursor(io);
+
+	// handled regardless
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+		handlePopup();
+	}
 
 	// handle zooming in/out
 	if (io.MouseWheel != 0.0f) {
 		handleZoom(io);
 	}
 
-	// handle mouse hovering.
-	if (toggleSelect) return;
+}
 
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	drawList->AddCircleFilled(currentMousePos, circleRadius, IM_COL32(150, 150, 150, 255), 16);
-	drawList->AddCircle(currentMousePos, circleRadius, IM_COL32(200, 200, 200, 255), 16, 1.0f);
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+std::optional<int> MeshInspector::findHoveredBoundarySegment(
+	const std::vector<double>& rFace,
+	const std::vector<double>& zFace
+) {
+	ImVec2 mouse = ImGui::GetIO().MousePos;
 
-		double zPos, rPos;
-		getMousePhysicalCoord(currentMousePos, g.rFace, g.zFace, rPos, zPos);
-		ImVec2 vecValue = ImVec2((float)zPos, (float)rPos);
+	int bestId = -1;
+	float bestDist = pickRadiusPx;
 
-		toggleSelectedPoint(points, currentMouseIndex, vecValue, 0.0f);	// value is 0.0f for now
+	for (const BoundarySegment& seg : mesh.boundarySegments) {
+		ImVec2 p0 = gridToScreen(seg.a.j, seg.a.i, rFace, zFace);
+		ImVec2 p1 = gridToScreen(seg.b.j, seg.b.i, rFace, zFace);
+
+		float d = distPointToSegment(mouse, p0, p1);
+
+		if (d < bestDist) {
+			bestDist = d;
+			bestId = seg.id;
+		}
 	}
+
+	if (bestId == -1) {
+		return std::nullopt;
+	}
+
+	return bestId;
 }
 
 void MeshInspector::copyActiveSurfaceToClipboard() {
@@ -459,14 +593,45 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 // ======================================================================
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
+void MeshInspector::drawBoundarySegments(
+	const std::vector<double>& rFace,
+	const std::vector<double>& zFace
+) {
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	auto hoveredId = findHoveredBoundarySegment(g.rFace, g.zFace);
+
+	for (const BoundarySegment& seg : mesh.boundarySegments) {
+		ImVec2 p0 = gridToScreen(seg.a.j, seg.a.i, rFace, zFace);
+		ImVec2 p1 = gridToScreen(seg.b.j, seg.b.i, rFace, zFace);
+
+		bool selected =
+			selectedBoundaryIds.find(seg.id) != selectedBoundaryIds.end();
+
+		bool hovered =
+			hoveredId.has_value() && *hoveredId == seg.id;
+
+		ImU32 color = IM_COL32(255, 80, 80, 255);
+		float thickness = 2.0f;
+
+		if (hovered) {
+			color = IM_COL32(255, 255, 0, 255);
+			thickness = 4.0f;
+		}
+
+		if (selected) {
+			color = IM_COL32(0, 180, 255, 255);
+			thickness = 4.0f;
+		}
+
+		drawList->AddLine(p0, p1, color, thickness);
+	}
+}
+
 void MeshInspector::drawToolBar() {
 	float toolbarHeight = 32.0f;
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
-
-	addImageButtonToggleBool("Connect", assets.connectIcon, ImVec2(22.0f, 22.0f), toggleConnecting);
-	setToolTip("Draw Lines");
-	ImGui::SameLine();
 
 	addImageButtonResetView(assets.houseIcon, ImVec2(22.0f, 22.0f));
 	setToolTip("Reset view");
@@ -476,7 +641,7 @@ void MeshInspector::drawToolBar() {
 	setToolTip("Clear all selected points");
 	ImGui::SameLine();
 
-	addImageButtonClearSet("##ClearObstacle", assets.clearIcon, ImVec2(22.0f, 22.0f), g.obstacleIndices);
+	addImageButtonClearSet("##ClearObstacle", assets.clearIcon, ImVec2(22.0f, 22.0f), g.obstacleIndices, selectedBoundaryIds);
 	setToolTip("Clear all selected cells");
 	ImGui::SameLine();
 
@@ -586,7 +751,97 @@ void MeshInspector::renderPreview() {
 
 	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
 
+}
+// ======================================================================
+// -----------------------BUILDING SEGMENTS------------------------------
+// ======================================================================
+void MeshInspector::buildSegments() {
 
+	// combine obstacle edges and domain edges to make conbined edges
+	std::unordered_set<MeshEdge, MeshEdgeHash> combinedEdges = buildCombinedBoundaryEdges(mesh.selectableOuterEdges, g.obstacleIndices);
+
+	// build the segments using the new combinedEdges
+	mesh.boundarySegments = buildDisplayBoundaries(combinedEdges);
+
+	debugCheckBoundaryMerge(combinedEdges, mesh.boundarySegments);
+
+	// assign id
+	for (int k = 0; k < (int)mesh.boundarySegments.size(); k++) {
+		mesh.boundarySegments[k].id = k;
+	}
+}
+
+std::unordered_set<MeshEdge, MeshEdgeHash>
+MeshInspector::buildCombinedBoundaryEdges(
+	const std::unordered_set<MeshEdge, MeshEdgeHash>& selectableOuterEdges,
+	const std::unordered_set<int>& obstacleIndices
+) {
+	std::unordered_set<MeshEdge, MeshEdgeHash> combinedEdges;
+
+	// Add obstacle edges, but skip obstacle edges that lie exactly on the domain boundary.
+	for (const MeshEdge& e : mesh.selectableOuterEdges) {
+		if (isDomainBoundaryEdge(e)) {
+			continue;
+		}
+
+		combinedEdges.insert(e);
+	}
+
+	// Add domain edges only where the adjacent cell is not solid.
+	std::unordered_set<MeshEdge, MeshEdgeHash> domainEdges =
+		buildDomainBoundaryEdges();
+
+	for (const MeshEdge& e : domainEdges) {
+		if (domainEdgeTouchesSolid(e, obstacleIndices)) {
+			continue;
+		}
+
+		combinedEdges.insert(e);
+	}
+
+	return combinedEdges;
+}
+
+std::unordered_set<MeshEdge, MeshEdgeHash> MeshInspector::buildDomainBoundaryEdges() const {
+	std::unordered_set<MeshEdge, MeshEdgeHash> edges;
+
+	// Top domain boundary: i = 0, j = 0..nzBase-1
+	for (int j = 0; j < nzBase; j++) {
+		edges.insert({
+			EdgeOrient::Horizontal,
+			0,
+			j
+			});
+	}
+
+	// Bottom domain boundary: i = nrBase, j = 0..nzBase-1
+	for (int j = 0; j < nzBase; j++) {
+		edges.insert({
+			EdgeOrient::Horizontal,
+			nrBase,
+			j
+			});
+	}
+
+	// Left domain boundary: j = 0, i = 0..nrBase-1
+	for (int i = 0; i < nrBase; i++) {
+		edges.insert({
+			EdgeOrient::Vertical,
+			i,
+			0
+			});
+	}
+
+	// Right domain boundary: j = nzBase, i = 0..nrBase-1
+	for (int i = 0; i < nrBase; i++) {
+		edges.insert({
+			EdgeOrient::Vertical,
+			i,
+			nzBase
+			});
+	}
+
+	return edges;
 }
 
 // ======================================================================
@@ -600,23 +855,14 @@ void MeshInspector::render() {
 
 	vertexBuffer.bufferSubData(mesh.gridLineVertices.size() * sizeof(float), mesh.gridLineVertices.data());
 
-
-
 	drawToolBar();
 	resizeImage(0.0f, 0.0f);
 	renderPreview();
 
-
 	handleMouse();
 
-	std::vector<BoundarySegment> displayBoundaries =
-		buildDisplayBoundaries(selectableOuterEdges);
-
-	drawBoundarySegments(
-		displayBoundaries,
-		g.rFace,
-		g.zFace
-	);
+	buildSegments();
+	drawBoundarySegments(g.rFace, g.zFace);
 
 	drawHighlightedCells(g.obstacleIndices, g.rFace, g.zFace);
 	drawTextAtSurfacePoint();

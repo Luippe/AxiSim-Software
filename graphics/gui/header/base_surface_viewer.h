@@ -340,10 +340,10 @@ protected:
 		}
 	}
 
-	template<typename T>
-	void addImageButtonClearSet(const char* id, TextureBuffer& icon, ImVec2 buttonSize, std::unordered_set<T>& set) {
+	template<typename... Sets>
+	void addImageButtonClearSet(const char* id, TextureBuffer& icon, ImVec2 buttonSize, Sets&... sets) {
 		if (ImGui::ImageButton(id, (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
-			set.clear();
+			(sets.clear(), ...);
 		}
 	}
 };

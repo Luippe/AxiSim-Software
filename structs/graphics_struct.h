@@ -55,8 +55,6 @@ struct VertexLine {
 	glm::vec3 color;
 };
 
-
-
 enum ViewTab {
 	TAB_MESH = 0,
 	TAB_SOLVER = 1,
@@ -75,4 +73,3 @@ struct CylinderTemplateVertex {
 	float xCoord;           // 0 = front, 1 = back
 	float radialCoord;      // 0 = inner, 1 = outer
 };
-

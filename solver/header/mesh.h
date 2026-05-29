@@ -1,6 +1,7 @@
 #pragma once
 #include "setting.cuh"
 #include "buffer_manager.h"
+#include "boundary_struct.h"
 #include "graphics_struct.h"
 
 class Shader;
@@ -20,6 +21,8 @@ public:
 	std::vector<float> gridLineVertices;
 	std::vector<float> gridVertices;
 	std::vector<unsigned int> indices;
+	std::unordered_set<MeshEdge, MeshEdgeHash> selectableOuterEdges;
+	std::vector<BoundarySegment> boundarySegments;
 
 	Mesh(Config& config);
 

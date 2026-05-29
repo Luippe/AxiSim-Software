@@ -32,6 +32,9 @@ file(GLOB_RECURSE PROJECT_SOURCES CONFIGURE_DEPENDS
 
     "${CMAKE_CURRENT_SOURCE_DIR}/graphics/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/graphics/*.cu"
+
+    "${CMAKE_CURRENT_SOURCE_DIR}/structs/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/structs/*.cu"
 )
 
 file(GLOB_RECURSE PROJECT_HEADERS CONFIGURE_DEPENDS
@@ -46,6 +49,9 @@ file(GLOB_RECURSE PROJECT_HEADERS CONFIGURE_DEPENDS
 
     "${CMAKE_CURRENT_SOURCE_DIR}/graphics/*.h"
     "${CMAKE_CURRENT_SOURCE_DIR}/graphics/*.cuh"
+
+    "${CMAKE_CURRENT_SOURCE_DIR}/structs/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/structs/*.cuh"
 )
 
 # ------------------------------------------------------------
@@ -159,6 +165,7 @@ add_executable(AxiSim
 
 target_include_directories(AxiSim PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/structs"
 
     ${PROJECT_INCLUDE_DIRS}
 

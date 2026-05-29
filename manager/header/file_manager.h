@@ -99,8 +99,11 @@ bool readVar(std::ifstream& in, std::vector<T>& vec) {
 	return (bool)in.read((char*)vec.data(), size * sizeof(T));
 }
 
-template<typename T>
-bool readVar(std::ifstream& in, std::unordered_set<T>& set) {
+template<typename T,
+		typename Hash,
+		typename KeyEqual,
+		typename Allocator>
+bool readVar(std::ifstream& in, std::unordered_set<T, Hash, KeyEqual, Allocator>& set) {
 
 	size_t size = 0;
 
@@ -172,9 +175,13 @@ void writeVar(std::ofstream& out, const std::vector<T>& vec) {
 }
 
 // save std::unordered_set
-template <typename T>
-void writeVar(std::ofstream& out, const std::unordered_set<T>& set) {
+template <typename T,
+		typename Hash,
+		typename KeyEqual,
+		typename Allocator>
+void writeVar(std::ofstream& out, const std::unordered_set<T, Hash, KeyEqual, Allocator>& set) {
 	size_t size = set.size();
+
 	out.write((const char*)&size, sizeof(size));
 
 	for (const T& value : set) {
