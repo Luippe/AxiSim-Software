@@ -6,7 +6,11 @@ The most up to date software manual can be found [here](docs/AxiSim_Software_Man
 
 
 ## Preview
-<img src="docs/images/v1.02 screenshots/image1.png" alt="Results View" width="700">
+<img src="docs/images/v1.03-alpha screenshots/Picture3.png" alt="Solver View" width="700">
 
-<img src="docs/images/v1.02 screenshots/image0.png" alt="Solver View" width="700">
+<img src="docs/images/v1.03-alpha screenshots/Picture2.png" alt="Solver View" width="700">
+
+<img src="docs/images/v1.03-alpha screenshots/Picture1.png" alt="Results View" width="700">
+
+
 
