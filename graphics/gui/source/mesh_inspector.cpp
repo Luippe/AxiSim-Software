@@ -481,7 +481,7 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 
 
 
-	auto hoveredId = findHoveredBoundarySegment(g.rFace, g.zFace);
+
 
 
 
@@ -503,7 +503,8 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 	else {
 		
 		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hoveredId.has_value()) {
-			check();
+			std::unordered_set<int>& selectedBoundaryIds = mesh.selectedBoundaryIds;
+
 			auto it = selectedBoundaryIds.find(*hoveredId);
 
 			if (it == selectedBoundaryIds.end()) {
@@ -532,7 +533,13 @@ void MeshInspector::handleMouse() {
 
 	// handled regardless
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-		handlePopup();
+		if (hoveredId.has_value() && mesh.selectedBoundaryIds.contains(*hoveredId)) {
+			hoveringOverSelectedSegment = true;
+		}
+		else {
+			hoveringOverSelectedSegment = false;
+		}
+		openPopUp = true;
 	}
 
 	// handle zooming in/out
@@ -581,7 +588,8 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
 	ImGui::Begin("##ExportWindow", nullptr, UIFlags::TemporaryWindowFlags);
 
-	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(u0, v1), ImVec2(u1, v0));
+	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
+	drawBoundarySegments(g.rFace, g.zFace);
 	drawHighlightedCells(g.obstacleIndices, g.zFace, g.rFace);
 
 	ImGui::End();
@@ -599,17 +607,14 @@ void MeshInspector::drawBoundarySegments(
 ) {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-	auto hoveredId = findHoveredBoundarySegment(g.rFace, g.zFace);
-
 	for (const BoundarySegment& seg : mesh.boundarySegments) {
 		ImVec2 p0 = gridToScreen(seg.a.j, seg.a.i, rFace, zFace);
 		ImVec2 p1 = gridToScreen(seg.b.j, seg.b.i, rFace, zFace);
 
-		bool selected =
-			selectedBoundaryIds.find(seg.id) != selectedBoundaryIds.end();
+		bool selected = mesh.selectedBoundaryIds.find(seg.id) != mesh.selectedBoundaryIds.end();
 
-		bool hovered =
-			hoveredId.has_value() && *hoveredId == seg.id;
+		bool hovered = hoveredId.has_value() && *hoveredId == seg.id;
+			
 
 		ImU32 color = IM_COL32(255, 80, 80, 255);
 		float thickness = 2.0f;
@@ -641,7 +646,15 @@ void MeshInspector::drawToolBar() {
 	setToolTip("Clear all selected points");
 	ImGui::SameLine();
 
-	addImageButtonClearSet("##ClearObstacle", assets.clearIcon, ImVec2(22.0f, 22.0f), g.obstacleIndices, selectedBoundaryIds);
+	addImageButtonRunCustomFuncs(
+		"##Custom",
+		assets.clearIcon,
+		ImVec2(22.0f, 22.0f),
+		[&]() { g.obstacleIndices.clear(); },
+		[&]() { mesh.selectableOuterEdges.clear(); },
+		[&]() { mesh.boundarySegments.clear(); }
+	);
+
 	setToolTip("Clear all selected cells");
 	ImGui::SameLine();
 
@@ -702,11 +715,17 @@ void MeshInspector::drawTextAtSurfacePoint() {
 }
 
 
+
 void MeshInspector::drawPopup() {
 
-	if (!openPopUp) return;
+	if (openPopUp) {
+		ImGui::OpenPopup("Mesh Inspector Popup");
+		openPopUp = false;
+	}
 
-	if (ImGui::BeginPopup("MeshInspector Popup")) {
+	bool openNamingPopup = false;
+
+	if (ImGui::BeginPopup("Mesh Inspector Popup")) {
 
 		//addMenuItem
 		addMenuItemCopyToClipboard("Copy to clipboard");
@@ -714,9 +733,43 @@ void MeshInspector::drawPopup() {
 		addMenuItemClearPoints("Clear points");
 
 		addMenuItemResetView("Reset view");
+		
+		// draw naming menu item
+		if (hoveringOverSelectedSegment) {
+			if (ImGui::MenuItem("Name Segment")) {
+				mesh.createBoundaryGroupFromSelection();
 
+				if (!mesh.boundaryGroups.empty()) {
+
+					BoundarySegmentGroup& group = mesh.boundaryGroups.back();
+
+					mesh.namingBoundaryGroupID = group.id;
+
+					std::snprintf(
+						group.nameBuffer,
+						sizeof(group.nameBuffer),
+						"%s",
+						group.name.c_str()
+					);
+
+					openNamingPopup = true;
+				}
+			}
+		}
 		ImGui::EndPopup();
 	}
+
+	// open naming popup
+	if (openNamingPopup) {
+		ImGui::OpenPopup("Naming Segment");
+	}
+
+	if (BoundarySegmentGroup* group = mesh.getBoundaryGroupByID(mesh.namingBoundaryGroupID)) {
+		if (drawNamingPopup("Naming Segment", *group)) {
+			mesh.namingBoundaryGroupID = -1;
+		}
+	}
+
 }
 
 void MeshInspector::renderPreview() {
@@ -861,9 +914,20 @@ void MeshInspector::render() {
 
 	handleMouse();
 
+	// generate id for hovered segments
+	hoveredId = findHoveredBoundarySegment(g.rFace, g.zFace);
+	if (hoveredId) {
+		hoveringOverSegment = true;
+	}
+	else {
+		hoveringOverSegment = false;
+	}
+
+	// create segments
 	buildSegments();
 	drawBoundarySegments(g.rFace, g.zFace);
 
+	// draw highlighted cells and texts
 	drawHighlightedCells(g.obstacleIndices, g.rFace, g.zFace);
 	drawTextAtSurfacePoint();
 	drawPopup();

@@ -3,6 +3,7 @@
 #include "gpu_utils.h"
 #include "unit_manager.h"
 
+
 // holds solvers for solving system of linear equations
 
 enum FieldType {
@@ -48,11 +49,7 @@ enum class CellStoreType {
 	RADIAL
 };
 
-enum BCType {
-	DIRICHLET,
-	NEUMANN,
-	FULLY_DEVELOPED
-};
+
 
 enum ConvectionScheme {
 	CONV_UPWIND,
@@ -74,18 +71,6 @@ struct ResidualPrintItem {
 	const char* name;
 	bool enabled;
 	double* residual;
-};
-
-struct BoundaryCondition {
-	BCType type = DIRICHLET;
-	double val = 0.0;
-};
-
-struct BoundaryConditionConfig {
-	BoundaryCondition inlet;
-	BoundaryCondition outlet;
-	BoundaryCondition outer;
-	BoundaryCondition centerline;
 };
 
 struct SolutionField {

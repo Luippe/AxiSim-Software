@@ -97,7 +97,7 @@ if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   file(TOUCH_NOCREATE "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/cmake.verify_globs")
 endif()
 
-# PROJECT_HEADERS at CMakeLists.txt:37 (file)
+# PROJECT_HEADERS at CMakeLists.txt:40 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/*.cuh")
 set(OLD_GLOB
   )
@@ -106,7 +106,7 @@ if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   file(TOUCH_NOCREATE "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/cmake.verify_globs")
 endif()
 
-# PROJECT_HEADERS at CMakeLists.txt:37 (file)
+# PROJECT_HEADERS at CMakeLists.txt:40 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/*.h")
 set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/animation_gui.h"
@@ -168,7 +168,6 @@ set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/bounding.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/camera.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/display.h"
-  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/graphics_struct.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/gui.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/mouse_picker.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/renderer.h"
@@ -207,7 +206,7 @@ if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   file(TOUCH_NOCREATE "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/cmake.verify_globs")
 endif()
 
-# PROJECT_HEADERS at CMakeLists.txt:37 (file)
+# PROJECT_HEADERS at CMakeLists.txt:40 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/*.cuh")
 set(OLD_GLOB
   )
@@ -216,7 +215,7 @@ if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   file(TOUCH_NOCREATE "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/cmake.verify_globs")
 endif()
 
-# PROJECT_HEADERS at CMakeLists.txt:37 (file)
+# PROJECT_HEADERS at CMakeLists.txt:40 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/*.h")
 set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/buffer_manager.h"
@@ -224,8 +223,8 @@ set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/colormap_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/field_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/file_manager.h"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/flag_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/gpu_utils.h"
-  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/gui_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/math_func.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/memory_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/pch.h"
@@ -253,6 +252,7 @@ endif()
 # PROJECT_SOURCES at CMakeLists.txt:23 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cu")
 set(OLD_GLOB
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/energy_equation.cu"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/jacobi_pcg.cu"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/linear_solver.cu"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/residuals.cu"
@@ -264,9 +264,10 @@ if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   file(TOUCH_NOCREATE "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/cmake.verify_globs")
 endif()
 
-# PROJECT_HEADERS at CMakeLists.txt:37 (file)
+# PROJECT_HEADERS at CMakeLists.txt:40 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cuh")
 set(OLD_GLOB
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/energy_equation.cuh"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/jacobi_pcg.cuh"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/linear_solver.cuh"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/residuals.cuh"
@@ -278,13 +279,12 @@ if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   file(TOUCH_NOCREATE "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/cmake.verify_globs")
 endif()
 
-# PROJECT_HEADERS at CMakeLists.txt:37 (file)
+# PROJECT_HEADERS at CMakeLists.txt:40 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.h")
 set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/mesh.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/results.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/solver.h"
-  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/solver_struct.h"
   )
 if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   message("-- GLOB mismatch!")
@@ -310,7 +310,7 @@ if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   file(TOUCH_NOCREATE "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/cmake.verify_globs")
 endif()
 
-# PROJECT_HEADERS at CMakeLists.txt:37 (file)
+# PROJECT_HEADERS at CMakeLists.txt:40 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/*.cuh")
 set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/header/setting.cuh"
@@ -320,9 +320,48 @@ if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   file(TOUCH_NOCREATE "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/cmake.verify_globs")
 endif()
 
-# PROJECT_HEADERS at CMakeLists.txt:37 (file)
+# PROJECT_HEADERS at CMakeLists.txt:40 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/*.h")
 set(OLD_GLOB
+  )
+if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
+  message("-- GLOB mismatch!")
+  file(TOUCH_NOCREATE "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/cmake.verify_globs")
+endif()
+
+# PROJECT_SOURCES at CMakeLists.txt:23 (file)
+file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/*.cpp")
+set(OLD_GLOB
+  )
+if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
+  message("-- GLOB mismatch!")
+  file(TOUCH_NOCREATE "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/cmake.verify_globs")
+endif()
+
+# PROJECT_SOURCES at CMakeLists.txt:23 (file)
+file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/*.cu")
+set(OLD_GLOB
+  )
+if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
+  message("-- GLOB mismatch!")
+  file(TOUCH_NOCREATE "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/cmake.verify_globs")
+endif()
+
+# PROJECT_HEADERS at CMakeLists.txt:40 (file)
+file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/*.cuh")
+set(OLD_GLOB
+  )
+if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
+  message("-- GLOB mismatch!")
+  file(TOUCH_NOCREATE "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug/CMakeFiles/cmake.verify_globs")
+endif()
+
+# PROJECT_HEADERS at CMakeLists.txt:40 (file)
+file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/*.h")
+set(OLD_GLOB
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/boundary_struct.h"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/graphics_struct.h"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/solver_struct.h"
   )
 if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   message("-- GLOB mismatch!")

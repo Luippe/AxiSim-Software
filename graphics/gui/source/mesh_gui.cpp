@@ -8,6 +8,7 @@
 #include "solver_struct.h"
 #include "unit_manager.h"
 #include "flag_manager.h"
+#include "boundary_struct.h"
 #include "printer.h"
 
 MeshGUI::MeshGUI(GUI& gui, SceneView& scene) :
@@ -111,6 +112,7 @@ void MeshGUI::drawOverview() {
 		}
 		ImGui::EndChild();
 	}
+
 	ImGui::End();
 }
 
@@ -122,6 +124,15 @@ void MeshGUI::draw() {
 
 		if (ImGui::TreeNodeEx("General", UIFlags::BranchFlags)) {
 			drawLeaf("Edit");
+			ImGui::TreePop();
+		}
+		changeCursorOnHover();
+
+
+		if (ImGui::TreeNodeEx("Boundaries", UIFlags::BranchFlags)) {
+			for (BoundarySegmentGroup& group : mesh.boundaryGroups) {
+				drawLeaf(group.name.c_str());
+			}
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();

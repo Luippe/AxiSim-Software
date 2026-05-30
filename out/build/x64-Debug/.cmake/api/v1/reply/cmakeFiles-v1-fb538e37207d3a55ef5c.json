@@ -158,7 +158,6 @@
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/bounding.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/camera.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/display.h",
-				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/graphics_struct.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/gui.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/mouse_picker.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/renderer.h",
@@ -202,8 +201,8 @@
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/colormap_manager.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/field_manager.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/file_manager.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/flag_manager.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/gpu_utils.h",
-				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/gui_manager.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/math_func.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/memory_manager.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/pch.h",
@@ -227,6 +226,7 @@
 			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cu",
 			"paths" : 
 			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/energy_equation.cu",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/jacobi_pcg.cu",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/linear_solver.cu",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/residuals.cu",
@@ -239,6 +239,7 @@
 			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cuh",
 			"paths" : 
 			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/energy_equation.cuh",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/jacobi_pcg.cuh",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/linear_solver.cuh",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/residuals.cuh",
@@ -253,8 +254,7 @@
 			[
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/mesh.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/results.h",
-				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/solver.h",
-				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/solver_struct.h"
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/solver.h"
 			],
 			"recurse" : true
 		},
@@ -282,6 +282,31 @@
 		{
 			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/*.h",
 			"paths" : [],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/*.cpp",
+			"paths" : [],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/*.cu",
+			"paths" : [],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/*.cuh",
+			"paths" : [],
+			"recurse" : true
+		},
+		{
+			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/*.h",
+			"paths" : 
+			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/boundary_struct.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/graphics_struct.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/solver_struct.h"
+			],
 			"recurse" : true
 		}
 	],

@@ -36,6 +36,48 @@ void Mesh::updateAfterLoadingFile() {
 
 }
 
+BoundarySegment* Mesh::getBoundarySegmentByID(int id) {
+	for (BoundarySegment& seg : boundarySegments) {
+		if (seg.id == id) {
+			return &seg;
+		}
+	}
+	return nullptr;
+}
+
+BoundarySegmentGroup* Mesh::getBoundaryGroupByID(int id) {
+	for (BoundarySegmentGroup& group : boundaryGroups) {
+		if (group.id == id) {
+			return &group;
+		}
+	}
+	return nullptr;
+}
+
+void Mesh::createBoundaryGroupFromSelection() {
+	if (selectedBoundaryIds.empty()) {
+		return;
+	}
+
+	BoundarySegmentGroup group;
+	group.id = nextGroupID++;
+	group.name = "Boundary " + std::to_string(group.id);
+
+	group.segmentIds.assign(
+		selectedBoundaryIds.begin(),
+		selectedBoundaryIds.end()
+	);
+
+	std::snprintf(
+		group.nameBuffer,
+		sizeof(group.nameBuffer),
+		"%s",
+		group.name.c_str()
+	);
+
+	boundaryGroups.push_back(group);
+}
+
 void Mesh::createGrid() {
 
 	g.dz.clear();

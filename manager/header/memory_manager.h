@@ -1,5 +1,6 @@
 #pragma once
 #include "solver_struct.h"
+#include "boundary_struct.h"
 
 struct GridConfig;
 struct FluidPropertyConfig;

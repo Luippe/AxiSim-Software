@@ -32,7 +32,7 @@
 			{
 				"command" : 1,
 				"file" : 1,
-				"line" : 152,
+				"line" : 158,
 				"parent" : 0
 			},
 			{
@@ -44,7 +44,7 @@
 			{
 				"command" : 2,
 				"file" : 1,
-				"line" : 175,
+				"line" : 182,
 				"parent" : 0
 			},
 			{
@@ -59,7 +59,7 @@
 			{
 				"command" : 3,
 				"file" : 1,
-				"line" : 160,
+				"line" : 166,
 				"parent" : 0
 			}
 		]
@@ -89,6 +89,10 @@
 				{
 					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs"
 				},
 				{
 					"backtrace" : 6,
@@ -186,17 +190,17 @@
 				26,
 				27,
 				28,
-				31,
-				33,
-				84,
-				85,
-				86,
+				32,
+				34,
 				87,
 				88,
 				89,
 				90,
 				91,
-				93
+				92,
+				93,
+				94,
+				96
 			]
 		},
 		{
@@ -222,6 +226,10 @@
 				{
 					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs"
 				},
 				{
 					"backtrace" : 6,
@@ -292,11 +300,12 @@
 			[
 				29,
 				30,
-				32,
-				34,
+				31,
+				33,
 				35,
 				36,
-				37
+				37,
+				38
 			]
 		},
 		{
@@ -322,6 +331,10 @@
 				{
 					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs"
 				},
 				{
 					"backtrace" : 6,
@@ -382,7 +395,7 @@
 			"language" : "C",
 			"sourceIndexes" : 
 			[
-				92
+				95
 			]
 		}
 	],
@@ -527,21 +540,21 @@
 				33,
 				34,
 				35,
-				36
+				36,
+				37
 			]
 		},
 		{
 			"name" : "src\\source",
 			"sourceIndexes" : 
 			[
-				37
+				38
 			]
 		},
 		{
 			"name" : "graphics\\gui\\header",
 			"sourceIndexes" : 
 			[
-				38,
 				39,
 				40,
 				41,
@@ -553,22 +566,22 @@
 				47,
 				48,
 				49,
-				50
+				50,
+				51
 			]
 		},
 		{
 			"name" : "graphics\\tinyfiledialogs",
 			"sourceIndexes" : 
 			[
-				51,
-				92
+				52,
+				95
 			]
 		},
 		{
 			"name" : "graphics\\window\\header",
 			"sourceIndexes" : 
 			[
-				52,
 				53,
 				54,
 				55,
@@ -621,30 +634,39 @@
 			]
 		},
 		{
-			"name" : "graphics\\imgui",
+			"name" : "structs",
 			"sourceIndexes" : 
 			[
 				84,
 				85,
-				86,
+				86
+			]
+		},
+		{
+			"name" : "graphics\\imgui",
+			"sourceIndexes" : 
+			[
 				87,
+				88,
+				89,
 				90,
-				91
+				93,
+				94
 			]
 		},
 		{
 			"name" : "graphics\\imgui\\backends",
 			"sourceIndexes" : 
 			[
-				88,
-				89
+				91,
+				92
 			]
 		},
 		{
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				93
+				96
 			]
 		}
 	],
@@ -827,6 +849,12 @@
 		{
 			"backtrace" : 2,
 			"compileGroupIndex" : 1,
+			"path" : "solver/source/energy_equation.cu",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
 			"path" : "solver/source/jacobi_pcg.cu",
 			"sourceGroupIndex" : 3
 		},
@@ -965,11 +993,6 @@
 		},
 		{
 			"backtrace" : 2,
-			"path" : "graphics/window/header/graphics_struct.h",
-			"sourceGroupIndex" : 7
-		},
-		{
-			"backtrace" : 2,
 			"path" : "graphics/window/header/gui.h",
 			"sourceGroupIndex" : 7
 		},
@@ -1020,12 +1043,12 @@
 		},
 		{
 			"backtrace" : 2,
-			"path" : "manager/header/gpu_utils.h",
+			"path" : "manager/header/flag_manager.h",
 			"sourceGroupIndex" : 8
 		},
 		{
 			"backtrace" : 2,
-			"path" : "manager/header/gui_manager.h",
+			"path" : "manager/header/gpu_utils.h",
 			"sourceGroupIndex" : 8
 		},
 		{
@@ -1057,6 +1080,11 @@
 			"backtrace" : 2,
 			"path" : "manager/header/unit_manager.h",
 			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/energy_equation.cuh",
+			"sourceGroupIndex" : 9
 		},
 		{
 			"backtrace" : 2,
@@ -1095,11 +1123,6 @@
 		},
 		{
 			"backtrace" : 2,
-			"path" : "solver/header/solver_struct.h",
-			"sourceGroupIndex" : 9
-		},
-		{
-			"backtrace" : 2,
 			"path" : "solver/header/solver_util.cuh",
 			"sourceGroupIndex" : 9
 		},
@@ -1110,51 +1133,66 @@
 		},
 		{
 			"backtrace" : 2,
+			"path" : "structs/boundary_struct.h",
+			"sourceGroupIndex" : 11
+		},
+		{
+			"backtrace" : 2,
+			"path" : "structs/graphics_struct.h",
+			"sourceGroupIndex" : 11
+		},
+		{
+			"backtrace" : 2,
+			"path" : "structs/solver_struct.h",
+			"sourceGroupIndex" : 11
+		},
+		{
+			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "graphics/imgui/imgui.cpp",
-			"sourceGroupIndex" : 11
+			"sourceGroupIndex" : 12
 		},
 		{
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "graphics/imgui/imgui_draw.cpp",
-			"sourceGroupIndex" : 11
+			"sourceGroupIndex" : 12
 		},
 		{
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "graphics/imgui/imgui_tables.cpp",
-			"sourceGroupIndex" : 11
+			"sourceGroupIndex" : 12
 		},
 		{
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "graphics/imgui/imgui_widgets.cpp",
-			"sourceGroupIndex" : 11
+			"sourceGroupIndex" : 12
 		},
 		{
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "graphics/imgui/backends/imgui_impl_glfw.cpp",
-			"sourceGroupIndex" : 12
+			"sourceGroupIndex" : 13
 		},
 		{
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "graphics/imgui/backends/imgui_impl_opengl3.cpp",
-			"sourceGroupIndex" : 12
+			"sourceGroupIndex" : 13
 		},
 		{
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "graphics/imgui/implot.cpp",
-			"sourceGroupIndex" : 11
+			"sourceGroupIndex" : 12
 		},
 		{
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "graphics/imgui/implot_items.cpp",
-			"sourceGroupIndex" : 11
+			"sourceGroupIndex" : 12
 		},
 		{
 			"backtrace" : 2,
@@ -1166,7 +1204,7 @@
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "externals/stb_image/stb_image.cpp",
-			"sourceGroupIndex" : 13
+			"sourceGroupIndex" : 14
 		}
 	],
 	"type" : "EXECUTABLE"

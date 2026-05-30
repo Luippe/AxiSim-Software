@@ -2,6 +2,7 @@
 #include "jacobi_pcg.cuh"
 #include <string>
 #include "solver_struct.h"
+#include "boundary_struct.h"
 #include "residual_plot.h"
 #include <thread>
 

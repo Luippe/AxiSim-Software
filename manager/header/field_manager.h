@@ -1,6 +1,7 @@
 #pragma once
 #include "buffer_manager.h"
 #include "solver_struct.h"
+#include "boundary_struct.h"
 #include <glm/fwd.hpp>
 
 class Field {

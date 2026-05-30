@@ -55,9 +55,12 @@ private:
 
 	//-------------boundary lines--------------
 	bool toggleConnecting = false;
-	float pickRadiusPx = 10.0f;
+	float pickRadiusPx = 12.0f;
+	std::optional<int> hoveredId;
 
-	std::unordered_set<int> selectedBoundaryIds;
+	bool hoveringOverSegment = false;
+	bool hoveringOverSelectedSegment = false;
+	std::vector<int> namedIDs;
 
 	int cellIndex(int i, int j) const;
 	bool isInsideCellGrid(int i, int j) const;

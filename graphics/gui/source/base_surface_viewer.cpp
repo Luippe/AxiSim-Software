@@ -415,9 +415,10 @@ void BaseSurfaceViewer::handleRectSelection(ImGuiIO& io) {
 	rectPos2 = screenToUV(currentMousePos);
 }
 
-void BaseSurfaceViewer::handlePopup() {
+
+void BaseSurfaceViewer::handlePopup(const char* text) {
 	openPopUp = true;
-	ImGui::OpenPopup("MeshInspector Popup");
+	ImGui::OpenPopup(text);
 }
 
 void BaseSurfaceViewer::resetView() {

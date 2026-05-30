@@ -3,6 +3,28 @@
 #include <cstddef>     // std::size_t
 #include <cstdint>     // std::uint8_t
 #include <functional>  // std::hash
+#include <string>	   // std::string
+
+// ======================================================================
+// -----------------------BOUNDARY CONDITIONS----------------------------
+// ======================================================================
+enum BCType {
+	DIRICHLET,
+	NEUMANN,
+	FULLY_DEVELOPED
+};
+
+struct BoundaryCondition {
+	BCType type = DIRICHLET;
+	double val = 0.0;
+};
+
+struct BoundaryConditionConfig {
+	BoundaryCondition inlet;
+	BoundaryCondition outlet;
+	BoundaryCondition outer;
+	BoundaryCondition centerline;
+};
 
 // ======================================================================
 // -----------------------BOUNDARY EDGES---------------------------------
@@ -59,10 +81,30 @@ enum class BoundarySource {
 };
 
 struct BoundarySegment {
+
+	// position variables and segment ID
 	GridVertex a;
 	GridVertex b;
 	int id = -1;
+
+	// boundary source
 	BoundarySource source = BoundarySource::Obstacle;
+
+	// renaming variables
+	std::string name;
+	char nameBuffer[128] = {};
 };
 
 
+struct BoundarySegmentGroup {
+
+	// group ID
+	int id = -1;
+
+	// naming variables
+	std::string name;
+	char nameBuffer[128] = {};
+
+	// vector of all segment IDs in this group
+	std::vector<int> segmentIds;
+};

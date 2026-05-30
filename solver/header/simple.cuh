@@ -1,6 +1,6 @@
 #include <cuda_runtime.h>
 #include "solver_struct.h"
-
+#include "boundary_struct.h"
 
 // -------------axial velocity--------------
 __global__

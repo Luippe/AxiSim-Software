@@ -20,3 +20,9 @@ void printInt(Args... args) {
 	(printf("%d ", args), ...);
 	printf("\n");
 }
+
+template<typename... Args>
+void printSize(Args... args) {
+	(printf("%d ", args.size()), ...);
+	printf("\n");
+}

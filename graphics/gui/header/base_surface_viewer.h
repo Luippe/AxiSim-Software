@@ -7,8 +7,61 @@
 #include "graphics_struct.h"
 #include "shader.h"
 
+// ======================================================================
+// -----------------------PUBLIC HELPER FUNCTIONS------------------------
+// ======================================================================
+
+template<typename TypeT>
+bool drawNamingPopup(const char* label, TypeT& target) {
+
+	bool enterPressed = false;
+
+	if (ImGui::BeginPopupModal(label, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
+		bool justOpened = ImGui::IsWindowAppearing();
+
+		bool clickedOutside =
+			!justOpened &&
+			ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+			!ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+
+		bool pressedEscape = ImGui::IsKeyPressed(ImGuiKey_Escape);
+
+		ImGui::SetNextItemWidth(250.0f);
+
+		enterPressed = ImGui::InputText(
+			"##NameInput",
+			target.nameBuffer,
+			sizeof(target.nameBuffer),
+			ImGuiInputTextFlags_EnterReturnsTrue |
+			ImGuiInputTextFlags_AutoSelectAll
+		);
+
+		if (justOpened) {
+			ImGui::SetKeyboardFocusHere(-1);
+		}
+
+		if (clickedOutside || pressedEscape) {
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::Spacing();
+
+		if (enterPressed) {
+			if (target.nameBuffer[0] != '\0') {
+				target.name = target.nameBuffer;
+			}
+			ImGui::CloseCurrentPopup();
+		}
 
 
+		ImGui::EndPopup();
+	}
+	return enterPressed;
+}
+
+// ======================================================================
+// -----------------------DOCKING SPACE CLASS----------------------------
+// ======================================================================
 class DockingSpace {
 public:
 
@@ -34,9 +87,7 @@ public:
 
 		// renaming variables
 		std::string name;
-
-		bool renaming = false;
-		char renameBuffer[128] = {};
+		char nameBuffer[128] = {};
 	};
 
 	//  render dock space onto screen and return its info
@@ -77,9 +128,10 @@ public:
 			else {
 				ImGui::SetNextWindowDockID(dockspaceID, ImGuiCond_FirstUseEver);
 			}
-
+			// create windowTitle so when tab.name changes, it keeps the same tab layout format
+			std::string windowTitle = tab.name + "###Tab_" + std::to_string(tab.id);
 			// draw plot
-			if (ImGui::Begin(tab.name.c_str(), &open)) {
+			if (ImGui::Begin(windowTitle.c_str(), &open)) {
 				ImGuiID currentDockID = ImGui::GetWindowDockID();
 
 				ImGui::PushID(tab.id);
@@ -90,14 +142,14 @@ public:
 
 				// check double click for renaming tab
 				if (isCurrentDockTabDoubleClicked()) {
-					std::snprintf(tab.renameBuffer,
-						sizeof(tab.renameBuffer),
+					std::snprintf(tab.nameBuffer,
+						sizeof(tab.nameBuffer),
 						"%s",
 						tab.name.c_str());
 
 					ImGui::OpenPopup("Rename Tab");
 				}
-				drawRenamePopup(tab);
+				drawNamingPopup("Rename Tab", tab);
 
 				drawTabContent(
 					tab,
@@ -137,56 +189,6 @@ private:
 
 	bool isCurrentDockTabDoubleClicked();
 
-	// draw popup when renaming tab
-	template <typename TabT>
-	void drawRenamePopup(TabT tab) {
-		if (ImGui::BeginPopupModal("Rename Tab", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
-
-			bool justOpened = ImGui::IsWindowAppearing();
-
-			bool clickedOutside =
-				!justOpened &&
-				ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-				!ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
-
-			bool pressedEscape =
-				ImGui::IsKeyPressed(ImGuiKey_Escape);
-
-			ImGui::SetNextItemWidth(250.0f);
-
-			bool enterPressed = ImGui::InputText(
-				"##RenameInput",
-				tab.renameBuffer,
-				sizeof(tab.renameBuffer),
-				ImGuiInputTextFlags_EnterReturnsTrue |
-				ImGuiInputTextFlags_AutoSelectAll
-			);
-
-			if (justOpened) {
-				ImGui::SetKeyboardFocusHere(-1);
-			}
-
-			if (clickedOutside || pressedEscape) {
-				ImGui::CloseCurrentPopup();
-			}
-
-			ImGui::Spacing();
-
-			if (enterPressed) {
-				if (tab.renameBuffer[0] != '\0') {
-					tab.name = tab.renameBuffer;
-				}
-				ImGui::CloseCurrentPopup();
-			}
-			ImGui::SameLine();
-
-			if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-				ImGui::CloseCurrentPopup();
-			}
-
-			ImGui::EndPopup();
-		}
-	}
 };
 
 
@@ -298,7 +300,7 @@ protected:
 
 	void handleRectSelection(ImGuiIO& io);
 
-	void handlePopup();
+	void handlePopup(const char* text);
 
 	void resizeImage(int padx, int pady);
 
@@ -344,6 +346,13 @@ protected:
 	void addImageButtonClearSet(const char* id, TextureBuffer& icon, ImVec2 buttonSize, Sets&... sets) {
 		if (ImGui::ImageButton(id, (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
 			(sets.clear(), ...);
+		}
+	}
+
+	template <typename... Funcs>
+	void addImageButtonRunCustomFuncs(const char* id, TextureBuffer& icon, ImVec2 buttonSize, Funcs&&... funcs) {
+		if (ImGui::ImageButton(id, (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
+			(funcs(), ...);
 		}
 	}
 };
