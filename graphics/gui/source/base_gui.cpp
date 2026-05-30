@@ -61,16 +61,58 @@ void BaseGUI::inputInt(const char* label, int* value) {
 	ImGui::InputInt(label, value, 0.0, 0.0);
 }
 
-void BaseGUI::drawLeaf(const char* label) {
+void BaseGUI::drawTableHeader(const char* label) {
+
+	ImGui::PushID(label);
+
+	if (ImGui::BeginTable("Table", 1, UIFlags::TableBoundaryFlags)) {
+
+		setupTableColumns(
+			column("Label", 100.0f)
+		);
+		ImGui::TableNextRow();
+
+		ImGui::TableSetBgColor(
+			ImGuiTableBgTarget_RowBg0,
+			ImGui::GetColorU32(ImGuiCol_Header)
+		);
+
+		ImGui::TableSetColumnIndex(0);
+		ImGui::TextUnformatted(label);
+
+		ImGui::EndTable();
+	}
+	ImGui::PopID();
+
+}
+
+void BaseGUI::drawTableProperty(const char* label, const char* value) {
+	ImGui::TableNextRow();
+	ImGui::TableSetBgColor(
+		ImGuiTableBgTarget_RowBg0,
+		ImGui::GetColorU32(ImGuiCol_Header)
+	);
+	ImGui::TableSetColumnIndex(0);
+	ImGui::TextUnformatted(label);
+
+	ImGui::TableSetColumnIndex(1);
+	ImGui::TextUnformatted(value);
+}
+
+bool BaseGUI::drawLeaf(const char* label) {
 
 	bool selected = selectedItem == label;
 
 	ImGui::TreeNodeEx(label, UIFlags::LeafFlags | (selected ? ImGuiTreeNodeFlags_Selected : 0));
 
-	if (ImGui::IsItemClicked()) {
+	bool clicked = ImGui::IsItemClicked();
+
+	if (clicked) {
 		selectedItem = label;
 	}
 
 	changeCursorOnHover();
+
+	return clicked;
 }
 

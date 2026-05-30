@@ -141,7 +141,7 @@ bool readBinary(const std::string& filename, Args&... args) {
 		throw std::runtime_error("Could not open file: " + filename);
 	}
 
-	readAll(in, args...);
+	return readAll(in, args...);
 
 }
 
@@ -157,7 +157,7 @@ bool readBinary(std::ifstream& in, Args&... args) {
 
 
 // ====================================================
-// -------------------SAVING FILE----------------------
+// -------------------WRITING FILE---------------------
 // ====================================================
 
 // save any single object

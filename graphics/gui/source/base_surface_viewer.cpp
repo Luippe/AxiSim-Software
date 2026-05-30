@@ -4,8 +4,6 @@
 #include <glm/glm.hpp>
 #include "imgui_internal.h"
 
-#include "printer.h"
-
 DockingSpace::DockingSpace(const char* name) : dockName(name) {
 }
 

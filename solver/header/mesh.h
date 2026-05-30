@@ -1,4 +1,7 @@
 #pragma once
+
+#include <optional>
+
 #include "setting.cuh"
 #include "buffer_manager.h"
 #include "boundary_struct.h"
@@ -24,13 +27,13 @@ public:
 	std::vector<unsigned int> indices;
 
 	// boundary varaibles
-	std::unordered_set<int> selectedBoundaryIds;
+	std::unordered_set<int> selectedBoundaryIDs;
 	std::unordered_set<MeshEdge, MeshEdgeHash> selectableOuterEdges;
 	std::vector<BoundarySegment> boundarySegments;
 	std::vector<BoundarySegmentGroup> boundaryGroups;
+	std::unordered_set<int> highlightedBoundarySegmentIDs;
 
-	int nextGroupID = -1;
-	int namingBoundaryGroupID = -1;
+	int nextGroupID = 0;
 
 	Mesh(Config& config);
 
@@ -54,8 +57,17 @@ public:
 
 	BoundarySegmentGroup* getBoundaryGroupByID(int id);
 
+	BoundarySegmentGroup* getBoundaryGroupByName(const std::string& name);
+
+	// get the next avaiable group id that does not conflict with existing group ids
+	int getAvailableBoundaryGroupID() const;
+
+	// highlight all boundary segment in a group
+	void highlightSegmentsInGroup(const BoundarySegmentGroup& group);
+
 	// create boundary group using the selected boundary segments
-	void createBoundaryGroupFromSelection();
+	std::optional<BoundarySegmentGroup> createBoundaryGroupFromSelection();
+
 private:
 
 	void createCylinderVertices();

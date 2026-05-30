@@ -10,6 +10,12 @@ void check();
 void checkInt(int n);
 
 template<typename... Args>
+void printStr(Args... args) {
+	(printf("%s ", args), ...);
+	printf("\n");
+}
+
+template<typename... Args>
 void printFloat(Args... args) {
 	(printf("%f ", args), ...);
 	printf("\n");
@@ -22,7 +28,13 @@ void printInt(Args... args) {
 }
 
 template<typename... Args>
+void printSizeT(Args... args) {
+	(printf("%zu ", args), ...);
+	printf("\n");
+}
+
+template<typename... Args>
 void printSize(Args... args) {
-	(printf("%d ", args.size()), ...);
+	(printf("%zu ", args.size()), ...);
 	printf("\n");
 }

@@ -47,7 +47,17 @@ public:
 	void checkBox(const char* label, bool* value);
 
 	// draw leaf for tree node
-	void drawLeaf(const char* label);
+	bool drawLeaf(const char* label);
+
+
+	// table functions
+	
+	// draw table header. uses single column
+	void drawTableHeader(const char* label);
+
+	// draw property values. uses two columns
+	void drawTableProperty(const char* label, const char* value);
+
 
 	// setup table with TableColumn
 	template <typename... Columns>

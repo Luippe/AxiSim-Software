@@ -60,6 +60,8 @@ private:
 
 	bool hoveringOverSegment = false;
 	bool hoveringOverSelectedSegment = false;
+	std::optional<BoundarySegmentGroup> pendingBoundaryGroup;
+
 	std::vector<int> namedIDs;
 
 	int cellIndex(int i, int j) const;
@@ -77,7 +79,6 @@ private:
 
 	// handle mouse events
 	void handleMouse();
-
 	void handleItemButtonSelect();
 	void handleItemButtonConnecting();
 	void handleCursor(ImGuiIO& io);
@@ -96,6 +97,8 @@ private:
 	void drawTextAtSurfacePoint();
 
 	void drawBoundarySegments(const std::vector<double>& rFace, const std::vector<double>& zFace);
+
+	// highlight boundary groups
 
 	// build domain segments
 	std::unordered_set<MeshEdge, MeshEdgeHash> buildDomainBoundaryEdges() const;

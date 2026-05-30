@@ -33,6 +33,9 @@ private:
 	// draw properties panel when a tree node is clicked on
 	void drawOverview();
 
+	// draw each boundary groups
+	void drawBoundaryGroupGUI();
+
 	GridConfigEdits gridConfigEdits;
 	SceneView& scene;
 	GUI& gui;

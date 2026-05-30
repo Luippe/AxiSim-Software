@@ -3,20 +3,27 @@
 
 #include <optional>
 #include <unordered_set>
+#include <algorithm>
 
 #include "graphics_struct.h"
 #include "shader.h"
+#include "printer.h"
 
 // ======================================================================
 // -----------------------PUBLIC HELPER FUNCTIONS------------------------
 // ======================================================================
 
 template<typename TypeT>
-bool drawNamingPopup(const char* label, TypeT& target) {
+bool drawNamingPopup(const char* label, TypeT& target, std::vector<TypeT>& groups) {
 
 	bool enterPressed = false;
+	bool exitPopup = false;
 
 	if (ImGui::BeginPopupModal(label, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
+
+
+		std::string renameError = "Name already exists";
+
 		bool justOpened = ImGui::IsWindowAppearing();
 
 		bool clickedOutside =
@@ -25,6 +32,7 @@ bool drawNamingPopup(const char* label, TypeT& target) {
 			!ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
 
 		bool pressedEscape = ImGui::IsKeyPressed(ImGuiKey_Escape);
+
 
 		ImGui::SetNextItemWidth(250.0f);
 
@@ -36,6 +44,13 @@ bool drawNamingPopup(const char* label, TypeT& target) {
 			ImGuiInputTextFlags_AutoSelectAll
 		);
 
+		if (target.nameBuffer[0] != '\0') {
+			target.name = target.nameBuffer;
+		}
+
+		bool nameExists = std::any_of(groups.begin(), groups.end(), [&](const TypeT& group) {return group.name == target.name; });
+
+
 		if (justOpened) {
 			ImGui::SetKeyboardFocusHere(-1);
 		}
@@ -46,17 +61,21 @@ bool drawNamingPopup(const char* label, TypeT& target) {
 
 		ImGui::Spacing();
 
-		if (enterPressed) {
-			if (target.nameBuffer[0] != '\0') {
-				target.name = target.nameBuffer;
-			}
+		if (nameExists) {
+			ImGui::TextColored(
+				ImVec4(1.0f, 0.2f, 0.2f, 1.0f),
+				"%s",
+				renameError.c_str()
+			);
+		}
+		if (enterPressed && !nameExists) {
+			exitPopup = true;
 			ImGui::CloseCurrentPopup();
 		}
 
-
 		ImGui::EndPopup();
 	}
-	return enterPressed;
+	return exitPopup;
 }
 
 // ======================================================================
@@ -149,7 +168,7 @@ public:
 
 					ImGui::OpenPopup("Rename Tab");
 				}
-				drawNamingPopup("Rename Tab", tab);
+				drawNamingPopup("Rename Tab", tab, tabs);
 
 				drawTabContent(
 					tab,

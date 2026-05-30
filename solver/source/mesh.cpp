@@ -6,6 +6,7 @@
 #include "solver_struct.h"
 #include "printer.h"
 #include <glm/trigonometric.hpp>
+#include <algorithm>
 #include "math_func.h"
 
 Mesh::Mesh(Config& config) : g(config.g) {
@@ -54,18 +55,63 @@ BoundarySegmentGroup* Mesh::getBoundaryGroupByID(int id) {
 	return nullptr;
 }
 
-void Mesh::createBoundaryGroupFromSelection() {
-	if (selectedBoundaryIds.empty()) {
-		return;
+BoundarySegmentGroup* Mesh::getBoundaryGroupByName(const std::string& name) {
+	for (BoundarySegmentGroup& group : boundaryGroups) {
+		if (group.name == name) {
+			return &group;
+		}
+	}
+	return nullptr;
+}
+
+int Mesh::getAvailableBoundaryGroupID() const {
+	int id = nextGroupID;
+
+	while (true) {
+		std::string candidateName = "Boundary " + std::to_string(id);
+
+		bool nameExists = std::any_of(
+			boundaryGroups.begin(),
+			boundaryGroups.end(),
+			[&](const BoundarySegmentGroup& group) {
+				return group.name == candidateName;
+			}
+		);
+
+		if (!nameExists) {
+			return id;
+		}
+
+		id++;
+	}
+}
+
+void Mesh::highlightSegmentsInGroup(const BoundarySegmentGroup& group) {
+
+	for (const int& id : group.segmentIDs) {
+		BoundarySegment* seg = getBoundarySegmentByID(id);
+		if (seg) {
+			highlightedBoundarySegmentIDs.insert(seg->id);
+		}
+	}
+	//for (const BoundarySegment& seg : boundarySegments) {
+	//	printInt(seg.highlighted);
+	//}
+}
+
+std::optional<BoundarySegmentGroup> Mesh::createBoundaryGroupFromSelection() {
+	if (selectedBoundaryIDs.empty()) {
+		return {};
 	}
 
 	BoundarySegmentGroup group;
-	group.id = nextGroupID++;
+
+	group.id = getAvailableBoundaryGroupID();
 	group.name = "Boundary " + std::to_string(group.id);
 
-	group.segmentIds.assign(
-		selectedBoundaryIds.begin(),
-		selectedBoundaryIds.end()
+	group.segmentIDs.assign(
+		selectedBoundaryIDs.begin(),
+		selectedBoundaryIDs.end()
 	);
 
 	std::snprintf(
@@ -74,8 +120,8 @@ void Mesh::createBoundaryGroupFromSelection() {
 		"%s",
 		group.name.c_str()
 	);
-
-	boundaryGroups.push_back(group);
+	
+	return group;
 }
 
 void Mesh::createGrid() {

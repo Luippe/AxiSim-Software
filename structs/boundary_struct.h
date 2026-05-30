@@ -90,9 +90,7 @@ struct BoundarySegment {
 	// boundary source
 	BoundarySource source = BoundarySource::Obstacle;
 
-	// renaming variables
-	std::string name;
-	char nameBuffer[128] = {};
+
 };
 
 
@@ -106,5 +104,6 @@ struct BoundarySegmentGroup {
 	char nameBuffer[128] = {};
 
 	// vector of all segment IDs in this group
-	std::vector<int> segmentIds;
+	std::vector<int> segmentIDs;
+
 };

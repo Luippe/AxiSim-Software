@@ -45,9 +45,11 @@ namespace UIFlags {
 		ImGuiWindowFlags_NoFocusOnAppearing |
 		ImGuiWindowFlags_NoBringToFrontOnFocus;
 
-
-	//inline constexpr ImGuiComboFlags UnitComboFlags =
-	//	ImGuiComboFlags_NoArrowButton;
+	inline constexpr ImGuiTableFlags TableBoundaryFlags = 
+		ImGuiTableFlags_BordersInnerV |
+		ImGuiTableFlags_BordersOuter |
+		ImGuiTableFlags_RowBg |
+		ImGuiTableFlags_SizingStretchProp;
 
 	inline constexpr ImGuiInputTextFlags ConsoleMultilineInputFlags =
 		ImGuiInputTextFlags_ReadOnly |

@@ -1,26 +1,81 @@
 ﻿#include "file_manager.h"
+
+#include "tinyfiledialogs.h"
+
 #include "solver.h"
 #include "mesh.h"
-#include "memory_manager.h"
-#include "tinyfiledialogs.h"
-#include "solver_struct.h"
 #include "results.h"
-#include "printer.h"
 
+#include "solver_struct.h"
+#include "boundary_struct.h"
+
+#include "memory_manager.h"
+#include "printer.h"
 
 template<typename... Args>
 void saveBoundaryConditionConfigs(std::ofstream& out, const Args&... configs) {
+
 	(writeBoundaryConditionConfig(out, configs), ...);
+
 }
 
 template<typename... Args>
 void loadBoundaryConditionConfigs(std::ifstream& in, Args&... configs) {
+
 	(readBoundaryConditionConfig(in, configs), ...);
+
 }
 
 bool fileExists(const std::string& filename) {
+
 	std::ifstream file(filename);
 	return file.good();
+
+}
+
+void writeBoundarySegmentGroup(std::ofstream& out, const BoundarySegmentGroup& group) {
+
+	writeAll(out, 
+		group.id, 
+		group.name, 
+		group.nameBuffer,
+		group.segmentIDs);
+
+}
+
+void writeBoundarySegmentGroups(std::ofstream& out, const std::vector<BoundarySegmentGroup>& groups) {
+
+	size_t size = groups.size();
+
+	out.write((const char*)(&size), sizeof(size));
+
+	for (const BoundarySegmentGroup& group : groups) {
+		writeBoundarySegmentGroup(out, group);
+	}
+
+}
+
+void readBoundarySegmentGroup(std::ifstream& in, BoundarySegmentGroup& group) {
+
+	readAll(in,
+		group.id,
+		group.name,
+		group.nameBuffer,
+		group.segmentIDs);
+
+}
+
+void readBoundarySegmentGroups(std::ifstream& in, std::vector<BoundarySegmentGroup>& groups) {
+
+	size_t size = 0;
+
+	in.read((char*)(&size), sizeof(size));
+	groups.resize(size);
+
+	for (BoundarySegmentGroup& group : groups) {
+		readBoundarySegmentGroup(in, group);
+	}
+
 }
 
 // ====================================================
@@ -51,6 +106,7 @@ void saveFromPathMesh(const char* path, Mesh& mesh) {
 		mesh.gridLineVertices,
 		mesh.selectableOuterEdges,
 		mesh.boundarySegments,
+		mesh.nextGroupID,
 		mesh.g.obstacleIndices,
 		mesh.g.R,
 		mesh.g.L,
@@ -65,6 +121,9 @@ void saveFromPathMesh(const char* path, Mesh& mesh) {
 		mesh.g.rFace,
 		mesh.g.zFace
 	);
+
+	writeBoundarySegmentGroups(out, mesh.boundaryGroups);
+
 	out.close();
 }
 
@@ -90,12 +149,14 @@ void loadFromPathMesh(const char* path, Mesh& mesh) {
 	std::ifstream in(path, std::ios::binary);
 
 	// load dimensions
-	readBinary(path,
+
+	readAll(in,
 		mesh.nseg,
 		mesh.gridVertices,
 		mesh.gridLineVertices,
 		mesh.selectableOuterEdges,
 		mesh.boundarySegments,
+		mesh.nextGroupID,
 		mesh.g.obstacleIndices,
 		mesh.g.R,
 		mesh.g.L,
@@ -110,6 +171,8 @@ void loadFromPathMesh(const char* path, Mesh& mesh) {
 		mesh.g.rFace,
 		mesh.g.zFace
 	);
+
+	readBoundarySegmentGroups(in, mesh.boundaryGroups);
 }
 
 void saveLaunchMesh(Mesh& mesh) {

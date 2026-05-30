@@ -28,8 +28,6 @@ void MeshGUI::drawSections() {
 		ImGui::TextUnformatted("ASDASDa");
 		ImGui::Separator();
 
-
-
 	}
 	ImGui::EndChild();
 
@@ -50,6 +48,34 @@ void MeshGUI::setGridConfigEdits() {
 	config.g.nr = gridConfigEdits.nr;
 	config.g.nz = gridConfigEdits.nz;
 	config.g.N = gridConfigEdits.nr * gridConfigEdits.nz;
+}
+
+void MeshGUI::drawBoundaryGroupGUI() {
+
+	// find which segment group the user has selected
+	BoundarySegmentGroup* selectedGroup = mesh.getBoundaryGroupByName(selectedItem);
+
+	if (!selectedGroup) return;
+
+	ImGui::SeparatorText(selectedGroup->name.c_str());
+	ImGuiStyle& style = ImGui::GetStyle();
+
+	ImGui::PushStyleVar(
+		ImGuiStyleVar_ItemSpacing,
+		ImVec2(style.ItemSpacing.x, 0.0f)
+	);
+
+	// draw all segment in this group
+	drawTableHeader("Segments");
+
+	if (ImGui::BeginTable("Segments", 2)) {
+
+		drawTableProperty("ASDASD", "ASDASd");
+		ImGui::EndTable();
+	}
+
+	ImGui::PopStyleVar();
+
 }
 
 void MeshGUI::drawOverview() {
@@ -113,6 +139,8 @@ void MeshGUI::drawOverview() {
 		ImGui::EndChild();
 	}
 
+	drawBoundaryGroupGUI();
+
 	ImGui::End();
 }
 
@@ -122,16 +150,20 @@ void MeshGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
+		// draw general tree node
 		if (ImGui::TreeNodeEx("General", UIFlags::BranchFlags)) {
 			drawLeaf("Edit");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 
-
+		// draw boundary tree node
 		if (ImGui::TreeNodeEx("Boundaries", UIFlags::BranchFlags)) {
 			for (BoundarySegmentGroup& group : mesh.boundaryGroups) {
-				drawLeaf(group.name.c_str());
+				if (drawLeaf(group.name.c_str())) {
+					mesh.highlightSegmentsInGroup(group);
+
+				}
 			}
 			ImGui::TreePop();
 		}
@@ -139,6 +171,7 @@ void MeshGUI::draw() {
 
 		ImGui::EndChild();
 
+		// draw generate button
 		if (ImGui::Button("Generate Mesh")) {
 			setGridConfigEdits();
 			mesh.generate();
@@ -146,9 +179,12 @@ void MeshGUI::draw() {
 		}
 		changeCursorOnHover();
 
+		// draw overview window
 		drawOverview();
 
 		ImGui::EndTabItem();
 	}
 	changeCursorOnHover();
+
+
 }
