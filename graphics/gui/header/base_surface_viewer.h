@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "graphics_struct.h"
+#include "boundary_struct.h"
 #include "shader.h"
 #include "printer.h"
 
@@ -225,6 +226,12 @@ private:
 
 
 
+
+
+
+
+
+
 class BaseSurfaceViewer {
 public:
 
@@ -251,6 +258,8 @@ protected:
 	// rectangle selection
 	bool toggleDrawCell = false;
 	bool toggleRemoveCell = false;
+	bool toggleRuler = false;
+	bool toggleFillCells = false;
 	bool isRectReady = false;
 
 
@@ -267,6 +276,9 @@ protected:
 	// popup variables
 	bool openPopUp = false;
 
+	// rect variables
+
+
 	// image dimensions
 	int imageWidth, imageHeight;
 	ImVec2 zoomCenter = ImVec2(0.5f, 0.5f);
@@ -278,11 +290,11 @@ protected:
 	float u1 = 1.0f;
 	float v1 = 1.0f;
 
+	// ruler button
+	
 	// ======================================================================
 	// -----------------------HELPER FUNCTION--------------------------------
 	// ======================================================================
-	void setImagePadding(ImVec2& padding);
-
 	std::optional<ImVec2> mouseToGridPoint(int nrBase, int nzBase);
 
 	void updateUV(float halfW, float halfH);
@@ -353,33 +365,22 @@ protected:
 
 	void addMenuItemToggleBool(const char* text, bool& toggle);
 
-	// add image buttons
-	void addImageButtonResetView(TextureBuffer& icon, ImVec2 buttonSize);
+	// ======================================================================
+	// -----------------------IMAGE BUTTONS----------------------------------
+	// ======================================================================
+	bool addImageButton(const char* id, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize);
+
+	bool addImageButtonToggle(const char* id, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle);
 
 	void addImageButtonNewTab(TextureBuffer& icon, ImVec2 buttonSize, ImGuiID currentDockID, ImGuiID& pendingAddDockID, ImGuiID dockspaceID);
 
-	bool addImageButtonToggleBool(const char* id, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle);
+private:
 
-	void addImageButtonCopyToClipboard(const char* id, TextureBuffer& icon, ImVec2 buttonSize);
-
-	template<typename T>
-	void addImageButtonClearVector(const char* id, TextureBuffer& icon, ImVec2 buttonSize, std::vector<T>& vec) {
-		if (ImGui::ImageButton(id, (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
-			vec.clear();
-		}
-	}
-
-	template<typename... Sets>
-	void addImageButtonClearSet(const char* id, TextureBuffer& icon, ImVec2 buttonSize, Sets&... sets) {
-		if (ImGui::ImageButton(id, (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
-			(sets.clear(), ...);
-		}
-	}
-
-	template <typename... Funcs>
-	void addImageButtonRunCustomFuncs(const char* id, TextureBuffer& icon, ImVec2 buttonSize, Funcs&&... funcs) {
-		if (ImGui::ImageButton(id, (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
-			(funcs(), ...);
-		}
-	}
+	void drawFilledCells(
+		ImDrawList* drawList,
+		std::unordered_set<int>& indices,
+		const std::vector<double>& rFace,
+		const std::vector<double>& zFace,
+		const int nrBase,
+		const int nzBase);
 };

@@ -12,19 +12,6 @@
 #include "memory_manager.h"
 #include "printer.h"
 
-template<typename... Args>
-void saveBoundaryConditionConfigs(std::ofstream& out, const Args&... configs) {
-
-	(writeBoundaryConditionConfig(out, configs), ...);
-
-}
-
-template<typename... Args>
-void loadBoundaryConditionConfigs(std::ifstream& in, Args&... configs) {
-
-	(readBoundaryConditionConfig(in, configs), ...);
-
-}
 
 bool fileExists(const std::string& filename) {
 
@@ -40,7 +27,9 @@ void writeBoundarySegmentGroup(std::ofstream& out, const BoundarySegmentGroup& g
 		group.name, 
 		group.nameBuffer,
 		group.segmentIDs,
-		group.edges);
+		group.edges,
+		group.bcs,
+		group.type);
 
 }
 
@@ -63,7 +52,9 @@ void readBoundarySegmentGroup(std::ifstream& in, BoundarySegmentGroup& group) {
 		group.name,
 		group.nameBuffer,
 		group.segmentIDs,
-		group.edges);
+		group.edges,
+		group.bcs,
+		group.type);
 
 }
 
@@ -198,7 +189,6 @@ void saveFromPathSolver(const char* path, Solver& solver) {
 		solver.currentResidualScaling);
 	saveBinary(out, solver.addConvectionTerm, solver.transient);
 	saveBinary(out, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
-	saveBoundaryConditionConfigs(out, solver.uBC, solver.vBC, solver.pBC, solver.concBC);
 	writeAll(out, solver.configSimple);
 	out.close();
 
@@ -231,7 +221,6 @@ void loadFromPathSolver(const char* path, Solver& solver) {
 		solver.currentResidualScaling);
 	readBinary(in, solver.addConvectionTerm, solver.transient);
 	readBinary(in, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
-	loadBoundaryConditionConfigs(in, solver.uBC, solver.vBC, solver.pBC, solver.concBC);
 	readVar(in, solver.configSimple);
 }
 
@@ -297,15 +286,9 @@ void loadAtLaunch(Mesh& mesh, Solver& solver, Results& results) {
 
 void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc) {
 	int type = (int)(bc.type);
+
 	out.write((const char*)&type, sizeof(type));
 	out.write((const char*)&bc.val, sizeof(bc.val));
-}
-
-void writeBoundaryConditionConfig(std::ofstream& out, const BoundaryConditionConfig& bcConfig) {
-	writeBoundaryCondition(out, bcConfig.inlet);
-	writeBoundaryCondition(out, bcConfig.outlet);
-	writeBoundaryCondition(out, bcConfig.outer);
-	writeBoundaryCondition(out, bcConfig.centerline);
 }
 
 void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc) {

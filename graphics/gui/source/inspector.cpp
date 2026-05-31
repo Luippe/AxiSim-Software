@@ -209,20 +209,25 @@ void Inspector::drawToolBar() {
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
-	addImageButtonResetView(assets.houseIcon, ImVec2(22.0f, 22.0f));
-	setToolTip("Reset view");
+	if (addImageButton("Reset", "Reset View", assets.houseIcon, buttonSize)) {
+		resetView();
+	}
 	ImGui::SameLine();
 
-	addImageButtonClearVector("##ClearPoints",assets.clearIcon, ImVec2(22.0f, 22.0f), points);
-	setToolTip("Clear all selected points");
+	if (addImageButton("Clear", "Clear all points", assets.clearIcon, buttonSize)) {
+		points.clear();
+	}
 	ImGui::SameLine();
 
-	addImageButtonToggleBool("Select", assets.selectRegionIcon, ImVec2(22.0f, 22.0f), toggleDrawCell);
-	setToolTip("Select");
+	addImageButtonToggle("Select", "Select", assets.selectRegionIcon, ImVec2(22.0f, 22.0f), toggleDrawCell);
 	ImGui::SameLine();
 
-	addImageButtonCopyToClipboard("Copy", assets.copyIcon, ImVec2(22.0f, 22.0f));
-	setToolTip("Copy to clipboard");
+	if (addImageButton("Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
+		pendingCopyWidth = frameBuffer.width;
+		pendingCopyHeight = frameBuffer.height;
+		pendingCopy = true;
+		consoleCopy = false;
+	}
 	ImGui::SameLine();
 
 	ImGui::EndChild();

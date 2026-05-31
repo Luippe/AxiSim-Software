@@ -1,5 +1,6 @@
 #include "solver_gui.h"
 #include "scene_view.h"		// must be in front of graphics_struct.h
+#include "mesh.h"
 #include "solver.h"
 
 #include "graphics_struct.h"
@@ -11,6 +12,7 @@
 
 SolverGUI::SolverGUI(SceneView& scene) :
 	scene(scene),
+	mesh(scene.mesh),
 	solver(scene.solver),
 	varUnits(scene.solver.varUnits) {
 }
@@ -28,11 +30,190 @@ void SolverGUI::setResidualDefault() {
 	}
 }
 
+const char* fieldTypeToString(FieldType field) {
+	switch (field) {
+	case FieldType::UVelocity:
+		return "U Velocity";
+
+	case FieldType::VVelocity:
+		return "V Velocity";
+
+	case FieldType::Pressure:
+		return "Pressure";
+
+	case FieldType::Energy:
+		return "Energy";
+
+	case FieldType::Concentration:
+		return "Concentration";
+
+	default:
+		return "Unknown";
+	}
+}
+
+const char* boundaryTypeToString(BoundaryType type) {
+	switch (type) {
+	case BoundaryType::WALL:
+		return "Wall";
+
+	case BoundaryType::VELOCITY_INLET:
+		return "Velocity Inlet";
+
+	case BoundaryType::PRESSURE_OUTLET:
+		return "Pressure Outlet";
+
+	default:
+		return "Wall";
+	}
+}
+
+void SolverGUI::drawFieldCheckbox() {
+	ImGui::Checkbox("Axial Velocity", &solver.fieldOption.solveU);
+	ImGui::Checkbox("Radial Velocity", &solver.fieldOption.solveV);
+	ImGui::Checkbox("Pressure", &solver.fieldOption.solvePressure);
+	ImGui::Checkbox("Energy", &solver.fieldOption.solveEnergy);
+	ImGui::Checkbox("Concentration", &solver.fieldOption.solveConcentration);
+}
+
+BCType SolverGUI::getDefaultBCType(FieldType field) const {
+	switch (field) {
+	case FieldType::UVelocity:
+		return BCType::DIRICHLET;
+
+	case FieldType::VVelocity:
+		return BCType::DIRICHLET;
+
+	case FieldType::Pressure:
+		return BCType::NEUMANN;
+
+	case FieldType::Energy:
+		return BCType::NEUMANN;
+
+	default:
+
+		return BCType::NONE;
+	}
+}
+
+BoundaryCondition& SolverGUI::getOrCreateBC(
+	BoundarySegmentGroup& group,
+	FieldType field
+) {
+
+	auto it = group.bcs.find(field);
+
+	if (it != group.bcs.end()) {
+		return it->second;
+	}
+
+	BoundaryCondition bc{};
+	bc.enabled = true;
+	bc.type = getDefaultBCType(field);
+	bc.val = 0.0;
+
+	auto [newIt, inserted] = group.bcs.emplace(field, bc);
+	return newIt->second;
+}
+
+void SolverGUI::drawBoundaryConditionGUI() {
+
+	BoundarySegmentGroup* selectedGroup =
+		mesh.getBoundaryGroupByID(selectedBoundaryGroupID);
+
+	if (!selectedGroup) {
+		selectedBoundaryGroupID = -1;
+		mesh.highlightedBoundarySegmentIDs.clear();
+		return;
+	}
+
+	ImGui::SeparatorText(selectedGroup->name.c_str());
+
+	std::vector<FieldType> activeFields = getActiveFields();
+
+
+	if (activeFields.empty()) {
+		return;
+	}
+
+	drawTableHeader("Properties");
+
+	if (ImGui::BeginTable("PropertyTable", 2, UIFlags::TableSimpleFlags, ImVec2(0.0f, 120.0f))) {
+		setupTableColumns(
+			column("Label", 150.0f),
+			column("Value", 100.0f, ImGuiTableColumnFlags_WidthStretch)
+		);
+
+		labelRow("Type");
+		if (createSimpleCombo("##BoundaryType", solver.boundaryType, (int&)selectedGroup->type, IM_ARRAYSIZE(solver.boundaryType))) {
+			check();
+		}
+		ImGui::EndTable();
+	}
+
+	//for (FieldType field : activeFields) {
+	//	ImGui::PushID((int)(field));
+
+	//	BoundaryCondition& bc = getOrCreateBC(*selectedGroup, field);
+
+	//	
+
+	//	if (ImGui::TreeNodeEx(
+	//		fieldTypeToString(field),
+	//		ImGuiTreeNodeFlags_DefaultOpen
+	//	)) {
+	//		drawBCEditor(field, bc);
+	//		ImGui::TreePop();
+	//	}
+
+	//	ImGui::PopID();
+	//}
+}
+
+void SolverGUI::drawBCEditor(FieldType& type, BoundaryCondition& bc) {
+	return;
+}
+
+std::vector<FieldType> SolverGUI::getActiveFields() const {
+	std::vector<FieldType> fields;
+
+	const SolverFieldOption& option = solver.fieldOption;
+
+	if (option.solveU) {
+		fields.push_back(FieldType::UVelocity);
+	}
+
+	if (option.solveV) {
+		fields.push_back(FieldType::VVelocity);
+	}
+
+	if (option.solvePressure) {
+		fields.push_back(FieldType::Pressure);
+	}
+
+	if (option.solveEnergy) {
+		fields.push_back(FieldType::Energy);
+	}
+
+	if (option.solveConcentration) {
+		fields.push_back(FieldType::Concentration);
+	}
+
+	return fields;
+}
+
 void SolverGUI::drawPropertiesPanel() {
 
 	ImGui::Begin("Overview");
 
-	if (selectedItem == "Solver Settings") {
+	if (selectedItem == "General") {
+
+		ImGui::TextUnformatted("General");
+
+		drawFieldCheckbox();
+
+	}
+	else if (selectedItem == "Solver Settings") {
 		ImGui::TextUnformatted("Solver");
 
 		// total width = sum of table width + 10 * num of columns to account for padding
@@ -83,112 +264,112 @@ void SolverGUI::drawPropertiesPanel() {
 		ImGui::EndChild();
 	}
 
-	else if (selectedItem == "BC") {
+	else if (selectedItem == "Boundary") {
 
-		// total width = sum of table width + 10 * num of columns to account for padding
-		// total height = number of rows * 31
-		ImGui::TextUnformatted("Axial Velocity");
-		ImGui::BeginChild("Axial Velocity", ImVec2(440.0f, 62.0f), true);
-		if (ImGui::BeginTable("Axial Velocity", 4)) {
+		//// total width = sum of table width + 10 * num of columns to account for padding
+		//// total height = number of rows * 31
+		//ImGui::TextUnformatted("Axial Velocity");
+		//ImGui::BeginChild("Axial Velocity", ImVec2(440.0f, 62.0f), true);
+		//if (ImGui::BeginTable("Axial Velocity", 4)) {
 
-			setupTableColumns(
-				column("Label", 100.0f),
-				column("BC Type", 100.0f),
-				column("Value", 100.0f),
-				column("Units", 100.0f));
+		//	setupTableColumns(
+		//		column("Label", 100.0f),
+		//		column("BC Type", 100.0f),
+		//		column("Value", 100.0f),
+		//		column("Units", 100.0f));
 
-			labelRow("Inlet");
-			createSimpleCombo("##InletBCType", solver.bcInletTypeNames, (int&)(solver.uBC.inlet.type), IM_ARRAYSIZE(solver.bcInletTypeNames));
+		//	labelRow("Inlet");
+		//	createSimpleCombo("##InletBCType", solver.bcInletTypeNames, (int&)(solver.uBC.inlet.type), IM_ARRAYSIZE(solver.bcInletTypeNames));
 
-			tableNextColumn();
-			inputDoubleWithUnits(
-				"AxialInlet",
-				solver.uBC.inlet.val,
-				varUnits.axialUnit,
-				Units::velocityUnits
-			);
+		//	tableNextColumn();
+		//	inputDoubleWithUnits(
+		//		"AxialInlet",
+		//		solver.uBC.inlet.val,
+		//		varUnits.axialUnit,
+		//		Units::velocityUnits
+		//	);
 
-			labelRow("Outer");
-			createSimpleCombo("##OuterBCType", solver.bcTypeNames, (int&)(solver.uBC.outer.type), IM_ARRAYSIZE(solver.bcTypeNames));
+		//	labelRow("Outer");
+		//	createSimpleCombo("##OuterBCType", solver.bcTypeNames, (int&)(solver.uBC.outer.type), IM_ARRAYSIZE(solver.bcTypeNames));
 
-			tableNextColumn();
-			inputDoubleWithUnits(
-				"AxialOuter",
-				solver.uBC.outer.val,
-				varUnits.axialUnit,
-				Units::velocityUnits
-			);
+		//	tableNextColumn();
+		//	inputDoubleWithUnits(
+		//		"AxialOuter",
+		//		solver.uBC.outer.val,
+		//		varUnits.axialUnit,
+		//		Units::velocityUnits
+		//	);
 
-			ImGui::EndTable();
-		}
-		ImGui::EndChild();
+		//	ImGui::EndTable();
+		//}
+		//ImGui::EndChild();
 
-		ImGui::Dummy(ImVec2(0.0f, 30.0f));
-		ImGui::TextUnformatted("Radial Velocity");
-		ImGui::BeginChild("Radial Velocity", ImVec2(440.0f, 40.0f), true);
-		if (ImGui::BeginTable("Boundary Conditions", 4)) {
+		//ImGui::Dummy(ImVec2(0.0f, 30.0f));
+		//ImGui::TextUnformatted("Radial Velocity");
+		//ImGui::BeginChild("Radial Velocity", ImVec2(440.0f, 40.0f), true);
+		//if (ImGui::BeginTable("Boundary Conditions", 4)) {
 
-			setupTableColumns(
-				column("Label", 100.0f),
-				column("BC Type", 100.0f),
-				column("Value", 100.0f),
-				column("Units", 100.0f)
-			);
+		//	setupTableColumns(
+		//		column("Label", 100.0f),
+		//		column("BC Type", 100.0f),
+		//		column("Value", 100.0f),
+		//		column("Units", 100.0f)
+		//	);
 
-			labelRow("Outer");
-			createSimpleCombo(
-				"##OuterBCType",
-				solver.bcTypeNames,
-				(int&)(solver.vBC.outer.type),
-				IM_ARRAYSIZE(solver.bcTypeNames)
-			);
+		//	labelRow("Outer");
+		//	createSimpleCombo(
+		//		"##OuterBCType",
+		//		solver.bcTypeNames,
+		//		(int&)(solver.vBC.outer.type),
+		//		IM_ARRAYSIZE(solver.bcTypeNames)
+		//	);
 
-			tableNextColumn();
-			inputDoubleWithUnits(
-				"##RadialVelocity",
-				solver.vBC.outer.val,
-				varUnits.radialUnit,
-				Units::velocityUnits
-			);
+		//	tableNextColumn();
+		//	inputDoubleWithUnits(
+		//		"##RadialVelocity",
+		//		solver.vBC.outer.val,
+		//		varUnits.radialUnit,
+		//		Units::velocityUnits
+		//	);
 
-			ImGui::EndTable();
-		}
-		ImGui::EndChild();
-
-
+		//	ImGui::EndTable();
+		//}
+		//ImGui::EndChild();
 
 
-		ImGui::Dummy(ImVec2(0.0f, 30.0f));
-		ImGui::TextUnformatted("Pressure");
-		ImGui::BeginChild("Pressure", ImVec2(440.0f, 40.0f), true);
-		if (ImGui::BeginTable("Boundary Conditions", 4)) {
 
-			setupTableColumns(
-				column("Label", 100.0f),
-				column("BC Type", 100.0f),
-				column("Value", 100.0f),
-				column("Units", 100.0f)
-			);
 
-			labelRow("Outlet");
-			createSimpleCombo(
-				"##OutletBCType",
-				solver.bcTypeNames,
-				(int&)(solver.pBC.outlet.type),
-				IM_ARRAYSIZE(solver.bcTypeNames)
-			);
+		//ImGui::Dummy(ImVec2(0.0f, 30.0f));
+		//ImGui::TextUnformatted("Pressure");
+		//ImGui::BeginChild("Pressure", ImVec2(440.0f, 40.0f), true);
+		//if (ImGui::BeginTable("Boundary Conditions", 4)) {
 
-			tableNextColumn();
-			inputDoubleWithUnits(
-				"##Pressure",
-				solver.pBC.outer.val,
-				varUnits.pressureUnit,
-				Units::pressureUnits
-			);
+		//	setupTableColumns(
+		//		column("Label", 100.0f),
+		//		column("BC Type", 100.0f),
+		//		column("Value", 100.0f),
+		//		column("Units", 100.0f)
+		//	);
 
-			ImGui::EndTable();
-		}
-		ImGui::EndChild();
+		//	labelRow("Outlet");
+		//	createSimpleCombo(
+		//		"##OutletBCType",
+		//		solver.bcTypeNames,
+		//		(int&)(solver.pBC.outlet.type),
+		//		IM_ARRAYSIZE(solver.bcTypeNames)
+		//	);
+
+		//	tableNextColumn();
+		//	inputDoubleWithUnits(
+		//		"##Pressure",
+		//		solver.pBC.outer.val,
+		//		varUnits.pressureUnit,
+		//		Units::pressureUnits
+		//	);
+
+		//	ImGui::EndTable();
+		//}
+		//ImGui::EndChild();
 
 	}
 	else if (selectedItem == "Residuals") {
@@ -331,6 +512,9 @@ void SolverGUI::drawPropertiesPanel() {
 			ImGui::EndTable();
 		}
 	}
+
+	drawBoundaryConditionGUI();
+
 	ImGui::End();
 }
 
@@ -340,33 +524,90 @@ void SolverGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
-		if (ImGui::TreeNodeEx("General", UIFlags::BranchFlags)) {
+		bool generalOpen = ImGui::TreeNodeEx("General", UIFlags::BranchOpenedFlags);
+
+
+		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+
+			selectedBoundaryGroupID = -1;
+			selectedItem = "General";
+
+		}
+
+		if (generalOpen) {
+
 			drawLeaf("Solver Settings");
+			changeCursorOnHover();
+
+			ImGui::TreePop();
+			changeCursorOnHover();
+		}
+
+
+		// draw boundary tree node
+		bool boundariesOpen = ImGui::TreeNodeEx("Boundary", UIFlags::BranchOpenedFlags);
+
+		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+
+			selectedBoundaryGroupID = -1;
+			selectedItem = "Boundary";
+
+		}
+
+		if (boundariesOpen) {
+
+			for (BoundarySegmentGroup& group : mesh.boundaryGroups) {
+				ImGui::PushID(group.id);
+				if (drawLeaf(group.name.c_str())) {
+					selectedBoundaryGroupID = group.id;
+				}
+
+				ImGui::PopID();
+			}
+
 			ImGui::TreePop();
 		}
-		changeCursorOnHover();
 
-		if (ImGui::TreeNodeEx("Boundary Conditions", UIFlags::BranchFlags)) {
-			drawLeaf("BC");
-			ImGui::TreePop();
-		}
-		changeCursorOnHover();
 
-		if (ImGui::TreeNodeEx("Convergence", UIFlags::BranchFlags)) {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		if (ImGui::TreeNodeEx("Convergence", UIFlags::BranchOpenedFlags)) {
 			drawLeaf("Residuals");
 			drawLeaf("Tolerance");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 		
-		if (ImGui::TreeNodeEx("Fluid Properties", UIFlags::BranchFlags)) {
+		if (ImGui::TreeNodeEx("Fluid Properties", UIFlags::BranchOpenedFlags)) {
 			drawLeaf("Fluid Settings");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 
 		if (solver.transient) {
-			if (ImGui::TreeNodeEx("Transient", UIFlags::BranchFlags)) {
+			if (ImGui::TreeNodeEx("Transient", UIFlags::BranchOpenedFlags)) {
 				drawLeaf("Transient Settings");
 				ImGui::TreePop();
 			}

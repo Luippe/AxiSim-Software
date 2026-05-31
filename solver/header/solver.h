@@ -15,6 +15,7 @@ public:
 
 	Solver(SceneView& scene, Config& config);
 	
+	const char* boundaryType[3] = { "Wall", "Velocity Inlet", "Pressure Outlet" };
 	const char* fieldType[5] = { "Axial Velocity", "Radial Velocity", "Pressure", "Concentration", "Temperature"};
 	const char* residualType[3] = { "Raw Residual", "RMS", "Custom Residual"};
 	const char* residualNormType[3] = { "L1 Norm", "L2 Norm", "Linf Norm" };
@@ -26,7 +27,6 @@ public:
 	const char* convectionDiscretizationType[3] = { "First Order Upwind", "Central Difference", "Second Order Upwind"};
 	const char* residualPlotType[6] = { "U", "V", "P", "Continuity", "Temperature", "Concentration" };
 
-	FieldType currentField = FIELD_AXIAL_VELOCITY;
 	VelocitySolverType currentVelocitySolver = SOLVER_SIMPLE;
 	ResidualType currentResidual = RESIDUAL_RAW;
 	ResidualNormType currentResidualNorm = RESIDUAL_LINF;
@@ -59,6 +59,9 @@ public:
 	FluidPropertyConfig& f;
 	IterationConfig& itr;
 	VariableUnits& varUnits;
+
+	// struct to determine which fields to solve for
+	SolverFieldOption fieldOption;
 
 	// gui classes
 	Console* console = nullptr;

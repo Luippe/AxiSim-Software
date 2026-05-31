@@ -4,6 +4,7 @@
 #include <fstream>
 #include <filesystem>
 #include <unordered_set>
+#include <unordered_map>
 
 class Solution;
 class Mesh;
@@ -57,9 +58,6 @@ void saveLaunchSolver(Solver& solver);
 
 // write boundarycondtion struct to save file
 void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc);
-
-// write boundary condition config to save file
-void writeBoundaryConditionConfig(std::ofstream& out, const BoundaryConditionConfig& bcConfig);
 
 // read boundary condition from save file
 void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc);
@@ -127,6 +125,36 @@ bool readVar(std::ifstream& in, std::unordered_set<T, Hash, KeyEqual, Allocator>
 
 }
 
+template <
+	typename Key,
+	typename Value,
+	typename Hash,
+	typename KeyEqual,
+	typename Allocator
+>
+bool readVar(std::ifstream& in,	std::unordered_map<Key, Value, Hash, KeyEqual, Allocator>& map) {
+	map.clear();
+
+	size_t size = 0;
+
+	if (!in.read((char*)&size, sizeof(size))) {
+		return false;
+	}
+
+	map.reserve(size);
+
+	for (size_t i = 0; i < size; i++) {
+		Key key{};
+		Value value{};
+
+		if (!readVar(in, key) || !readVar(in, value)) return false;
+
+		map.emplace(key, value);
+	}
+
+	return true;
+}
+
 // load several values
 template<typename... Args>
 bool readAll(std::ifstream& in, Args&... args) {
@@ -185,7 +213,26 @@ void writeVar(std::ofstream& out, const std::unordered_set<T, Hash, KeyEqual, Al
 	out.write((const char*)&size, sizeof(size));
 
 	for (const T& value : set) {
-		out.write((const char*)&value, sizeof(T));
+		writeVar(out, value);
+	}
+}
+
+// save std::unordered_map
+template <
+	typename Key,
+	typename Value,
+	typename KeyEqual,
+	typename Hash,
+	typename Allocator
+>
+void writeVar(std::ofstream& out, const std::unordered_map<Key, Value, Hash, KeyEqual, Allocator>& map) {
+	size_t size = map.size();
+
+	out.write((const char*)&size, sizeof(size));
+
+	for (const auto& [key, value] : map) {
+		writeVar(out, key);
+		writeVar(out, value);
 	}
 }
 

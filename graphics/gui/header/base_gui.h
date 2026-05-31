@@ -49,6 +49,8 @@ public:
 	// draw leaf for tree node
 	bool drawLeaf(const char* label);
 
+	bool drawClickableTreeNode(const char* label, bool selected, ImGuiTreeNodeFlags flags);
+
 
 	// table functions
 	

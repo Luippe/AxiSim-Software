@@ -112,28 +112,27 @@ BaseSurfaceViewer::BaseSurfaceViewer(const char* vertexPath, const char* fragmen
 // -----------------------HELPER FUNCTION--------------------------------
 // ======================================================================
 int findCellIndex(const std::vector<double>& face, double x) {
-	int nFaces = static_cast<int>(face.size());
+	int nFaces = (int)(face.size());
 
-	if (nFaces == 0) return -1;
-	if (nFaces == 1) return 0;
-
-	if (x <= face.front()) return 0;
-	if (x >= face.back())  return nFaces - 1;
-
-	auto it = std::lower_bound(face.begin(), face.end(), x);
-
-	int right = static_cast<int>(it - face.begin());
-	int left = right - 1;
-
-	double dLeft = std::abs(x - face[left]);
-	double dRight = std::abs(x - face[right]);
-
-	if (dLeft <= dRight) {
-		return left;
+	if (nFaces < 2) {
+		return -1;
 	}
-	else {
-		return right;
+
+	int nCells = nFaces - 1;
+
+	if (x <= face.front()) {
+		return 0;
 	}
+
+	if (x >= face.back()) {
+		return nCells - 1;
+	}
+
+	auto it = std::upper_bound(face.begin(), face.end(), x);
+
+	int cell = (int)(it - face.begin()) - 1;
+
+	return std::clamp(cell, 0, nCells - 1);
 }
 
 void BaseSurfaceViewer::updateUV(float halfW, float halfH) {
@@ -449,6 +448,69 @@ void BaseSurfaceViewer::displayRect(int nrBase, int nzBase) {
 	drawList->AddRect(p1, p2, IM_COL32(255, 255, 255, 255));
 }
 
+void BaseSurfaceViewer::drawFilledCells(
+	ImDrawList* drawList,
+	std::unordered_set<int>& indices,
+	const std::vector<double>& rFace,
+	const std::vector<double>& zFace,
+	const int nrBase,
+	const int nzBase
+) {
+
+	// if true, fill the whole bounding rectangle once
+	int iMin = nrBase;
+	int iMax = -1;
+	int jMin = nzBase;
+	int jMax = -1;
+
+	for (int n : indices) {
+		int i = n / nzBase;
+		int j = n % nzBase;
+
+		if (j < 0 || j >= nzBase) continue;
+		if (i < 0 || i >= nrBase) continue;
+
+		iMin = std::min(iMin, i);
+		iMax = std::max(iMax, i);
+		jMin = std::min(jMin, j);
+		jMax = std::max(jMax, j);
+	}
+
+	if (iMax >= 0 && jMax >= 0) {
+		ImVec2 p0 = gridFaceToScreen(jMin, iMin, zFace, rFace);
+		ImVec2 p1 = gridFaceToScreen(jMax + 1, iMax + 1, zFace, rFace);
+
+		ImVec2 rectMin(
+			std::min(p0.x, p1.x),
+			std::min(p0.y, p1.y)
+		);
+
+		ImVec2 rectMax(
+			std::max(p0.x, p1.x),
+			std::max(p0.y, p1.y)
+		);
+
+		drawList->AddRectFilled(
+			rectMin,
+			rectMax,
+			IM_COL32(151, 151, 151, 255)
+		);
+
+		// Optional outer border
+		drawList->AddRect(
+			rectMin,
+			rectMax,
+			IM_COL32(203, 209, 224, 255),
+			0.0f,
+			0,
+			1.0f
+		);
+	}
+
+	drawList->PopClipRect();
+	
+}
+
 void BaseSurfaceViewer::drawHighlightedCells(
 	ImDrawList* drawList,
 	std::unordered_set<int>& indices,
@@ -464,6 +526,7 @@ void BaseSurfaceViewer::drawHighlightedCells(
 
 	// Prevent highlights from drawing outside the image
 	drawList->PushClipRect(imageMin, imageMax, true);
+
 
 	for (int n : indices) {
 
@@ -486,20 +549,26 @@ void BaseSurfaceViewer::drawHighlightedCells(
 			std::max(p0.y, p1.y)
 		);
 
-		drawList->AddRectFilled(
-			rectMin,
-			rectMax,
-			IM_COL32(255, 255, 0, 70)
-		);
 
-		drawList->AddRect(
-			rectMin,
-			rectMax,
-			IM_COL32(255, 255, 0, 180),
-			0.0f,
-			0,
-			1.0f
-		);
+		// draw cell rectangle
+		if (!toggleFillCells) {
+			drawList->AddRectFilled(
+				rectMin,
+				rectMax,
+				IM_COL32(151, 151, 151, 255)
+			);
+		}
+		else {
+			drawList->AddRect(
+				rectMin,
+				rectMax,
+				IM_COL32(203, 209, 224, 255),
+				0.0f,
+				0,
+				1.0f
+			);
+		}
+
 	}
 
 	drawList->PopClipRect();
@@ -538,19 +607,24 @@ void BaseSurfaceViewer::addMenuItemToggleBool(const char* text, bool& toggle) {
 // ======================================================================
 // -----------------------IMAGE BUTTON HANDLES---------------------------
 // ======================================================================
-void BaseSurfaceViewer::addImageButtonResetView(TextureBuffer& icon, ImVec2 buttonSize) {
-	if (ImGui::ImageButton("##ResetView", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
-		resetView();
-	}
-}
-
 void BaseSurfaceViewer::addImageButtonNewTab(TextureBuffer& icon, ImVec2 buttonSize, ImGuiID currentDockID, ImGuiID& pendingAddDockID, ImGuiID dockspaceID) {
 	if (ImGui::ImageButton("##NewTab", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
 		pendingAddDockID = currentDockID != 0 ? currentDockID : dockspaceID;
 	}
 }
 
-bool BaseSurfaceViewer::addImageButtonToggleBool(const char* id, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle) {
+bool BaseSurfaceViewer::addImageButton(const char* id, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize) {
+	ImGui::PushID(id);
+
+	bool clicked = ImGui::ImageButton("##addImageButton", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize);
+
+	setToolTip(tooltip);
+
+	ImGui::PopID();
+	return clicked;
+}
+
+bool BaseSurfaceViewer::addImageButtonToggle(const char* id, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle) {
 
 	ImGui::PushID(id);
 
@@ -574,20 +648,9 @@ bool BaseSurfaceViewer::addImageButtonToggleBool(const char* id, TextureBuffer& 
 		ImGui::PopStyleColor(3);
 	}
 
+	setToolTip(tooltip);
+
 	ImGui::PopID();
+
 	return pushed;
-}
-
-void BaseSurfaceViewer::addImageButtonCopyToClipboard(const char* id, TextureBuffer& icon, ImVec2 buttonSize) {
-	
-	ImGui::PushID(id);
-
-	if (ImGui::ImageButton("##CopyToClipboard", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize) || consoleCopy) {
-		pendingCopyWidth = frameBuffer.width;
-		pendingCopyHeight = frameBuffer.height;
-		pendingCopy = true;
-		consoleCopy = false;
-	}
-
-	ImGui::PopID();
 }

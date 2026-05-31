@@ -13,6 +13,8 @@ struct AppAssets {
 	TextureBuffer selectRegionIcon;
 	TextureBuffer connectIcon;
 	TextureBuffer eraseIcon;
+	TextureBuffer rulerIcon;
+	TextureBuffer fillCellIcon;
 };
 
 

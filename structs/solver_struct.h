@@ -6,13 +6,14 @@
 
 // holds solvers for solving system of linear equations
 
-enum FieldType {
-    FIELD_AXIAL_VELOCITY  = 0,
-    FIELD_RADIAL_VELOCITY = 1,
-    FIELD_PRESSURE        = 2,
-    FIELD_TEMPERATURE     = 3,
-    FIELD_CONCENTRATION   = 4
+struct SolverFieldOption {
+	bool solveU = true;
+	bool solveV = true;
+	bool solvePressure = true;
+	bool solveEnergy = true;
+	bool solveConcentration = true;
 };
+
 
 enum ResidualType {
 	RESIDUAL_RAW = 0,

@@ -8,9 +8,14 @@ namespace UIFlags {
 		ImGuiTreeNodeFlags_NoTreePushOnOpen |
 		ImGuiTreeNodeFlags_SpanAvailWidth;
 
-	inline constexpr ImGuiTreeNodeFlags BranchFlags =
+	inline constexpr ImGuiTreeNodeFlags BranchOpenedFlags =
 		ImGuiTreeNodeFlags_DefaultOpen |
 		ImGuiTreeNodeFlags_OpenOnArrow |
+		ImGuiTreeNodeFlags_SpanAvailWidth;
+
+	inline constexpr ImGuiTreeNodeFlags BranchGroupFlags = 
+		ImGuiTreeNodeFlags_OpenOnArrow |
+		ImGuiTreeNodeFlags_OpenOnDoubleClick |
 		ImGuiTreeNodeFlags_SpanAvailWidth;
 
 	inline constexpr ImGuiWindowFlags BaseDockWindowFlags =
@@ -45,11 +50,7 @@ namespace UIFlags {
 		ImGuiWindowFlags_NoFocusOnAppearing |
 		ImGuiWindowFlags_NoBringToFrontOnFocus;
 
-	inline constexpr ImGuiTableFlags TableBoundaryFlags = 
-		ImGuiTableFlags_BordersInnerV |
-		ImGuiTableFlags_BordersOuter |
-		ImGuiTableFlags_RowBg |
-		ImGuiTableFlags_SizingStretchProp;
+
 
 	inline constexpr ImGuiInputTextFlags ConsoleMultilineInputFlags =
 		ImGuiInputTextFlags_ReadOnly |
@@ -60,5 +61,17 @@ namespace UIFlags {
 		ImGuiInputTextFlags_EnterReturnsTrue |
 		ImGuiInputTextFlags_EscapeClearsAll |
 		ImGuiInputTextFlags_CallbackHistory;
-}
 
+
+	inline constexpr ImGuiTableFlags TableBoundaryFlags =
+		ImGuiTableFlags_BordersInnerV |
+		ImGuiTableFlags_BordersOuter |
+		ImGuiTableFlags_RowBg |
+		ImGuiTableFlags_SizingStretchProp;
+
+	inline constexpr ImGuiTableFlags TableSimpleFlags =
+		ImGuiTableFlags_Borders |
+		ImGuiTableFlags_RowBg |
+		ImGuiTableFlags_SizingStretchProp;
+
+}

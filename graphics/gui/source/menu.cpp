@@ -10,6 +10,7 @@ Menu::Menu(GUI& gui, SceneView& scene) :
 	//scene.solver.setDefault();
 }
 
+
 void Menu::drawOpen() {
 	if (ImGui::BeginMenu("Open")) {
 

@@ -286,9 +286,6 @@ void Solver::runSimple() {
 
         out.open("flow_motion.bin", std::ios::binary);
         saveBinary(out, g.nr, g.nz, g.dr, g.dz);
-        writeBoundaryConditionConfig(out, uBC);
-        writeBoundaryConditionConfig(out, vBC);
-        writeBoundaryConditionConfig(out, pBC);
         
         // save initial field
         saveBinary(out, (double)0 * dt,

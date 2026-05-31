@@ -673,11 +673,13 @@ void MeshInspector::handleItemButtonConnecting() {
 
 void MeshInspector::handleCursor(ImGuiIO& io) {
 
-	if (toggleDrawCell || toggleConnecting || toggleRemoveCell) return;
-
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
 		handlePan(io);
 	}
+
+	if (toggleDrawCell || toggleConnecting || toggleRemoveCell || toggleRuler) return;
+
+
 
 
 
@@ -855,48 +857,42 @@ void MeshInspector::drawToolBar() {
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
-	addImageButtonResetView(assets.houseIcon, buttonSize);
-	setToolTip("Reset view");
-	ImGui::SameLine();
-
-	addImageButtonClearVector("##ClearPoints", assets.clearIcon, buttonSize, points);
-	setToolTip("Clear all selected points");
-	ImGui::SameLine();
-
-	addImageButtonRunCustomFuncs(
-		"##Custom",
-		assets.clearIcon,
-		buttonSize,
-		[&]() { g.obstacleIndices.clear(); },
-		[&]() { mesh.selectableOuterEdges.clear(); },
-		[&]() { mesh.boundarySegments.clear(); }
-	);
-	setToolTip("Clear all selected cells");
-	ImGui::SameLine();
-
-	addImageButtonRunCustomFuncs(
-		"##Customall",
-		assets.clearIcon,
-		buttonSize,
-		[&]() { clearObstacles(); }
-	);
-	setToolTip("Erase All");
-	ImGui::SameLine();
-
-	if (addImageButtonToggleBool("Erase", assets.eraseIcon, buttonSize, toggleRemoveCell)) {
-		toggleDrawCell = false;
+	if (addImageButtonToggle("Ruler", "Ruler", assets.rulerIcon, buttonSize, toggleRuler)) {
+		toggleDrawCell = toggleRemoveCell = false;
 	}
-	setToolTip("Erase");
 	ImGui::SameLine();
 
-	if (addImageButtonToggleBool("Draw", assets.selectRegionIcon, buttonSize, toggleDrawCell)) {
-		toggleRemoveCell = false;
+	if (addImageButtonToggle("Fill", "Fill cells", assets.fillCellIcon, buttonSize, toggleFillCells)) {
+
 	}
-	setToolTip("Draw");
 	ImGui::SameLine();
 
-	addImageButtonCopyToClipboard("Copy", assets.copyIcon, buttonSize);
-	setToolTip("Copy to clipboard");
+	if (addImageButton("Reset", "Reset View", assets.houseIcon, buttonSize)) {
+		resetView();
+	}
+	ImGui::SameLine();
+
+	if (addImageButton("Erase All", "Erase All", assets.clearIcon, buttonSize)) {
+		clearObstacles();
+	}
+	ImGui::SameLine();
+
+	if (addImageButtonToggle("Erase", "Erase", assets.eraseIcon, buttonSize, toggleRemoveCell)) {
+		toggleDrawCell = toggleRuler = false;
+	}
+	ImGui::SameLine();
+
+	if (addImageButtonToggle("Draw", "Draw", assets.selectRegionIcon, buttonSize, toggleDrawCell)) {
+		toggleRemoveCell = toggleRuler = false;
+	}
+	ImGui::SameLine();
+
+	if (addImageButton("Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
+		pendingCopyWidth = frameBuffer.width;
+		pendingCopyHeight = frameBuffer.height;
+		pendingCopy = true;
+		consoleCopy = false;
+	}
 	ImGui::SameLine();
 
 	ImGui::EndChild();
@@ -961,10 +957,11 @@ void MeshInspector::drawPopup() {
 		//addMenuItem
 		addMenuItemCopyToClipboard("Copy to clipboard");
 
-		addMenuItemClearPoints("Clear points");
-
-		addMenuItemResetView("Reset view");
+		if (ImGui::MenuItem("Reset View")) {
+			resetView();
+		}
 		
+
 		// draw naming menu item
 		if (hoveringOverSelectedSegment) {
 			if (ImGui::MenuItem("Name Segment")) {
@@ -1214,8 +1211,9 @@ void MeshInspector::render() {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	drawList->PushClipRect(imageMin, imageMax, true);
 
-	drawBoundarySegments(drawList, g.rFace, g.zFace);
 	drawHighlightedCells(drawList, g.obstacleIndices, g.rFace, g.zFace);
+	drawBoundarySegments(drawList, g.rFace, g.zFace);
+
 	drawTextAtSurfacePoint(drawList);
 	drawPopup();
 

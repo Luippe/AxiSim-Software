@@ -5,18 +5,38 @@
 #include <functional>  // std::hash
 #include <string>	   // std::string
 
+
+
+
+enum class FieldType : uint8_t {
+	UVelocity,
+	VVelocity,
+	Pressure,
+	Energy,
+	Concentration
+};
+
+struct FieldTypeHash {
+	size_t operator()(FieldType field) const {
+		return (size_t)(field);
+	}
+};
+
 // ======================================================================
 // -----------------------BOUNDARY CONDITIONS----------------------------
 // ======================================================================
+
 enum BCType {
 	DIRICHLET,
 	NEUMANN,
-	FULLY_DEVELOPED
+	FULLY_DEVELOPED,
+	NONE
 };
 
 struct BoundaryCondition {
 	BCType type = DIRICHLET;
 	double val = 0.0;
+	bool enabled = true;
 };
 
 struct BoundaryConditionConfig {
@@ -75,6 +95,12 @@ struct GridVertexHash {
 	}
 };
 
+enum class BoundaryType {
+	WALL,
+	VELOCITY_INLET,
+	PRESSURE_OUTLET
+};
+
 enum class BoundarySource {
 	Domain,
 	Obstacle
@@ -86,10 +112,6 @@ struct BoundarySegment {
 	GridVertex a;
 	GridVertex b;
 	int id = -1;
-
-	// boundary source
-	BoundarySource source = BoundarySource::Obstacle;
-
 
 };
 
@@ -107,5 +129,9 @@ struct BoundarySegmentGroup {
 	std::vector<int> segmentIDs;
 	std::vector<MeshEdge> edges;
 
+	std::unordered_map<FieldType, BoundaryCondition, FieldTypeHash> bcs;
+
+	// boundary source
+	BoundaryType type = BoundaryType::WALL;
 
 };

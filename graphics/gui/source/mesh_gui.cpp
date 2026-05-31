@@ -6,9 +6,11 @@
 #include "mesh.h"
 
 #include "solver_struct.h"
+#include "boundary_struct.h"
+
 #include "unit_manager.h"
 #include "flag_manager.h"
-#include "boundary_struct.h"
+
 #include "printer.h"
 
 MeshGUI::MeshGUI(GUI& gui, SceneView& scene) :
@@ -20,17 +22,6 @@ MeshGUI::MeshGUI(GUI& gui, SceneView& scene) :
 	config(scene.config){
 
 	getGridConfigEdits();
-}
-
-void MeshGUI::drawSections() {
-
-	if (ImGui::BeginChild("HELLO", ImVec2(0, 110), true)) {
-		ImGui::TextUnformatted("ASDASDa");
-		ImGui::Separator();
-
-	}
-	ImGui::EndChild();
-
 }
 
 void MeshGUI::getGridConfigEdits() {
@@ -126,7 +117,28 @@ void MeshGUI::drawBoundaryGroupGUI() {
 
 void MeshGUI::drawOverview() {
 	ImGui::Begin("Overview");
-	if (selectedItem == "Edit") {
+	if (selectedItem == "General") {
+
+		drawTableHeader("Statistics");
+
+		if (ImGui::BeginTable("StatisticsTable", 2, UIFlags::TableSimpleFlags, ImVec2(0.0f, 220.0f))) {
+			setupTableColumns(
+				column("Label", 150.0f),
+				column("Value", 100.0f, ImGuiTableColumnFlags_WidthStretch)
+			);
+
+			
+
+			std::string numCells = std::to_string(mesh.g.nr * mesh.g.nz);
+			std::string numNodes = std::to_string((mesh.g.nr + 1) * (mesh.g.nz + 1));
+
+			drawTableProperty("Number of Cells", numCells.c_str());
+			drawTableProperty("Number of Nodes", numNodes.c_str());
+			ImGui::EndTable();
+		}
+
+	}
+	else if (selectedItem == "Edit") {
 
 		ImGui::TextUnformatted("Geometry");
 		ImGui::BeginChild("Geometry", ImVec2(330.0f, 62.0f), true);	// total width = sum of table width + 10 * num of columns to account for padding
@@ -184,6 +196,25 @@ void MeshGUI::drawOverview() {
 		}
 		ImGui::EndChild();
 	}
+	else if (selectedItem == "Boundary") {
+
+		drawTableHeader("Statistics");
+
+		if (ImGui::BeginTable("StatsticsTable", 2, UIFlags::TableSimpleFlags, ImVec2(0.0f, 220.0f))) {
+			setupTableColumns(
+				column("Label", 150.0f),
+				column("Value", 100.0f, ImGuiTableColumnFlags_WidthStretch)
+			);
+
+			std::string numSegs = std::to_string(mesh.boundarySegments.size());
+			std::string numGroups = std::to_string(mesh.boundaryGroups.size());
+
+			drawTableProperty("Segments", numSegs.c_str());
+			drawTableProperty("Groups", numGroups.c_str());
+			ImGui::EndTable();
+		}
+
+	}
 
 	drawBoundaryGroupGUI();
 
@@ -197,7 +228,17 @@ void MeshGUI::draw() {
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
 		// draw general tree node
-		if (ImGui::TreeNodeEx("General", UIFlags::BranchFlags)) {
+		bool generalOpen = ImGui::TreeNodeEx("General", UIFlags::BranchOpenedFlags);
+
+		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+
+			selectedBoundaryGroupID = -1;
+			mesh.highlightedBoundarySegmentIDs.clear();
+			selectedItem = "General";
+
+		}
+
+		if (generalOpen) {
 			if (drawLeaf("Edit")) {
 				selectedBoundaryGroupID = -1;
 				mesh.highlightedBoundarySegmentIDs.clear();
@@ -208,15 +249,22 @@ void MeshGUI::draw() {
 		changeCursorOnHover();
 
 		// draw boundary tree node
-		if (ImGui::TreeNodeEx("Boundaries", UIFlags::BranchFlags)) {
+		bool boundariesOpen = ImGui::TreeNodeEx("Boundary", UIFlags::BranchOpenedFlags);
+
+		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+
+			selectedBoundaryGroupID = -1;
+			mesh.highlightedBoundarySegmentIDs.clear();
+			selectedItem = "Boundary";
+
+		}
+
+		if (boundariesOpen) {
 			for (BoundarySegmentGroup& group : mesh.boundaryGroups) {
 				ImGui::PushID(group.id);
 
 				if (drawLeaf(group.name.c_str())) {
 					selectedBoundaryGroupID = group.id;
-
-					// This function should now highlight using group.edges,
-					// not group.segmentIDs.
 					mesh.highlightSegmentsInGroup(group);
 				}
 
