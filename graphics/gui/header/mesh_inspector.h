@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <optional>
+#include <array>
 
 #include "base_surface_viewer.h"
 
@@ -49,6 +50,7 @@ private:
 	// ----------mesh analyzer region-----------
 	int nrBase = 0;
 	int nzBase = 0;
+	ImVec2 padding = ImVec2(20.0f, 20.0f);
 
 	// ----------resources-----------
 	AppAssets& assets;
@@ -61,7 +63,7 @@ private:
 	bool hoveringOverSegment = false;
 	bool hoveringOverSelectedSegment = false;
 	std::optional<BoundarySegmentGroup> pendingBoundaryGroup;
-
+	std::string obstacleError;
 	std::vector<int> namedIDs;
 
 	int cellIndex(int i, int j) const;
@@ -86,6 +88,7 @@ private:
 		const std::vector<double>& rFace,
 		const std::vector<double>& zFace
 		);
+	std::array<MeshEdge, 4> getCellEdges(int i, int j) const;
 
 	// draw toolbar at the top of the mesh analyzer, which can be used for variety of functions
 	void drawToolBar();
@@ -94,11 +97,20 @@ private:
 	void drawPopup();
 	
 	// draw text at clicked position
-	void drawTextAtSurfacePoint();
+	void drawTextAtSurfacePoint(ImDrawList* drawList);
 
-	void drawBoundarySegments(const std::vector<double>& rFace, const std::vector<double>& zFace);
-
+	void drawBoundarySegments(ImDrawList* drawList, const std::vector<double>& rFace, const std::vector<double>& zFace);
+	void fillBoundaryGroupEdges(BoundarySegmentGroup& group);
+	bool obstacleCellTouchesBoundaryGroup(int cellIndex) const;
+	bool tryAddObstacleCell(int cellIndex);
+	void tryAddObstacleCellsInRect(
+		const ImVec2& start,
+		const ImVec2& end
+	);
 	// highlight boundary groups
+	std::vector<MeshEdge> edgesFromBoundarySegment(
+		const BoundarySegment& seg
+	) const;
 
 	// build domain segments
 	std::unordered_set<MeshEdge, MeshEdgeHash> buildDomainBoundaryEdges() const;

@@ -27,6 +27,140 @@ MeshInspector::MeshInspector(Mesh& mesh, AppAssets& assets) :
 // ======================================================================
 // -----------------------HELPER FUNCTIONS-------------------------------
 // ======================================================================
+void MeshInspector::tryAddObstacleCellsInRect(
+	const ImVec2& start,
+	const ImVec2& end
+) {
+	int j0 = std::clamp((int)std::min(start.x, end.x), 0, nzBase - 1);
+	int j1 = std::clamp((int)std::max(start.x, end.x), 0, nzBase - 1);
+
+	int i0 = std::clamp((int)std::min(start.y, end.y), 0, nrBase - 1);
+	int i1 = std::clamp((int)std::max(start.y, end.y), 0, nrBase - 1);
+
+	for (int i = i0; i <= i1; i++) {
+		for (int j = j0; j <= j1; j++) {
+			int cell = i * nzBase + j;
+			tryAddObstacleCell(cell);
+		}
+	}
+}
+
+bool MeshInspector::tryAddObstacleCell(int cellIndex) {
+	if (obstacleCellTouchesBoundaryGroup(cellIndex)) {
+		obstacleError = "Obstacle cannot touch an existing boundary group.";
+		return false;
+	}
+
+	addHighlightCell(g.obstacleIndices, cellIndex);
+	obstacleError.clear();
+
+	return true;
+}
+
+bool MeshInspector::obstacleCellTouchesBoundaryGroup(int cellIndex) const {
+	int i = cellIndex / nzBase;
+	int j = cellIndex % nzBase;
+
+	if (!isInsideCellGrid(i, j)) {
+		return true;
+	}
+
+	std::array<MeshEdge, 4> cellEdges = getCellEdges(i, j);
+
+	for (const BoundarySegmentGroup& group : mesh.boundaryGroups) {
+		for (const MeshEdge& cellEdge : cellEdges) {
+			auto it = std::find(
+				group.edges.begin(),
+				group.edges.end(),
+				cellEdge
+			);
+
+			if (it != group.edges.end()) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+std::array<MeshEdge, 4> MeshInspector::getCellEdges(int i, int j) const {
+	return {
+		MeshEdge{ EdgeOrient::Horizontal, i,     j     }, // top
+		MeshEdge{ EdgeOrient::Horizontal, i + 1, j     }, // bottom
+		MeshEdge{ EdgeOrient::Vertical,   i,     j     }, // left
+		MeshEdge{ EdgeOrient::Vertical,   i,     j + 1 }  // right
+	};
+}
+
+void MeshInspector::fillBoundaryGroupEdges(BoundarySegmentGroup& group) {
+	group.edges.clear();
+
+	std::unordered_set<MeshEdge, MeshEdgeHash> uniqueEdges;
+
+	for (int selectedID : group.segmentIDs) {
+		auto it = std::find_if(
+			mesh.boundarySegments.begin(),
+			mesh.boundarySegments.end(),
+			[&](const BoundarySegment& seg) {
+				return seg.id == selectedID;
+			}
+		);
+
+		if (it == mesh.boundarySegments.end()) {
+			continue;
+		}
+
+		std::vector<MeshEdge> edges = edgesFromBoundarySegment(*it);
+
+		for (const MeshEdge& edge : edges) {
+			uniqueEdges.insert(edge);
+		}
+	}
+
+	group.edges.assign(uniqueEdges.begin(), uniqueEdges.end());
+}
+
+std::vector<MeshEdge> MeshInspector::edgesFromBoundarySegment(
+	const BoundarySegment& seg
+) const {
+	std::vector<MeshEdge> edges;
+
+	// Horizontal segment
+	if (seg.a.i == seg.b.i) {
+		int i = seg.a.i;
+
+		int j0 = std::min(seg.a.j, seg.b.j);
+		int j1 = std::max(seg.a.j, seg.b.j);
+
+		for (int j = j0; j < j1; j++) {
+			edges.push_back({
+				EdgeOrient::Horizontal,
+				i,
+				j
+				});
+		}
+	}
+
+	// Vertical segment
+	else if (seg.a.j == seg.b.j) {
+		int j = seg.a.j;
+
+		int i0 = std::min(seg.a.i, seg.b.i);
+		int i1 = std::max(seg.a.i, seg.b.i);
+
+		for (int i = i0; i < i1; i++) {
+			edges.push_back({
+				EdgeOrient::Vertical,
+				i,
+				j
+				});
+		}
+	}
+
+	return edges;
+}
+
 int edgeLengthInFaces(const BoundarySegment& seg) {
 	int di = std::abs(seg.b.i - seg.a.i);
 	int dj = std::abs(seg.b.j - seg.a.j);
@@ -69,10 +203,6 @@ void debugCheckBoundaryMerge(
 		std::cout << "raw edge count: " << rawCount << "\n";
 		std::cout << "merged face count: " << mergedFaceCount << "\n";
 	}
-}
-
-bool isAxisAligned(const GridVertex& a, const GridVertex& b) {
-	return a.i == b.i || a.j == b.j;
 }
 
 int MeshInspector::cellIndex(int i, int j) const {
@@ -380,37 +510,6 @@ void MeshInspector::createGridBuffer() {
 
 }
 
-MeshEdge MeshInspector::nearestEdgeFromGridPoint(const ImVec2& p) {
-
-	int jFace = std::clamp(int(std::round(p.x)), 0, nzBase);
-	int iFace = std::clamp(int(std::round(p.y)), 0, nrBase);
-
-	int jCell = std::clamp(int(std::floor(p.x)), 0, nzBase - 1);
-	int iCell = std::clamp(int(std::floor(p.y)), 0, nrBase - 1);
-
-	float distToVertical = std::abs(p.x - float(jFace));
-	float distToHorizontal = std::abs(p.y - float(iFace));
-
-	if (distToVertical < distToHorizontal) {
-		// Vertical face at axial face jFace,
-		// spanning radial cell iCell.
-		return MeshEdge{
-			EdgeOrient::Vertical,
-			iCell,
-			jFace
-		};
-	}
-	else {
-		// Horizontal face at radial face iFace,
-		// spanning axial cell jCell.
-		return MeshEdge{
-			EdgeOrient::Horizontal,
-			iFace,
-			jCell
-		};
-	}
-}
-
 float distPointToSegment(ImVec2 p, ImVec2 a, ImVec2 b) {
 	ImVec2 ab(b.x - a.x, b.y - a.y);
 	ImVec2 ap(p.x - a.x, p.y - a.y);
@@ -441,28 +540,28 @@ float distPointToSegment(ImVec2 p, ImVec2 a, ImVec2 b) {
 // -----------------------MOUSE HANDLES----------------------------------
 // ======================================================================
 void MeshInspector::handleItemButtonSelect() {
-	if (!toggleSelect) return;
+    if (!toggleSelect) return;
 
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && toggleSelect) {
+    int cell = (int)currentMouseIndex.y * nzBase + (int)currentMouseIndex.x;
 
-		addHighlightCell(g.obstacleIndices, (int)currentMouseIndex.y * nzBase + (int)currentMouseIndex.x);
-		initMouseIndex = currentMouseIndex;
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        tryAddObstacleCell(cell);
+        initMouseIndex = currentMouseIndex;
+    }
 
-	}
+    if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && toggleSelect) {
-		addHighlightCell(g.obstacleIndices, (int)currentMouseIndex.y * nzBase + (int)currentMouseIndex.x);
-	}
+        if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) {
+            tryAddObstacleCellsInRect(initMouseIndex, currentMouseIndex);
+        }
+        else {
+            tryAddObstacleCell(cell);
+        }
+    }
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && toggleSelect && ImGui::IsKeyPressed(ImGuiKey_LeftCtrl)) {
-		highlightCellsInRect(g.obstacleIndices, initMouseIndex, currentMouseIndex, nzBase, nrBase);
-	}
-
-	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && toggleSelect) {
-		rebuildSelectableOuterEdges(g.obstacleIndices);
-		//printInt(mesh.selectableOuterEdges.size());
-	}
-
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        rebuildSelectableOuterEdges(g.obstacleIndices);
+    }
 }
 
 void MeshInspector::handleItemButtonConnecting() {
@@ -492,19 +591,6 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 			mesh.selectedBoundaryIDs.clear();
 			mesh.highlightedBoundarySegmentIDs.clear();
 		}
-		//ImDrawList* drawList = ImGui::GetWindowDrawList();
-		//drawList->AddCircleFilled(currentMousePos, circleRadius, IM_COL32(150, 150, 150, 255), 16);
-		//drawList->AddCircle(currentMousePos, circleRadius, IM_COL32(200, 200, 200, 255), 16, 1.0f);
-
-		//if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-
-		//	double zPos, rPos;
-		//	getMousePhysicalCoord(currentMousePos, g.rFace, g.zFace, rPos, zPos);
-		//	ImVec2 vecValue = ImVec2((float)zPos, (float)rPos);
-
-		//	toggleSelectedPoint(points, currentMouseIndex, vecValue, 0.0f);	// value is 0.0f for now
-		//}
-
 	}
 	else {
 
@@ -608,8 +694,11 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 	ImGui::Begin("##ExportWindow", nullptr, UIFlags::TemporaryWindowFlags);
 
 	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
-	drawBoundarySegments(g.rFace, g.zFace);
-	drawHighlightedCells(g.obstacleIndices, g.zFace, g.rFace);
+	
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	drawBoundarySegments(drawList, g.rFace, g.zFace);
+	drawHighlightedCells(drawList, g.obstacleIndices, g.zFace, g.rFace);
 
 	ImGui::End();
 	ImGui::PopStyleVar();
@@ -621,10 +710,10 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
 void MeshInspector::drawBoundarySegments(
+	ImDrawList* drawList,
 	const std::vector<double>& rFace,
 	const std::vector<double>& zFace
 ) {
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 	for (const BoundarySegment& seg : mesh.boundarySegments) {
 		ImVec2 p0 = gridToScreen(seg.a.j, seg.a.i, rFace, zFace);
@@ -696,11 +785,9 @@ void MeshInspector::drawToolBar() {
 	ImGui::Separator();
 }
 
-void MeshInspector::drawTextAtSurfacePoint() {
+void MeshInspector::drawTextAtSurfacePoint(ImDrawList* drawList) {
 
 	ImVec2 imageMin = ImGui::GetItemRectMin();
-
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 	for (const SurfacePoint& point : points) {
 
@@ -765,7 +852,10 @@ void MeshInspector::drawPopup() {
 			if (ImGui::MenuItem("Name Segment")) {
 
 				pendingBoundaryGroup = mesh.createBoundaryGroupFromSelection();
-				openNamingPopup = true;
+
+				if (pendingBoundaryGroup) {
+					openNamingPopup = true;
+				}
 
 			}
 		}
@@ -784,7 +874,23 @@ void MeshInspector::drawPopup() {
 	// add new boundary group
 	if (pendingBoundaryGroup) {
 		if (drawNamingPopup("Naming Segment", *pendingBoundaryGroup, mesh.boundaryGroups)) {
-			mesh.boundaryGroups.push_back(std::move(*pendingBoundaryGroup));
+
+			fillBoundaryGroupEdges(*pendingBoundaryGroup);
+
+			printf(
+				"new group edge count = %zu\n",
+				pendingBoundaryGroup->edges.size()
+			);
+
+			if (!pendingBoundaryGroup->edges.empty()) {
+				mesh.boundaryGroups.push_back(std::move(*pendingBoundaryGroup));
+
+				printf(
+					"boundary group count = %zu\n",
+					mesh.boundaryGroups.size()
+				);
+			}
+
 			pendingBoundaryGroup.reset();
 		}
 	}
@@ -821,6 +927,12 @@ void MeshInspector::renderPreview() {
 
 	frameBuffer.unbind();
 
+	// center the image
+	ImVec2 cursor = ImGui::GetCursorPos();
+	ImGui::SetCursorPos(ImVec2(
+		cursor.x + padding.x,
+		cursor.y + padding.y
+	));
 	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
 
 }
@@ -850,7 +962,7 @@ MeshInspector::buildCombinedBoundaryEdges(
 ) {
 	std::unordered_set<MeshEdge, MeshEdgeHash> combinedEdges;
 
-	// Add obstacle edges, but skip obstacle edges that lie exactly on the domain boundary.
+	// add obstacle edges, but skip obstacle edges that lie exactly on the domain boundary.
 	for (const MeshEdge& e : mesh.selectableOuterEdges) {
 		if (isDomainBoundaryEdge(e)) {
 			continue;
@@ -859,7 +971,7 @@ MeshInspector::buildCombinedBoundaryEdges(
 		combinedEdges.insert(e);
 	}
 
-	// Add domain edges only where the adjacent cell is not solid.
+	// add domain edges only where the adjacent cell is not solid.
 	std::unordered_set<MeshEdge, MeshEdgeHash> domainEdges =
 		buildDomainBoundaryEdges();
 
@@ -920,36 +1032,44 @@ std::unordered_set<MeshEdge, MeshEdgeHash> MeshInspector::buildDomainBoundaryEdg
 // -----------------------MAIN RENDER LOOP-------------------------------
 // ======================================================================
 void MeshInspector::render() {
-
 	setBaseNrNz();
 
 	ImGui::Begin("Mesh Inspector");
 
-	vertexBuffer.bufferSubData(mesh.gridLineVertices.size() * sizeof(float), mesh.gridLineVertices.data());
+	vertexBuffer.bufferSubData(
+		mesh.gridLineVertices.size() * sizeof(float),
+		mesh.gridLineVertices.data()
+	);
 
 	drawToolBar();
-	resizeImage(0.0f, 0.0f);
+	resizeImage(padding);
 	renderPreview();
 
+	// Build current segments before hover/mouse logic
+	buildSegments();
+
+	// Update hover before mouse logic
+	hoveredId = findHoveredBoundarySegment(g.rFace, g.zFace);
+	hoveringOverSegment = hoveredId.has_value();
+
+	// Now handle mouse using current hoveredId/current segments
 	handleMouse();
 
-	// generate id for hovered segments
-	hoveredId = findHoveredBoundarySegment(g.rFace, g.zFace);
-	if (hoveredId) {
-		hoveringOverSegment = true;
-	}
-	else {
-		hoveringOverSegment = false;
-	}
-
-	// create segments
+	// If the mouse changed obstacles, this rebuilds before drawing
 	buildSegments();
-	drawBoundarySegments(g.rFace, g.zFace);
 
-	// draw highlighted cells and texts
-	drawHighlightedCells(g.obstacleIndices, g.rFace, g.zFace);
-	drawTextAtSurfacePoint();
+	ImVec2 imageMin = ImGui::GetItemRectMin();
+	ImVec2 imageMax = ImGui::GetItemRectMax();
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawList->PushClipRect(imageMin, imageMax, true);
+
+	drawBoundarySegments(drawList, g.rFace, g.zFace);
+	drawHighlightedCells(drawList, g.obstacleIndices, g.rFace, g.zFace);
+	drawTextAtSurfacePoint(drawList);
 	drawPopup();
+
+	drawList->PopClipRect();
 
 	ImGui::End();
 }

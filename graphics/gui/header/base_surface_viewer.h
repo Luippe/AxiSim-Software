@@ -267,6 +267,7 @@ protected:
 	// image dimensions
 	int imageWidth, imageHeight;
 	ImVec2 zoomCenter = ImVec2(0.5f, 0.5f);
+
 	float zoom = 1.0f;
 
 	float u0 = 0.0f;
@@ -321,7 +322,7 @@ protected:
 
 	void handlePopup(const char* text);
 
-	void resizeImage(int padx, int pady);
+	void resizeImage(ImVec2 padding);
 
 	// ======================================================================
 	// -----------------------DRAW CALLS-------------------------------------
@@ -329,8 +330,12 @@ protected:
 	// draw rectangle when mouse is dragged
 	void displayRect(int nrBase, int nzBase);
 
-	void drawHighlightedCells(std::unordered_set<int>& indices, const std::vector<double>& rFace, const std::vector<double>& zFace);
-
+	void drawHighlightedCells(
+		ImDrawList* drawList,
+		std::unordered_set<int>& indices,
+		const std::vector<double>& rFace,
+		const std::vector<double>& zFace
+	);
 
 
 	// ======================================================================

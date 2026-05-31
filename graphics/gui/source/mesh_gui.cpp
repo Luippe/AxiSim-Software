@@ -50,32 +50,69 @@ void MeshGUI::setGridConfigEdits() {
 	config.g.N = gridConfigEdits.nr * gridConfigEdits.nz;
 }
 
+const char* edgeOrientName(EdgeOrient orient) {
+	switch (orient) {
+	case EdgeOrient::Horizontal:
+		return "Horizontal";
+	case EdgeOrient::Vertical:
+		return "Vertical";
+	default:
+		return "Unknown";
+	}
+}
+
 void MeshGUI::drawBoundaryGroupGUI() {
+	BoundarySegmentGroup* selectedGroup =
+		mesh.getBoundaryGroupByID(selectedBoundaryGroupID);
 
-	// find which segment group the user has selected
-	BoundarySegmentGroup* selectedGroup = mesh.getBoundaryGroupByName(selectedItem);
-
-	if (!selectedGroup) return;
-
-	ImGui::SeparatorText(selectedGroup->name.c_str());
-	ImGuiStyle& style = ImGui::GetStyle();
-
-	ImGui::PushStyleVar(
-		ImGuiStyleVar_ItemSpacing,
-		ImVec2(style.ItemSpacing.x, 0.0f)
-	);
-
-	// draw all segment in this group
-	drawTableHeader("Segments");
-
-	if (ImGui::BeginTable("Segments", 2)) {
-
-		drawTableProperty("ASDASD", "ASDASd");
-		ImGui::EndTable();
+	if (!selectedGroup) {
+		selectedBoundaryGroupID = -1;
+		return;
 	}
 
-	ImGui::PopStyleVar();
+	ImGui::SeparatorText(selectedGroup->name.c_str());
 
+	ImGui::Text("Group ID: %d", selectedGroup->id);
+	ImGui::Text("Number of boundary edges: %zu", selectedGroup->edges.size());
+
+	ImGui::Spacing();
+
+	drawTableHeader("Edges");
+
+	ImGuiTableFlags flags =
+		ImGuiTableFlags_Borders |
+		ImGuiTableFlags_RowBg |
+		ImGuiTableFlags_Resizable |
+		ImGuiTableFlags_ScrollY;
+
+	if (ImGui::BeginTable("BoundaryGroupEdges", 3, flags, ImVec2(0.0f, 220.0f))) {
+		ImGui::TableSetupColumn("Type");
+		ImGui::TableSetupColumn("i");
+		ImGui::TableSetupColumn("j");
+		ImGui::TableHeadersRow();
+
+		ImGuiListClipper clipper;
+		clipper.Begin((int)selectedGroup->edges.size());
+
+		while (clipper.Step()) {
+			for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; row++) {
+				const MeshEdge& edge = selectedGroup->edges[row];
+
+				ImGui::TableNextRow();
+
+				ImGui::TableSetColumnIndex(0);
+				ImGui::TextUnformatted(edgeOrientName(edge.orient));
+
+				ImGui::TableSetColumnIndex(1);
+				ImGui::Text("%d", edge.i);
+
+				ImGui::TableSetColumnIndex(2);
+				ImGui::Text("%d", edge.j);
+			}
+		}
+
+		ImGui::EndTable();
+	}
 }
 
 void MeshGUI::drawOverview() {
@@ -152,7 +189,11 @@ void MeshGUI::draw() {
 
 		// draw general tree node
 		if (ImGui::TreeNodeEx("General", UIFlags::BranchFlags)) {
-			drawLeaf("Edit");
+			if (drawLeaf("Edit")) {
+				selectedBoundaryGroupID = -1;
+				mesh.highlightedBoundarySegmentIDs.clear();
+			}
+
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
@@ -160,11 +201,19 @@ void MeshGUI::draw() {
 		// draw boundary tree node
 		if (ImGui::TreeNodeEx("Boundaries", UIFlags::BranchFlags)) {
 			for (BoundarySegmentGroup& group : mesh.boundaryGroups) {
-				if (drawLeaf(group.name.c_str())) {
-					mesh.highlightSegmentsInGroup(group);
+				ImGui::PushID(group.id);
 
+				if (drawLeaf(group.name.c_str())) {
+					selectedBoundaryGroupID = group.id;
+
+					// This function should now highlight using group.edges,
+					// not group.segmentIDs.
+					mesh.highlightSegmentsInGroup(group);
 				}
+
+				ImGui::PopID();
 			}
+
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();

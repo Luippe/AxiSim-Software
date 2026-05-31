@@ -72,6 +72,8 @@ private:
 
 	void createCylinderVertices();
 
-
+	std::vector<MeshEdge> edgesFromBoundarySegment(
+		const BoundarySegment& seg
+	) const;
 
 };

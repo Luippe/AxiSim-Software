@@ -294,11 +294,11 @@ ImVec2 BaseSurfaceViewer::screenToUV(const ImVec2& mousePos) {
 	return ImVec2(u, v);
 }
 
-void BaseSurfaceViewer::resizeImage(int padx, int pady) {
+void BaseSurfaceViewer::resizeImage(ImVec2 padding) {
 
 	ImVec2 avail = ImGui::GetContentRegionAvail();
-	imageWidth = (int)avail.x - padx;
-	imageHeight = (int)avail.y - pady;
+	imageWidth = (int)(avail.x - 2.0f * padding.x);
+	imageHeight = (int)(avail.y - 2.0f * padding.y);
 
 	if (imageWidth != frameBuffer.width || imageHeight != frameBuffer.height) {
 		frameBuffer.create2DBuffer(imageWidth, imageHeight, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
@@ -449,8 +449,12 @@ void BaseSurfaceViewer::displayRect(int nrBase, int nzBase) {
 	drawList->AddRect(p1, p2, IM_COL32(255, 255, 255, 255));
 }
 
-void BaseSurfaceViewer::drawHighlightedCells(std::unordered_set<int>& indices, const std::vector<double>& rFace, const std::vector<double>& zFace) {
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
+void BaseSurfaceViewer::drawHighlightedCells(
+	ImDrawList* drawList,
+	std::unordered_set<int>& indices,
+	const std::vector<double>& rFace,
+	const std::vector<double>& zFace
+) {
 
 	ImVec2 imageMin = ImGui::GetItemRectMin();
 	ImVec2 imageMax = ImGui::GetItemRectMax();

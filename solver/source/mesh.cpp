@@ -86,17 +86,52 @@ int Mesh::getAvailableBoundaryGroupID() const {
 	}
 }
 
-void Mesh::highlightSegmentsInGroup(const BoundarySegmentGroup& group) {
+std::vector<MeshEdge> Mesh::edgesFromBoundarySegment(
+	const BoundarySegment& seg
+) const {
+	std::vector<MeshEdge> edges;
 
-	for (const int& id : group.segmentIDs) {
-		BoundarySegment* seg = getBoundarySegmentByID(id);
-		if (seg) {
-			highlightedBoundarySegmentIDs.insert(seg->id);
+	if (seg.a.i == seg.b.i) {
+		int i = seg.a.i;
+
+		int j0 = std::min(seg.a.j, seg.b.j);
+		int j1 = std::max(seg.a.j, seg.b.j);
+
+		for (int j = j0; j < j1; j++) {
+			edges.push_back({ EdgeOrient::Horizontal, i, j });
 		}
 	}
-	//for (const BoundarySegment& seg : boundarySegments) {
-	//	printInt(seg.highlighted);
-	//}
+	else if (seg.a.j == seg.b.j) {
+		int j = seg.a.j;
+
+		int i0 = std::min(seg.a.i, seg.b.i);
+		int i1 = std::max(seg.a.i, seg.b.i);
+
+		for (int i = i0; i < i1; i++) {
+			edges.push_back({ EdgeOrient::Vertical, i, j });
+		}
+	}
+
+	return edges;
+}
+void Mesh::highlightSegmentsInGroup(const BoundarySegmentGroup& group) {
+	highlightedBoundarySegmentIDs.clear();
+
+	std::unordered_set<MeshEdge, MeshEdgeHash> groupEdges(
+		group.edges.begin(),
+		group.edges.end()
+	);
+
+	for (const BoundarySegment& seg : boundarySegments) {
+		std::vector<MeshEdge> segmentEdges = edgesFromBoundarySegment(seg);
+
+		for (const MeshEdge& edge : segmentEdges) {
+			if (groupEdges.find(edge) != groupEdges.end()) {
+				highlightedBoundarySegmentIDs.insert(seg.id);
+				break;
+			}
+		}
+	}
 }
 
 std::optional<BoundarySegmentGroup> Mesh::createBoundaryGroupFromSelection() {

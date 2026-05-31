@@ -284,7 +284,7 @@ void Inspector::render() {
 
 	drawToolBar();
 
-	resizeImage((int)colorbar.width, 0.0f);
+	resizeImage(ImVec2(colorbar.width, 0.0f));
 	
 	renderPreview();
 

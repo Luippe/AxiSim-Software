@@ -39,7 +39,8 @@ void writeBoundarySegmentGroup(std::ofstream& out, const BoundarySegmentGroup& g
 		group.id, 
 		group.name, 
 		group.nameBuffer,
-		group.segmentIDs);
+		group.segmentIDs,
+		group.edges);
 
 }
 
@@ -61,7 +62,8 @@ void readBoundarySegmentGroup(std::ifstream& in, BoundarySegmentGroup& group) {
 		group.id,
 		group.name,
 		group.nameBuffer,
-		group.segmentIDs);
+		group.segmentIDs,
+		group.edges);
 
 }
 

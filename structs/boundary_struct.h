@@ -105,5 +105,7 @@ struct BoundarySegmentGroup {
 
 	// vector of all segment IDs in this group
 	std::vector<int> segmentIDs;
+	std::vector<MeshEdge> edges;
+
 
 };

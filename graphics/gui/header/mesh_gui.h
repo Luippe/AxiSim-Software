@@ -36,6 +36,8 @@ private:
 	// draw each boundary groups
 	void drawBoundaryGroupGUI();
 
+	int selectedBoundaryGroupID = -1;
+
 	GridConfigEdits gridConfigEdits;
 	SceneView& scene;
 	GUI& gui;
