@@ -1,7 +1,6 @@
 #pragma once
 #include "pch.h"
 
-
 #include <glm/fwd.hpp>
 #include <unordered_set>
 #include <unordered_map>
@@ -40,6 +39,8 @@ public:
 	// create buffer using mesh.gridVertices
 	void createGridBuffer();
 
+	// remove boundary group
+	bool deleteBoundaryGroupByID(int groupID);
 
 private:
 
@@ -82,6 +83,8 @@ private:
 	// handle mouse events
 	void handleMouse();
 	void handleItemButtonSelect();
+	void handleItemButtonRemove();
+
 	void handleItemButtonConnecting();
 	void handleCursor(ImGuiIO& io);
 	std::optional<int> findHoveredBoundarySegment(
@@ -107,6 +110,8 @@ private:
 		const ImVec2& start,
 		const ImVec2& end
 	);
+
+
 	// highlight boundary groups
 	std::vector<MeshEdge> edgesFromBoundarySegment(
 		const BoundarySegment& seg
@@ -120,8 +125,20 @@ private:
 		const std::unordered_set<int>& obstacleIndices
 	);
 
-	MeshEdge nearestEdgeFromGridPoint(const ImVec2& p);
-
 	void setBaseNrNz();
+
+	// remove obstacles
+	void syncAfterObstacleEdit();
+	bool boundaryGroupStillValid(
+		const BoundarySegmentGroup& group,
+		const std::unordered_set<MeshEdge, MeshEdgeHash>& validEdges
+	) const;
+	bool removeInvalidBoundaryGroups();
+	bool removeObstacleCell(int cellIndex);
+	void removeObstacleCellsInRect(
+		const ImVec2& start,
+		const ImVec2& end
+	);
+	void clearObstacles();
 
 };

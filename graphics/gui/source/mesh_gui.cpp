@@ -67,6 +67,7 @@ void MeshGUI::drawBoundaryGroupGUI() {
 
 	if (!selectedGroup) {
 		selectedBoundaryGroupID = -1;
+		mesh.highlightedBoundarySegmentIDs.clear();
 		return;
 	}
 
@@ -112,6 +113,14 @@ void MeshGUI::drawBoundaryGroupGUI() {
 		}
 
 		ImGui::EndTable();
+	}
+
+	if (ImGui::Button("Delete Boundary Group")) {
+		if (gui.meshInspector.deleteBoundaryGroupByID(selectedGroup->id)) {
+			selectedBoundaryGroupID = -1;
+		}
+
+		return;
 	}
 }
 
@@ -222,6 +231,20 @@ void MeshGUI::draw() {
 
 		// draw generate button
 		if (ImGui::Button("Generate Mesh")) {
+			bool topologyChanged =
+				gridConfigEdits.nr != config.g.nr ||
+				gridConfigEdits.nz != config.g.nz;
+
+			if (topologyChanged) {
+				mesh.boundaryGroups.clear();
+				mesh.selectedBoundaryIDs.clear();
+				mesh.highlightedBoundarySegmentIDs.clear();
+				mesh.selectableOuterEdges.clear();
+				mesh.boundarySegments.clear();
+
+				selectedBoundaryGroupID = -1;
+			}
+
 			setGridConfigEdits();
 			mesh.generate();
 			gui.meshInspector.createGridBuffer();

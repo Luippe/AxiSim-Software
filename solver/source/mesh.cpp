@@ -86,6 +86,7 @@ int Mesh::getAvailableBoundaryGroupID() const {
 	}
 }
 
+
 std::vector<MeshEdge> Mesh::edgesFromBoundarySegment(
 	const BoundarySegment& seg
 ) const {

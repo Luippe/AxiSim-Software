@@ -68,6 +68,7 @@ public:
 	// create boundary group using the selected boundary segments
 	std::optional<BoundarySegmentGroup> createBoundaryGroupFromSelection();
 
+
 private:
 
 	void createCylinderVertices();

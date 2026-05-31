@@ -550,9 +550,11 @@ void BaseSurfaceViewer::addImageButtonNewTab(TextureBuffer& icon, ImVec2 buttonS
 	}
 }
 
-void BaseSurfaceViewer::addImageButtonToggleBool(const char* id, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle) {
+bool BaseSurfaceViewer::addImageButtonToggleBool(const char* id, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle) {
 
 	ImGui::PushID(id);
+
+	bool pushed = false;
 
 	// highlight button when toggle is on
 	bool pushedStyle = toggle;
@@ -563,8 +565,9 @@ void BaseSurfaceViewer::addImageButtonToggleBool(const char* id, TextureBuffer& 
 		ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(40, 120, 235, 255));
 	}
 
-	if (ImGui::ImageButton("##ToggleSelect", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
+	if (ImGui::ImageButton("##toggleDrawCell", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
 		toggle = !toggle;
+		pushed = true;
 	}
 
 	if (pushedStyle) {
@@ -572,6 +575,7 @@ void BaseSurfaceViewer::addImageButtonToggleBool(const char* id, TextureBuffer& 
 	}
 
 	ImGui::PopID();
+	return pushed;
 }
 
 void BaseSurfaceViewer::addImageButtonCopyToClipboard(const char* id, TextureBuffer& icon, ImVec2 buttonSize) {

@@ -12,6 +12,7 @@ struct AppAssets {
 	TextureBuffer copyIcon;
 	TextureBuffer selectRegionIcon;
 	TextureBuffer connectIcon;
+	TextureBuffer eraseIcon;
 };
 
 

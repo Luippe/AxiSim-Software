@@ -27,6 +27,82 @@ MeshInspector::MeshInspector(Mesh& mesh, AppAssets& assets) :
 // ======================================================================
 // -----------------------HELPER FUNCTIONS-------------------------------
 // ======================================================================
+void MeshInspector::clearObstacles() {
+	g.obstacleIndices.clear();
+	syncAfterObstacleEdit();
+}
+
+void MeshInspector::removeObstacleCellsInRect(
+	const ImVec2& start,
+	const ImVec2& end
+) {
+	int j0 = std::clamp((int)std::min(start.x, end.x), 0, nzBase - 1);
+	int j1 = std::clamp((int)std::max(start.x, end.x), 0, nzBase - 1);
+
+	int i0 = std::clamp((int)std::min(start.y, end.y), 0, nrBase - 1);
+	int i1 = std::clamp((int)std::max(start.y, end.y), 0, nrBase - 1);
+
+	for (int i = i0; i <= i1; i++) {
+		for (int j = j0; j <= j1; j++) {
+			int cell = i * nzBase + j;
+			removeObstacleCell(cell);
+		}
+	}
+}
+
+bool MeshInspector::removeObstacleCell(int cellIndex) {
+	return g.obstacleIndices.erase(cellIndex) > 0;
+}
+
+bool MeshInspector::removeInvalidBoundaryGroups() {
+	std::unordered_set<MeshEdge, MeshEdgeHash> validEdges =
+		buildCombinedBoundaryEdges(mesh.selectableOuterEdges, g.obstacleIndices);
+
+	std::size_t oldSize = mesh.boundaryGroups.size();
+
+	mesh.boundaryGroups.erase(
+		std::remove_if(
+			mesh.boundaryGroups.begin(),
+			mesh.boundaryGroups.end(),
+			[&](const BoundarySegmentGroup& group) {
+				return !boundaryGroupStillValid(group, validEdges);
+			}
+		),
+		mesh.boundaryGroups.end()
+	);
+
+	return mesh.boundaryGroups.size() != oldSize;
+}
+
+bool MeshInspector::boundaryGroupStillValid(
+	const BoundarySegmentGroup& group,
+	const std::unordered_set<MeshEdge, MeshEdgeHash>& validEdges
+) const {
+	if (group.edges.empty()) {
+		return false;
+	}
+
+	for (const MeshEdge& edge : group.edges) {
+		if (validEdges.find(edge) == validEdges.end()) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void MeshInspector::syncAfterObstacleEdit() {
+	rebuildSelectableOuterEdges(g.obstacleIndices);
+
+	removeInvalidBoundaryGroups();
+
+	mesh.selectedBoundaryIDs.clear();
+	mesh.highlightedBoundarySegmentIDs.clear();
+
+	hoveredId.reset();
+	obstacleError.clear();
+}
+
 void MeshInspector::tryAddObstacleCellsInRect(
 	const ImVec2& start,
 	const ImVec2& end
@@ -540,7 +616,7 @@ float distPointToSegment(ImVec2 p, ImVec2 a, ImVec2 b) {
 // -----------------------MOUSE HANDLES----------------------------------
 // ======================================================================
 void MeshInspector::handleItemButtonSelect() {
-    if (!toggleSelect) return;
+    if (!toggleDrawCell) return;
 
     int cell = (int)currentMouseIndex.y * nzBase + (int)currentMouseIndex.x;
 
@@ -559,9 +635,33 @@ void MeshInspector::handleItemButtonSelect() {
         }
     }
 
-    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-        rebuildSelectableOuterEdges(g.obstacleIndices);
-    }
+	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+		syncAfterObstacleEdit();
+	}
+}
+
+void MeshInspector::handleItemButtonRemove() {
+	if (!toggleRemoveCell) return;
+
+	int cell = (int)currentMouseIndex.y * nzBase + (int)currentMouseIndex.x;
+
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+		initMouseIndex = currentMouseIndex;
+		removeObstacleCell(cell);
+	}
+
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+		if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) {
+			removeObstacleCellsInRect(initMouseIndex, currentMouseIndex);
+		}
+		else {
+			removeObstacleCell(cell);
+		}
+	}
+
+	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+		syncAfterObstacleEdit();
+	}
 }
 
 void MeshInspector::handleItemButtonConnecting() {
@@ -573,7 +673,7 @@ void MeshInspector::handleItemButtonConnecting() {
 
 void MeshInspector::handleCursor(ImGuiIO& io) {
 
-	if (toggleSelect || toggleConnecting) return;
+	if (toggleDrawCell || toggleConnecting || toggleRemoveCell) return;
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
 		handlePan(io);
@@ -634,7 +734,9 @@ void MeshInspector::handleMouse() {
 
 	handleItemButtonSelect();
 
+	handleItemButtonRemove();
 	handleCursor(io);
+
 
 	// handled regardless
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
@@ -753,31 +855,47 @@ void MeshInspector::drawToolBar() {
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
-	addImageButtonResetView(assets.houseIcon, ImVec2(22.0f, 22.0f));
+	addImageButtonResetView(assets.houseIcon, buttonSize);
 	setToolTip("Reset view");
 	ImGui::SameLine();
 
-	addImageButtonClearVector("##ClearPoints", assets.clearIcon, ImVec2(22.0f, 22.0f), points);
+	addImageButtonClearVector("##ClearPoints", assets.clearIcon, buttonSize, points);
 	setToolTip("Clear all selected points");
 	ImGui::SameLine();
 
 	addImageButtonRunCustomFuncs(
 		"##Custom",
 		assets.clearIcon,
-		ImVec2(22.0f, 22.0f),
+		buttonSize,
 		[&]() { g.obstacleIndices.clear(); },
 		[&]() { mesh.selectableOuterEdges.clear(); },
 		[&]() { mesh.boundarySegments.clear(); }
 	);
-
 	setToolTip("Clear all selected cells");
 	ImGui::SameLine();
 
-	addImageButtonToggleBool("Select", assets.selectRegionIcon, ImVec2(22.0f, 22.0f), toggleSelect);
-	setToolTip("Select");
+	addImageButtonRunCustomFuncs(
+		"##Customall",
+		assets.clearIcon,
+		buttonSize,
+		[&]() { clearObstacles(); }
+	);
+	setToolTip("Erase All");
 	ImGui::SameLine();
 
-	addImageButtonCopyToClipboard("Copy", assets.copyIcon, ImVec2(22.0f, 22.0f));
+	if (addImageButtonToggleBool("Erase", assets.eraseIcon, buttonSize, toggleRemoveCell)) {
+		toggleDrawCell = false;
+	}
+	setToolTip("Erase");
+	ImGui::SameLine();
+
+	if (addImageButtonToggleBool("Draw", assets.selectRegionIcon, buttonSize, toggleDrawCell)) {
+		toggleRemoveCell = false;
+	}
+	setToolTip("Draw");
+	ImGui::SameLine();
+
+	addImageButtonCopyToClipboard("Copy", assets.copyIcon, buttonSize);
 	setToolTip("Copy to clipboard");
 	ImGui::SameLine();
 
@@ -963,7 +1081,7 @@ MeshInspector::buildCombinedBoundaryEdges(
 	std::unordered_set<MeshEdge, MeshEdgeHash> combinedEdges;
 
 	// add obstacle edges, but skip obstacle edges that lie exactly on the domain boundary.
-	for (const MeshEdge& e : mesh.selectableOuterEdges) {
+	for (const MeshEdge& e : selectableOuterEdges) {
 		if (isDomainBoundaryEdge(e)) {
 			continue;
 		}
@@ -1031,6 +1149,38 @@ std::unordered_set<MeshEdge, MeshEdgeHash> MeshInspector::buildDomainBoundaryEdg
 // ======================================================================
 // -----------------------MAIN RENDER LOOP-------------------------------
 // ======================================================================
+bool MeshInspector::deleteBoundaryGroupByID(int groupID) {
+	auto& groups = mesh.boundaryGroups;
+
+	auto it = std::remove_if(
+		groups.begin(),
+		groups.end(),
+		[&](const BoundarySegmentGroup& group) {
+			return group.id == groupID;
+		}
+	);
+
+	if (it == groups.end()) {
+		return false; // no group with this ID was found
+	}
+
+	groups.erase(it, groups.end());
+
+	// Clear temporary UI state that may refer to old boundary segments/groups
+	mesh.selectedBoundaryIDs.clear();
+	mesh.highlightedBoundarySegmentIDs.clear();
+
+	// If you were naming/editing this group, cancel it
+	if (pendingBoundaryGroup && pendingBoundaryGroup->id == groupID) {
+		pendingBoundaryGroup.reset();
+	}
+
+	// Optional: clear error text
+	obstacleError.clear();
+
+	return true;
+}
+
 void MeshInspector::render() {
 	setBaseNrNz();
 

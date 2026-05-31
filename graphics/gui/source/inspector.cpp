@@ -80,7 +80,7 @@ void Inspector::handleMouse() {
 		handleZoom(io);
 	}
 
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && toggleSelect) {
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && toggleDrawCell) {
 
 		rectPos1 = screenToUV(currentMousePos);
 		rectPos2 = rectPos1;
@@ -95,7 +95,7 @@ void Inspector::handleMouse() {
 
 	}
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && toggleSelect) {
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && toggleDrawCell) {
 
 		handleRectSelection(io);
 
@@ -121,7 +121,7 @@ void Inspector::handleMouse() {
 	}
 
 
-	if (toggleSelect) return;
+	if (toggleDrawCell) return;
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 		handlePan(io);
@@ -217,7 +217,7 @@ void Inspector::drawToolBar() {
 	setToolTip("Clear all selected points");
 	ImGui::SameLine();
 
-	addImageButtonToggleBool("Select", assets.selectRegionIcon, ImVec2(22.0f, 22.0f), toggleSelect);
+	addImageButtonToggleBool("Select", assets.selectRegionIcon, ImVec2(22.0f, 22.0f), toggleDrawCell);
 	setToolTip("Select");
 	ImGui::SameLine();
 

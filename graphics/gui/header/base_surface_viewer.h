@@ -249,14 +249,17 @@ protected:
 	std::vector<SurfacePoint> points;
 
 	// rectangle selection
-	bool toggleSelect = false;
+	bool toggleDrawCell = false;
+	bool toggleRemoveCell = false;
 	bool isRectReady = false;
+
 
 	ImVec2 initMouseIndex = ImVec2(0.0f, 0.0f);
 	ImVec2 currentMouseIndex = ImVec2(0.0f, 0.0f);
 	ImVec2 currentMousePos = ImVec2(0.0f, 0.0f);
 	ImVec2 rectPos1 = ImVec2(0.0f, 0.0f);
 	ImVec2 rectPos2 = ImVec2(0.0f, 0.0f);
+	ImVec2 buttonSize = ImVec2(22.0f, 22.0f);
 
 	// shader
 	Shader shader;
@@ -355,7 +358,7 @@ protected:
 
 	void addImageButtonNewTab(TextureBuffer& icon, ImVec2 buttonSize, ImGuiID currentDockID, ImGuiID& pendingAddDockID, ImGuiID dockspaceID);
 
-	void addImageButtonToggleBool(const char* id, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle);
+	bool addImageButtonToggleBool(const char* id, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle);
 
 	void addImageButtonCopyToClipboard(const char* id, TextureBuffer& icon, ImVec2 buttonSize);
 
