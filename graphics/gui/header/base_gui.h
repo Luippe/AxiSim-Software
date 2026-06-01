@@ -49,7 +49,7 @@ public:
 	// draw leaf for tree node
 	bool drawLeaf(const char* label);
 
-	bool drawClickableTreeNode(const char* label, bool selected, ImGuiTreeNodeFlags flags);
+	bool drawTree(const char* label, bool& isOpen);
 
 
 	// table functions
@@ -68,32 +68,42 @@ public:
 	}
 
 
-	// draw label, input, units in a 3 column table
-	template <typename T, size_t N>
-	void inputDoubleWithUnits(const char* label, T& value, std::uint8_t& unitIndex, const std::array<UnitOption, N>& units, const char* format = "%.3g") {
-		
-		const UnitOption& unit = units[unitIndex];
-
-		double displayValue = (double)value / unit.toBase;
-
-		ImGui::PushID(label);	// dont have to build unique settings with this
-
-		// convert display value back to solver/base value
-		ImGui::SetNextItemWidth(-FLT_MIN);
-		if (ImGui::InputDouble("##value", &displayValue, 0.0, 0.0, format)) {
-			value = (T)(displayValue * unit.toBase);
+	// draw input and unit using two columns
+	template <typename UnitT, size_t N>
+	void inputDoubleWithUnits(
+		const char* label,
+		double& value,
+		std::uint8_t& unitIndex,
+		const std::array<UnitT, N>& units,
+		const char* format = "%.3g"
+	) {
+		if (unitIndex >= N) {
+			unitIndex = 0;
 		}
 
+		const UnitT& unit = units[unitIndex];
+
+		double baseValue = (double)(value);
+		double displayValue = fromBaseValue(baseValue, unit);
+
+		ImGui::PushID(label);
+
+		ImGui::SetNextItemWidth(-FLT_MIN);
+
+		if (ImGui::InputDouble("##value", &displayValue, 0.0, 0.0, format)) {
+			value = toBaseValue(displayValue, unit);
+		}
 
 		ImGui::TableNextColumn();
 
 		ImGui::SetNextItemWidth(-FLT_MIN);
+
 		if (ImGui::BeginCombo("##unit", unit.name)) {
-			for (int i = 0; i < (int)N; i++) {
-				bool selected = (unitIndex == i);
+			for (int i = 0; i < (int)(N); i++) {
+				bool selected = unitIndex == i;
 
 				if (ImGui::Selectable(units[i].name, selected)) {
-					unitIndex = i;
+					unitIndex = (std::uint8_t)(i);
 				}
 
 				if (selected) {
@@ -103,6 +113,7 @@ public:
 
 			ImGui::EndCombo();
 		}
+
 		ImGui::PopID();
 	}
 

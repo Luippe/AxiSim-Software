@@ -65,20 +65,20 @@ BoundarySegmentGroup* Mesh::getBoundaryGroupByName(const std::string& name) {
 }
 
 int Mesh::getAvailableBoundaryGroupID() const {
+
 	int id = nextGroupID;
 
 	while (true) {
-		std::string candidateName = "Boundary " + std::to_string(id);
 
-		bool nameExists = std::any_of(
-			boundaryGroups.begin(),
-			boundaryGroups.end(),
-			[&](const BoundarySegmentGroup& group) {
-				return group.name == candidateName;
-			}
-		);
+		bool idExists = std::any_of(
+            boundaryGroups.begin(),
+            boundaryGroups.end(),
+            [&](const BoundarySegmentGroup& group) {
+                return group.id == id;
+            }
+        );
 
-		if (!nameExists) {
+		if (!idExists) {
 			return id;
 		}
 

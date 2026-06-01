@@ -11,21 +11,47 @@ struct VariableUnits {
     std::uint8_t axialUnit = 0;
     std::uint8_t radialUnit = 0;
     std::uint8_t pressureUnit = 0;
+    std::uint8_t temperatureUnit = 0;
     std::uint8_t  rhoUnit = 0;
     std::uint8_t  muUnit = 0;
     std::uint8_t  DUnit = 0;
 
 };
 
+struct LinearUnitOption {
+    const char* name;
+
+    double toBase;   // multiply first
+    double offsetTo;  // then add
+};
+
 struct UnitOption {
-	const char* name;
-	double toBase;
+    const char* name;
+    double toBase;
 };
 
 struct UnitValue {
-	double baseValue = 0.0;
-	std::uint8_t unitIndex = 0;
+    double baseValue = 0.0;
+    std::uint8_t unitIndex = 0;
 };
+
+inline double toBaseValue(double displayValue, const UnitOption& unit) {
+    return displayValue * unit.toBase;
+}
+
+inline double fromBaseValue(double baseValue, const UnitOption& unit) {
+    return baseValue / unit.toBase;
+}
+
+inline double toBaseValue(double displayValue, const LinearUnitOption& unit) {
+    return displayValue * unit.toBase + unit.offsetTo;
+}
+
+inline double fromBaseValue(double baseValue, const LinearUnitOption& unit) {
+    return (baseValue - unit.offsetTo) / unit.toBase;
+}
+
+
 
 namespace Units {
     
@@ -44,6 +70,12 @@ namespace Units {
         { "bar",           100.0      },
         { "atm",           101.325    }
     } };
+
+    inline constexpr std::array<LinearUnitOption, 3> temperatureUnits = { {
+    { "K",  1.0,        0.0      },
+    { "C",  1.0,        273.15   },
+    { "F",  5.0 / 9.0,  255.3722222222222 }
+} };
 
     inline constexpr std::array<UnitOption, 4> diffusionUnits = { {
         { "mm^2/s", 1.0    },

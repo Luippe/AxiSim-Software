@@ -22,18 +22,29 @@ private:
 
 	void drawFieldCheckbox();
 
-	BCType getDefaultBCType(FieldType field) const;
+	void drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc);
 
-	std::vector<FieldType> getActiveFields() const;
+	double getDefaultBCValue(BoundaryType boundaryType, BoundaryVariable var) const;
 
-	BoundaryCondition& getOrCreateBC(BoundarySegmentGroup& group, FieldType field);
+	BCType getDefaultBCType(BoundaryType boundaryType, BoundaryVariable var) const;
 
-	void drawBCEditor(FieldType& type, BoundaryCondition& bc);
+	std::vector<BoundaryVariable> getPhysicsValueLeaves(
+		const BoundarySegmentGroup& group
+	) const;
+
+	BoundaryCondition& getOrCreateBC(
+		BoundarySegmentGroup& group,
+		BoundaryVariable variable
+	);
+
 
 	int selectedBoundaryGroupID = -1;
+	BoundaryVariable selectedBoundaryVariable = BoundaryVariable::UVelocity;
+
 	SceneView& scene;
 	Solver& solver;
 	VariableUnits& varUnits;
 	Mesh& mesh;
+
 
 };

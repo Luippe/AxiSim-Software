@@ -14,6 +14,20 @@ struct SolverFieldOption {
 	bool solveConcentration = true;
 };
 
+enum class BoundaryPropertyID : uint8_t {
+	VelocityMagnitude,
+	UVelocity,
+	VVelocity,
+
+	StaticPressure,
+	StaticTemperature,
+	Concentration,
+
+	TurbulenceIntensity,
+	TurbulentViscosityRatio
+};
+
+
 
 enum ResidualType {
 	RESIDUAL_RAW = 0,

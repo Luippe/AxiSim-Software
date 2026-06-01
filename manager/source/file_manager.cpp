@@ -21,6 +21,7 @@ bool fileExists(const std::string& filename) {
 }
 
 void writeBoundarySegmentGroup(std::ofstream& out, const BoundarySegmentGroup& group) {
+	//printInt(group.type);
 
 	writeAll(out, 
 		group.id, 
@@ -180,7 +181,7 @@ void saveFromPathSolver(const char* path, Solver& solver) {
 
 	std::ofstream out(path, std::ios::binary);
 
-	saveBinary(out, solver.varUnits);
+	saveBinary(out, solver.varUnits, solver.fieldOption);
 	saveBinary(out, 
 		solver.linearSolverConfig, 
 		solver.currentVelocitySolver,
@@ -212,7 +213,7 @@ void loadFromPathSolver(const char* path, Solver& solver) {
 
 	std::ifstream in(path, std::ios::binary);
 
-	readBinary(in, solver.varUnits);
+	readBinary(in, solver.varUnits, solver.fieldOption);
 	readBinary(in,
 		solver.linearSolverConfig,
 		solver.currentVelocitySolver,

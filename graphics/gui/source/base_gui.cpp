@@ -116,13 +116,20 @@ bool BaseGUI::drawLeaf(const char* label) {
 	return clicked;
 }
 
-bool drawClickableTreeNode(const char* label, bool selected, ImGuiTreeNodeFlags flags) {
+bool BaseGUI::drawTree(const char* label, bool& isOpen) {
 
-	if (selected) {
-		flags |= ImGuiTreeNodeFlags_Selected;
+	bool selected = selectedItem == label;
+
+	isOpen = ImGui::TreeNodeEx(label, UIFlags::BranchOpenedFlags | (selected ? ImGuiTreeNodeFlags_Selected : 0));
+
+	bool clicked = ImGui::IsItemClicked();
+
+	if (clicked) {
+		selectedItem = label;
 	}
 
-	bool open = ImGui::TreeNodeEx(label, flags);
+	changeCursorOnHover();
 
-	return open;
+	return clicked;
+
 }

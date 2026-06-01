@@ -15,7 +15,7 @@ public:
 
 	Solver(SceneView& scene, Config& config);
 	
-	const char* boundaryType[3] = { "Wall", "Velocity Inlet", "Pressure Outlet" };
+	const char* boundaryType[4] = { "Wall", "Velocity Inlet", "Pressure Outlet", "Symmetry"};
 	const char* fieldType[5] = { "Axial Velocity", "Radial Velocity", "Pressure", "Concentration", "Temperature"};
 	const char* residualType[3] = { "Raw Residual", "RMS", "Custom Residual"};
 	const char* residualNormType[3] = { "L1 Norm", "L2 Norm", "Linf Norm" };

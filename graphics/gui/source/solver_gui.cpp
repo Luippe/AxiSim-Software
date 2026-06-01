@@ -17,6 +17,40 @@ SolverGUI::SolverGUI(SceneView& scene) :
 	varUnits(scene.solver.varUnits) {
 }
 
+// ======================================================================
+// -----------------------HELPER FUNCTIONS-------------------------------
+// ======================================================================
+const char* boundaryPropertyToString(BoundaryPropertyID id) {
+	switch (id) {
+	case BoundaryPropertyID::VelocityMagnitude:
+		return "Velocity Magnitude";
+
+	case BoundaryPropertyID::UVelocity:
+		return "U Velocity";
+
+	case BoundaryPropertyID::VVelocity:
+		return "V Velocity";
+
+	case BoundaryPropertyID::StaticPressure:
+		return "Static Pressure";
+
+	case BoundaryPropertyID::StaticTemperature:
+		return "Static Temperature";
+
+	case BoundaryPropertyID::Concentration:
+		return "Concentration";
+
+	case BoundaryPropertyID::TurbulenceIntensity:
+		return "Turbulence Intensity";
+
+	case BoundaryPropertyID::TurbulentViscosityRatio:
+		return "Turbulent Viscosity Ratio";
+
+	default:
+		return "Unknown";
+	}
+}
+
 void SolverGUI::setResidualDefault() {
 	switch (solver.currentResidual) {
 	case RESIDUAL_RAW:
@@ -27,28 +61,6 @@ void SolverGUI::setResidualDefault() {
 		solver.currentResidualNorm = RESIDUAL_L2;
 		solver.currentResidualScaling = RESIDUAL_SCALING_SQRT_N;
 		break;
-	}
-}
-
-const char* fieldTypeToString(FieldType field) {
-	switch (field) {
-	case FieldType::UVelocity:
-		return "U Velocity";
-
-	case FieldType::VVelocity:
-		return "V Velocity";
-
-	case FieldType::Pressure:
-		return "Pressure";
-
-	case FieldType::Energy:
-		return "Energy";
-
-	case FieldType::Concentration:
-		return "Concentration";
-
-	default:
-		return "Unknown";
 	}
 }
 
@@ -63,9 +75,133 @@ const char* boundaryTypeToString(BoundaryType type) {
 	case BoundaryType::PRESSURE_OUTLET:
 		return "Pressure Outlet";
 
+	case BoundaryType::SYMMETRY:
+		return "Symmetry";
+
 	default:
 		return "Wall";
 	}
+}
+
+BoundaryCondition& SolverGUI::getOrCreateBC(
+	BoundarySegmentGroup& group,
+	BoundaryVariable variable
+) {
+    auto it = group.bcs.find(variable);
+
+    if (it != group.bcs.end()) {
+        return it->second;
+    }
+
+    BoundaryCondition bc{};
+    bc.enabled = true;
+    bc.type = getDefaultBCType(group.type, variable);
+    bc.val = getDefaultBCValue(group.type, variable);
+
+    auto [newIt, inserted] = group.bcs.emplace(variable, bc);
+    return newIt->second;
+}
+
+BCType SolverGUI::getDefaultBCType(
+	BoundaryType boundaryType,
+	BoundaryVariable var
+) const {
+	switch (boundaryType) {
+
+	case BoundaryType::VELOCITY_INLET:
+		switch (var) {
+		case BoundaryVariable::UVelocity:
+			return BCType::FULLY_DEVELOPED; // fully developed inlet condition
+		case BoundaryVariable::VVelocity:
+		case BoundaryVariable::StaticTemperature:
+		case BoundaryVariable::Concentration:
+		case BoundaryVariable::TurbulenceIntensity:
+		case BoundaryVariable::TurbulentViscosityRatio:
+			return BCType::DIRICHLET;
+
+		case BoundaryVariable::Pressure:
+			return BCType::NEUMANN;
+
+		default:
+			return BCType::NONE;
+		}
+
+	case BoundaryType::PRESSURE_OUTLET:
+		switch (var) {
+		case BoundaryVariable::Pressure:
+			return BCType::DIRICHLET;
+
+		case BoundaryVariable::UVelocity:
+		case BoundaryVariable::VVelocity:
+		case BoundaryVariable::StaticTemperature:
+		case BoundaryVariable::Concentration:
+			return BCType::NEUMANN;
+
+		default:
+			return BCType::NONE;
+		}
+
+	case BoundaryType::WALL:
+		switch (var) {
+		case BoundaryVariable::UVelocity:
+		case BoundaryVariable::VVelocity:
+			return BCType::DIRICHLET; // no-slip, value = 0
+
+		case BoundaryVariable::Pressure:
+		case BoundaryVariable::StaticTemperature:
+		case BoundaryVariable::Concentration:
+			return BCType::NEUMANN;
+
+		default:
+			return BCType::NONE;
+		}
+
+	case BoundaryType::SYMMETRY:
+		switch (var) {
+		case BoundaryVariable::VVelocity:
+			return BCType::DIRICHLET; // normal velocity = 0, depending on orientation
+
+		case BoundaryVariable::UVelocity:
+		case BoundaryVariable::Pressure:
+		case BoundaryVariable::StaticTemperature:
+		case BoundaryVariable::Concentration:
+			return BCType::NEUMANN;
+
+		default:
+			return BCType::NONE;
+		}
+	}
+
+	return BCType::NONE;
+}
+
+double SolverGUI::getDefaultBCValue(
+	BoundaryType boundaryType,
+	BoundaryVariable var
+) const {
+	switch (var) {
+
+	case BoundaryVariable::UVelocity:
+	case BoundaryVariable::VVelocity:
+		return 0.0;
+
+	case BoundaryVariable::Pressure:
+		return 0.0;
+
+	case BoundaryVariable::StaticTemperature:
+		return 300.0;
+
+	case BoundaryVariable::Concentration:
+		return 0.0;
+
+	case BoundaryVariable::TurbulenceIntensity:
+		return 5.0;
+
+	case BoundaryVariable::TurbulentViscosityRatio:
+		return 10.0;
+	}
+
+	return 0.0;
 }
 
 void SolverGUI::drawFieldCheckbox() {
@@ -76,45 +212,72 @@ void SolverGUI::drawFieldCheckbox() {
 	ImGui::Checkbox("Concentration", &solver.fieldOption.solveConcentration);
 }
 
-BCType SolverGUI::getDefaultBCType(FieldType field) const {
-	switch (field) {
-	case FieldType::UVelocity:
-		return BCType::DIRICHLET;
+const char* boundaryVariableToString(BoundaryVariable var) {
 
-	case FieldType::VVelocity:
-		return BCType::DIRICHLET;
+	switch (var) {
+	case BoundaryVariable::UVelocity:
+		return "U Velocity";
 
-	case FieldType::Pressure:
-		return BCType::NEUMANN;
+	case BoundaryVariable::VVelocity:
+		return "V Velocity";
 
-	case FieldType::Energy:
-		return BCType::NEUMANN;
+	case BoundaryVariable::Pressure:
+		return "Pressure";
+
+	case BoundaryVariable::StaticTemperature:
+		return "Static Temperature";
+
+	case BoundaryVariable::Concentration:
+		return "Concentration";
+
+	case BoundaryVariable::TurbulenceIntensity:
+		return "Turbulence Intensity";
+
+	case BoundaryVariable::TurbulentViscosityRatio:
+		return "Turbulent Viscosity Ratio";
 
 	default:
+		return "Unknown";
+	}
+}
+// ======================================================================
+// -------------------BOUNDARY VARIABLE DRAW CALLS-----------------------
+// ======================================================================
+void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc) {
 
-		return BCType::NONE;
+	ImGui::SeparatorText(boundaryVariableToString(var));
+
+
+
+
+
+	const char* label = boundaryVariableToString(var);
+	if (ImGui::BeginTable(label, 3)) {
+		setupTableColumns(
+			column("Label", 100.0f),
+			column("Value", 100.0f),
+			column("Unit", 100.0f)
+		);
+		labelRow(label);
+
+		switch (var) {
+		case BoundaryVariable::UVelocity:
+			inputDoubleWithUnits("U Velocity", bc.val, varUnits.axialUnit, Units::velocityUnits);
+			break;
+		case BoundaryVariable::VVelocity:
+			inputDoubleWithUnits("V Velocity", bc.val, varUnits.radialUnit, Units::velocityUnits);
+			break;
+		case BoundaryVariable::Pressure:
+			inputDoubleWithUnits("Pressure", bc.val, varUnits.pressureUnit, Units::pressureUnits);
+			break;
+		case BoundaryVariable::StaticTemperature:
+			inputDoubleWithUnits("Static Temperature", bc.val, varUnits.temperatureUnit, Units::temperatureUnits);
+			break;
+		}
+		ImGui::EndTable();
 	}
 }
 
-BoundaryCondition& SolverGUI::getOrCreateBC(
-	BoundarySegmentGroup& group,
-	FieldType field
-) {
-
-	auto it = group.bcs.find(field);
-
-	if (it != group.bcs.end()) {
-		return it->second;
-	}
-
-	BoundaryCondition bc{};
-	bc.enabled = true;
-	bc.type = getDefaultBCType(field);
-	bc.val = 0.0;
-
-	auto [newIt, inserted] = group.bcs.emplace(field, bc);
-	return newIt->second;
-}
 
 void SolverGUI::drawBoundaryConditionGUI() {
 
@@ -129,12 +292,6 @@ void SolverGUI::drawBoundaryConditionGUI() {
 
 	ImGui::SeparatorText(selectedGroup->name.c_str());
 
-	std::vector<FieldType> activeFields = getActiveFields();
-
-
-	if (activeFields.empty()) {
-		return;
-	}
 
 	drawTableHeader("Properties");
 
@@ -150,56 +307,67 @@ void SolverGUI::drawBoundaryConditionGUI() {
 		}
 		ImGui::EndTable();
 	}
-
-	//for (FieldType field : activeFields) {
-	//	ImGui::PushID((int)(field));
-
-	//	BoundaryCondition& bc = getOrCreateBC(*selectedGroup, field);
-
-	//	
-
-	//	if (ImGui::TreeNodeEx(
-	//		fieldTypeToString(field),
-	//		ImGuiTreeNodeFlags_DefaultOpen
-	//	)) {
-	//		drawBCEditor(field, bc);
-	//		ImGui::TreePop();
-	//	}
-
-	//	ImGui::PopID();
-	//}
 }
 
-void SolverGUI::drawBCEditor(FieldType& type, BoundaryCondition& bc) {
-	return;
-}
 
-std::vector<FieldType> SolverGUI::getActiveFields() const {
-	std::vector<FieldType> fields;
 
-	const SolverFieldOption& option = solver.fieldOption;
+std::vector<BoundaryVariable> SolverGUI::getPhysicsValueLeaves(
+	const BoundarySegmentGroup& group
+) const {
+	std::vector<BoundaryVariable> leaves;
 
-	if (option.solveU) {
-		fields.push_back(FieldType::UVelocity);
+	switch (group.type) {
+
+	case BoundaryType::WALL:
+		leaves.push_back(BoundaryVariable::UVelocity);
+		leaves.push_back(BoundaryVariable::VVelocity);
+
+		if (solver.fieldOption.solveEnergy) {
+			leaves.push_back(BoundaryVariable::StaticTemperature);
+		}
+
+		if (solver.fieldOption.solveConcentration) {
+			leaves.push_back(BoundaryVariable::Concentration);
+		}
+
+		break;
+
+	case BoundaryType::SYMMETRY:
+		break;
+
+	case BoundaryType::VELOCITY_INLET:
+		leaves.push_back(BoundaryVariable::UVelocity);
+		leaves.push_back(BoundaryVariable::VVelocity);
+
+		if (solver.fieldOption.solveEnergy) {
+			leaves.push_back(BoundaryVariable::StaticTemperature);
+		}
+
+		if (solver.fieldOption.solveConcentration) {
+			leaves.push_back(BoundaryVariable::Concentration);
+		}
+
+		leaves.push_back(BoundaryVariable::TurbulenceIntensity);
+		leaves.push_back(BoundaryVariable::TurbulentViscosityRatio);
+		break;
+
+	case BoundaryType::PRESSURE_OUTLET:
+		leaves.push_back(BoundaryVariable::Pressure);
+
+		if (solver.fieldOption.solveEnergy) {
+			leaves.push_back(BoundaryVariable::StaticTemperature);
+		}
+
+		if (solver.fieldOption.solveConcentration) {
+			leaves.push_back(BoundaryVariable::Concentration);
+		}
+
+		break;
 	}
 
-	if (option.solveV) {
-		fields.push_back(FieldType::VVelocity);
-	}
 
-	if (option.solvePressure) {
-		fields.push_back(FieldType::Pressure);
-	}
 
-	if (option.solveEnergy) {
-		fields.push_back(FieldType::Energy);
-	}
-
-	if (option.solveConcentration) {
-		fields.push_back(FieldType::Concentration);
-	}
-
-	return fields;
+	return leaves;
 }
 
 void SolverGUI::drawPropertiesPanel() {
@@ -264,113 +432,18 @@ void SolverGUI::drawPropertiesPanel() {
 		ImGui::EndChild();
 	}
 
-	else if (selectedItem == "Boundary") {
+	else if (selectedItem == "Boundary Variable") {
 
-		//// total width = sum of table width + 10 * num of columns to account for padding
-		//// total height = number of rows * 31
-		//ImGui::TextUnformatted("Axial Velocity");
-		//ImGui::BeginChild("Axial Velocity", ImVec2(440.0f, 62.0f), true);
-		//if (ImGui::BeginTable("Axial Velocity", 4)) {
+		BoundarySegmentGroup* group = mesh.getBoundaryGroupByID(selectedBoundaryGroupID);
 
-		//	setupTableColumns(
-		//		column("Label", 100.0f),
-		//		column("BC Type", 100.0f),
-		//		column("Value", 100.0f),
-		//		column("Units", 100.0f));
+		if (group) {
+			BoundaryCondition& bc = getOrCreateBC(*group, selectedBoundaryVariable);
 
-		//	labelRow("Inlet");
-		//	createSimpleCombo("##InletBCType", solver.bcInletTypeNames, (int&)(solver.uBC.inlet.type), IM_ARRAYSIZE(solver.bcInletTypeNames));
-
-		//	tableNextColumn();
-		//	inputDoubleWithUnits(
-		//		"AxialInlet",
-		//		solver.uBC.inlet.val,
-		//		varUnits.axialUnit,
-		//		Units::velocityUnits
-		//	);
-
-		//	labelRow("Outer");
-		//	createSimpleCombo("##OuterBCType", solver.bcTypeNames, (int&)(solver.uBC.outer.type), IM_ARRAYSIZE(solver.bcTypeNames));
-
-		//	tableNextColumn();
-		//	inputDoubleWithUnits(
-		//		"AxialOuter",
-		//		solver.uBC.outer.val,
-		//		varUnits.axialUnit,
-		//		Units::velocityUnits
-		//	);
-
-		//	ImGui::EndTable();
-		//}
-		//ImGui::EndChild();
-
-		//ImGui::Dummy(ImVec2(0.0f, 30.0f));
-		//ImGui::TextUnformatted("Radial Velocity");
-		//ImGui::BeginChild("Radial Velocity", ImVec2(440.0f, 40.0f), true);
-		//if (ImGui::BeginTable("Boundary Conditions", 4)) {
-
-		//	setupTableColumns(
-		//		column("Label", 100.0f),
-		//		column("BC Type", 100.0f),
-		//		column("Value", 100.0f),
-		//		column("Units", 100.0f)
-		//	);
-
-		//	labelRow("Outer");
-		//	createSimpleCombo(
-		//		"##OuterBCType",
-		//		solver.bcTypeNames,
-		//		(int&)(solver.vBC.outer.type),
-		//		IM_ARRAYSIZE(solver.bcTypeNames)
-		//	);
-
-		//	tableNextColumn();
-		//	inputDoubleWithUnits(
-		//		"##RadialVelocity",
-		//		solver.vBC.outer.val,
-		//		varUnits.radialUnit,
-		//		Units::velocityUnits
-		//	);
-
-		//	ImGui::EndTable();
-		//}
-		//ImGui::EndChild();
-
-
-
-
-		//ImGui::Dummy(ImVec2(0.0f, 30.0f));
-		//ImGui::TextUnformatted("Pressure");
-		//ImGui::BeginChild("Pressure", ImVec2(440.0f, 40.0f), true);
-		//if (ImGui::BeginTable("Boundary Conditions", 4)) {
-
-		//	setupTableColumns(
-		//		column("Label", 100.0f),
-		//		column("BC Type", 100.0f),
-		//		column("Value", 100.0f),
-		//		column("Units", 100.0f)
-		//	);
-
-		//	labelRow("Outlet");
-		//	createSimpleCombo(
-		//		"##OutletBCType",
-		//		solver.bcTypeNames,
-		//		(int&)(solver.pBC.outlet.type),
-		//		IM_ARRAYSIZE(solver.bcTypeNames)
-		//	);
-
-		//	tableNextColumn();
-		//	inputDoubleWithUnits(
-		//		"##Pressure",
-		//		solver.pBC.outer.val,
-		//		varUnits.pressureUnit,
-		//		Units::pressureUnits
-		//	);
-
-		//	ImGui::EndTable();
-		//}
-		//ImGui::EndChild();
-
+			drawBoundaryVariableEditor(selectedBoundaryVariable, bc);
+		}
+	}
+	else if (selectedItem == "Boundary Group") {
+		drawBoundaryConditionGUI();
 	}
 	else if (selectedItem == "Residuals") {
 		ImGui::SeparatorText("Residual Type");
@@ -513,7 +586,7 @@ void SolverGUI::drawPropertiesPanel() {
 		}
 	}
 
-	drawBoundaryConditionGUI();
+
 
 	ImGui::End();
 }
@@ -524,14 +597,10 @@ void SolverGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
-		bool generalOpen = ImGui::TreeNodeEx("General", UIFlags::BranchOpenedFlags);
-
-
-		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
-
+		bool generalOpen = false;
+		
+		if (drawTree("General", generalOpen)) {
 			selectedBoundaryGroupID = -1;
-			selectedItem = "General";
-
 		}
 
 		if (generalOpen) {
@@ -545,27 +614,47 @@ void SolverGUI::draw() {
 
 
 		// draw boundary tree node
-		bool boundariesOpen = ImGui::TreeNodeEx("Boundary", UIFlags::BranchOpenedFlags);
+		bool boundaryOpen = false;
 
-		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
-
+		if (drawTree("Boundary", boundaryOpen)) {
 			selectedBoundaryGroupID = -1;
-			selectedItem = "Boundary";
-
 		}
 
-		if (boundariesOpen) {
+		if (boundaryOpen) {
 
 			for (BoundarySegmentGroup& group : mesh.boundaryGroups) {
 				ImGui::PushID(group.id);
-				if (drawLeaf(group.name.c_str())) {
+
+				bool isOpened = false;
+
+
+				if (drawTree(group.name.c_str(), isOpened)) {
 					selectedBoundaryGroupID = group.id;
+					selectedItem = "Boundary Group";
+				}
+
+				if (isOpened) {
+					std::vector<BoundaryVariable> activeLeaves = getPhysicsValueLeaves(group);
+
+					for (BoundaryVariable var : activeLeaves) {
+						ImGui::PushID((int)(var));
+
+						if (drawLeaf(boundaryVariableToString(var))) {
+							selectedBoundaryGroupID = group.id;
+							selectedBoundaryVariable = var;
+							selectedItem = "Boundary Variable";
+						}
+						ImGui::PopID();
+						changeCursorOnHover();
+					}
+					ImGui::TreePop();
 				}
 
 				ImGui::PopID();
 			}
-
 			ImGui::TreePop();
+
+
 		}
 
 

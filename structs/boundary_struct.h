@@ -6,21 +6,24 @@
 #include <string>	   // std::string
 
 
-
-
-enum class FieldType : uint8_t {
+enum class BoundaryVariable : uint8_t {
 	UVelocity,
 	VVelocity,
 	Pressure,
-	Energy,
-	Concentration
+
+	StaticTemperature,
+	Concentration,
+
+	TurbulenceIntensity,
+	TurbulentViscosityRatio
 };
 
-struct FieldTypeHash {
-	size_t operator()(FieldType field) const {
-		return (size_t)(field);
+struct BoundaryVariableHash {
+	std::size_t operator()(BoundaryVariable variable) const {
+		return (size_t)(variable);
 	}
 };
+
 
 // ======================================================================
 // -----------------------BOUNDARY CONDITIONS----------------------------
@@ -98,7 +101,8 @@ struct GridVertexHash {
 enum class BoundaryType {
 	WALL,
 	VELOCITY_INLET,
-	PRESSURE_OUTLET
+	PRESSURE_OUTLET,
+	SYMMETRY
 };
 
 enum class BoundarySource {
@@ -115,7 +119,6 @@ struct BoundarySegment {
 
 };
 
-
 struct BoundarySegmentGroup {
 
 	// group ID
@@ -125,13 +128,34 @@ struct BoundarySegmentGroup {
 	std::string name;
 	char nameBuffer[128] = {};
 
+	// boundary type
+	BoundaryType type = BoundaryType::WALL;
+
 	// vector of all segment IDs in this group
 	std::vector<int> segmentIDs;
 	std::vector<MeshEdge> edges;
 
-	std::unordered_map<FieldType, BoundaryCondition, FieldTypeHash> bcs;
+	// each group stores
+	std::unordered_map<
+		BoundaryVariable,
+		BoundaryCondition, 
+		BoundaryVariableHash> bcs;
 
-	// boundary source
-	BoundaryType type = BoundaryType::WALL;
+};
 
+struct BoundaryConditionDevice {
+	uint8_t* uType = nullptr;
+	double* uValue = nullptr;
+
+	uint8_t* vType = nullptr;
+	double* vValue = nullptr;
+
+	uint8_t* pType = nullptr;
+	double* pValue = nullptr;
+
+	uint8_t* tType = nullptr;
+	double* tValue = nullptr;
+
+	uint8_t* cType = nullptr;
+	double* cValue = nullptr;
 };
