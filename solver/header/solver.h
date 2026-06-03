@@ -67,17 +67,14 @@ public:
 	Console* console = nullptr;
 	ResidualPlot* residualPlot = nullptr;
 
-	// config for boundary conditions
-	BoundaryConditionConfig uBC;
-	BoundaryConditionConfig vBC;
-	BoundaryConditionConfig pBC;
-	BoundaryConditionConfig concBC;
-
 	// velocity fields
 	SolutionField uSol;
 	SolutionField vSol;
 	SolutionField pSol;
 	SolutionField concSol;
+
+	// fvMesh
+	FVMesh fvMesh;
 
 	// which variables will the residual plot show?
 	EnabledResiduals enabledResiduals;
@@ -98,7 +95,7 @@ private:
 	int currentIteration = 0;
 	// check if the solver can run
 	bool runCheck();
-	Coefficients uCoeff, vCoeff, ppCoeff, contCoeff;
+	Coefficients uCoeff, vCoeff, ppCoeff, massFluxCoeff;
 	MemoryConfig mem;
 
 };

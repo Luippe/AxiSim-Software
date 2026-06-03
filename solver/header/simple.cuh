@@ -2,33 +2,84 @@
 #include "solver_struct.h"
 #include "boundary_struct.h"
 
-// -------------axial velocity--------------
+// momentum rhs
 __global__
-void createURhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
+void createMomentumPressureRhs(
+	FVMeshDevice mesh,
+	Coefficients uCoeff,
+	Coefficients vCoeff,
+	VariablesSimple simple,
+	BoundaryFieldDevice pBC
+);
 
-// ------------radial velocity-------------
 __global__
-void createVRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple, BoundaryConditionConfig vBC);
+void computeFaceMassFluxRhieChow(
+	ConfigSolver config,
+	FVMeshDevice mesh,
+	VariablesSimple simple,
+	BoundarySolverDevice bc
+);
 
 // ---------------pressure correction----------------
 __global__
-void createPPCoeff(ConfigSolver config, Coefficients coeff, VariablesSimple simple, BoundaryConditionConfig vBC);
+void computePressureGradient(
+	FVMeshDevice mesh,
+	BoundaryFieldDevice pBC,
+	const double* p,
+	double* gradPZ,
+	double* gradPR
+);	
 
 __global__
-void createPPRhs(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
+void createPPCoeff(
+	ConfigSolver config,
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	VariablesSimple simple,
+	BoundaryFieldDevice pBC
+);
+
+__global__
+void createPPRhs(
+	FVMeshDevice mesh,
+	Coefficients ppCoeff,
+	VariablesSimple simple
+);
 
 // ---------------------update variables----------------
 __global__
-void updateUVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
+void updateVelocity(
+	FVMeshDevice mesh,
+	VariablesSimple simple,
+	BoundaryFieldDevice pBC
+);
+
 
 __global__
-void updateVVelocity(ConfigSolver config, Coefficients coeff, VariablesSimple simple);
+void updatePressure(
+	FVMeshDevice mesh,
+	VariablesSimple simple
+);
 
 __global__
-void updatePressure(Coefficients coeff, VariablesSimple simple);
+void updateMassFlux(
+	ConfigSolver config,
+	FVMeshDevice mesh,
+	VariablesSimple simple,
+	BoundaryFieldDevice pBC
+);
 
 __global__
-void getCorrectionCoefficient(ConfigSolver config, Coefficients coeff, VariablesSimple simple, double* D, BoundaryConditionConfig bc);
+void getCorrectionCoefficient(
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	double* D
+);
 
 __global__
-void underRelaxEquation(Coefficients coeff, double* xOld, double alpha);
+void underRelaxEquation(
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	const double* x,
+	double alpha
+);

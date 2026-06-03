@@ -58,22 +58,6 @@ Solver::Solver(SceneView & scene, Config & config) :
 
 
 void Solver::setDefault() {
-    uBC.inlet = { BCType::FULLY_DEVELOPED, 8.444199e-2 };
-    uBC.outlet = { BCType::NEUMANN, 0.0 };
-    uBC.outer = { BCType::DIRICHLET, 0.0 };
-    uBC.centerline = { BCType::NEUMANN, 0.0 };
-    vBC.inlet = { BCType::DIRICHLET, 0.0 };
-    vBC.outlet = { BCType::NEUMANN, 0.0 };
-    vBC.outer = { BCType::DIRICHLET, 0.0 };
-    vBC.centerline = { BCType::DIRICHLET, 0.0 };
-    pBC.inlet = { BCType::NEUMANN, 0.0 };
-    pBC.outlet = { BCType::DIRICHLET, 0.0 };
-    pBC.outer = { BCType::NEUMANN, 0.0 };
-    pBC.centerline = { BCType::NEUMANN, 0.0 };
-    concBC.inlet = { BCType::DIRICHLET, 0.0 };
-    concBC.outlet = { BCType::NEUMANN, 0.0 };
-    concBC.outer = { BCType::NEUMANN, 0.0 };
-    concBC.centerline = { BCType::NEUMANN, 0.0 };
 
     addConvectionTerm = false;
     transient = false;
@@ -131,7 +115,6 @@ void Solver::runBiCGStab() {
     // create streams
     cudaStream_t stream;
     VariablesBiCGStab vars;
-    vars.conc = concBC.inlet.val;
 
     allocateGridConfig(g, f);
     allocateBiCGStab(g, f, vars);
@@ -231,7 +214,7 @@ void Solver::runBiCGStab() {
     console->addCompletionTime("Solver", ms);
 
     // copy variables to host
-    concSol = SolutionField{ copyDeviceToHostVector(vars.oxy, N), g.nr, g.nz, g.dr, g.dz, CellStoreType::CENTER};
+    //concSol = SolutionField{ copyDeviceToHostVector(vars.oxy, N), g.nr, g.nz, g.dr, g.dz};
 
     // free memory
     free_GridConfig(g);
@@ -240,45 +223,46 @@ void Solver::runBiCGStab() {
 
 void Solver::runSimple() {
 
+
     // create configs for solver and residual
     ConfigSolver configSolver{ g, f, addConvectionTerm, transient, dt};
     ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
     allocateGridConfig(configSolver.g, configSolver.f);
+
+    fvMesh = scene.mesh.createStructuredMesh(configSolver.g.activeCell);
+	FVMeshDevice fvMeshDevice = createFVMeshDevice(fvMesh);
+	BoundarySolverDevice bcDevice = createBoundarySolverDevice(scene.mesh.boundaryGroups);
 
     // initialize residuals
     std::array<ResidualPrintItem, 6> residualsToPrint = { {
         {"U",             enabledResiduals.plotU,   &uCoeff.resVal},
         {"V",             enabledResiduals.plotV,   &vCoeff.resVal},
         {"P",             enabledResiduals.plotP,   nullptr},
-        {"Continuity",    enabledResiduals.plotCont, &contCoeff.resVal},
+        {"Continuity",    enabledResiduals.plotCont, &massFluxCoeff.resVal},
         {"Temperature",   enabledResiduals.plotTemp, nullptr},
         {"Concentration", enabledResiduals.plotConc, nullptr}
     } };
-
 
     // allocate memory
     if (!solutionReady || !continueSolver) {
 
         residualPlot->setName(residualsToPrint);
 
-        allocateCoefficients(configSolver, uCoeff, uBC, CellStoreType::AXIAL);
-        allocateCoefficients(configSolver, vCoeff, vBC, CellStoreType::RADIAL);
-        allocateCoefficients(configSolver, ppCoeff, pBC, CellStoreType::CENTER);
-        allocateCoefficients(configSolver, contCoeff, pBC, CellStoreType::CENTER);
-        allocateSimple(configSolver, simple, uBC);
+        allocateCoefficients(configSolver, uCoeff);
+        allocateCoefficients(configSolver, vCoeff);
+        allocateCoefficients(configSolver, ppCoeff);
+        allocateCoefficients(configSolver, massFluxCoeff);
+        allocateSimple(configSolver, simple, fvMesh);
         currentIteration = 0;
     }
 
-    int Nu = g.nr * (g.nz + 1);
-    int Nv = (g.nr + 1) * g.nz;
     int N = g.nr * g.nz;
     const int threadsPerBlock = mem.threadsPerBlock;
     const int shmem = mem.shmem;
     const int blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
-    const int uBlocks = (Nu + threadsPerBlock - 1) / threadsPerBlock;
-    const int vBlocks = (Nv + threadsPerBlock - 1) / threadsPerBlock;
     const int maxBlocks = (std::max({ uCoeff.N,vCoeff.N,ppCoeff.N }) + threadsPerBlock - 1) / threadsPerBlock;
-    int vBoundaryBlocks = (vCoeff.nz + threadsPerBlock - 1) / threadsPerBlock;
+    int faceThreads = 128;
+    int faceBlocks = (fvMeshDevice.faces.nFaces + faceThreads - 1) / faceThreads;
 
     // open file if transient is turned on
     std::ofstream out;
@@ -287,11 +271,11 @@ void Solver::runSimple() {
         out.open("flow_motion.bin", std::ios::binary);
         saveBinary(out, g.nr, g.nz, g.dr, g.dz);
         
-        // save initial field
-        saveBinary(out, (double)0 * dt,
-            copyDeviceToHostVector(simple.u, Nu),
-            copyDeviceToHostVector(simple.v, Nv),
-            copyDeviceToHostVector(simple.p, N));
+        //// save initial field
+        //saveBinary(out, (double)0 * dt,
+        //    copyDeviceToHostVector(simple.u, N),
+        //    copyDeviceToHostVector(simple.v, N),
+        //    copyDeviceToHostVector(simple.p, N));
 
     }
 
@@ -304,92 +288,106 @@ void Solver::runSimple() {
 
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
-        cudaMemcpyAsync(simple.uOld, simple.u, Nu * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-        cudaMemcpyAsync(simple.vOld, simple.v, Nv * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+        cudaMemcpyAsync(simple.uOld, simple.u, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+        cudaMemcpyAsync(simple.vOld, simple.v, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
 
         for (int k = 0; k < configSimple.maxIter; k++) {
 
-            clearCoefficients << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff);
-            clearCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff);
+            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (uCoeff);
+            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (vCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
-            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (contCoeff);
+            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (massFluxCoeff);
+            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             // create coefficients for velocity and pressure correction equations
-            addUDiffusionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, uBC);
-            addVDiffusionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, vBC);
+            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, uCoeff, bcDevice.u);
+            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, vCoeff, bcDevice.v);
+            CUDA_CHECK(cudaStreamSynchronize(stream));
 
-            if (configSolver.addConvectionTerm) {
-                addUConvectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC, convectionScheme);
-                addVConvectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, uBC, vBC, convectionScheme);
-            }
+    //        if (configSolver.addConvectionTerm) {
+    //            addUConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, convectionScheme);
+    //            addVConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, convectionScheme);
+    //        }
 
-            if (configSolver.transient) {
-				addUTransientCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
-				addVTransientCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
-            }
+    //        if (configSolver.transient) {
+				//addUTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
+				//addVTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
+    //        }
 
-            finalizeCoefficients << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff);
-            finalizeCoefficients << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff);
+            createMomentumPressureRhs << <blocks, threadsPerBlock, 0, stream >> > (
+                fvMeshDevice,
+                uCoeff,
+                vCoeff,
+                simple,
+                bcDevice.p
+                );
 
-            underRelaxEquation << <uBlocks, threadsPerBlock, 0, stream >> > (uCoeff, simple.u, simple.momentumRelaxation);
-            underRelaxEquation << <vBlocks, threadsPerBlock, 0, stream >> > (vCoeff, simple.v, simple.momentumRelaxation);
 
-            getCorrectionCoefficient << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple, simple.DU, uBC);
-            getCorrectionCoefficient << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple, simple.DV, vBC);
+            underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, simple.u, simple.momentumRelaxation);
+            underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.v, simple.momentumRelaxation);
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+
+            getCorrectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, simple.DU);
+            getCorrectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.DV);
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+            
 
             // solve velocity
-            createURhs << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
-            createVRhs << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple, vBC);
-
-            solveLinearSystem(uCoeff, linearSolverConfig, stream, simple.u, simple.uTemp, threadsPerBlock);
-            solveLinearSystem(vCoeff, linearSolverConfig, stream, simple.v, simple.vTemp, threadsPerBlock);
-
-            if (vBC.outer.type == NEUMANN) {
-                //applyOuterNeumannV << <vBoundaryBlocks, threadsPerBlock, 0, stream >> > (simple.v, vCoeff.nr, vCoeff.nz);
-                applyOuterWallV << <vBoundaryBlocks, threadsPerBlock, 0, stream >> > (
-                    simple.v,
-                    vCoeff.nr,
-                    vCoeff.nz
-                    );
-            }
+            solveLinearSystem(fvMeshDevice, uCoeff, linearSolverConfig, stream, simple.u, simple.uTemp, threadsPerBlock);
+            solveLinearSystem(fvMeshDevice, vCoeff, linearSolverConfig, stream, simple.v, simple.vTemp, threadsPerBlock);
+            CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             // solve pressure correction
-            createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple, vBC);
-            createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (configSolver, ppCoeff, simple);
-            finalizeCoefficients << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
-            solveLinearSystem(ppCoeff, linearSolverConfig, stream, simple.pp, simple.ppTemp, threadsPerBlock);
+            createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, ppCoeff, simple, bcDevice.p);
+            CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+            
+
+            computePressureGradient << <blocks, threadsPerBlock, 0, stream >> > (
+                fvMeshDevice,
+                bcDevice.p,
+                simple.p,
+                simple.gradPZ,
+                simple.gradPR
+                );
+
+            CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+
+            computeFaceMassFluxRhieChow << <faceBlocks, faceThreads, 0, stream >> > (
+                configSolver,
+                fvMeshDevice,
+                simple,
+                bcDevice
+                );
+
+            createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppCoeff, simple);
+            CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+            solveLinearSystem(fvMeshDevice, ppCoeff, linearSolverConfig, stream, simple.pp, simple.ppTemp, threadsPerBlock);
+            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             // update field variables
-            updateUVelocity << <uBlocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
-            updateVVelocity << <vBlocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
-            updatePressure << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff, simple);
-            
-            if (vBC.outer.type == NEUMANN) {
-                //applyOuterNeumannV << <vBoundaryBlocks, threadsPerBlock, 0, stream >> > (simple.v, vCoeff.nr, vCoeff.nz);
-                applyOuterWallV << <vBoundaryBlocks, threadsPerBlock, 0, stream >> > (
-                    simple.v,
-                    vCoeff.nr,
-                    vCoeff.nz
-                    );
-            }
+            updateVelocity << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, bcDevice.p);
+			updateMassFlux << <faceBlocks, faceThreads, 0, stream >> > (configSolver, fvMeshDevice, simple, bcDevice.p);
+            updatePressure << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple);
+            CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             // check for convergence and print residual to console
             if (k % configSimple.checkConv == 0) {
 
                 residualAll << <maxBlocks, threadsPerBlock, 0, stream >> > (
-                    ResidualPairs{ uCoeff, simple.u, nullptr },
-                    ResidualPairs{ vCoeff, simple.v, nullptr });
+                    ResidualPairs{ fvMeshDevice, uCoeff, simple.u},
+                    ResidualPairs{ fvMeshDevice, vCoeff, simple.v});
 
-                continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (configSolver, contCoeff, simple, N);
+                //continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (configSolver, massFluxCoeff, simple, N);
                 
                 CUDA_CHECK(cudaStreamSynchronize(stream));
-
-                residualAllHost(configResidual, uCoeff, vCoeff, contCoeff);
-
+                residualAllHost(configResidual, uCoeff, vCoeff, massFluxCoeff);
                 residualPlot->add(currentIteration, residualsToPrint);
-
                 printResidualConsole(currentIteration, residualsToPrint, console);
-
                 //if (contRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
             }
             currentIteration++;
@@ -399,8 +397,8 @@ void Solver::runSimple() {
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
             saveBinary(out, (double)(tCount + 1) * dt, 
-                copyDeviceToHostVector(simple.u, Nu), 
-                copyDeviceToHostVector(simple.v, Nv),
+                copyDeviceToHostVector(simple.u, N), 
+                copyDeviceToHostVector(simple.v, N),
                 copyDeviceToHostVector(simple.p, N));
         }
     }
@@ -417,25 +415,17 @@ void Solver::runSimple() {
 
     // copy all necessary variables back to host
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    uSol = SolutionField{ copyDeviceToHostVector(simple.u, Nu), g.nr, g.nz + 1, g.dr, g.dz, CellStoreType::AXIAL };
-    vSol = SolutionField{ copyDeviceToHostVector(simple.v, Nv), g.nr + 1, g.nz, g.dr, g.dz, CellStoreType::RADIAL };
-    pSol = SolutionField{ copyDeviceToHostVector(simple.p, N), g.nr, g.nz, g.dr, g.dz, CellStoreType::CENTER };
+    uSol = SolutionField{ copyDeviceToHostVector(simple.u, N), g.dr, g.dz, BoundaryVariable::UVelocity};
+    vSol = SolutionField{ copyDeviceToHostVector(simple.v, N), g.dr, g.dz, BoundaryVariable::VVelocity};
+    pSol = SolutionField{ copyDeviceToHostVector(simple.p, N), g.dr, g.dz, BoundaryVariable::Pressure};
     
-    //std::vector<double> AC1 = copyDeviceToHostVector(uCoeff.AW, Nu);
-    //std::vector<double> AC2 = copyDeviceToHostVector(uCoeff.AE, Nu);
-    //printf("%f\n", vSol.field[g.nz]);
-    //printFloat(uSol.field[g.nz + 1], uSol.field[g.nz + 2], uSol.field[g.nz + 3]);
-    //printFloat(AC1[g.nz + 1], AC1[g.nz + 2], AC1[g.nz + 3]);
-    //printFloat(AC2[g.nz + 1], AC2[g.nz + 2], AC2[g.nz + 3]);
-    //printFloat(vSol.field[g.nz], vSol.field[g.nz + 1], vSol.field[g.nz + 2]);
-
     solutionReady = true;
 
     // free memory
     //uCoeff.free();
     //vCoeff.free();
     //ppCoeff.free();
-    //contCoeff.free();
+    //massFluxCoeff.free();
     //simple.free();
     //free_GridConfig(configSolver.g);
 

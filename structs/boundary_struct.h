@@ -15,7 +15,9 @@ enum class BoundaryVariable : uint8_t {
 	Concentration,
 
 	TurbulenceIntensity,
-	TurbulentViscosityRatio
+	TurbulentViscosityRatio,
+
+	None
 };
 
 struct BoundaryVariableHash {
@@ -38,15 +40,59 @@ enum BCType {
 
 struct BoundaryCondition {
 	BCType type = DIRICHLET;
-	double val = 0.0;
+	double value = 0.0;
 	bool enabled = true;
 };
 
-struct BoundaryConditionConfig {
-	BoundaryCondition inlet;
-	BoundaryCondition outlet;
-	BoundaryCondition outer;
-	BoundaryCondition centerline;
+struct Vec2 {
+	double z = 0.0f;
+	double r = 0.0f;
+};
+
+struct FVCell {
+
+	Vec2 center;
+	double volume = 0.0;
+
+	std::vector<int> faceIDs;
+
+	bool active = true;
+	bool solid = false;
+
+};
+
+struct FVFace {
+
+	int owner = -1;
+	int neighbor = -1;
+
+	Vec2 normal;
+	Vec2 center;
+	double area = 0.0;
+
+	int boundaryGroupID = -1;
+
+	bool isBoundary() const {
+		return neighbor < 0;
+	}
+};
+
+struct FVMesh {
+
+	int nr = 0;
+	int nz = 0;
+
+	std::vector<FVCell> cells;
+	std::vector<FVFace> faces;
+
+	int numCells() const {
+		return (int)cells.size();
+	}
+
+	int numFaces() const {
+		return (int)faces.size();
+	}
+
 };
 
 // ======================================================================
@@ -158,4 +204,10 @@ struct BoundaryConditionDevice {
 
 	uint8_t* cType = nullptr;
 	double* cValue = nullptr;
+};
+
+struct SolutionField {
+	std::vector<double> field;
+	std::vector<double> dr, dz;
+	BoundaryVariable boundaryVariable;
 };

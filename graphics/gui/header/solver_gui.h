@@ -24,10 +24,6 @@ private:
 
 	void drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc);
 
-	double getDefaultBCValue(BoundaryType boundaryType, BoundaryVariable var) const;
-
-	BCType getDefaultBCType(BoundaryType boundaryType, BoundaryVariable var) const;
-
 	std::vector<BoundaryVariable> getPhysicsValueLeaves(
 		const BoundarySegmentGroup& group
 	) const;

@@ -9,12 +9,16 @@ struct FluidPropertyConfig;
 void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f);
 
 // allocate memory for coefficient matrix
-void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryConditionConfig& bc, CellStoreType type);
+void allocateCoefficients(ConfigSolver& config, Coefficients& coeff);
 
 // allocate memory for simple algorithm
-void allocateSimple(ConfigSolver& config, VariablesSimple& vars, BoundaryConditionConfig& bc);
+void allocateSimple(ConfigSolver& config, VariablesSimple& vars, FVMesh& mesh);
 
 // initialize and allocate cell variables
 void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& vars);
 
 void free_GridConfig(GridConfig& g);
+
+FVMeshDevice createFVMeshDevice(const FVMesh& fvMesh);
+
+BoundarySolverDevice createBoundarySolverDevice(const std::vector<BoundarySegmentGroup>& boundaryGroups);

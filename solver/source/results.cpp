@@ -224,10 +224,6 @@ Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader)
 	colormap(colormap),
 	shader(shader),
 	solver(solver),
-	uField(solver.config.g.nz, solver.config.g.nr),
-	vField(solver.config.g.nz, solver.config.g.nr),
-	pField(solver.config.g.nz, solver.config.g.nr),
-	concField(solver.config.g.nz, solver.config.g.nr),
 	mesh(mesh),
 	currentField(&uField) {
 
@@ -335,10 +331,10 @@ void Results::generate() {
 
 void Results::createFields() {
 
-	uField.generate(solver.uSol, solver.uBC);
-	vField.generate(solver.vSol, solver.vBC);
-	pField.generate(solver.pSol, solver.pBC);
-	//concField.generate(solver.concSol, solver.concBC);
+	uField.generate(solver.uSol, solver.fvMesh, mesh.boundaryGroups);
+	vField.generate(solver.vSol, solver.fvMesh, mesh.boundaryGroups);
+	pField.generate(solver.pSol, solver.fvMesh, mesh.boundaryGroups);
+
 }
 
 void Results::updateCurrentField() {

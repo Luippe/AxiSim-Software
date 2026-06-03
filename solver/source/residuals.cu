@@ -7,48 +7,46 @@
 
 
 __device__
-void residualRaw(ResidualPairs& pairs, int n){
+void residualRaw(ResidualPairs& pairs, int n) {
 
-	Coefficients& coeff = pairs.coeff;
+	FVMeshDevice fvMesh = pairs.fvMesh;
+	Coefficients coeff = pairs.coeff;
 	const double* x = pairs.x;
 
-	if (n >= coeff.N) return;
-	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
+	if (n >= fvMesh.cells.nCells) return;
 
-	double* b = coeff.b;
-	double* AC = coeff.AC;
-	double* AE = coeff.AE;
-	double* AW = coeff.AW;
-	double* AN = coeff.AN;
-	double* AS = coeff.AS;
+	if (!fvMesh.cells.active[n]) {
+		if (coeff.res) {
+			coeff.res[n] = 0.0;
+		}
+		return;
+	}
 
-	int nr = coeff.nr;
-	int nz = coeff.nz;
+	int nr = fvMesh.nr;
+	int nz = fvMesh.nz;
+
 	int j = n % nz;
 	int i = n / nz;
 
-	double* res = coeff.res;
-
 	double Ax = coeff.AC[n] * x[n];
 
-	if (j != nz - 1) {
+	if (j < nz - 1) {
 		Ax += coeff.AE[n] * x[n + 1];
 	}
 
-	if (j != 0) {
+	if (j > 0) {
 		Ax += coeff.AW[n] * x[n - 1];
 	}
 
-	if (i != nr - 1) {
+	if (i < nr - 1) {
 		Ax += coeff.AN[n] * x[n + nz];
 	}
 
-	if (i != 0) {
+	if (i > 0) {
 		Ax += coeff.AS[n] * x[n - nz];
 	}
 
-	res[n] = fabs(coeff.b[n] - Ax);
-
+	coeff.res[n] = fabs(coeff.b[n] - Ax);
 }
 
 __global__
@@ -57,7 +55,7 @@ void continuityResidual(ConfigSolver config, Coefficients coeff, VariablesSimple
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= N) return;
-	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
+	//if (!coeff.activeCell[n]) return;
 
 	const GridConfig& g = config.g;
 	const FluidPropertyConfig& f = config.f;

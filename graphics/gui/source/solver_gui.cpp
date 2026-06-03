@@ -10,6 +10,8 @@
 #include "unit_manager.h"
 #include "printer.h"
 
+#include "boundary_func.h"
+
 SolverGUI::SolverGUI(SceneView& scene) :
 	scene(scene),
 	mesh(scene.mesh),
@@ -87,121 +89,18 @@ BoundaryCondition& SolverGUI::getOrCreateBC(
 	BoundarySegmentGroup& group,
 	BoundaryVariable variable
 ) {
-    auto it = group.bcs.find(variable);
+	auto it = group.bcs.find(variable);
 
-    if (it != group.bcs.end()) {
-        return it->second;
-    }
-
-    BoundaryCondition bc{};
-    bc.enabled = true;
-    bc.type = getDefaultBCType(group.type, variable);
-    bc.val = getDefaultBCValue(group.type, variable);
-
-    auto [newIt, inserted] = group.bcs.emplace(variable, bc);
-    return newIt->second;
-}
-
-BCType SolverGUI::getDefaultBCType(
-	BoundaryType boundaryType,
-	BoundaryVariable var
-) const {
-	switch (boundaryType) {
-
-	case BoundaryType::VELOCITY_INLET:
-		switch (var) {
-		case BoundaryVariable::UVelocity:
-			return BCType::FULLY_DEVELOPED; // fully developed inlet condition
-		case BoundaryVariable::VVelocity:
-		case BoundaryVariable::StaticTemperature:
-		case BoundaryVariable::Concentration:
-		case BoundaryVariable::TurbulenceIntensity:
-		case BoundaryVariable::TurbulentViscosityRatio:
-			return BCType::DIRICHLET;
-
-		case BoundaryVariable::Pressure:
-			return BCType::NEUMANN;
-
-		default:
-			return BCType::NONE;
-		}
-
-	case BoundaryType::PRESSURE_OUTLET:
-		switch (var) {
-		case BoundaryVariable::Pressure:
-			return BCType::DIRICHLET;
-
-		case BoundaryVariable::UVelocity:
-		case BoundaryVariable::VVelocity:
-		case BoundaryVariable::StaticTemperature:
-		case BoundaryVariable::Concentration:
-			return BCType::NEUMANN;
-
-		default:
-			return BCType::NONE;
-		}
-
-	case BoundaryType::WALL:
-		switch (var) {
-		case BoundaryVariable::UVelocity:
-		case BoundaryVariable::VVelocity:
-			return BCType::DIRICHLET; // no-slip, value = 0
-
-		case BoundaryVariable::Pressure:
-		case BoundaryVariable::StaticTemperature:
-		case BoundaryVariable::Concentration:
-			return BCType::NEUMANN;
-
-		default:
-			return BCType::NONE;
-		}
-
-	case BoundaryType::SYMMETRY:
-		switch (var) {
-		case BoundaryVariable::VVelocity:
-			return BCType::DIRICHLET; // normal velocity = 0, depending on orientation
-
-		case BoundaryVariable::UVelocity:
-		case BoundaryVariable::Pressure:
-		case BoundaryVariable::StaticTemperature:
-		case BoundaryVariable::Concentration:
-			return BCType::NEUMANN;
-
-		default:
-			return BCType::NONE;
-		}
+	if (it != group.bcs.end()) {
+		return it->second;
 	}
 
-	return BCType::NONE;
-}
+	BoundaryCondition bc =
+		BoundaryDefaults::makeDefaultBC(group.type, variable);
 
-double SolverGUI::getDefaultBCValue(
-	BoundaryType boundaryType,
-	BoundaryVariable var
-) const {
-	switch (var) {
+	auto [newIt, inserted] = group.bcs.emplace(variable, bc);
 
-	case BoundaryVariable::UVelocity:
-	case BoundaryVariable::VVelocity:
-		return 0.0;
-
-	case BoundaryVariable::Pressure:
-		return 0.0;
-
-	case BoundaryVariable::StaticTemperature:
-		return 300.0;
-
-	case BoundaryVariable::Concentration:
-		return 0.0;
-
-	case BoundaryVariable::TurbulenceIntensity:
-		return 5.0;
-
-	case BoundaryVariable::TurbulentViscosityRatio:
-		return 10.0;
-	}
-
-	return 0.0;
+	return newIt->second;
 }
 
 void SolverGUI::drawFieldCheckbox() {
@@ -249,8 +148,6 @@ void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryConditi
 
 
 
-
-
 	const char* label = boundaryVariableToString(var);
 	if (ImGui::BeginTable(label, 3)) {
 		setupTableColumns(
@@ -262,16 +159,17 @@ void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryConditi
 
 		switch (var) {
 		case BoundaryVariable::UVelocity:
-			inputDoubleWithUnits("U Velocity", bc.val, varUnits.axialUnit, Units::velocityUnits);
+			inputDoubleWithUnits("U Velocity", bc.value, varUnits.axialUnit, Units::velocityUnits);
 			break;
 		case BoundaryVariable::VVelocity:
-			inputDoubleWithUnits("V Velocity", bc.val, varUnits.radialUnit, Units::velocityUnits);
+
+			inputDoubleWithUnits("V Velocity", bc.value, varUnits.radialUnit, Units::velocityUnits);
 			break;
 		case BoundaryVariable::Pressure:
-			inputDoubleWithUnits("Pressure", bc.val, varUnits.pressureUnit, Units::pressureUnits);
+			inputDoubleWithUnits("Pressure", bc.value, varUnits.pressureUnit, Units::pressureUnits);
 			break;
 		case BoundaryVariable::StaticTemperature:
-			inputDoubleWithUnits("Static Temperature", bc.val, varUnits.temperatureUnit, Units::temperatureUnits);
+			inputDoubleWithUnits("Static Temperature", bc.value, varUnits.temperatureUnit, Units::temperatureUnits);
 			break;
 		}
 		ImGui::EndTable();

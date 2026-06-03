@@ -7,6 +7,8 @@
 #include "solver.h"
 #include "printer.h"
 
+#include "boundary_func.h"
+
 bool isObstacleCell(
 	const std::unordered_set<int>& obstacleSet,
 	int nrBase,
@@ -22,32 +24,116 @@ bool isObstacleCell(
 	return obstacleSet.find(nCell) != obstacleSet.end();
 }
 
-void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryConditionConfig& bc, CellStoreType storeType) {
+BoundaryFieldHost createBoundaryFieldHost(
+	const std::vector<BoundarySegmentGroup>& boundaryGroups,
+	BoundaryVariable variable
+) {
+	int maxGroupID = -1;
+
+	for (const BoundarySegmentGroup& group : boundaryGroups) {
+		maxGroupID = std::max(maxGroupID, group.id);
+	}
+
+	BoundaryFieldHost h{};
+
+	if (maxGroupID < 0) {
+		return h;
+	}
+
+	int nGroups = maxGroupID + 1;
+
+	h.typeByGroup.resize(nGroups, static_cast<uint8_t>(BCType::NONE));
+	h.valueByGroup.resize(nGroups, 0.0);
+
+	for (const BoundarySegmentGroup& group : boundaryGroups) {
+		if (group.id < 0) {
+			continue;
+		}
+
+		BoundaryCondition bc =
+			BoundaryDefaults::makeDefaultBC(group.type, variable);
+
+		auto it = group.bcs.find(variable);
+
+		if (it != group.bcs.end()) {
+			bc = it->second;
+		}
+
+		h.typeByGroup[group.id] =
+			static_cast<uint8_t>(bc.type);
+
+		h.valueByGroup[group.id] =
+			bc.value;
+	}
+
+	return h;
+}
+
+BoundaryFieldDevice createBoundaryFieldDevice(
+	const BoundaryFieldHost& h
+) {
+	BoundaryFieldDevice d{};
+
+	d.nGroups = static_cast<int>(h.typeByGroup.size());
+
+	copyHostToDevice(d.typeByGroup, h.typeByGroup);
+	copyHostToDevice(d.valueByGroup, h.valueByGroup);
+
+	return d;
+}
+
+BoundarySolverDevice createBoundarySolverDevice(
+	const std::vector<BoundarySegmentGroup>& boundaryGroups
+) {
+	BoundarySolverDevice dBC{};
+
+	BoundaryFieldHost hU = createBoundaryFieldHost(
+		boundaryGroups,
+		BoundaryVariable::UVelocity
+	);
+
+	BoundaryFieldHost hV = createBoundaryFieldHost(
+		boundaryGroups,
+		BoundaryVariable::VVelocity
+	);
+
+	BoundaryFieldHost hP = createBoundaryFieldHost(
+		boundaryGroups,
+		BoundaryVariable::Pressure
+	);
+
+	BoundaryFieldHost hEnergy = createBoundaryFieldHost(
+		boundaryGroups,
+		BoundaryVariable::StaticTemperature
+	);
+
+	BoundaryFieldHost hConcentration = createBoundaryFieldHost(
+		boundaryGroups,
+		BoundaryVariable::Concentration
+	);
+
+	dBC.u = createBoundaryFieldDevice(hU);
+	dBC.v = createBoundaryFieldDevice(hV);
+	dBC.p = createBoundaryFieldDevice(hP);
+	dBC.energy = createBoundaryFieldDevice(hEnergy);
+	dBC.concentration = createBoundaryFieldDevice(hConcentration);
+
+	return dBC;
+}
+
+void allocateCoefficients(ConfigSolver& config, Coefficients& coeff) {
 
 	// get size of nr and nz
-	int nr = 0;
-	int nz = 0;
-
-	if (storeType == CellStoreType::AXIAL) {
-		nr = config.g.nr;
-		nz = config.g.nz + 1;
-	}
-	else if (storeType == CellStoreType::RADIAL) {
-		nr = config.g.nr + 1;
-		nz = config.g.nz;
-	}
-	else if (storeType == CellStoreType::CENTER) {
-		nr = config.g.nr;
-		nz = config.g.nz;
-	}
-	coeff.nr = nr;
-	coeff.nz = nz;
-	coeff.N = nr * nz;
-	coeff.storeType = storeType;
-
+	int nr = config.g.nr;
+	int nz = config.g.nz;
 	int N = nr * nz;
 	double x = 0.0;
 	double y = 0.0;
+
+	coeff.N = N;
+	coeff.nr = nr;
+	coeff.nz = nz;
+
 	std::vector<double> dz = config.g.dz;
 	std::vector<double> dr = config.g.dr;
 	std::vector<double> r = config.g.r;
@@ -74,144 +160,182 @@ void allocateCoefficients(ConfigSolver& config, Coefficients& coeff, BoundaryCon
 	CUDA_CHECK(cudaMemset(coeff.res, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.initRes, 0, N * sizeof(double)));
 
-	// find which cells should be active or not. 1 = active, 0 = deactive
-	std::vector<uint8_t> activeCell (N, 1);
-	std::vector<uint8_t> activeBC(N, 1);
-
-	for (int i = 0; i < nr; ++i) {
-		for (int j = 0; j < nz; ++j) {
-			int n = i * nz + j;
-
-			if (storeType == CellStoreType::AXIAL) {
-
-				// inlet u boundary
-				if (j == 0 && (bc.inlet.type == BCType::DIRICHLET || bc.inlet.type == FULLY_DEVELOPED)) {
-					activeBC[n] = 0;
-				}
-
-				// outlet u boundary
-				if (j == nz - 1 && bc.outlet.type == BCType::DIRICHLET) {
-					activeBC[n] = 0;
-				}
-			}
-
-			else if (storeType == CellStoreType::RADIAL) {
-
-				// centerline v boundary
-				if (i == 0 && bc.centerline.type == BCType::DIRICHLET) {
-					activeBC[n] = 0;
-				}
-
-				// outer v boundary
-				if (i == nr - 1 && (bc.outer.type == BCType::DIRICHLET || bc.outer.type == BCType::NEUMANN)) {
-					activeBC[n] = 0;
-				}
-			}
-
-			// obstacles
-			bool isSolid = false;
-			if (storeType == CellStoreType::CENTER) {
-				isSolid = isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i, j);
-			}
-			else if (storeType == CellStoreType::AXIAL) {
-				isSolid = isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i, j - 1) || isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i, j);
-			}
-			else if (storeType == CellStoreType::RADIAL) {
-				isSolid = isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i - 1, j) || isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i, j);
-			}
-
-			if (isSolid) {
-				activeCell[n] = 0;
-			}
-
-		}
-	}
-	coeff.activeCell = copyHostToDevice(activeCell.data(), activeCell.size());
-	coeff.activeBC = copyHostToDevice(activeBC.data(), activeBC.size());
 
 }
 
-std::vector<double> getInitializedVelocity(ConfigSolver& config, BoundaryConditionConfig& uBC) {
+FVMeshHostPacked packFVMeshForDevice(const FVMesh& mesh) {
+	FVMeshHostPacked h{};
 
-	int nz = config.g.nz;
-	int nr = config.g.nr;
-	std::vector<double> dr = config.g.dr;
-	std::vector<double> dz = config.g.dz;
-	std::vector<double> r = config.g.r;
-	std::vector<double> zFace = config.g.zFace;
-	std::unordered_set<int> obstacleIndices = config.g.obstacleIndices;
+	h.nr = mesh.nr;
+	h.nz = mesh.nz;
 
-	double R = config.g.R;
-	double Umax = config.f.Umax;
+	h.nCells = static_cast<int>(mesh.cells.size());
+	h.nFaces = static_cast<int>(mesh.faces.size());
 
-	// initialize axial velocity
-	std::vector<double> u(nr * (nz + 1), 0.0);
+	h.faceOwner.resize(h.nFaces);
+	h.faceNeighbor.resize(h.nFaces);
+	h.faceNormalZ.resize(h.nFaces);
+	h.faceNormalR.resize(h.nFaces);
+	h.faceCenterZ.resize(h.nFaces);
+	h.faceCenterR.resize(h.nFaces);
+	h.faceArea.resize(h.nFaces);
+	h.faceBoundaryGroupID.resize(h.nFaces);
 
-	for (int i = 0; i < nr; ++i) {
-		for (int j = 0; j < nz + 1; ++j) {
+	for (int f = 0; f < h.nFaces; f++) {
+		const FVFace& face = mesh.faces[f];
 
-			int n = i * (nz + 1) + j;
+		h.faceOwner[f] = face.owner;
+		h.faceNeighbor[f] = face.neighbor;
 
-			//if (j != 0) continue;
-			bool isSolid;
+		h.faceNormalZ[f] = face.normal.z;
+		h.faceNormalR[f] = face.normal.r;
 
-			double localZ = zFace[j];
-			double localR = r[i];
+		h.faceCenterZ[f] = face.center.z;
+		h.faceCenterR[f] = face.center.r;
 
-			if (uBC.inlet.type == BCType::DIRICHLET) {
-				u[n] = uBC.inlet.val;
-			}
-			else if (uBC.inlet.type == BCType::FULLY_DEVELOPED) {
-				u[n] = uBC.inlet.val * (1.0 - (localR / R) * (localR / R));
-			}
+		h.faceArea[f] = face.area;
 
-			// check if u face is on a solid boundary
-			isSolid = isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i, j - 1) || isObstacleCell(obstacleIndices, config.g.nr, config.g.nz, i, j);
-			if (isSolid) {
-				u[n] = 0.0;
-			}
+		h.faceBoundaryGroupID[f] = face.boundaryGroupID;
+	}
+
+	h.cellCenterZ.resize(h.nCells);
+	h.cellCenterR.resize(h.nCells);
+	h.cellVolume.resize(h.nCells);
+	h.cellActive.resize(h.nCells);
+	h.cellSolid.resize(h.nCells);
+
+	h.cellFaceStart.resize(h.nCells + 1);
+
+	int totalFaceRefs = 0;
+
+	for (int c = 0; c < h.nCells; c++) {
+		const FVCell& cell = mesh.cells[c];
+
+		h.cellCenterZ[c] = cell.center.z;
+		h.cellCenterR[c] = cell.center.r;
+
+		h.cellVolume[c] = cell.volume;
+
+		h.cellActive[c] = cell.active ? 1 : 0;
+		h.cellSolid[c] = cell.solid ? 1 : 0;
+
+		h.cellFaceStart[c] = totalFaceRefs;
+		totalFaceRefs += static_cast<int>(cell.faceIDs.size());
+	}
+
+	h.cellFaceStart[h.nCells] = totalFaceRefs;
+
+	h.cellFaceIDs.resize(totalFaceRefs);
+
+	int k = 0;
+
+	for (int c = 0; c < h.nCells; c++) {
+		const FVCell& cell = mesh.cells[c];
+
+		for (int faceID : cell.faceIDs) {
+			h.cellFaceIDs[k++] = faceID;
 		}
 	}
-	return u;
+
+	return h;
 }
 
-void allocateSimple(ConfigSolver& config, VariablesSimple& vars, BoundaryConditionConfig& uBC) {
+
+
+FVMeshDevice createFVMeshDevice(const FVMesh& mesh) {
+
+	FVMeshHostPacked h = packFVMeshForDevice(mesh);
+
+	FVMeshDevice d{};
+
+	// normal scalar values: assign directly
+	d.nr = h.nr;
+	d.nz = h.nz;
+
+	d.cells.nCells = h.nCells;
+	d.faces.nFaces = h.nFaces;
+
+	// face arrays
+	copyHostToDevice(d.faces.owner, h.faceOwner);
+	copyHostToDevice(d.faces.neighbor, h.faceNeighbor);
+
+	copyHostToDevice(d.faces.normalZ, h.faceNormalZ);
+	copyHostToDevice(d.faces.normalR, h.faceNormalR);
+
+	copyHostToDevice(d.faces.centerZ, h.faceCenterZ);
+	copyHostToDevice(d.faces.centerR, h.faceCenterR);
+
+	copyHostToDevice(d.faces.area, h.faceArea);
+
+	copyHostToDevice(d.faces.boundaryGroupID, h.faceBoundaryGroupID);
+
+	// cell arrays
+	copyHostToDevice(d.cells.centerZ, h.cellCenterZ);
+	copyHostToDevice(d.cells.centerR, h.cellCenterR);
+
+	copyHostToDevice(d.cells.volume, h.cellVolume);
+
+	copyHostToDevice(d.cells.active, h.cellActive);
+	copyHostToDevice(d.cells.solid, h.cellSolid);
+
+	copyHostToDevice(d.cells.faceStart, h.cellFaceStart);
+	copyHostToDevice(d.cells.faceIDs, h.cellFaceIDs);
+
+	return d;
+}
+
+void allocateSimple(ConfigSolver& config, VariablesSimple& vars, FVMesh& mesh) {
 
 	int nr = config.g.nr;
 	int nz = config.g.nz;
 
-	int Nu = nr * (nz + 1);
-	int Nv = (nr + 1) * nz;
 	int N = nr * nz;
 
-	vars.DU = deviceAlloc<double>(Nu);
-	vars.DV = deviceAlloc<double>(Nv);
-	vars.uTemp = deviceAlloc<double>(Nu);
-	vars.vTemp = deviceAlloc<double>(Nv);
+	vars.DU = deviceAlloc<double>(N);
+	vars.DV = deviceAlloc<double>(N);
+	vars.gradPZ = deviceAlloc<double>(N);
+	vars.gradPR = deviceAlloc<double>(N);
+	vars.uTemp = deviceAlloc<double>(N);
+	vars.vTemp = deviceAlloc<double>(N);
 	vars.ppTemp = deviceAlloc<double>(N);
 
-	CUDA_CHECK(cudaMemset(vars.DU, 0, Nu * sizeof(double)));
-	CUDA_CHECK(cudaMemset(vars.DV, 0, Nv * sizeof(double)));
+	CUDA_CHECK(cudaMemset(vars.DU, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(vars.DV, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(vars.gradPZ, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(vars.gradPR, 0, N * sizeof(double)));
 
-	std::vector<double> h_u = getInitializedVelocity(config, uBC);
-	std::vector<double> h_v(Nv, 0.0);
+	std::vector<double> h_u(N, 0.0);
+	std::vector<double> h_v(N, 0.0);
 	std::vector<double> h_pp(N, 0.0);
 	std::vector<double> h_p(N, 0.0);
+	std::vector<double> h_mDot(mesh.numFaces(), 0.0);
 
-	vars.uOld = copyHostToDevice(h_u.data(), h_u.size());
-	vars.vOld = copyHostToDevice(h_v.data(), h_v.size());
+	copyHostToDevice(vars.uOld, h_u);
+	copyHostToDevice(vars.vOld, h_v);
+	copyHostToDevice(vars.mDot, h_mDot);
 
-	vars.u = copyHostToDevice(h_u.data(), h_u.size());
-	vars.v = copyHostToDevice(h_v.data(), h_v.size());
-	vars.pp = copyHostToDevice(h_pp.data(), h_pp.size());
-	vars.p = copyHostToDevice(h_p.data(), h_p.size());
+	copyHostToDevice(vars.u, h_u);
+	copyHostToDevice(vars.v, h_v);
+	copyHostToDevice(vars.pp, h_pp);
+	copyHostToDevice(vars.p, h_p);
 
-	CUDA_CHECK(cudaMemcpy(vars.uTemp, vars.u, Nu * sizeof(double), cudaMemcpyDeviceToDevice));
-	CUDA_CHECK(cudaMemcpy(vars.vTemp, vars.v, Nv * sizeof(double), cudaMemcpyDeviceToDevice));
+	CUDA_CHECK(cudaMemcpy(vars.uTemp, vars.u, N * sizeof(double), cudaMemcpyDeviceToDevice));
+	CUDA_CHECK(cudaMemcpy(vars.vTemp, vars.v, N * sizeof(double), cudaMemcpyDeviceToDevice));
 	CUDA_CHECK(cudaMemcpy(vars.ppTemp, vars.pp, N * sizeof(double), cudaMemcpyDeviceToDevice));
 }
 
 
+std::vector<uint8_t> createActiveCell(int N, const std::unordered_set<int>& obstacleIndices) {
+
+	std::vector<uint8_t> activeCell(N, 1);
+	
+	for (int n : obstacleIndices) {
+		activeCell[n] = 0;
+	}
+
+	return activeCell;
+
+}
 
 // initialize variables
 void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
@@ -227,12 +351,9 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 	std::vector<double> r = g.r;
 	std::vector<double> z = g.z;
 	std::unordered_set<int> obstacleIndices = g.obstacleIndices;
-
+	
 	double Umax = f.Umax;
 	double R = g.R;
-	//double cell_top = g.cell_top;
-	//double cell_left = g.cell_left;
-	//double cell_right = g.cell_right;
 	double D = f.D;
 	double D_isf = f.D_isf;
 	double d = f.d;
@@ -240,6 +361,7 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 	// dz and dr for u and v
 	std::vector<double> z_dz;
 	std::vector<double> r_dr;
+
 
 	for (int i = 0; i < nr + 1; ++i) {
 		if (i == 0) {
@@ -264,6 +386,11 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 			z_dz.push_back(0.5 * (dz[j] + dz[j - 1]));
 		}
 	}
+
+	// active cell
+	std::vector<uint8_t> activeCell = createActiveCell(N, obstacleIndices);
+
+	g.activeCell = activeCell;
 
 	// fill in cell data
 	std::vector<int> c_cell(nr * nz, 0);
@@ -392,21 +519,27 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 
 
 	// allocate GridConfig variables and kf
-	g.z_dz = copyHostToDevice(z_dz.data(), z_dz.size());
-	g.r_dr = copyHostToDevice(r_dr.data(), r_dr.size());
-	g.d_r = copyHostToDevice(r.data(), r.size());
-	g.d_z = copyHostToDevice(z.data(), z.size());
-	g.d_rFace = copyHostToDevice(rFace.data(), rFace.size());
-	g.d_zFace = copyHostToDevice(zFace.data(), zFace.size());
-	g.d_dz = copyHostToDevice(dz.data(), dz.size());
-	g.d_dr = copyHostToDevice(dr.data(), dr.size());
+	copyHostToDevice(g.z_dz, z_dz);
+	copyHostToDevice(g.r_dr, r_dr);
 
-	g.c_cell = copyHostToDevice(c_cell.data(), c_cell.size());
-	g.wall_cell = copyHostToDevice(wall_cell.data(), wall_cell.size());
-	g.A = copyHostToDevice(A.data(), A.size());
-	g.surf_index = copyHostToDevice(surf_index.data(), surf_index.size());
-	g.dist = copyHostToDevice(dist.data(), dist.size());
-	g.kf = copyHostToDevice(kf.data(), kf.size());
+	copyHostToDevice(g.d_r, r);
+	copyHostToDevice(g.d_z, z);
+
+	copyHostToDevice(g.d_rFace, rFace);
+	copyHostToDevice(g.d_zFace, zFace);
+
+	copyHostToDevice(g.d_dz, dz);
+	copyHostToDevice(g.d_dr, dr);
+
+	copyHostToDevice(g.d_activeCell, activeCell);
+
+	copyHostToDevice(g.c_cell, c_cell);
+	copyHostToDevice(g.wall_cell, wall_cell);
+
+	copyHostToDevice(g.A, A);
+	copyHostToDevice(g.surf_index, surf_index);
+	copyHostToDevice(g.dist, dist);
+	copyHostToDevice(g.kf, kf);
 
 }
 
@@ -462,36 +595,48 @@ void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& 
 	//cudaMalloc(&vars.tmpA, n * sizeof(double));
 	//cudaMalloc(&vars.tmpB, n * sizeof(double));
 
-	vars.ACC = copyHostToDevice(h_ACC.data(), h_ACC.size());
-	vars.AKE = copyHostToDevice(h_AKE.data(), h_AKE.size());
-	vars.AKW = copyHostToDevice(h_AKW.data(), h_AKW.size());
-	vars.AKN = copyHostToDevice(h_AKN.data(), h_AKN.size());
-	vars.AKS = copyHostToDevice(h_AKS.data(), h_AKS.size());
-	vars.foxy = copyHostToDevice(h_foxy.data(), h_foxy.size());
-	vars.ACnew = copyHostToDevice(h_ACnew.data(), h_ACnew.size());
-	vars.foxynew = copyHostToDevice(h_foxynew.data(), h_foxynew.size());
-	vars.res_t = copyHostToDevice(h_res_t.data(), h_res_t.size());
-	vars.jrho = copyHostToDevice(h_jrho.data(), h_jrho.size());
-	vars.jv = copyHostToDevice(h_jv.data(), h_jv.size());
-	vars.jp_t = copyHostToDevice(h_jp_t.data(), h_jp_t.size());
-	vars.js = copyHostToDevice(h_js.data(), h_js.size());
-	vars.js_t = copyHostToDevice(h_js_t.data(), h_js_t.size());
-	vars.jt = copyHostToDevice(h_jt.data(), h_jt.size());
-	vars.snorm = copyHostToDevice(h_snorm.data(), h_snorm.size());
-	vars.resnorm = copyHostToDevice(h_resnorm.data(), h_resnorm.size());
-	vars.oxy = copyHostToDevice(h_oxy.data(), h_oxy.size());
-	vars.beta = copyHostToDevice(h_beta.data(), h_beta.size());
-	vars.alpha = copyHostToDevice(h_alpha.data(), h_alpha.size());
-	vars.cs = copyHostToDevice(h_cs.data(), h_cs.size());
-	vars.cw = copyHostToDevice(h_cw.data(), h_cw.size());
-	vars.cp = copyHostToDevice(h_cp.data(), h_cp.size());
-	vars.alpha_den = copyHostToDevice(h_alpha_den.data(), h_alpha_den.size());
-	vars.w_num = copyHostToDevice(h_w_num.data(), h_w_num.size());
-	vars.w_den = copyHostToDevice(h_w_den.data(), h_w_den.size());
-	vars.res = copyHostToDevice(h_res.data(), h_res.size());
-	vars.jp = copyHostToDevice(h_jp.data(), h_jp.size());
-	vars.jw = copyHostToDevice(h_jw.data(), h_jw.size());
-	vars.OCR_num = copyHostToDevice(h_OCR_num.data(), h_OCR_num.size());
+	copyHostToDevice(vars.ACC, h_ACC);
+	copyHostToDevice(vars.AKE, h_AKE);
+	copyHostToDevice(vars.AKW, h_AKW);
+	copyHostToDevice(vars.AKN, h_AKN);
+	copyHostToDevice(vars.AKS, h_AKS);
+
+	copyHostToDevice(vars.foxy, h_foxy);
+	copyHostToDevice(vars.ACnew, h_ACnew);
+	copyHostToDevice(vars.foxynew, h_foxynew);
+
+	copyHostToDevice(vars.res_t, h_res_t);
+
+	copyHostToDevice(vars.jrho, h_jrho);
+	copyHostToDevice(vars.jv, h_jv);
+	copyHostToDevice(vars.jp_t, h_jp_t);
+	copyHostToDevice(vars.js, h_js);
+	copyHostToDevice(vars.js_t, h_js_t);
+	copyHostToDevice(vars.jt, h_jt);
+
+	copyHostToDevice(vars.snorm, h_snorm);
+	copyHostToDevice(vars.resnorm, h_resnorm);
+
+	copyHostToDevice(vars.oxy, h_oxy);
+
+	copyHostToDevice(vars.beta, h_beta);
+	copyHostToDevice(vars.alpha, h_alpha);
+
+	copyHostToDevice(vars.cs, h_cs);
+	copyHostToDevice(vars.cw, h_cw);
+	copyHostToDevice(vars.cp, h_cp);
+
+	copyHostToDevice(vars.alpha_den, h_alpha_den);
+
+	copyHostToDevice(vars.w_num, h_w_num);
+	copyHostToDevice(vars.w_den, h_w_den);
+
+	copyHostToDevice(vars.res, h_res);
+
+	copyHostToDevice(vars.jp, h_jp);
+	copyHostToDevice(vars.jw, h_jw);
+
+	copyHostToDevice(vars.OCR_num, h_OCR_num);
 
 	// constant values
 	double h_jw_num_val = 0.0;
@@ -506,14 +651,18 @@ void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& 
 	double h_resnorm_val = 0.0;
 	double h_OCR_num_val = 0.0;
 
-	vars.jw_num_val = copyHostToDevice(&h_jw_num_val, 1);
-	vars.jw_den_val = copyHostToDevice(&h_jw_den_val, 1);
-	vars.jalpha_val = copyHostToDevice(&h_jalpha_val, 1);
-	vars.jalpha_den_val = copyHostToDevice(&h_jalpha_den_val, 1);
-	vars.jbeta_val = copyHostToDevice(&h_jbeta_val, 1);
-	vars.jrho_val = copyHostToDevice(&h_jrho_val, 1);
-	vars.jrho_val_prev = copyHostToDevice(&h_jrho_val_prev, 1);
-	vars.jw_val = copyHostToDevice(&h_jw_val, 1);
+	copyHostToDevice(vars.jw_num_val, h_jw_num_val);
+	copyHostToDevice(vars.jw_den_val, h_jw_den_val);
+
+	copyHostToDevice(vars.jalpha_val, h_jalpha_val);
+	copyHostToDevice(vars.jalpha_den_val, h_jalpha_den_val);
+
+	copyHostToDevice(vars.jbeta_val, h_jbeta_val);
+
+	copyHostToDevice(vars.jrho_val, h_jrho_val);
+	copyHostToDevice(vars.jrho_val_prev, h_jrho_val_prev);
+
+	copyHostToDevice(vars.jw_val, h_jw_val);
 
 	double* d_snorm_val, * d_resnorm_val, * d_OCR_num_val;
 	cudaMallocHost(&d_snorm_val, sizeof(double));

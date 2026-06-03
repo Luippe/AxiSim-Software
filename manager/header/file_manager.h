@@ -62,7 +62,7 @@ void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc);
 // read boundary condition from save file
 void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc);
 
-void readOneBoundaryCondition(std::ifstream& in, BoundaryConditionConfig& bcConfig);
+void readOneBoundaryCondition(std::ifstream& in);
 
 // load selected files when the application launches
 void loadAtLaunch(Mesh& mesh, Solver& solver, Results& results);

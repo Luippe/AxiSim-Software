@@ -190,17 +190,18 @@
 				26,
 				27,
 				28,
-				32,
-				34,
-				87,
-				88,
+				29,
+				33,
+				35,
 				89,
 				90,
 				91,
 				92,
 				93,
 				94,
-				96
+				95,
+				96,
+				98
 			]
 		},
 		{
@@ -298,14 +299,14 @@
 			},
 			"sourceIndexes" : 
 			[
-				29,
 				30,
 				31,
-				33,
-				35,
+				32,
+				34,
 				36,
 				37,
-				38
+				38,
+				39
 			]
 		},
 		{
@@ -395,7 +396,7 @@
 			"language" : "C",
 			"sourceIndexes" : 
 			[
-				95
+				97
 			]
 		}
 	],
@@ -526,14 +527,14 @@
 				25,
 				26,
 				27,
-				28
+				28,
+				29
 			]
 		},
 		{
 			"name" : "solver\\source",
 			"sourceIndexes" : 
 			[
-				29,
 				30,
 				31,
 				32,
@@ -541,21 +542,21 @@
 				34,
 				35,
 				36,
-				37
+				37,
+				38
 			]
 		},
 		{
 			"name" : "src\\source",
 			"sourceIndexes" : 
 			[
-				38
+				39
 			]
 		},
 		{
 			"name" : "graphics\\gui\\header",
 			"sourceIndexes" : 
 			[
-				39,
 				40,
 				41,
 				42,
@@ -567,36 +568,36 @@
 				48,
 				49,
 				50,
-				51
+				51,
+				52
 			]
 		},
 		{
 			"name" : "graphics\\tinyfiledialogs",
 			"sourceIndexes" : 
 			[
-				52,
-				95
+				53,
+				97
 			]
 		},
 		{
 			"name" : "graphics\\window\\header",
 			"sourceIndexes" : 
 			[
-				53,
 				54,
 				55,
 				56,
 				57,
 				58,
 				59,
-				60
+				60,
+				61
 			]
 		},
 		{
 			"name" : "manager\\header",
 			"sourceIndexes" : 
 			[
-				61,
 				62,
 				63,
 				64,
@@ -608,65 +609,67 @@
 				70,
 				71,
 				72,
-				73
+				73,
+				74,
+				75
 			]
 		},
 		{
 			"name" : "solver\\header",
 			"sourceIndexes" : 
 			[
-				74,
-				75,
 				76,
 				77,
 				78,
 				79,
 				80,
 				81,
-				82
+				82,
+				83,
+				84
 			]
 		},
 		{
 			"name" : "src\\header",
 			"sourceIndexes" : 
 			[
-				83
+				85
 			]
 		},
 		{
 			"name" : "structs",
 			"sourceIndexes" : 
 			[
-				84,
-				85,
-				86
+				86,
+				87,
+				88
 			]
 		},
 		{
 			"name" : "graphics\\imgui",
 			"sourceIndexes" : 
 			[
-				87,
-				88,
 				89,
 				90,
-				93,
-				94
+				91,
+				92,
+				95,
+				96
 			]
 		},
 		{
 			"name" : "graphics\\imgui\\backends",
 			"sourceIndexes" : 
 			[
-				91,
-				92
+				93,
+				94
 			]
 		},
 		{
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				96
+				98
 			]
 		}
 	],
@@ -791,6 +794,12 @@
 			"compileGroupIndex" : 0,
 			"path" : "graphics/window/source/shader.cpp",
 			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "manager/source/boundary_func.cpp",
+			"sourceGroupIndex" : 2
 		},
 		{
 			"backtrace" : 2,
@@ -1015,6 +1024,11 @@
 			"backtrace" : 2,
 			"path" : "graphics/window/header/shader.h",
 			"sourceGroupIndex" : 7
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/boundary_func.h",
+			"sourceGroupIndex" : 8
 		},
 		{
 			"backtrace" : 2,

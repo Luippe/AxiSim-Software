@@ -24,11 +24,22 @@ T* deviceAllocHost(size_t count) {
 	return ptr;
 }
 
+
 template <typename T>
-T* copyHostToDevice(const T* host, size_t count) {
-	T* ptr = deviceAlloc<T>(count);
-	cudaMemcpy(ptr, host, count * sizeof(T), cudaMemcpyHostToDevice);
-	return ptr;
+void copyHostToDevice(T*& dPtr, const T& value) {
+	cudaMalloc(reinterpret_cast<void**>(&dPtr), sizeof(T));
+	cudaMemcpy(dPtr, &value, sizeof(T), cudaMemcpyHostToDevice);
+}
+
+template <typename T>
+void copyHostToDevice(T*& dPtr, const std::vector<T>& vec) {
+	if (vec.empty()) {
+		dPtr = nullptr;
+		return;
+	}
+
+	cudaMalloc(&dPtr, vec.size() * sizeof(T));
+	cudaMemcpy(dPtr, vec.data(), vec.size() * sizeof(T), cudaMemcpyHostToDevice);
 }
 
 template <typename T>

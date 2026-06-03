@@ -12,63 +12,63 @@ scene(scene) {
 
 void AnimationGUI::loadAnimation(const std::string& filename) {
 
-	std::ifstream in(filename, std::ios::binary);
+	//std::ifstream in(filename, std::ios::binary);
 
-    frames.clear();
+ //   frames.clear();
 
-    std::vector<double> dr, dz;
-    readAll(in, nr, nz, dr, dz);
+ //   std::vector<double> dr, dz;
+ //   readAll(in, nr, nz, dr, dz);
 
-    BoundaryConditionConfig uBC;
-    BoundaryConditionConfig vBC;
-    BoundaryConditionConfig pBC;
-    readBoundaryConditionConfig(in, uBC, vBC, pBC);
+ //   BoundaryConditionConfig uBC;
+ //   BoundaryConditionConfig vBC;
+ //   BoundaryConditionConfig pBC;
+ //   readBoundaryConditionConfig(in, uBC, vBC, pBC);
 
-    SolutionField uSol{{}, nr, nz + 1, dr, dz, CellStoreType::AXIAL};
-    SolutionField vSol{{}, nr + 1, nz, dr, dz, CellStoreType::RADIAL };
-    SolutionField pSol{{}, nr, nz, dr, dz, CellStoreType::CENTER };
+ //   SolutionField uSol{{}, nr, nz + 1, dr, dz, CellStoreType::AXIAL};
+ //   SolutionField vSol{{}, nr + 1, nz, dr, dz, CellStoreType::RADIAL };
+ //   SolutionField pSol{{}, nr, nz, dr, dz, CellStoreType::CENTER };
 
-    Field uField{ nz, nr };
-    Field vField{ nz, nr };
-    Field pField{ nz, nr };
+ //   Field uField{ nz, nr };
+ //   Field vField{ nz, nr };
+ //   Field pField{ nz, nr };
 
-    MinMaxGlobal uMinMax;
-    MinMaxGlobal vMinMax;
-    MinMaxGlobal pMinMax;
+ //   MinMaxGlobal uMinMax;
+ //   MinMaxGlobal vMinMax;
+ //   MinMaxGlobal pMinMax;
 
-	while (true) {
-		FlowFrame frame;
+	//while (true) {
+	//	FlowFrame frame;
 
-		if (!readBinary(in, frame.time)) break;
-        if (!readBinary(in, uSol.field, vSol.field, pSol.field)) break;
+	//	if (!readBinary(in, frame.time)) break;
+ //       if (!readBinary(in, uSol.field, vSol.field, pSol.field)) break;
 
-        uField.generate(uSol, uBC);
-        vField.generate(vSol, vBC);
-        pField.generate(pSol, pBC);
+ //       uField.generate(uSol, uBC);
+ //       vField.generate(vSol, vBC);
+ //       pField.generate(pSol, pBC);
 
-        uMinMax.vmin = std::min(uField.vmin, uMinMax.vmin);
-        uMinMax.vmax = std::max(uField.vmax, uMinMax.vmax);
+ //       uMinMax.vmin = std::min(uField.vmin, uMinMax.vmin);
+ //       uMinMax.vmax = std::max(uField.vmax, uMinMax.vmax);
 
-        vMinMax.vmin = std::min(vField.vmin, vMinMax.vmin);
-        vMinMax.vmax = std::max(vField.vmax, vMinMax.vmax);
+ //       vMinMax.vmin = std::min(vField.vmin, vMinMax.vmin);
+ //       vMinMax.vmax = std::max(vField.vmax, vMinMax.vmax);
 
-        pMinMax.vmin = std::min(pField.vmin, pMinMax.vmin);
-        pMinMax.vmax = std::max(pField.vmax, pMinMax.vmax);
+ //       pMinMax.vmin = std::min(pField.vmin, pMinMax.vmin);
+ //       pMinMax.vmax = std::max(pField.vmax, pMinMax.vmax);
 
-        frame.fields.push_back(uField);
-        frame.fields.push_back(vField);
-        frame.fields.push_back(pField);
-       
-		frames.push_back(std::move(frame));
+ //       frame.fields.push_back(uField);
+ //       frame.fields.push_back(vField);
+ //       frame.fields.push_back(pField);
+ //      
+	//	frames.push_back(std::move(frame));
 
-	}
+	//}
 
-    minmaxGlobals.push_back(uMinMax);
-    minmaxGlobals.push_back(vMinMax);
-    minmaxGlobals.push_back(pMinMax);
+ //   minmaxGlobals.push_back(uMinMax);
+ //   minmaxGlobals.push_back(vMinMax);
+ //   minmaxGlobals.push_back(pMinMax);
 
-    updateCurrentField();
-    isReady = true;
+ //   updateCurrentField();
+ //   isReady = true;
 }
 
 void AnimationGUI::updateCurrentFrame() {

@@ -6,34 +6,20 @@
 // ==============================================================
 // ==================HELPER FUNCTIONS============================
 // ==============================================================
+
 __device__
-bool isStoredCenter(CellStoreType& storeType) {
-	return storeType == CellStoreType::CENTER;
+bool isDirichletType(uint8_t type) {
+	return type == (uint8_t)(DIRICHLET);
 }
 
 __device__
-bool isStoredAxial(CellStoreType& storeType) {
-	return storeType == CellStoreType::AXIAL;
+bool isNeumannType(uint8_t type) {
+	return type == (uint8_t)(NEUMANN);
 }
 
 __device__
-bool isStoredRadial(CellStoreType& storeType) {
-	return storeType == CellStoreType::RADIAL;
-}
-
-__device__
-bool isBCDirichlet(BCType& type) {
-	return type == BCType::DIRICHLET;
-}
-
-__device__
-bool isBCNeumann(BCType& type) {
-	return type == BCType::NEUMANN;
-}
-
-__device__
-bool isFullyDeveloped(BCType& type) {
-	return type == BCType::FULLY_DEVELOPED;
+bool isFullyDeveloped(uint8_t type) {
+	return type == (uint8_t)(FULLY_DEVELOPED);
 }
 
 __global__
@@ -62,6 +48,22 @@ void applyOuterNeumannV(double* v, int nr, int nz) {
 
 	v[boundary] = v[inside];
 }
+
+__device__
+void imposeDirichletRow(
+	Coefficients coeff,
+	int n,
+	double value
+) {
+	coeff.AE[n] = 0.0;
+	coeff.AW[n] = 0.0;
+	coeff.AN[n] = 0.0;
+	coeff.AS[n] = 0.0;
+
+	coeff.AC[n] = 1.0;
+	coeff.b[n] = value;
+}
+
 
 // ==============================================================
 // ==================DEFERRED CORRECTION=========================
@@ -92,25 +94,18 @@ double secondOrderUpwindCorrection(double F, double phiLL, double phiL, double p
 // ==================DIFFUSION TERM==============================
 // ==============================================================
 __global__
-void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryConditionConfig bc) {
-
+void addDiffusionCoefficient(
+	ConfigSolver config,
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	BoundaryFieldDevice bc
+) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (n >= coeff.N) return;
+	if (n >= mesh.cells.nCells) return;
+	if (!mesh.cells.active[n]) return;
 
-	const GridConfig& g = config.g;
 	const FluidPropertyConfig& f = config.f;
-
-	int nr = coeff.nr;
-	int nz = coeff.nz;
-	double* dr = g.d_dr;
-	double* dz = g.d_dz;
-	double* r = g.d_r;
-	double* z = g.d_z;
-	double* rFace = g.d_rFace;
-	double* zFace = g.d_zFace;
-	double* r_dr = g.r_dr;
-	double* z_dz = g.z_dz;
 
 	double mu = f.mu;
 
@@ -120,180 +115,161 @@ void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryC
 	double* AN = coeff.AN;
 	double* AS = coeff.AS;
 	double* b = coeff.b;
-	uint8_t* cell = coeff.activeCell;
 
-	// filter out all east and west obstacles and dirichlet boundaries
-	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
+	int nz = mesh.nz;
 
-	int j = n % nz;
-	int i = n / nz;
+	double zP = mesh.cells.centerZ[n];
+	double rP = mesh.cells.centerR[n];
 
-	double r1 = 0.0;
-	double r2 = 0.0;
+	int start = mesh.cells.faceStart[n];
+	int end = mesh.cells.faceStart[n + 1];
 
-	r1 = rFace[i];
-	r2 = rFace[i + 1];
+	for (int k = start; k < end; k++) {
 
-	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2 * CUDART_PI * r2 * z_dz[j];
-	double Ar1 = 2 * CUDART_PI * r1 * z_dz[j];
+		int faceID = mesh.cells.faceIDs[k];
 
-	// ----------ADD Diffusion Term--------------
-	// east
-	if (j == nz - 1) {
-		AE[n] = 0.0;
-	}
-	else if (cell[n + 1] == 0) {
-		AE[n] = 0.0;
-		AC[n] += (mu * Az / (dz[j]));
-	}
-	else {
-		AE[n] = -(mu * Az / dz[j]);
-	}
+		int owner = mesh.faces.owner[faceID];
+		int neighbor = mesh.faces.neighbor[faceID];
 
-	// west
-	if (j == 0) {
-		AW[n] = 0.0;
-	}
-	else if (cell[n - 1] == 0) {
-		AW[n] = 0.0;
-		AC[n] += (mu * Az / dz[j - 1]);
-	}
-	else {
-		AW[n] = -(mu * Az / dz[j - 1]);
-	}
+		double area = mesh.faces.area[faceID];
 
-	// north
-	if (i == nr - 1) {
-		AN[n] = 0.0;
-		if (isBCDirichlet(bc.outer.type)) {
-			double K = mu * Ar2 / (0.5 * dr[i]);
+		double nzHat = mesh.faces.normalZ[faceID];
+		double nrHat = mesh.faces.normalR[faceID];
+
+		// Face normal is stored outward from owner.
+		// If this cell is the neighbor, flip the normal so it is outward from n.
+		if (neighbor == n) {
+			nzHat = -nzHat;
+			nrHat = -nrHat;
+		}
+
+		// ------------------------------------------------------------
+		// Interior face
+		// ------------------------------------------------------------
+		if (neighbor >= 0) {
+
+			int nb = (owner == n) ? neighbor : owner;
+
+			double zN = mesh.cells.centerZ[nb];
+			double rN = mesh.cells.centerR[nb];
+
+			double dzPN = zN - zP;
+			double drPN = rN - rP;
+
+			double dPN = fabs(dzPN * nzHat + drPN * nrHat);
+			//if (n == 0) {
+			//	printf("%f\n", dPN);
+			//}
+			if (dPN <= 0.0) continue;
+
+			double K = mu * area / dPN;
+
+			// Add diagonal contribution
 			AC[n] += K;
-			b[n] += K * bc.outer.val;
-		}	
-	}
-	else if (cell[n + nz] == 0) {
-		AN[n] = 0.0;
-		AC[n] += (mu * Ar2 / (0.5 * r_dr[i]));
-	}
-	else {
-		AN[n] = -(mu * Ar2 / r_dr[i + 1]);
-	}
 
-	// south
-	if (i == 0) {
-		AS[n] = 0.0;
+			// Add neighbor contribution
+			if (nb == n + 1) {
+				AE[n] += -K;
+			}
+			else if (nb == n - 1) {
+				AW[n] += -K;
+			}
+			else if (nb == n + nz) {
+				AN[n] += -K;
+			}
+			else if (nb == n - nz) {
+				AS[n] += -K;
+			}
+		}
+
+		// ------------------------------------------------------------
+		// Boundary face
+		// ------------------------------------------------------------
+		else {
+
+			int groupID = mesh.faces.boundaryGroupID[faceID];
+
+			if (groupID < 0 || groupID >= bc.nGroups) {
+				// Unassigned boundary face.
+				// Usually you should avoid this by assigning all boundary faces
+				// to a boundary group.
+				continue;
+			}
+
+			uint8_t bcType = bc.typeByGroup[groupID];
+			double bcValue = bc.valueByGroup[groupID];
+
+			double zF = mesh.faces.centerZ[faceID];
+			double rF = mesh.faces.centerR[faceID];
+
+			double dzPF = zF - zP;
+			double drPF = rF - rP;
+
+			double dPF = fabs(dzPF * nzHat + drPF * nrHat);
+
+			if (dPF <= 0.0) continue;
+
+			double K = mu * area / dPF;
+			//if (n == 0) {
+			//	printf("%f\n", dPF);
+			//}
+			if (isDirichletType(bcType)) {
+				//if (n == 0) {
+				//	printf(
+				//		"n=%d faceID=%d groupID=%d normal=(%f,%f) area=%e K=%e bcType=%d bcValue=%f\n",
+				//		n,
+				//		faceID,
+				//		groupID,
+				//		nzHat,
+				//		nrHat,
+				//		area,
+				//		K,
+				//		(int)bcType,
+				//		bcValue
+				//	);
+				//}
+				AC[n] += K;
+				b[n] += K * bcValue;
+			}
+			else if (isNeumannType(bcType)) {
+				//if (n == 0) {
+				//	printf(
+				//		"n=%d faceID=%d groupID=%d normal=(%f,%f) area=%e K=%e bcType=%d bcValue=%f\n",
+				//		n,
+				//		faceID,
+				//		groupID,
+				//		nzHat,
+				//		nrHat,
+				//		area,
+				//		K,
+				//		(int)bcType,
+				//		bcValue
+				//	);
+				//}
+				// For zero-gradient Neumann, bcValue = 0, so this adds nothing.
+				// If bcValue = du/dn, then this adds prescribed diffusive flux.
+
+				b[n] += mu * area * bcValue;
+			}
+		}
 	}
-	else if (cell[n - nz] == 0) {
-		AS[n] = 0.0;
-		AC[n] += (mu * Ar1 / (0.5 * r_dr[i]));
-	}
-	else {
-		AS[n] = -(mu * Ar1 / r_dr[i]);
-	}
-}
+	//int i = n / nz;
+	//int j = n % nz;
 
-__global__
-void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryConditionConfig bc) {
+	//if (i == 0 && j == 0) {
+	//	printf("%e, %e\n", AC[n], b[n]);
+	//}
+	//if (i == mesh.nr - 1 && j == 0) {
+	//	printf("%e, %e\n", AC[n], b[n]);
+	//}
 
-	int n = blockIdx.x * blockDim.x + threadIdx.x;
-
-	if (n >= coeff.N) return;
-
-	const GridConfig& g = config.g;
-	const FluidPropertyConfig& f = config.f;
-
-	int nr = coeff.nr;
-	int nz = coeff.nz;
-	double* dr = g.d_dr;
-	double* dz = g.d_dz;
-	double* r = g.d_r;
-	double* z = g.d_z;
-	double* rFace = g.d_rFace;
-	double* r_dr = g.r_dr;
-	double* z_dz = g.z_dz;
-	double mu = f.mu;
-
-	double* AC = coeff.AC;
-	double* AE = coeff.AE;
-	double* AW = coeff.AW;
-	double* AN = coeff.AN;
-	double* AS = coeff.AS;
-	double* b = coeff.b;
-
-	uint8_t* cell = coeff.activeCell;
-
-	// filter out all north and south obstacle cells and dirichlet boundaries
-	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
-
-	int j = n % nz;
-	int i = n / nz;
-
-	double r1 = 0.0;
-	double r2 = 0.0;
-
-	r1 = r[i - 1];
-	r2 = r[i];
-
-	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2 * CUDART_PI * r2 * dz[j];
-	double Ar1 = 2 * CUDART_PI * r1 * dz[j];
-
-	// east
-	if (j == nz - 1) {
-		AE[n] = 0.0;
-	}
-	else if (cell[n + 1] == 0) {
-		AE[n] = 0.0;
-		AC[n] += (mu * Az / (0.5 * dz[j]));
-	}
-	else {
-		AE[n] = -(mu * Az / z_dz[j + 1]);
-	}
-
-	// west
-	if (j == 0) {
-		AW[n] = 0.0;
-		AC[n] += mu * Az / (z_dz[j]);
-	}
-	else if (cell[n - 1] == 0) {
-		AW[n] = 0.0;
-		AC[n] += (mu * Az / (0.5 * dz[j]));
-	}
-	else {
-		AW[n] = -(mu * Az / z_dz[j]);
-	}
-
-	// north
-	if (i == nr - 1) {
-		AN[n] = 0.0;
-	}
-	else if (cell[n + nz] == 0) {
-		AN[n] = 0.0;
-		AC[n] += (mu * Ar2 / dr[i]);
-	}
-	else {
-		AN[n] = -(mu * Ar2 / dr[i]);
-	}
-
-	// south
-	if (i == 0) {
-		AS[n] = 0.0;
-	}
-	else if (cell[n - nz] == 0) {
-		AS[n] = 0.0;
-		AC[n] += (mu * Ar1 / dr[i - 1]);
-	}
-	else {
-		AS[n] = -(mu * Ar1 / dr[i - 1]);
-	}
 }
 
 // ==============================================================
 // ==================CONVECTION TERM=============================
 // ==============================================================
 __global__
-void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC, ConvectionScheme scheme) {
+void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, ConvectionScheme scheme) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -321,9 +297,6 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	double* AN = uCoeff.AN;
 	double* AS = uCoeff.AS;
 	double* b = uCoeff.b;
-	uint8_t* cell = uCoeff.activeCell;
-
-	if (!uCoeff.activeCell[n] || !uCoeff.activeBC[n]) return;
 
 	int j = n % nz;
 	int i = n / nz;
@@ -345,14 +318,9 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 
 	// ----------Add Convection Term--------------
 	// east
-	bool outletBoundary = (j == nz - 1);
-	bool outletNeumann = outletBoundary && uBC.outlet.type == NEUMANN;
-	if (outletNeumann) {
-		ue = u[n];	
-	}
-	else {
-		ue = faceValue(u[n], u[n+1], 0.5 * dz[j], dz[j]);
-	}
+
+	ue = faceValue(u[n], u[n+1], 0.5 * dz[j], dz[j]);
+
 
 	// west
 	if (j == 0) {
@@ -397,9 +365,7 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	double Fn = rho * vn * Ar2;
 	double Fs = rho * vs * Ar1;
 
-	if (!outletNeumann) {
-		AE[n] += -fmax(-Fe, 0.0);
-	}
+	AE[n] += -fmax(-Fe, 0.0);
 	AW[n] += -fmax(Fw, 0.0);
 	AN[n] += -fmax(-Fn, 0.0);
 	AS[n] += -fmax(Fs, 0.0);
@@ -411,9 +377,7 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	case CONV_UPWIND:
 		break;
 	case CONV_CENTRAL:
-		if (!outletNeumann) {
-			b[n] -= centralCorrection(Fe, u[n], u[n + 1]);
-		}
+		b[n] -= centralCorrection(Fe, u[n], u[n + 1]);
 		b[n] += centralCorrection(Fw, u[n], u[n - 1]);
 		b[n] -= centralCorrection(Fn, u[n], u[n + nz]);
 		b[n] += centralCorrection(Fs, u[n], u[n - nz]);
@@ -429,7 +393,7 @@ void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 }
 
 __global__
-void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC, ConvectionScheme scheme) {
+void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, ConvectionScheme scheme) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -457,9 +421,6 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	double* AN = vCoeff.AN;
 	double* AS = vCoeff.AS;
 	double* b = vCoeff.b;
-	uint8_t* cell = vCoeff.activeCell;
-
-	if (!vCoeff.activeCell[n] || !vCoeff.activeBC[n]) return;
 
 	int j = n % nz;
 	int i = n / nz;
@@ -512,14 +473,7 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 	}
 
 	// north
-	bool northBoundary = (i == nr - 1);
-	bool northNeumann = northBoundary && vBC.outer.type == NEUMANN;
-	if (northNeumann) {
-		vn = v[n];
-	}
-	else {
-		vn = faceValue(v[n], v[n + nz], 0.5 * dr[i], dr[i]);
-	}
+
 
 	// south
 	vs = faceValue(v[n], v[n - nz], 0.5 * dr[i - 1], dr[i - 1]);
@@ -531,9 +485,7 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 
 	AE[n] += -fmax(-Fe, 0.0);
 	AW[n] += -fmax(Fw, 0.0);
-	if (!northNeumann) {
-		AN[n] += -fmax(-Fn, 0.0);
-	}
+	AN[n] += -fmax(-Fn, 0.0);
 	AS[n] += -fmax(Fs, 0.0);
 
 	AC[n] += (Fe - Fw + Fn - Fs);
@@ -548,9 +500,7 @@ void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coeffic
 
 		b[n] -= centralCorrection(Fe, v[n], v[n + 1]);
 		b[n] += centralCorrection(Fw, v[n], v[n - 1]);
-		if (!northNeumann) {
-			b[n] -= centralCorrection(Fn, v[n], v[n + nz]);
-		}
+		b[n] -= centralCorrection(Fn, v[n], v[n + nz]);
 		b[n] += centralCorrection(Fs, v[n], v[n - nz]);
 		break;
 
@@ -590,11 +540,8 @@ void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, Variable
 
 	double* AC = uCoeff.AC;
 	double* b = uCoeff.b;
-	uint8_t* cell = uCoeff.activeCell;
 	double* uOld = simple.uOld;
 	double dt = config.dt;
-
-	if (!uCoeff.activeCell[n] || !uCoeff.activeBC[n]) return;
 
 	int j = n % nz;
 	int i = n / nz;
@@ -633,13 +580,11 @@ void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, Variable
 
 	double* AC = vCoeff.AC;
 	double* b = vCoeff.b;
-	uint8_t* cell = vCoeff.activeCell;
 	double* vOld = simple.vOld;
 
 	int j = n % nz;
 	int i = n / nz;
 
-	if (!vCoeff.activeCell[n] || !vCoeff.activeBC[n]) return;
 
 	double r1 = 0.0;
 	double r2 = 0.0;
@@ -651,24 +596,6 @@ void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, Variable
 
 	AC[n] += (rho * Az * dz[j]) / config.dt;
 	b[n] += (rho * Az * dz[j] * vOld[n]) / config.dt;
-}
-
-__global__
-void finalizeCoefficients(Coefficients coeff) {
-	int n = blockIdx.x * blockDim.x + threadIdx.x;
-
-	if (n >= coeff.N) return;
-
-	double* AE = coeff.AE;
-	double* AW = coeff.AW;
-	double* AN = coeff.AN;
-	double* AS = coeff.AS;
-	double* AC = coeff.AC;
-
-	if (!coeff.activeCell[n] || !coeff.activeBC[n]) return;
-
-	AC[n] += -(AE[n] + AW[n] + AN[n] + AS[n]);
-
 }
 
 __global__
@@ -685,14 +612,4 @@ void clearCoefficients(Coefficients coeff) {
 	coeff.b[n] = 0.0;
 	coeff.res[n] = 0.0;
 
-}
-
-__global__
-void applyOuterWallV(double* v, int nrV, int nz) {
-
-	int j = blockIdx.x * blockDim.x + threadIdx.x;
-	if (j >= nz) return;
-
-	int iOuter = nrV - 1;
-	v[iOuter * nz + j] = 0.0;
 }

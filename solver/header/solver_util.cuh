@@ -3,20 +3,14 @@
 #include "solver_struct.h"
 #include "boundary_struct.h"
 
-__device__
-bool isStoredCenter(CellStoreType& storeType);
+
 
 __device__
-bool isStoredAxial(CellStoreType& storeType);
+bool isDirichletType(uint8_t type);
 
 __device__
-bool isStoredRadial(CellStoreType& storeType);
+bool isNeumannType(uint8_t type);
 
-__device__
-bool isBCDirichlet(BCType& type);
-
-__device__
-bool isFullyDeveloped(BCType& type);
 
 __global__
 void copyVector(double* vec1, double* vec2, int N);
@@ -28,13 +22,12 @@ __global__
 void applyOuterNeumannV(double* v, int nr, int nz);
 
 __global__
-void finalizeCoefficients(Coefficients coeff);
-
-__global__
-void addVDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryConditionConfig bc);
-
-__global__
-void addUDiffusionCoefficient(ConfigSolver config, Coefficients coeff, BoundaryConditionConfig bc);
+void addDiffusionCoefficient(
+	ConfigSolver config,
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	BoundaryFieldDevice bc
+);
 
 __global__
 void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, VariablesSimple simple);
@@ -43,14 +36,10 @@ __global__
 void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, VariablesSimple simple);
 
 __global__
-void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC, ConvectionScheme scheme);
+void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, ConvectionScheme scheme);
 
 __global__
-void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, BoundaryConditionConfig uBC, BoundaryConditionConfig vBC, ConvectionScheme scheme);
+void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, ConvectionScheme scheme);
 
 __global__
 void clearCoefficients(Coefficients coeff);
-
-
-__global__
-void applyOuterWallV(double* v, int nrV, int nz);

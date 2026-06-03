@@ -9,7 +9,94 @@
 #include <algorithm>
 #include "math_func.h"
 
+
+
 Mesh::Mesh(Config& config) : g(config.g) {
+}
+
+inline int cellID(int i, int j, int nz) {
+	return i * nz + j;
+}
+
+inline double axialAreaFull(double r0, double r1) {
+	// Full circular annulus area normal to z direction
+	return PI * (r1 * r1 - r0 * r0);
+}
+
+inline double radialAreaFull(double r, double dz) {
+	// Full cylindrical surface area normal to r direction
+	return 2.0 * PI * r * dz;
+}
+
+inline double cellVolumeFull(double r0, double r1, double dz) {
+	// Full axisymmetric cell volume
+	return PI * (r1 * r1 - r0 * r0) * dz;
+}
+
+MeshEdge makeAxialEdge(int i, int jFace) {
+	MeshEdge edge{};
+
+	edge.i = i;
+	edge.j = jFace;
+	edge.orient = EdgeOrient::Vertical; // rename to match your code
+
+	return edge;
+}
+
+MeshEdge makeRadialEdge(int iFace, int j) {
+	MeshEdge edge{};
+
+	edge.i = iFace;
+	edge.j = j;
+	edge.orient = EdgeOrient::Horizontal; // rename to match your code
+
+	return edge;
+}
+
+bool isFluidCell(
+	int i,
+	int j,
+	int nr,
+	int nz,
+	const std::vector<uint8_t>& activeCell
+) {
+	if (i < 0 || i >= nr) return false;
+	if (j < 0 || j >= nz) return false;
+
+	return activeCell[cellID(i, j, nz)] != 0;
+}
+
+std::unordered_map<MeshEdge, int, MeshEdgeHash>
+createBoundaryEdgeLookup(const std::vector<BoundarySegmentGroup>& groups) {
+	std::unordered_map<MeshEdge, int, MeshEdgeHash> lookup;
+
+	for (const BoundarySegmentGroup& group : groups) {
+		for (const MeshEdge& edge : group.edges) {
+
+			auto [it, inserted] = lookup.emplace(edge, group.id);
+
+			if (!inserted) {
+				// Same edge was already assigned to another group.
+				// You can either overwrite, warn, or keep the first one.
+				it->second = group.id;
+			}
+		}
+	}
+
+	return lookup;
+}
+
+int getBoundaryGroupID(
+	const std::unordered_map<MeshEdge, int, MeshEdgeHash>& lookup,
+	const MeshEdge& edge
+) {
+	auto it = lookup.find(edge);
+
+	if (it == lookup.end()) {
+		return -1;
+	}
+
+	return it->second;
 }
 
 void Mesh::generate() {
@@ -28,6 +115,208 @@ void Mesh::generate() {
 
 	float endTime = endTimer(startTime);
 	console->addCompletionTime("Mesh", endTime);
+}
+
+
+std::vector<FVFace> createFVFaces(
+	int nr,
+	int nz,
+	const std::vector<uint8_t>& activeCell,
+	const std::vector<double>& rFace,
+	const std::vector<double>& zFace,
+	const std::vector<double>& r,
+	const std::vector<double>& z,
+	const std::vector<BoundarySegmentGroup>& boundaryGroups
+) {
+	std::vector<FVFace> faces;
+	auto boundaryLookup = createBoundaryEdgeLookup(boundaryGroups);
+
+	for (int i = 0; i < nr; i++) {
+		for (int jFace = 0; jFace < nz + 1; jFace++) {
+
+			int jLeft = jFace - 1;
+			int jRight = jFace;
+
+			bool leftFluid = isFluidCell(i, jLeft, nr, nz, activeCell);
+			bool rightFluid = isFluidCell(i, jRight, nr, nz, activeCell);
+
+			if (!leftFluid && !rightFluid) {
+				continue; // skip faces between two solid cells
+			}
+
+			FVFace face;
+
+			face.center = Vec2(zFace[jFace], r[i]);
+			
+			double r0 = rFace[i];
+			double r1 = rFace[i + 1];
+
+			face.area = PI * (r1 * r1 - r0 * r0);
+
+			MeshEdge edge = makeAxialEdge(i, jFace);
+
+			if (leftFluid && rightFluid) {			// interior fluid
+				face.owner = cellID(i, jLeft, nz);
+				face.neighbor = cellID(i, jRight, nz);
+				face.normal = Vec2(1.0, 0.0); // normal points from left to right
+
+				face.boundaryGroupID = -1; // not a boundary face
+
+			}
+			else if (leftFluid && !rightFluid) {
+				face.owner = cellID(i, jLeft, nz);	// boundary on right side
+				face.neighbor = -1; // boundary face
+				face.normal = Vec2(1.0, 0.0); // normal points outward from fluid cell
+
+				face.boundaryGroupID = getBoundaryGroupID(boundaryLookup, edge);
+
+			}
+			else if (!leftFluid && rightFluid) { // boundary on left side
+				face.owner = cellID(i, jRight, nz);
+				face.neighbor = -1; // boundary face
+				face.normal = Vec2(-1.0, 0.0); // normal points outward from fluid cell
+
+				face.boundaryGroupID = getBoundaryGroupID(boundaryLookup, edge);
+
+			}
+
+			faces.push_back(face);
+		}
+	}
+
+	for (int iFace = 0; iFace <= nr; iFace++) {
+		for (int j = 0; j < nz; j++) {
+			int iLower = iFace - 1;
+			int iUpper = iFace;
+
+			bool lowerFluid = isFluidCell(iLower, j, nr, nz, activeCell);
+			bool upperFluid = isFluidCell(iUpper, j, nr, nz, activeCell);
+
+			if (!lowerFluid && !upperFluid) {
+				continue; // skip faces between two solid cells
+			}
+
+			FVFace face;
+
+			face.center = Vec2(z[j], rFace[iFace]);
+			face.area = 2.0 * PI * rFace[iFace] * (zFace[j + 1] - zFace[j]);
+
+			MeshEdge edge = makeRadialEdge(iFace, j);
+
+			if (lowerFluid && upperFluid) {
+				face.owner = cellID(iLower, j, nz);
+				face.neighbor = cellID(iUpper, j, nz);
+				face.normal = Vec2(0.0, 1.0);
+				face.boundaryGroupID = -1;
+
+			}
+			else if (lowerFluid && !upperFluid) {
+				face.owner = cellID(iLower, j, nz);
+				face.neighbor = -1;
+				face.normal = Vec2(0.0, 1.0);
+
+				face.boundaryGroupID = getBoundaryGroupID(boundaryLookup, edge);
+			}
+			else if (!lowerFluid && upperFluid) {
+				face.owner = cellID(iUpper, j, nz);
+				face.neighbor = -1;
+				face.normal = Vec2(0.0, -1.0);
+
+				face.boundaryGroupID = getBoundaryGroupID(boundaryLookup, edge);
+			}
+
+			faces.push_back(face);
+		}
+	}
+	return faces;
+}
+
+std::vector<FVCell> createFVCells(
+	int nr,
+	int nz,
+	const std::vector<uint8_t>& activeCell,
+	const std::vector<double>& rFace,
+	const std::vector<double>& zFace,
+	const std::vector<double>& r,
+	const std::vector<double>& z,
+	const std::vector<FVFace>& faces) {
+
+	std::vector<FVCell> cells;
+	cells.resize(nr * nz);
+
+	for (int i = 0; i < nr; i++) {
+		for (int j = 0; j < nz; j++) {
+
+			int n = cellID(i, j, nz);
+
+			FVCell& cell = cells[n];
+
+
+			cell.center = Vec2(z[j], r[i]);
+
+			double r0 = rFace[i];
+			double r1 = rFace[i + 1];
+			double dz = zFace[j + 1] - zFace[j];
+
+			cell.volume = PI * (r1 * r1 - r0 * r0) * dz;
+
+			cell.active = activeCell[n] != 0;
+			cell.solid = activeCell[n] == 0;
+
+			cell.faceIDs.clear();
+		}
+	}
+
+	// iterate through each face, which has an owner and neighbor cell indices
+	// if the owner or neighbor is a valid cell index, push the face index to the corresponding cell's faceIDs vector
+	for (int f = 0; f < (int)faces.size(); f++) {
+
+		const FVFace& face = faces[f];
+
+		if (face.owner >= 0) {
+			cells[face.owner].faceIDs.push_back(f);	// push back face indices
+		}
+
+		if (face.neighbor >= 0) {
+			cells[face.neighbor].faceIDs.push_back(f); // push back face indices
+		}
+	}
+
+	return cells;
+}
+
+FVMesh Mesh::createStructuredMesh(const std::vector<uint8_t>& activeCell) {
+
+	FVMesh mesh;
+
+	std::vector<FVFace> faces = createFVFaces (
+		g.nr,
+		g.nz,
+		activeCell,
+		g.rFace,
+		g.zFace,
+		g.r,
+		g.z,
+		boundaryGroups
+	);
+
+	std::vector<FVCell> cells = createFVCells(
+		g.nr,
+		g.nz,
+		activeCell,
+		g.rFace,
+		g.zFace,
+		g.r,
+		g.z,
+		faces
+	);	
+
+	mesh.nr = g.nr;
+	mesh.nz = g.nz;
+	mesh.faces = std::move(faces);
+	mesh.cells = std::move(cells);
+
+	return mesh;
 }
 
 void Mesh::updateAfterLoadingFile() {

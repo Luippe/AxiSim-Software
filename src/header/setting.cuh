@@ -22,6 +22,12 @@ struct GridConfig {
 	std::vector<double> z;
 	std::vector<double> rFace;
 	std::vector<double> zFace;
+
+	std::vector<double> Az;
+	std::vector<double> Ar;
+	std::vector<double> Vcell;
+
+	std::vector<uint8_t> activeCell;
 	std::unordered_set<int> obstacleIndices;
 
 	double zBias = 1.0;
@@ -44,6 +50,11 @@ struct GridConfig {
 	double* d_zFace;
 	double* z_dz;
 	double* r_dr;
+
+	double* d_Az;
+	double* d_Ar;
+	double* d_Vcell;
+	uint8_t* d_activeCell = nullptr;
 
 	double* A;	// cell surface area
 	int* surf_index;	// list of n indices which belong to cell adjacent cells

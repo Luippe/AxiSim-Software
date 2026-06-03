@@ -14,24 +14,45 @@ public:
 
 	float vmin = 0.0f;
 	float vmax = 0.0f;
-	int nr, nz;
-	int nzBase = 0;
-	int nrBase = 0;
+	int nr = 0;
+	int nz = 0;
 
-	Field(int nz, int nr);
+	Field();
 
 	void setMinMax(float vmin, float vmax);
 
-	void generate(SolutionField& solution, BoundaryConditionConfig& bc);
+	void generate(
+		SolutionField& solution,
+		FVMesh& fvMesh,
+		std::vector<BoundarySegmentGroup>& boundaryGroup
+	);
 
 	// get value at given position using bilinear interpolation
-	float getData(const glm::vec2& pos);
-	float getData(const glm::vec3& pos);
-
-	// sample value at given i and j
-	double sample(int i, int j);
+	float getData(const glm::vec2& pos) const;
+	float getData(const glm::vec3& pos) const;
 
 private:
+
+	FVMesh* fvMesh;
+	std::vector<BoundarySegmentGroup>* boundaryGroups;
+	BoundaryVariable boundaryVariable = BoundaryVariable::None;
+
+	std::vector<double> extendedZ;
+	std::vector<double> extendedR;
+	std::vector<double> extendedData;
+
+	int extNr = 0;
+	int extNz = 0;
+
+	double sampleBoundary(
+		int i,
+		int j,
+		const Vec2& targetNormal
+	) const;
+
+	void buildExtendedData();
+
+	void buildExtendedCoordinates();
 
 	// create texture buffer for field
 	void createBuffer();
@@ -45,7 +66,6 @@ private:
 	// update vmin and vmax
 	void updateMinMax();
 
-	BoundaryConditionConfig bc;
 	CellStoreType type;
 	std::vector<double> unProcessedData;
 

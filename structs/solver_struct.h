@@ -88,12 +88,7 @@ struct ResidualPrintItem {
 	double* residual;
 };
 
-struct SolutionField {
-	std::vector<double> field;
-	int nr, nz;
-	std::vector<double> dr, dz;
-	CellStoreType type;
-};
+
 
 struct CudaTimer {
 
@@ -140,14 +135,12 @@ struct Coefficients {
 	double* b = nullptr;
 	double* res = nullptr;
 	double* initRes = nullptr;
-	uint8_t* activeCell = nullptr;
-	uint8_t* activeBC = nullptr;
+
 	int nr, nz, N;
 	double resVal = 0.0;
-	CellStoreType storeType;
 
 	void free() {
-		freeAllDev(AE, AW, AN, AS, AC, b, res, activeCell, activeBC, initRes);
+		freeAllDev(AE, AW, AN, AS, AC, b, res, initRes);
 	}
 };
 
@@ -210,9 +203,14 @@ struct VariablesSimple {
 	double* uOld = nullptr;
 	double* vOld = nullptr;
 
+	double* gradPZ = nullptr;
+	double* gradPR = nullptr;
+
 	double momentumRelaxation = 0.7;
 	double correctionRelaxation = 1.7;
 	double pressureRelaxation = 0.3;
+
+	double* mDot = nullptr;
 
 	void free() {
 		freeAllDev(DU, DV, p, pp, u, v, uTemp, vTemp, ppTemp, uOld, vOld);
@@ -305,4 +303,97 @@ struct Config {
 	IterationConfig itr;
 	VariableUnits varUnits;
 
+};
+
+struct FVCellDevice {
+	int nCells = 0;
+
+	double* centerZ = nullptr;
+	double* centerR = nullptr;
+
+	double* volume = nullptr;
+
+	uint8_t* active = nullptr;
+	uint8_t* solid = nullptr;
+
+	// CSR-style face connectivity
+	int* faceStart = nullptr;
+	int* faceIDs = nullptr;
+};
+
+struct FVFaceDevice {
+	int nFaces = 0;
+
+	int* owner = nullptr;
+	int* neighbor = nullptr;
+
+	double* normalZ = nullptr;
+	double* normalR = nullptr;
+
+	double* centerZ = nullptr;
+	double* centerR = nullptr;
+
+	double* area = nullptr;
+
+	int* boundaryGroupID = nullptr;
+};
+
+struct FVMeshDevice {
+	int nr = 0;
+	int nz = 0;
+
+	FVCellDevice cells;
+	FVFaceDevice faces;
+};
+
+// struct used to store mesh data, which will be sent to device
+struct FVMeshHostPacked {
+	int nr = 0;
+	int nz = 0;
+
+	int nCells = 0;
+	int nFaces = 0;
+
+	std::vector<int> faceOwner;
+	std::vector<int> faceNeighbor;
+
+	std::vector<double> faceNormalZ;
+	std::vector<double> faceNormalR;
+
+	std::vector<double> faceCenterZ;
+	std::vector<double> faceCenterR;
+
+	std::vector<double> faceArea;
+
+	std::vector<int> faceBoundaryGroupID;
+
+	std::vector<double> cellCenterZ;
+	std::vector<double> cellCenterR;
+
+	std::vector<double> cellVolume;
+
+	std::vector<uint8_t> cellActive;
+	std::vector<uint8_t> cellSolid;
+
+	std::vector<int> cellFaceStart;
+	std::vector<int> cellFaceIDs;
+};
+
+struct BoundaryFieldDevice {
+	uint8_t* typeByGroup = nullptr;
+	double* valueByGroup = nullptr;
+	int nGroups = 0;
+};
+
+struct BoundarySolverDevice {
+	BoundaryFieldDevice u;
+	BoundaryFieldDevice v;
+	BoundaryFieldDevice p;
+	BoundaryFieldDevice energy;
+	BoundaryFieldDevice concentration;
+};
+
+struct BoundaryFieldHost {
+	std::vector<uint8_t> typeByGroup;
+	std::vector<double> valueByGroup;
 };

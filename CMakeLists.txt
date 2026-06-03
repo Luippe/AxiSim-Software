@@ -161,7 +161,7 @@ add_executable(AxiSim
     ${IMGUI_SOURCES}
     ${IMPLOT_SOURCES}
     ${TINYFILEDIALOGS_SOURCES}
-  "externals/stb_image/stb_image.cpp" "manager/header/flag_manager.h"   "graphics/gui/source/mesh_inspector.cpp" "graphics/gui/header/base_surface_viewer.h")
+  "externals/stb_image/stb_image.cpp" "manager/header/flag_manager.h"   "graphics/gui/source/mesh_inspector.cpp" "graphics/gui/header/base_surface_viewer.h" "manager/header/boundary_func.h")
 
 target_include_directories(AxiSim PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"

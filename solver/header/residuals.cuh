@@ -4,9 +4,9 @@
 #include "solver_struct.h"
 
 struct ResidualPairs {
+	FVMeshDevice fvMesh;
 	Coefficients coeff;
 	const double* x = nullptr;
-	const double* xTemp = nullptr;
 };
 
 __global__

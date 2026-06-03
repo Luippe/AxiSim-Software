@@ -289,23 +289,20 @@ void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc) {
 	int type = (int)(bc.type);
 
 	out.write((const char*)&type, sizeof(type));
-	out.write((const char*)&bc.val, sizeof(bc.val));
+	out.write((const char*)&bc.value, sizeof(bc.value));
 }
 
 void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc) {
 	int type = 0;
 
 	in.read((char*)&type, sizeof(type));
-	in.read((char*)&bc.val, sizeof(bc.val));
+	in.read((char*)&bc.value, sizeof(bc.value));
 
 	bc.type = (BCType)(type);
 }
 
-void readOneBoundaryCondition(std::ifstream& in, BoundaryConditionConfig& bcConfig) {
-	readBoundaryCondition(in, bcConfig.inlet);
-	readBoundaryCondition(in, bcConfig.outlet);
-	readBoundaryCondition(in, bcConfig.outer);
-	readBoundaryCondition(in, bcConfig.centerline);
+void readOneBoundaryCondition(std::ifstream& in) {
+
 }
 
 std::ofstream openBinaryFile(const char* path) {

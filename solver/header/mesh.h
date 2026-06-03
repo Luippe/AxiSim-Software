@@ -11,8 +11,11 @@ class Shader;
 class Console;
 class Config;
 
+
+
 class Mesh {
 public:
+
 
 	int nseg = 64;	// number of vertices on the circle
 	float ntheta; // angle of each triangle in circle
@@ -35,6 +38,9 @@ public:
 
 	int nextGroupID = 0;
 
+
+
+
 	Mesh(Config& config);
 
 	GridConfig& g;
@@ -46,11 +52,13 @@ public:
 
 	void generate();
 
+
 	void updateAfterLoadingFile();
 
 	void createGrid();
 	void createGridLineVertices();
 	void createGridVertices();
+	FVMesh createStructuredMesh(const std::vector<uint8_t>& activeCell);
 
 	// search for segment with specific ID
 	BoundarySegment* getBoundarySegmentByID(int id);
