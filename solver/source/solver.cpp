@@ -231,7 +231,7 @@ void Solver::runSimple() {
 
     fvMesh = scene.mesh.createStructuredMesh(configSolver.g.activeCell);
 	FVMeshDevice fvMeshDevice = createFVMeshDevice(fvMesh);
-	BoundarySolverDevice bcDevice = createBoundarySolverDevice(scene.mesh.boundaryGroups);
+	BoundarySolverDevice bcDevice = createBoundarySolverDevice(scene.mesh.boundaryGroups, fieldOption);
 
     // initialize residuals
     std::array<ResidualPrintItem, 6> residualsToPrint = { {
@@ -304,10 +304,15 @@ void Solver::runSimple() {
             addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, vCoeff, bcDevice.v);
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    //        if (configSolver.addConvectionTerm) {
-    //            addUConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, convectionScheme);
-    //            addVConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, vCoeff, simple.u, simple.v, convectionScheme);
-    //        }
+            if (configSolver.addConvectionTerm) {
+                addMomentumConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (
+                    fvMeshDevice,
+                    uCoeff,
+                    vCoeff,
+                    simple,
+                    bcDevice
+                    );
+            }
 
     //        if (configSolver.transient) {
 				//addUTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, uCoeff, simple);
@@ -382,7 +387,12 @@ void Solver::runSimple() {
                     ResidualPairs{ fvMeshDevice, uCoeff, simple.u},
                     ResidualPairs{ fvMeshDevice, vCoeff, simple.v});
 
-                //continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (configSolver, massFluxCoeff, simple, N);
+                continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (
+                    fvMeshDevice,
+                    configSolver,
+                    massFluxCoeff,
+                    simple
+                    );
                 
                 CUDA_CHECK(cudaStreamSynchronize(stream));
                 residualAllHost(configResidual, uCoeff, vCoeff, massFluxCoeff);

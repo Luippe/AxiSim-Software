@@ -228,7 +228,7 @@ void MeshGUI::draw() {
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
 		// draw general tree node
-		bool generalOpen = ImGui::TreeNodeEx("General", UIFlags::BranchOpenedFlags);
+		bool generalOpen = ImGui::TreeNodeEx("General", UIFlagsTree::BranchOpenedFlags);
 
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
 
@@ -249,7 +249,7 @@ void MeshGUI::draw() {
 		changeCursorOnHover();
 
 		// draw boundary tree node
-		bool boundariesOpen = ImGui::TreeNodeEx("Boundary", UIFlags::BranchOpenedFlags);
+		bool boundariesOpen = ImGui::TreeNodeEx("Boundary", UIFlagsTree::BranchOpenedFlags);
 
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
 

@@ -138,14 +138,14 @@ void ResultsGUI::draw() {
 			ImGui::EndTable();
 		}
 
-		if (ImGui::TreeNodeEx("General", UIFlags::BranchOpenedFlags)) {
+		if (ImGui::TreeNodeEx("General", UIFlagsTree::BranchOpenedFlags)) {
 			drawLeaf("Settings");
 			drawLeaf("View");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 
-		if (ImGui::TreeNodeEx("Colormap", UIFlags::BranchOpenedFlags)) {
+		if (ImGui::TreeNodeEx("Colormap", UIFlagsTree::BranchOpenedFlags)) {
 			drawLeaf("Change Colormap");
 			drawLeaf("Display");
 			ImGui::TreePop();

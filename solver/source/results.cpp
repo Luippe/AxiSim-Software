@@ -383,7 +383,6 @@ void Results::createOutlineBuffer() {
 void Results::uploadUniforms() {
 
 	shader.use();
-	//printFloat(currentField->vmin, currentField->vmax);
 	shader.SetFloat("vmin", currentField->vmin);
 	shader.SetFloat("vmax", currentField->vmax);
 	shader.SetFloat("R", g.R);

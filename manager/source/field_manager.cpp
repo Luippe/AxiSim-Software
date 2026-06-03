@@ -1,7 +1,9 @@
 #include "pch.h"
 #include "field_manager.h"
 #include <algorithm>
+
 #include "printer.h"
+#include "boundary_func.h"
 
 Field::Field() {
 }
@@ -228,6 +230,11 @@ double Field::sampleBoundary(
 		}
 
 		const BoundaryCondition& bc = it->second;
+
+		// if the variable is not in the type of boundary, then get the nearest value instead
+		if (!BoundaryDefaults::isVariableInBoundaryType(boundaryVariable, group->type)) {
+			return unProcessedData[c];
+		}
 
 		if (bc.type == DIRICHLET) {
 			return bc.value;

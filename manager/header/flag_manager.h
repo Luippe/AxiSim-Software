@@ -1,9 +1,9 @@
 #pragma once
 #include "imgui_internal.h"
 
-namespace UIFlags {
+namespace UIFlagsTree{
 
-	inline constexpr ImGuiTreeNodeFlags LeafFlags = 
+	inline constexpr ImGuiTreeNodeFlags LeafFlags =
 		ImGuiTreeNodeFlags_Leaf |
 		ImGuiTreeNodeFlags_NoTreePushOnOpen |
 		ImGuiTreeNodeFlags_SpanAvailWidth;
@@ -13,10 +13,19 @@ namespace UIFlags {
 		ImGuiTreeNodeFlags_OpenOnArrow |
 		ImGuiTreeNodeFlags_SpanAvailWidth;
 
-	inline constexpr ImGuiTreeNodeFlags BranchGroupFlags = 
+	inline constexpr ImGuiTreeNodeFlags BranchClosedFlags =
+		ImGuiTreeNodeFlags_OpenOnArrow |
+		ImGuiTreeNodeFlags_SpanAvailWidth;
+
+	inline constexpr ImGuiTreeNodeFlags BranchGroupFlags =
 		ImGuiTreeNodeFlags_OpenOnArrow |
 		ImGuiTreeNodeFlags_OpenOnDoubleClick |
 		ImGuiTreeNodeFlags_SpanAvailWidth;
+
+}
+
+namespace UIFlags {
+
 
 	inline constexpr ImGuiWindowFlags BaseDockWindowFlags =
 		ImGuiWindowFlags_NoCollapse;

@@ -56,12 +56,14 @@ void jacobi(
 }
 
 __global__
-void gaussSeidelRB(Coefficients coeff, double* x, int color) {
+void gaussSeidelRB(FVMeshDevice mesh, Coefficients coeff, double* x, int color) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= coeff.N) return;
-	//if (!coeff.activeCell[n]) return;
+	if (!mesh.cells.active[n]) {
+		return;
+	}
 
 	int nr = coeff.nr;
 	int nz = coeff.nz;
@@ -79,7 +81,6 @@ void gaussSeidelRB(Coefficients coeff, double* x, int color) {
 	if ((i + j) % 2 != color) return;
 
 	double val = b[n];
-
 
 	if (j != nz - 1) {
 		val -= AE[n] * x[n + 1];
@@ -117,8 +118,8 @@ void solveLinearSystem(FVMeshDevice& mesh, Coefficients& coeff, const LinearSolv
 
 	case LINEAR_GS_RB:
 		for (int k = 0; k < config.maxIter; k++) {
-			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, 0);
-			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, 1);
+			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (mesh, coeff, x, 0);
+			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (mesh, coeff, x, 1);
 		}
 		break;
 	}

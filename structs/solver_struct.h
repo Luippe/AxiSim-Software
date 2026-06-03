@@ -207,7 +207,7 @@ struct VariablesSimple {
 	double* gradPR = nullptr;
 
 	double momentumRelaxation = 0.7;
-	double correctionRelaxation = 1.7;
+	double correctionRelaxation = 1.0;
 	double pressureRelaxation = 0.3;
 
 	double* mDot = nullptr;

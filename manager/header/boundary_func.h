@@ -21,4 +21,14 @@ namespace BoundaryDefaults {
 		BoundaryVariable var
 	);
 
+	bool isVariableInBoundaryType(
+		BoundaryVariable variable,
+		BoundaryType type
+	);
+
+	std::vector<BoundaryVariable> getVariableFromBoundaryType(
+		const BoundarySegmentGroup& group,
+		bool solveEnergy,
+		bool solveConcentration
+	);
 }

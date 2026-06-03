@@ -2,6 +2,7 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
 #include "solver_struct.h"
+#include "boundary_struct.h"
 
 struct ResidualPairs {
 	FVMeshDevice fvMesh;
@@ -10,7 +11,7 @@ struct ResidualPairs {
 };
 
 __global__
-void continuityResidual(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N);
+void continuityResidual(FVMeshDevice mesh, ConfigSolver config, Coefficients coeff, VariablesSimple simple);
 
 
 template <typename... Systems>

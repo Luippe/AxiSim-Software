@@ -42,7 +42,7 @@ BoundaryFieldHost createBoundaryFieldHost(
 
 	int nGroups = maxGroupID + 1;
 
-	h.typeByGroup.resize(nGroups, static_cast<uint8_t>(BCType::NONE));
+	h.typeByGroup.resize(nGroups, (uint8_t)(BCType::NONE));
 	h.valueByGroup.resize(nGroups, 0.0);
 
 	for (const BoundarySegmentGroup& group : boundaryGroups) {
@@ -50,17 +50,23 @@ BoundaryFieldHost createBoundaryFieldHost(
 			continue;
 		}
 
+		// make default bc. if the bc already exists, replace the bc and use that instead
 		BoundaryCondition bc =
 			BoundaryDefaults::makeDefaultBC(group.type, variable);
 
-		auto it = group.bcs.find(variable);
+		// find boundary variable inside the group, if it is, check if we should use the user specified or default value
+		auto it = group.bcs.find(variable);		
 
-		if (it != group.bcs.end()) {
+		if ((it != group.bcs.end()) && (BoundaryDefaults::isVariableInBoundaryType(variable, group.type))) {
 			bc = it->second;
 		}
 
+		if (variable == BoundaryVariable::UVelocity && group.type == BoundaryType::PRESSURE_OUTLET) {
+			printf("%f\n", bc.value);
+		}
+
 		h.typeByGroup[group.id] =
-			static_cast<uint8_t>(bc.type);
+			(uint8_t)(bc.type);
 
 		h.valueByGroup[group.id] =
 			bc.value;
@@ -74,7 +80,7 @@ BoundaryFieldDevice createBoundaryFieldDevice(
 ) {
 	BoundaryFieldDevice d{};
 
-	d.nGroups = static_cast<int>(h.typeByGroup.size());
+	d.nGroups = (int)(h.typeByGroup.size());
 
 	copyHostToDevice(d.typeByGroup, h.typeByGroup);
 	copyHostToDevice(d.valueByGroup, h.valueByGroup);
@@ -83,40 +89,50 @@ BoundaryFieldDevice createBoundaryFieldDevice(
 }
 
 BoundarySolverDevice createBoundarySolverDevice(
-	const std::vector<BoundarySegmentGroup>& boundaryGroups
+	const std::vector<BoundarySegmentGroup>& boundaryGroups,
+	const SolverFieldOption& option
 ) {
 	BoundarySolverDevice dBC{};
 
-	BoundaryFieldHost hU = createBoundaryFieldHost(
-		boundaryGroups,
-		BoundaryVariable::UVelocity
-	);
+	if (option.solveU) {
+		BoundaryFieldHost hU = createBoundaryFieldHost(
+			boundaryGroups,
+			BoundaryVariable::UVelocity
+		);
+		dBC.u = createBoundaryFieldDevice(hU);
+	}
 
-	BoundaryFieldHost hV = createBoundaryFieldHost(
-		boundaryGroups,
-		BoundaryVariable::VVelocity
-	);
+	if (option.solveV) {
+		BoundaryFieldHost hV = createBoundaryFieldHost(
+			boundaryGroups,
+			BoundaryVariable::VVelocity
+		);
+		dBC.v = createBoundaryFieldDevice(hV);
+	}
 
-	BoundaryFieldHost hP = createBoundaryFieldHost(
-		boundaryGroups,
-		BoundaryVariable::Pressure
-	);
+	if (option.solvePressure) {
+		BoundaryFieldHost hP = createBoundaryFieldHost(
+			boundaryGroups,
+			BoundaryVariable::Pressure
+		);
+		dBC.p = createBoundaryFieldDevice(hP);
+	}
 
-	BoundaryFieldHost hEnergy = createBoundaryFieldHost(
-		boundaryGroups,
-		BoundaryVariable::StaticTemperature
-	);
+	if (option.solveEnergy) {
+		BoundaryFieldHost hEnergy = createBoundaryFieldHost(
+			boundaryGroups,
+			BoundaryVariable::StaticTemperature
+		);
+		dBC.energy = createBoundaryFieldDevice(hEnergy);
+	}
 
-	BoundaryFieldHost hConcentration = createBoundaryFieldHost(
-		boundaryGroups,
-		BoundaryVariable::Concentration
-	);
-
-	dBC.u = createBoundaryFieldDevice(hU);
-	dBC.v = createBoundaryFieldDevice(hV);
-	dBC.p = createBoundaryFieldDevice(hP);
-	dBC.energy = createBoundaryFieldDevice(hEnergy);
-	dBC.concentration = createBoundaryFieldDevice(hConcentration);
+	if (option.solveConcentration) {
+		BoundaryFieldHost hConcentration = createBoundaryFieldHost(
+			boundaryGroups,
+			BoundaryVariable::Concentration
+		);
+		dBC.concentration = createBoundaryFieldDevice(hConcentration);
+	}
 
 	return dBC;
 }
@@ -403,46 +419,11 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 			double zc = 0.5 * (zFace[j] + zFace[j + 1]);
 			double rc = 0.5 * (rFace[i] + rFace[i + 1]);
 
-			//if (zc >= cell_left && zc <= cell_right && rc <= cell_top) {
-			//	c_cell[n] = 1;
-			//}
-
 			if (obstacleIndices.contains(n)) {
 				c_cell[n] = 1;
 			}
 		}
 	}
-
-
-
-	//// axial face
-	//for (int i = 0; i < nr; ++i) {
-	//	for (int j = 0; j < nz + 1; ++j) {
-	//		int n = i * (nz + 1) + j;
-
-	//		double xf = j * dz;
-	//		double yc = i * dr + 0.5 * dr;
-
-	//		if (xf >= cell_left && xf <= cell_right && yc <= cell_top) {
-	//			z_cell[n] = 1;
-	//		}
-	//	}
-	//}
-
-	//// radial face
-	//for (int i = 0; i < nr + 1; ++i) {
-	//	for (int j = 0; j < nz; ++j) {
-
-	//		int n = i * nz + j;
-
-	//		double xc = j * dz + 0.5 * dz;
-	//		double yf = i * dr;
-
-	//		if (xc >= cell_left && xc <= cell_right && yf <= cell_top) {
-	//			r_cell[n] = 1;
-	//		}
-	//	}
-	//}
 
 	// get cell adjacent surface area and its index
 	double A_tot = 0.0;

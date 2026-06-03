@@ -49,7 +49,7 @@ public:
 	// draw leaf for tree node
 	bool drawLeaf(const char* label);
 
-	bool drawTree(const char* label, bool& isOpen);
+	bool drawTree(const char* label, bool& isOpen, ImGuiTreeNodeFlags flags = UIFlagsTree::BranchOpenedFlags);
 
 
 	// table functions

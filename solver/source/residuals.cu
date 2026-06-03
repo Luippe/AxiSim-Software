@@ -3,8 +3,6 @@
 #include <math_constants.h>
 
 #include "device_launch_parameters.h"
-#include "solver_struct.h"
-
 
 __device__
 void residualRaw(ResidualPairs& pairs, int n) {
@@ -50,49 +48,38 @@ void residualRaw(ResidualPairs& pairs, int n) {
 }
 
 __global__
-void continuityResidual(ConfigSolver config, Coefficients coeff, VariablesSimple simple, int N) {
+void continuityResidual(FVMeshDevice mesh, ConfigSolver config, Coefficients coeff, VariablesSimple simple) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (n >= N) return;
-	//if (!coeff.activeCell[n]) return;
+	if (n >= mesh.cells.nCells) return;
+	if (!mesh.cells.active[n]) {
+		coeff.res[n] = 0.0;
+		return;
+	}
 
-	const GridConfig& g = config.g;
-	const FluidPropertyConfig& f = config.f;
+	int start = mesh.cells.faceStart[n];
+	int end = mesh.cells.faceStart[n + 1];
 
-	int nz = g.nz;
-	double* dr = g.d_dr;
-	double* dz = g.d_dz;
-	double* r = g.d_r;
-	double* rFace = g.d_rFace;
-	double rho = f.rho;
-	double* u = simple.u;
-	double* v = simple.v;
-	double* res = coeff.res;
+	double imbalance = 0.0;
 
-	int i = n / nz;
-	int j = n % nz;
+	for (int k = start; k < end; k++) {
+		int f = mesh.cells.faceIDs[k];
 
-	double r1 = rFace[i];
-	double r2 = rFace[i + 1];
+		int owner = mesh.faces.owner[f];
+		int neighbor = mesh.faces.neighbor[f];
 
-	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2 * CUDART_PI * r2 * dz[j];
-	double Ar1 = 2 * CUDART_PI * r1 * dz[j];
+		double mDotOwner = simple.mDot[f];
 
-	// east
-	double me = rho * u[n + i + 1] * Az;
+		if (owner == n) {
+			imbalance += mDotOwner;
+		}
+		else if (neighbor == n) {
+			imbalance -= mDotOwner;
+		}
+	}
 
-	// west
-	double mw = rho * u[n + i] * Az;
-
-	// north
-	double mn = rho * v[n + nz] * Ar2;
-
-	// south
-	double ms = rho * v[n] * Ar1;
-
-	res[n] = (me - mw + mn - ms);
+	coeff.res[n] = imbalance;
 
 }
 

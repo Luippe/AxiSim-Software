@@ -12,6 +12,7 @@ public:
 	void draw();
 
 private:
+
 	// set default values for residual settings based on the current residual type
 	void setResidualDefault();
 

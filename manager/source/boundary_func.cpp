@@ -117,4 +117,106 @@ namespace BoundaryDefaults {
 		return 0.0;
 	}
 
+	bool isVariableInBoundaryType(BoundaryVariable variable, BoundaryType type) {
+		switch (type) {
+
+		case BoundaryType::WALL:
+			switch (variable) {
+			case BoundaryVariable::UVelocity:
+			case BoundaryVariable::VVelocity:
+			case BoundaryVariable::StaticTemperature:
+			case BoundaryVariable::Concentration:
+				return true;
+			default:
+				return false;
+			}
+
+		case BoundaryType::SYMMETRY:
+			return false;
+
+		case BoundaryType::VELOCITY_INLET:
+			switch (variable) {
+			case BoundaryVariable::UVelocity:
+			case BoundaryVariable::VVelocity:
+			case BoundaryVariable::StaticTemperature:
+			case BoundaryVariable::Concentration:
+				return true;
+			default:
+				return false;
+			}
+
+		case BoundaryType::PRESSURE_OUTLET:
+			switch (variable) {
+			case BoundaryVariable::Pressure:
+			case BoundaryVariable::StaticTemperature:
+			case BoundaryVariable::Concentration:
+				return true;
+			default:
+				return false;
+			}
+		}
+		
+
+		return false;
+	}
+
+	std::vector<BoundaryVariable> getVariableFromBoundaryType(
+		const BoundarySegmentGroup& group,
+		bool solveEnergy,
+		bool solveConcentration
+	) {
+		std::vector<BoundaryVariable> variables;
+
+		switch (group.type) {
+
+		case BoundaryType::WALL:
+			variables.push_back(BoundaryVariable::UVelocity);
+			variables.push_back(BoundaryVariable::VVelocity);
+
+			if (solveEnergy) {
+				variables.push_back(BoundaryVariable::StaticTemperature);
+			}
+
+			if (solveConcentration) {
+				variables.push_back(BoundaryVariable::Concentration);
+			}
+
+			break;
+
+		case BoundaryType::SYMMETRY:
+			break;
+
+		case BoundaryType::VELOCITY_INLET:
+			variables.push_back(BoundaryVariable::UVelocity);
+			variables.push_back(BoundaryVariable::VVelocity);
+
+			if (solveEnergy) {
+				variables.push_back(BoundaryVariable::StaticTemperature);
+			}
+
+			if (solveConcentration) {
+				variables.push_back(BoundaryVariable::Concentration);
+			}
+
+			variables.push_back(BoundaryVariable::TurbulenceIntensity);
+			variables.push_back(BoundaryVariable::TurbulentViscosityRatio);
+			break;
+
+		case BoundaryType::PRESSURE_OUTLET:
+			variables.push_back(BoundaryVariable::Pressure);
+
+			if (solveEnergy) {
+				variables.push_back(BoundaryVariable::StaticTemperature);
+			}
+
+			if (solveConcentration) {
+				variables.push_back(BoundaryVariable::Concentration);
+			}
+
+			break;
+		}
+
+		return variables;
+	}
+
 }

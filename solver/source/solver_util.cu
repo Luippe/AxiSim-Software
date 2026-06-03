@@ -8,6 +8,491 @@
 // ==============================================================
 
 __device__
+void addStructuredNeighborCoeff(
+	int n,
+	int nb,
+	int nz,
+	double aNb,
+	Coefficients coeff
+) {
+	if (nb == n + 1) {
+		coeff.AE[n] += aNb;
+	}
+	else if (nb == n - 1) {
+		coeff.AW[n] += aNb;
+	}
+	else if (nb == n + nz) {
+		coeff.AN[n] += aNb;
+	}
+	else if (nb == n - nz) {
+		coeff.AS[n] += aNb;
+	}
+}
+
+__global__
+void getCorrectionCoefficient(
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	double* D
+) {
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (n >= mesh.cells.nCells) return;
+
+	D[n] = 0.0;
+
+	if (!mesh.cells.active[n]) return;
+
+	double aP = coeff.AC[n];
+
+	if (fabs(aP) < 1.0e-30) {
+		D[n] = 0.0;
+		return;
+	}
+
+	double volume = mesh.cells.volume[n];
+	D[n] = volume / aP;
+
+}
+
+__device__
+double getDistanceCellToCell(
+const FVMeshDevice& mesh,
+int owner,
+int neighbor,
+double normalZ,
+double normalR
+) {
+	double zP = mesh.cells.centerZ[owner];
+	double rP = mesh.cells.centerR[owner];
+
+	double zN = mesh.cells.centerZ[neighbor];
+	double rN = mesh.cells.centerR[neighbor];
+
+	return fabs((zN - zP) * normalZ + (rN - rP) * normalR);		// distance from cell to cell dotted with normal vector
+}
+
+
+__device__
+double getDistanceCellToFace(
+	const FVMeshDevice& mesh,
+	int cellID,
+	int faceID,
+	double normalZ,
+	double normalR
+) {
+
+	double zP = mesh.cells.centerZ[cellID];
+	double rP = mesh.cells.centerR[cellID];
+
+	double zF = mesh.faces.centerZ[faceID];
+	double rF = mesh.faces.centerR[faceID];
+
+	return fabs((zF - zP) * normalZ + (rF - rP) * normalR);	// distance from cell to face dotted with normal vector
+
+}
+
+__device__
+void getOutwardNormalForCell(
+	FVMeshDevice mesh,
+	int cellID,
+	int faceID,
+	double& normalZ,
+	double& normalR
+) {
+	normalZ = mesh.faces.normalZ[faceID];
+	normalR = mesh.faces.normalR[faceID];
+
+	if (mesh.faces.neighbor[faceID] == cellID) {
+		normalZ = -normalZ;
+		normalR = -normalR;
+	}
+}
+
+
+__device__
+double interpolateFieldToFace(
+	int cellID,
+	int faceID,
+	FVMeshDevice mesh,
+	BoundaryFieldDevice fieldBC,
+	const double* phi
+) {
+	int owner = mesh.faces.owner[faceID];
+	int neighbor = mesh.faces.neighbor[faceID];
+
+	double phiP = phi[cellID];
+
+	double normalZ, normalR;
+	getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
+
+	double dPF = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
+
+	// ---------------- interior face ----------------
+	if (neighbor >= 0) {
+		int nb = (owner == cellID) ? neighbor : owner;
+
+		double phiN = phi[nb];
+
+		double dNF = getDistanceCellToFace(mesh, nb, faceID, normalZ, normalR);
+
+		double denom = dPF + dNF;
+
+		if (denom <= 0.0) {
+			return 0.5 * (phiP + phiN);
+		}
+
+		// Linear interpolation to face
+		return (dNF * phiP + dPF * phiN) / denom;
+	}
+
+	// ---------------- boundary face ----------------
+	int groupID = mesh.faces.boundaryGroupID[faceID];
+
+	if (groupID < 0 || groupID >= fieldBC.nGroups) {
+		// Default: zero-gradient
+		return phiP;
+	}
+
+	uint8_t bcType = fieldBC.typeByGroup[groupID];
+	double bcValue = fieldBC.valueByGroup[groupID];
+
+	if (isDirichletType(bcType)) {
+		return bcValue;
+	}
+	else if (isNeumannType(bcType)) {
+		// dphi/dn = bcValue
+		// zero-gradient means bcValue = 0, so phiF = phiP
+		return phiP + bcValue * dPF;
+	}
+
+	return phiP;
+}
+
+__device__
+double phiAtSide(
+	int cellID,
+	int faceID,
+	FVMeshDevice mesh,
+	BoundaryFieldDevice pBC,
+	const double* pp,
+	bool useZCoord,
+	double& coord
+) {
+	int owner = mesh.faces.owner[faceID];
+	int neighbor = mesh.faces.neighbor[faceID];
+
+	if (neighbor >= 0) {
+		int nb = (owner == cellID) ? neighbor : owner;
+
+		coord = useZCoord
+			? mesh.cells.centerZ[nb]
+			: mesh.cells.centerR[nb];
+
+		return pp[nb];
+	}
+
+	coord = useZCoord
+		? mesh.faces.centerZ[faceID]
+		: mesh.faces.centerR[faceID];
+
+	return interpolateFieldToFace(
+		cellID,
+		faceID,
+		mesh,
+		pBC,
+		pp
+	);
+}
+
+
+__device__
+double getNormalCorrectionCoeff(
+	int cellID,
+	int faceID,
+	FVMeshDevice mesh,
+	VariablesSimple simple
+) {
+	double normalZ = mesh.faces.normalZ[faceID];
+	double normalR = mesh.faces.normalR[faceID];
+
+	// DU corrects axial velocity, DV corrects radial velocity.
+	// For axis-aligned faces, this naturally selects DU or DV.
+	// Axial face: normalZ^2 = 1, normalR^2 = 0 -> DU
+	// Radial face: normalZ^2 = 0, normalR^2 = 1 -> DV
+	// branchless if statement
+	return simple.DU[cellID] * normalZ * normalZ
+		+ simple.DV[cellID] * normalR * normalR;
+}
+
+__device__
+double interpolateNormalCorrectionCoeffToFace(
+	int cellID,
+	int faceID,
+	FVMeshDevice mesh,
+	VariablesSimple simple
+) {
+	int owner = mesh.faces.owner[faceID];
+	int neighbor = mesh.faces.neighbor[faceID];
+
+	double normalZ, normalR;
+	getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
+
+	double dPF = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
+
+	double DP = getNormalCorrectionCoeff(
+		cellID,
+		faceID,
+		mesh,
+		simple
+	);
+
+	// Boundary face: use owner/current cell correction coefficient
+	if (neighbor < 0) {
+		return DP;
+	}
+
+	int nb = (owner == cellID) ? neighbor : owner;
+
+	double dNF = getDistanceCellToFace(mesh, nb, faceID, normalZ, normalR);
+
+	double DN = getNormalCorrectionCoeff(
+		nb,
+		faceID,
+		mesh,
+		simple
+	);
+
+	double denom = dPF + dNF;
+
+	if (denom <= 0.0) {
+		return 0.5 * (DP + DN);
+	}
+
+	// Linear interpolation to face
+	return (dNF * DP + dPF * DN) / denom;
+}
+
+
+__device__
+int findFaceOnSide(
+	FVMeshDevice mesh,
+	int cellID,
+	double targetZ,
+	double targetR
+) {
+	int start = mesh.cells.faceStart[cellID];
+	int end = mesh.cells.faceStart[cellID + 1];
+
+	for (int k = start; k < end; k++) {
+		int faceID = mesh.cells.faceIDs[k];
+
+		double normalZ, normalR;
+		getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
+
+		double dot = normalZ * targetZ + normalR * targetR;
+
+		if (dot > 0.9) {	// WARNING may have to calibrate if faces are not perfectly aligned
+			return faceID;
+		}
+	}
+
+	return -1;
+}
+
+__device__
+void phiGradientCell(
+	int cellID,
+	FVMeshDevice mesh,
+	BoundaryFieldDevice bc,
+	const double* phi,
+	double& gradZ,
+	double& gradR
+) {
+	gradZ = 0.0;
+	gradR = 0.0;
+
+	// East/west in z
+	int eastFace = findFaceOnSide(mesh, cellID, 1.0, 0.0);
+	int westFace = findFaceOnSide(mesh, cellID, -1.0, 0.0);
+
+	if (eastFace >= 0 && westFace >= 0) {
+		double zE = 0.0;
+		double zW = 0.0;
+
+		double pE = phiAtSide(
+			cellID, eastFace, mesh, bc, phi, true, zE
+		);
+
+		double pW = phiAtSide(
+			cellID, westFace, mesh, bc, phi, true, zW
+		);
+
+		double dz = zE - zW;
+
+		if (fabs(dz) > 1.0e-30) {
+			gradZ = (pE - pW) / dz;
+		}
+	}
+
+	// North/south in r
+	int northFace = findFaceOnSide(mesh, cellID, 0.0, 1.0);
+	int southFace = findFaceOnSide(mesh, cellID, 0.0, -1.0);
+
+	if (northFace >= 0 && southFace >= 0) {
+		double rN = 0.0;
+		double rS = 0.0;
+
+		double pN = phiAtSide(
+			cellID, northFace, mesh, bc, phi, false, rN
+		);
+
+		double pS = phiAtSide(
+			cellID, southFace, mesh, bc, phi, false, rS
+		);
+
+		double dr = rN - rS;
+
+		if (fabs(dr) > 1.0e-30) {
+			gradR = (pN - pS) / dr;
+		}
+	}
+}
+
+__device__
+double rhieChowNormalVelocityToFace(
+	int cellID,
+	int faceID,
+	FVMeshDevice mesh,
+	VariablesSimple simple,
+	BoundarySolverDevice bc
+) {
+	int owner = mesh.faces.owner[faceID];
+	int neighbor = mesh.faces.neighbor[faceID];
+
+	double normalZ = 0.0;
+	double normalR = 0.0;
+
+	getOutwardNormalForCell(
+		mesh,
+		cellID,
+		faceID,
+		normalZ,
+		normalR
+	);
+
+	// Linear/interpolated face velocity
+	double uFace = interpolateFieldToFace(
+		cellID,
+		faceID,
+		mesh,
+		bc.u,
+		simple.u
+	);
+
+	double vFace = interpolateFieldToFace(
+		cellID,
+		faceID,
+		mesh,
+		bc.v,
+		simple.v
+	);
+
+	double unLinear = uFace * normalZ + vFace * normalR;
+
+	// Boundary faces: use the boundary/interpolated velocity directly for now
+	if (neighbor < 0) {
+		return unLinear;
+	}
+
+	int nb = (owner == cellID) ? neighbor : owner;
+
+	double dPN = getDistanceCellToCell(mesh, cellID, nb, normalZ, normalR);
+
+	if (dPN <= 1.0e-30) {
+		return unLinear;
+	}
+
+	double pP = simple.p[cellID];
+	double pN = simple.p[nb];
+
+	// Direct pressure gradient between cell centers
+	double gradPN = (pN - pP) / dPN;
+
+	// Interpolate precomputed Green-Gauss pressure gradients to the face
+	double dPF = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
+	double dNF = getDistanceCellToFace(mesh, nb,	 faceID, normalZ, normalR);
+
+	double denom = dPF + dNF;
+
+	double gradPzF = 0.5 * (simple.gradPZ[cellID] + simple.gradPZ[nb]);
+	double gradPrF = 0.5 * (simple.gradPR[cellID] + simple.gradPR[nb]);
+
+	if (denom > 1.0e-30) {
+		gradPzF =
+			(dNF * simple.gradPZ[cellID] + dPF * simple.gradPZ[nb]) / denom;
+
+		gradPrF =
+			(dNF * simple.gradPR[cellID] + dPF * simple.gradPR[nb]) / denom;
+	}
+
+	double gradPFaceNormal =
+		gradPzF * normalZ +
+		gradPrF * normalR;
+
+	double Df = interpolateNormalCorrectionCoeffToFace(
+		cellID,
+		faceID,
+		mesh,
+		simple
+	);
+
+	double unRC = unLinear - Df * (gradPN - gradPFaceNormal);
+
+	return unRC;
+}
+
+__global__
+void computeFaceMassFluxRhieChow(
+	ConfigSolver config,
+	FVMeshDevice mesh,
+	VariablesSimple simple,
+	BoundarySolverDevice bc
+) {
+	int f = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (f >= mesh.faces.nFaces) return;
+
+	int owner = mesh.faces.owner[f];
+	int neighbor = mesh.faces.neighbor[f];
+
+	if (owner < 0) return;
+
+	double normalZ = mesh.faces.normalZ[f]; // outward from owner
+	double normalR = mesh.faces.normalR[f];
+
+	double area = mesh.faces.area[f];
+
+	if (area <= 1.0e-30) {
+		simple.mDot[f] = 0.0;
+		return;
+	}
+
+	double rho = config.f.rho;
+
+	double unFace = rhieChowNormalVelocityToFace(
+		owner,
+		f,
+		mesh,
+		simple,
+		bc
+	);
+
+	simple.mDot[f] = rho * unFace * area;
+}
+
+
+__device__
 bool isDirichletType(uint8_t type) {
 	return type == (uint8_t)(DIRICHLET);
 }
@@ -18,7 +503,7 @@ bool isNeumannType(uint8_t type) {
 }
 
 __device__
-bool isFullyDeveloped(uint8_t type) {
+bool isFullyDevelopedType(uint8_t type) {
 	return type == (uint8_t)(FULLY_DEVELOPED);
 }
 
@@ -35,33 +520,6 @@ __device__
 double faceValue(double phiC, double phiF, double dFf, double dFC) {
 	double gC = dFf / dFC;
 	return phiC * gC + (1 - gC) * phiF;
-}
-
-__global__
-void applyOuterNeumannV(double* v, int nr, int nz) {
-
-	int j = blockIdx.x * blockDim.x + threadIdx.x;
-	if (j >= nz) return;
-
-	int boundary = (nr - 1) * nz + j;
-	int inside = (nr - 2) * nz + j;
-
-	v[boundary] = v[inside];
-}
-
-__device__
-void imposeDirichletRow(
-	Coefficients coeff,
-	int n,
-	double value
-) {
-	coeff.AE[n] = 0.0;
-	coeff.AW[n] = 0.0;
-	coeff.AN[n] = 0.0;
-	coeff.AS[n] = 0.0;
-
-	coeff.AC[n] = 1.0;
-	coeff.b[n] = value;
 }
 
 
@@ -117,10 +575,6 @@ void addDiffusionCoefficient(
 	double* b = coeff.b;
 
 	int nz = mesh.nz;
-
-	double zP = mesh.cells.centerZ[n];
-	double rP = mesh.cells.centerR[n];
-
 	int start = mesh.cells.faceStart[n];
 	int end = mesh.cells.faceStart[n + 1];
 
@@ -133,15 +587,9 @@ void addDiffusionCoefficient(
 
 		double area = mesh.faces.area[faceID];
 
-		double nzHat = mesh.faces.normalZ[faceID];
-		double nrHat = mesh.faces.normalR[faceID];
+		double normalZ, normalR;
+		getOutwardNormalForCell(mesh, n, faceID, normalZ, normalR);
 
-		// Face normal is stored outward from owner.
-		// If this cell is the neighbor, flip the normal so it is outward from n.
-		if (neighbor == n) {
-			nzHat = -nzHat;
-			nrHat = -nrHat;
-		}
 
 		// ------------------------------------------------------------
 		// Interior face
@@ -150,16 +598,8 @@ void addDiffusionCoefficient(
 
 			int nb = (owner == n) ? neighbor : owner;
 
-			double zN = mesh.cells.centerZ[nb];
-			double rN = mesh.cells.centerR[nb];
+			double dPN = getDistanceCellToCell(mesh, n, nb, normalZ, normalR);
 
-			double dzPN = zN - zP;
-			double drPN = rN - rP;
-
-			double dPN = fabs(dzPN * nzHat + drPN * nrHat);
-			//if (n == 0) {
-			//	printf("%f\n", dPN);
-			//}
 			if (dPN <= 0.0) continue;
 
 			double K = mu * area / dPN;
@@ -167,19 +607,8 @@ void addDiffusionCoefficient(
 			// Add diagonal contribution
 			AC[n] += K;
 
-			// Add neighbor contribution
-			if (nb == n + 1) {
-				AE[n] += -K;
-			}
-			else if (nb == n - 1) {
-				AW[n] += -K;
-			}
-			else if (nb == n + nz) {
-				AN[n] += -K;
-			}
-			else if (nb == n - nz) {
-				AS[n] += -K;
-			}
+			addStructuredNeighborCoeff(n, nb, nz, -K, coeff);
+
 		}
 
 		// ------------------------------------------------------------
@@ -199,20 +628,12 @@ void addDiffusionCoefficient(
 			uint8_t bcType = bc.typeByGroup[groupID];
 			double bcValue = bc.valueByGroup[groupID];
 
-			double zF = mesh.faces.centerZ[faceID];
-			double rF = mesh.faces.centerR[faceID];
-
-			double dzPF = zF - zP;
-			double drPF = rF - rP;
-
-			double dPF = fabs(dzPF * nzHat + drPF * nrHat);
+			double dPF = getDistanceCellToFace(mesh, n, faceID, normalZ, normalR);
 
 			if (dPF <= 0.0) continue;
 
 			double K = mu * area / dPF;
-			//if (n == 0) {
-			//	printf("%f\n", dPF);
-			//}
+
 			if (isDirichletType(bcType)) {
 				//if (n == 0) {
 				//	printf(
@@ -253,268 +674,185 @@ void addDiffusionCoefficient(
 			}
 		}
 	}
-	//int i = n / nz;
-	//int j = n % nz;
-
-	//if (i == 0 && j == 0) {
-	//	printf("%e, %e\n", AC[n], b[n]);
-	//}
-	//if (i == mesh.nr - 1 && j == 0) {
-	//	printf("%e, %e\n", AC[n], b[n]);
-	//}
-
 }
 
 // ==============================================================
 // ==================CONVECTION TERM=============================
 // ==============================================================
-__global__
-void addUConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, ConvectionScheme scheme) {
+__device__
+void addConvectionContribution(
+	int n,
+	int nb,
+	int nz,
+	double F,
+	bool isBoundary,
+	int groupID,
+	Coefficients coeff,
+	BoundaryFieldDevice fieldBC
+) {
+	// ------------------------------------------------------------
+	// Interior face
+	// ------------------------------------------------------------
+	if (!isBoundary) {
 
-	int n = blockIdx.x * blockDim.x + threadIdx.x;
+		// First-order upwind:
+		//
+		// F > 0: flow leaves current cell, phi_f = phi_P
+		// F < 0: flow enters current cell, phi_f = phi_N
+		coeff.AC[n] += fmax(F, 0.0);
 
-	if (n >= uCoeff.N) return;
+		double aNb = fmin(F, 0.0);
 
-	const GridConfig& g = config.g;
-	const FluidPropertyConfig& f = config.f;
+		addStructuredNeighborCoeff(
+			n,
+			nb,
+			nz,
+			aNb,
+			coeff
+		);
 
-	int nr = uCoeff.nr;
-	int nz = uCoeff.nz;
-	double* dr = g.d_dr;
-	double* dz = g.d_dz;
-	double* r = g.d_r;
-	double* z = g.d_z;
-	double* rFace = g.d_rFace;
-	double* zFace = g.d_zFace;
-	double* r_dr = g.r_dr;
-	double* z_dz = g.z_dz;
-	double mu = f.mu;
-	double rho = f.rho;
-
-	double* AC = uCoeff.AC;
-	double* AE = uCoeff.AE;
-	double* AW = uCoeff.AW;
-	double* AN = uCoeff.AN;
-	double* AS = uCoeff.AS;
-	double* b = uCoeff.b;
-
-	int j = n % nz;
-	int i = n / nz;
-
-	double r1 = 0.0;
-	double r2 = 0.0;
-
-	r1 = rFace[i];
-	r2 = rFace[i + 1];
-
-	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2.0 * CUDART_PI * r2 * z_dz[j];
-	double Ar1 = 2.0 * CUDART_PI * r1 * z_dz[j];
-
-	double ue = 0.0;
-	double uw = 0.0;
-	double vn = 0.0;
-	double vs = 0.0;
-
-	// ----------Add Convection Term--------------
-	// east
-
-	ue = faceValue(u[n], u[n+1], 0.5 * dz[j], dz[j]);
-
-
-	// west
-	if (j == 0) {
-		uw = u[n];	// not correct but just for test
-	}
-	else {
-		uw = faceValue(u[n], u[n - 1], 0.5 * dz[j - 1], dz[j - 1]);
+		return;
 	}
 
-	// north
-	if (j == nz - 1) {
-		int vN1 = (i + 1) * g.nz + j - 1;
-		vn = v[vN1];
-	}
-	else if (j == 0) {
-		int vN2 = (i + 1) * g.nz + j;
-		vn = v[vN2];
-	}
-	else {
-		int vN2 = (i + 1) * g.nz + j;
-		int vN1 = vN2 - 1;
-		vn = faceValue(v[vN1], v[vN2], 0.5 * dz[j], z_dz[j]);
+	// ------------------------------------------------------------
+	// Boundary face
+	// ------------------------------------------------------------
+	if (groupID < 0 || groupID >= fieldBC.nGroups) {
+		// Default zero-gradient:
+		// phi_f = phi_P
+		coeff.AC[n] += F;
+		return;
 	}
 
-	// south
-	if (j == nz - 1) {
-		int vS1 = i * g.nz + j - 1;
-		vs = v[vS1];
+	uint8_t bcType = fieldBC.typeByGroup[groupID];
+	double bcValue = fieldBC.valueByGroup[groupID];
+
+	if (isDirichletType(bcType)) {
+
+		if (F < 0.0) {
+			// Inflow boundary:
+			// convection contribution is F * phi_b.
+			// Move known value to RHS:
+			coeff.b[n] += -F * bcValue;
+		}
+		else {
+			// Outflow boundary:
+			// use current cell value.
+			coeff.AC[n] += F;
+		}
 	}
-	else if (j == 0) {
-		int vS2 = i * g.nz + j;
-		vs = v[vS2];
-	}
-	else {
-		int vS2 = i * g.nz + j;
-		int vS1 = vS2 - 1;
-		vs = faceValue(v[vS1], v[vS2], 0.5 * dz[j], z_dz[j]);
-	}
-
-	double Fe = rho * ue * Az;
-	double Fw = rho * uw * Az;
-	double Fn = rho * vn * Ar2;
-	double Fs = rho * vs * Ar1;
-
-	AE[n] += -fmax(-Fe, 0.0);
-	AW[n] += -fmax(Fw, 0.0);
-	AN[n] += -fmax(-Fn, 0.0);
-	AS[n] += -fmax(Fs, 0.0);
-
-	AC[n] += (Fe - Fw + Fn - Fs);
-
-	// ----------ADD Deferred Correction Term--------------
-	switch (scheme) {
-	case CONV_UPWIND:
-		break;
-	case CONV_CENTRAL:
-		b[n] -= centralCorrection(Fe, u[n], u[n + 1]);
-		b[n] += centralCorrection(Fw, u[n], u[n - 1]);
-		b[n] -= centralCorrection(Fn, u[n], u[n + nz]);
-		b[n] += centralCorrection(Fs, u[n], u[n - nz]);
-		break;
-	case CONV_SECOND_ORDER_UPWIND:
-
-		if (j > 0 && j < nz - 2) 		b[n] -= secondOrderUpwindCorrection(Fe, u[n - 1], u[n], u[n + 1], u[n + 2], j > 0, j < nz - 2);
-		if (j > 1 && j < nz - 1)		b[n] += secondOrderUpwindCorrection(Fw, u[n - 2], u[n - 1], u[n], u[n + 1], j > 1, j < nz - 1);
-		if (i > 0 && i < nr - 2)		b[n] -= secondOrderUpwindCorrection(Fn, u[n - nz], u[n], u[n + nz], u[n + 2 * nz], i > 0, i < nr - 2);
-		if (i > 1 && i < nr - 1)		b[n] += secondOrderUpwindCorrection(Fs, u[n - 2 * nz], u[n - nz], u[n], u[n + nz], i > 1, i < nr - 1);
-		break;
+	else if (isNeumannType(bcType) || isFullyDevelopedType(bcType)) {
+		// zero-gradient / fully developed:
+		// phi_f = phi_P
+		coeff.AC[n] += F;
 	}
 }
 
 __global__
-void addVConvectionCoefficient(ConfigSolver config, Coefficients uCoeff, Coefficients vCoeff, double* u, double* v, ConvectionScheme scheme) {
-
+void addMomentumConvectionCoefficient(
+	FVMeshDevice mesh,
+	Coefficients uCoeff,
+	Coefficients vCoeff,
+	VariablesSimple simple,
+	BoundarySolverDevice bc
+) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (n >= vCoeff.N) return;
+	if (n >= mesh.cells.nCells) return;
+	if (!mesh.cells.active[n]) return;
 
-	const GridConfig& g = config.g;
-	const FluidPropertyConfig& f = config.f;
+	int nz = mesh.nz;
 
-	int nr = vCoeff.nr;
-	int nz = vCoeff.nz;
-	double* dr = g.d_dr;
-	double* dz = g.d_dz;
-	double* r = g.d_r;
-	double* z = g.d_z;
-	double* rFace = g.d_rFace;
-	double* zFace = g.d_zFace;
-	double* r_dr = g.r_dr;
-	double* z_dz = g.z_dz;
-	double mu = f.mu;
-	double rho = f.rho;
+	int start = mesh.cells.faceStart[n];
+	int end = mesh.cells.faceStart[n + 1];
 
-	double* AC = vCoeff.AC;
-	double* AE = vCoeff.AE;
-	double* AW = vCoeff.AW;
-	double* AN = vCoeff.AN;
-	double* AS = vCoeff.AS;
-	double* b = vCoeff.b;
+	for (int k = start; k < end; k++) {
 
-	int j = n % nz;
-	int i = n / nz;
+		int faceID = mesh.cells.faceIDs[k];
 
-	double r1 = 0.0;
-	double r2 = 0.0;
+		int owner = mesh.faces.owner[faceID];
+		int neighbor = mesh.faces.neighbor[faceID];
 
-	r1 = r[i - 1];
-	r2 = r[i];
+		// mDot is stored positive outward from owner.
+		double Fowner = simple.mDot[faceID];
 
-	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2 * CUDART_PI * r2 * dz[j];
-	double Ar1 = 2 * CUDART_PI * r1 * dz[j];
+		double F = 0.0;
 
-	double ue = 0.0;
-	double uw = 0.0;
-	double vn = 0.0;
-	double vs = 0.0;
+		if (owner == n) {
+			F = Fowner;
+		}
+		else if (neighbor == n) {
+			F = -Fowner;
+		}
+		else {
+			continue;
+		}
 
-	// ----------ADD Convection Term--------------
-	// east
-	if (i == 0) {
+		if (fabs(F) <= 1.0e-30) {
+			continue;
+		}
 
-		int uE2 = i * (g.nz + 1) + j + 1;
-		ue = u[uE2];
-	}
-	else if (i == nr - 1) {
-		int uE1 = (i - 1) * (g.nz + 1) + j + 1;
-		ue = u[uE1];
-	}
-	else {
-		int uE2 = i * (g.nz + 1) + j + 1;
-		int uE1 = (i - 1) * (g.nz + 1) + j + 1;
-		ue = faceValue(u[uE1], u[uE2], 0.5 * dr[i], r_dr[i]);
-	}
+		// ------------------------------------------------------------
+		// Interior face
+		// ------------------------------------------------------------
+		if (neighbor >= 0) {
 
-	// west
-	if (i == 0) {
-		int uW2 = i * (g.nz + 1) + j;
-		uw = u[uW2];
-	}
-	else if (i == nr - 1) {
-		int uW1 = (i - 1) * (g.nz + 1) + j;
-		uw = u[uW1];
-	}
-	else {
-		int uW2 = i * (g.nz + 1) + j;
-		int uW1 = (i - 1) * (g.nz + 1) + j;
-		uw = faceValue(u[uW1], u[uW2], 0.5 * dr[i], r_dr[i]);
-	}
+			int nb = (owner == n) ? neighbor : owner;
 
-	// north
+			addConvectionContribution(
+				n,
+				nb,
+				nz,
+				F,
+				false,
+				-1,
+				uCoeff,
+				bc.u
+			);
 
+			addConvectionContribution(
+				n,
+				nb,
+				nz,
+				F,
+				false,
+				-1,
+				vCoeff,
+				bc.v
+			);
+		}
 
-	// south
-	vs = faceValue(v[n], v[n - nz], 0.5 * dr[i - 1], dr[i - 1]);
+		// ------------------------------------------------------------
+		// Boundary face
+		// ------------------------------------------------------------
+		else {
 
-	double Fe = rho * ue * Az;
-	double Fw = rho * uw * Az;
-	double Fn = rho * vn * Ar2;
-	double Fs = rho * vs * Ar1;
+			int groupID = mesh.faces.boundaryGroupID[faceID];
 
-	AE[n] += -fmax(-Fe, 0.0);
-	AW[n] += -fmax(Fw, 0.0);
-	AN[n] += -fmax(-Fn, 0.0);
-	AS[n] += -fmax(Fs, 0.0);
+			addConvectionContribution(
+				n,
+				-1,
+				nz,
+				F,
+				true,
+				groupID,
+				uCoeff,
+				bc.u
+			);
 
-	AC[n] += (Fe - Fw + Fn - Fs);
-
-	// ----------ADD Deferred Correction Term--------------
-	switch (scheme) {
-	case CONV_UPWIND:
-
-		break;
-
-	case CONV_CENTRAL:
-
-		b[n] -= centralCorrection(Fe, v[n], v[n + 1]);
-		b[n] += centralCorrection(Fw, v[n], v[n - 1]);
-		b[n] -= centralCorrection(Fn, v[n], v[n + nz]);
-		b[n] += centralCorrection(Fs, v[n], v[n - nz]);
-		break;
-
-	case CONV_SECOND_ORDER_UPWIND:
-
-		if (j > 0 && j < nz - 2) 		b[n] -= secondOrderUpwindCorrection(Fe, v[n - 1], v[n], v[n + 1], v[n + 2], j > 0, j < nz - 2);
-		if (j > 1 && j < nz - 1)		b[n] += secondOrderUpwindCorrection(Fw, v[n - 2], v[n - 1], v[n], v[n + 1], j > 1, j < nz - 1);
-		if (i > 0 && i < nr - 2)		b[n] -= secondOrderUpwindCorrection(Fn, v[n - nz], v[n], v[n + nz], v[n + 2 * nz], i > 0, i < nr - 2);
-		if (i > 1 && i < nr - 1)		b[n] += secondOrderUpwindCorrection(Fs, v[n - 2 * nz], v[n - nz], v[n], v[n + nz], i > 1, i < nr - 1);
-		break;
-
+			addConvectionContribution(
+				n,
+				-1,
+				nz,
+				F,
+				true,
+				groupID,
+				vCoeff,
+				bc.v
+			);
+		}
 	}
 }
-
 
 // ==============================================================
 // ==================TRANSIENT TERM==============================
@@ -584,7 +922,6 @@ void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, Variable
 
 	int j = n % nz;
 	int i = n / nz;
-
 
 	double r1 = 0.0;
 	double r2 = 0.0;

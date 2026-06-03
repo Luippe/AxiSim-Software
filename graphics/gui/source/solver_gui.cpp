@@ -526,7 +526,7 @@ void SolverGUI::draw() {
 				bool isOpened = false;
 
 
-				if (drawTree(group.name.c_str(), isOpened)) {
+				if (drawTree(group.name.c_str(), isOpened, UIFlagsTree::BranchClosedFlags)) {
 					selectedBoundaryGroupID = group.id;
 					selectedItem = "Boundary Group";
 				}
@@ -580,21 +580,21 @@ void SolverGUI::draw() {
 
 
 
-		if (ImGui::TreeNodeEx("Convergence", UIFlags::BranchOpenedFlags)) {
+		if (ImGui::TreeNodeEx("Convergence", UIFlagsTree::BranchOpenedFlags)) {
 			drawLeaf("Residuals");
 			drawLeaf("Tolerance");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 		
-		if (ImGui::TreeNodeEx("Fluid Properties", UIFlags::BranchOpenedFlags)) {
+		if (ImGui::TreeNodeEx("Fluid Properties", UIFlagsTree::BranchOpenedFlags)) {
 			drawLeaf("Fluid Settings");
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
 
 		if (solver.transient) {
-			if (ImGui::TreeNodeEx("Transient", UIFlags::BranchOpenedFlags)) {
+			if (ImGui::TreeNodeEx("Transient", UIFlagsTree::BranchOpenedFlags)) {
 				drawLeaf("Transient Settings");
 				ImGui::TreePop();
 			}
