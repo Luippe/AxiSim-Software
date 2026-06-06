@@ -1,12 +1,17 @@
 #include "results_gui.h"
+
 #include "gui.h"
 #include "scene_view.h"
 #include "results.h"
 #include "mesh.h"
+
 #include "colormap.h"
-#include "graphics_struct.h"
-#include "flag_manager.h"
 #include "colorbar.h"
+
+#include "graphics_struct.h"
+
+#include "flag_manager.h"
+#include "unit_manager.h"
 
 ResultsGUI::ResultsGUI(GUI& gui, SceneView& scene) :
 	gui(gui),
@@ -54,6 +59,10 @@ void ResultsGUI::drawPropertiesPanel() {
 				results.updateSelectedInstances();
 			}
 
+			labelRow("Scale");
+			if (createComboUnit("##Unit", scene.sceneScale.index, Units::lengthUnits)) {
+				scene.updateSceneScale();
+			}
 			labelRow("Value");
 			if (results.currentCompareType == CompareType::Between || results.currentCompareType == CompareType::Exclude) {
 				ImGui::InputFloat("##LowerBound", &results.filterValues.valueLower, 0.0f, 0.0f);
@@ -63,7 +72,6 @@ void ResultsGUI::drawPropertiesPanel() {
 			else {
 				ImGui::SliderFloat("##Value", &results.filterValues.valueAt, results.currentField->vmin, results.currentField->vmax);
 			}
-
 
 
 			ImGui::EndTable();
@@ -131,7 +139,11 @@ void ResultsGUI::draw() {
 			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 
 			labelRow("Field");
-			if (createSimpleCombo("##SelectField", results.fieldType, results.currentItem, IM_ARRAYSIZE(results.fieldType))) {
+			if (createCombo(
+				"##SelectField",
+				scene.results.fieldType,
+				results.currentItem
+			)) {
 				results.updateCurrentField();
 			}
 

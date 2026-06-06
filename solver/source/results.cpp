@@ -283,7 +283,7 @@ void Results::createBuffer() {
 
 }
 
-void Results::copyMeshData() {
+void Results::copyData() {
 
 	// copy variables and structs
 	g = mesh.g;
@@ -294,7 +294,10 @@ void Results::copyMeshData() {
 	dr = g.dr;
 	dz = g.dz;
 
+	fieldType = solver.fieldType;
+
 }
+
 
 void Results::generate() {
 
@@ -304,7 +307,7 @@ void Results::generate() {
 	indicesCV.clear();
 
 	// copy all relevant data from mesh class
-	copyMeshData();
+	copyData();
 
 	// create instances and create buffer
 	createAllCVInstances();
@@ -334,28 +337,34 @@ void Results::createFields() {
 	uField.generate(solver.uSol, solver.fvMesh, mesh.boundaryGroups);
 	vField.generate(solver.vSol, solver.fvMesh, mesh.boundaryGroups);
 	pField.generate(solver.pSol, solver.fvMesh, mesh.boundaryGroups);
-
+	if (solver.fieldOption.solveEnergy) {
+		tempField.generate(solver.tempSol, solver.fvMesh, mesh.boundaryGroups);
+	}
 }
 
 void Results::updateCurrentField() {
 
-	switch (currentItem) {
-	case 0:
+	if (fieldType.empty()) return;
+
+	std::string currentFieldChar = fieldType[currentItem];
+
+	if (currentFieldChar == "Axial Velocity") {
 		currentField = &uField;
-		break;
-	case 1:
+	}
+	else if (currentFieldChar == "Radial Velocity") {
 		currentField = &vField;
-		break;
-	case 2:
+	}
+	else if (currentFieldChar == "Pressure") {
 		currentField = &pField;
-		break;
-	case 3:
+	}
+	else if (currentFieldChar == "Temperature") {
+		currentField = &tempField;
+	}
+	else if (currentFieldChar == "Concentration") {
 		currentField = &concField;
-		break;
-	default:
-		currentField = &concField;
-		currentItem = 3;
-		break;
+	}
+	else {
+		printf("ERROR: UNIDENTIFIED FIELD");
 	}
 }
 
@@ -416,32 +425,8 @@ void Results::createAllCVInstances() {
 void Results::updateSelectedInstances() {	// might be heavy on the cpu, optimize if AxiSim starts lagging
 
 	selectedInstances = createRowMergedCylinderInstances(currentField->cellValues, filterValues);
-
-
 	cvInstanceBuffer.bufferSubData(selectedInstances.size() * sizeof(CylinderInstance), selectedInstances.data());
 
-}
-
-void Results::drawCap() {
-
-	if (showOutline) {
-		glLineWidth(1.0f);
-		capBuffer.bind();
-		glDrawArrays(GL_LINES, 0, verticesCap.size());
-		capBuffer.unbind();
-		glLineWidth(1.0f);
-	}
-}
-
-void Results::drawEdge() {
-
-	if (showOutline) {
-		glLineWidth(1.0f);
-		edgeBuffer.bind();
-		glDrawArrays(GL_LINES, 0, verticesEdge.size());
-		edgeBuffer.unbind();
-		glLineWidth(1.0f);
-	}
 }
 
 void Results::render() {
@@ -449,6 +434,7 @@ void Results::render() {
 	//return;
 	if (!isReady) return;
 	updateSelectedInstances();
+	//updateCurrentField();
 
 	//GLuint query;
 	//glGenQueries(1, &query);
@@ -462,14 +448,6 @@ void Results::render() {
 	glActiveTexture(GL_TEXTURE1);
 	colormap.bind();
 
-	//float vmin = currentField->vmin;
-	//float vmax = currentField->vmax;
-
-	//float denom = std::max(vmax - vmin, 1e-12f);
-	//float value = 0.027f;
-	//float t = (value - vmin) / denom;
-	//printFloat(t);
-
 	cvBuffer.bind();
 	glDrawElementsInstanced(GL_TRIANGLES, (GLsizei)(indicesCV.size()), GL_UNSIGNED_INT, 0, (GLsizei)(selectedInstances.size()));
 	cvBuffer.unbind();
@@ -479,19 +457,6 @@ void Results::render() {
 
 	glActiveTexture(GL_TEXTURE0);
 	currentField->textureBuffer.unbind();
-
-	//shaderLine.use();
-	//shaderLine.SetMat4("model", modelOutline);
-	//drawCap();
-	//shaderLine.SetMat4("model", modelOutlineInner);
-	//drawCap();
-	//shaderLine.SetMat4("model", glm::mat4(1.0));
-
-	//shaderEdge.use();
-	//shaderEdge.SetMat4("model", modelOutline);
-	//drawEdge();
-	//shaderEdge.SetMat4("model", glm::mat4(1.0));
-
 
 	//// End GPU timer
 	//glEndQuery(GL_TIME_ELAPSED);

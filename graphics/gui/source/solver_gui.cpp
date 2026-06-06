@@ -22,37 +22,6 @@ SolverGUI::SolverGUI(SceneView& scene) :
 // ======================================================================
 // -----------------------HELPER FUNCTIONS-------------------------------
 // ======================================================================
-const char* boundaryPropertyToString(BoundaryPropertyID id) {
-	switch (id) {
-	case BoundaryPropertyID::VelocityMagnitude:
-		return "Velocity Magnitude";
-
-	case BoundaryPropertyID::UVelocity:
-		return "U Velocity";
-
-	case BoundaryPropertyID::VVelocity:
-		return "V Velocity";
-
-	case BoundaryPropertyID::StaticPressure:
-		return "Static Pressure";
-
-	case BoundaryPropertyID::StaticTemperature:
-		return "Static Temperature";
-
-	case BoundaryPropertyID::Concentration:
-		return "Concentration";
-
-	case BoundaryPropertyID::TurbulenceIntensity:
-		return "Turbulence Intensity";
-
-	case BoundaryPropertyID::TurbulentViscosityRatio:
-		return "Turbulent Viscosity Ratio";
-
-	default:
-		return "Unknown";
-	}
-}
-
 void SolverGUI::setResidualDefault() {
 	switch (solver.currentResidual) {
 	case RESIDUAL_RAW:
@@ -104,9 +73,6 @@ BoundaryCondition& SolverGUI::getOrCreateBC(
 }
 
 void SolverGUI::drawFieldCheckbox() {
-	ImGui::Checkbox("Axial Velocity", &solver.fieldOption.solveU);
-	ImGui::Checkbox("Radial Velocity", &solver.fieldOption.solveV);
-	ImGui::Checkbox("Pressure", &solver.fieldOption.solvePressure);
 	ImGui::Checkbox("Energy", &solver.fieldOption.solveEnergy);
 	ImGui::Checkbox("Concentration", &solver.fieldOption.solveConcentration);
 }
@@ -129,46 +95,105 @@ const char* boundaryVariableToString(BoundaryVariable var) {
 	case BoundaryVariable::Concentration:
 		return "Concentration";
 
-	case BoundaryVariable::TurbulenceIntensity:
-		return "Turbulence Intensity";
-
-	case BoundaryVariable::TurbulentViscosityRatio:
-		return "Turbulent Viscosity Ratio";
-
 	default:
 		return "Unknown";
 	}
 }
+
+const char* bcTypeToString(BCType type) {
+	switch (type) {
+	case BCType::DIRICHLET:			return "Dirichlet";
+	case BCType::NEUMANN:			return "Neumann";
+	case BCType::FULLY_DEVELOPED:	return "Fully Developed";
+	default:						return "Unknown";
+	}
+}
+
 // ======================================================================
 // -------------------BOUNDARY VARIABLE DRAW CALLS-----------------------
 // ======================================================================
-void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc) {
+bool createBCTypeCombo(
+	const char* label,
+	const BoundaryVariable selectedVar,
+	const BoundaryType& type,
+	BoundaryCondition& bc
+) {
+
+	std::vector<BCType> allowedBCTypes = BoundaryDefaults::getAllowedBCType(selectedVar, type);
+
+	bool changed = false;
+
+	bool currentAllowed = false;
+	for (BCType type : allowedBCTypes) {
+		if (bc.type == type) {
+			currentAllowed = true;
+			break;
+		}
+	}
+
+	if (!currentAllowed) {
+		bc.type = allowedBCTypes[0];
+		changed = true;
+	}
+
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	if (ImGui::BeginCombo(label, bcTypeToString(bc.type))) {
+
+		for (BCType type : allowedBCTypes) {
+			bool isSelected = bc.type == type;
+
+			if (ImGui::Selectable(bcTypeToString(type), isSelected)) {
+				if (bc.type != type) {
+					bc.type = type;
+					changed = true;
+				}
+			}
+
+			if (isSelected) {
+				ImGui::SetItemDefaultFocus();
+			}
+		}
+
+		ImGui::EndCombo();
+	}
+	return changed;
+}
+
+void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc, BoundaryType type) {
 
 	ImGui::SeparatorText(boundaryVariableToString(var));
 
 
 
 	const char* label = boundaryVariableToString(var);
-	if (ImGui::BeginTable(label, 3)) {
+	if (ImGui::BeginTable(label, 4)) {
 		setupTableColumns(
 			column("Label", 100.0f),
+			column("BC", 100.0f),
 			column("Value", 100.0f),
 			column("Unit", 100.0f)
 		);
-		labelRow(label);
 
+		labelRow(label);
 		switch (var) {
 		case BoundaryVariable::UVelocity:
+			createBCTypeCombo("##UVelocity", var, type, bc);
+			ImGui::TableNextColumn();
 			inputDoubleWithUnits("U Velocity", bc.value, varUnits.axialUnit, Units::velocityUnits);
 			break;
 		case BoundaryVariable::VVelocity:
-
+			createBCTypeCombo("##VVelocity", var, type, bc);
+			ImGui::TableNextColumn();
 			inputDoubleWithUnits("V Velocity", bc.value, varUnits.radialUnit, Units::velocityUnits);
 			break;
 		case BoundaryVariable::Pressure:
+			createBCTypeCombo("##Pressure", var, type, bc);
+			ImGui::TableNextColumn();
 			inputDoubleWithUnits("Pressure", bc.value, varUnits.pressureUnit, Units::pressureUnits);
 			break;
 		case BoundaryVariable::StaticTemperature:
+			createBCTypeCombo("##StaticTemperature", var, type, bc);
+			ImGui::TableNextColumn();
 			inputDoubleWithUnits("Static Temperature", bc.value, varUnits.temperatureUnit, Units::temperatureUnits);
 			break;
 		}
@@ -205,67 +230,6 @@ void SolverGUI::drawBoundaryConditionGUI() {
 		}
 		ImGui::EndTable();
 	}
-}
-
-
-
-std::vector<BoundaryVariable> SolverGUI::getPhysicsValueLeaves(
-	const BoundarySegmentGroup& group
-) const {
-	std::vector<BoundaryVariable> leaves;
-
-	switch (group.type) {
-
-	case BoundaryType::WALL:
-		leaves.push_back(BoundaryVariable::UVelocity);
-		leaves.push_back(BoundaryVariable::VVelocity);
-
-		if (solver.fieldOption.solveEnergy) {
-			leaves.push_back(BoundaryVariable::StaticTemperature);
-		}
-
-		if (solver.fieldOption.solveConcentration) {
-			leaves.push_back(BoundaryVariable::Concentration);
-		}
-
-		break;
-
-	case BoundaryType::SYMMETRY:
-		break;
-
-	case BoundaryType::VELOCITY_INLET:
-		leaves.push_back(BoundaryVariable::UVelocity);
-		leaves.push_back(BoundaryVariable::VVelocity);
-
-		if (solver.fieldOption.solveEnergy) {
-			leaves.push_back(BoundaryVariable::StaticTemperature);
-		}
-
-		if (solver.fieldOption.solveConcentration) {
-			leaves.push_back(BoundaryVariable::Concentration);
-		}
-
-		leaves.push_back(BoundaryVariable::TurbulenceIntensity);
-		leaves.push_back(BoundaryVariable::TurbulentViscosityRatio);
-		break;
-
-	case BoundaryType::PRESSURE_OUTLET:
-		leaves.push_back(BoundaryVariable::Pressure);
-
-		if (solver.fieldOption.solveEnergy) {
-			leaves.push_back(BoundaryVariable::StaticTemperature);
-		}
-
-		if (solver.fieldOption.solveConcentration) {
-			leaves.push_back(BoundaryVariable::Concentration);
-		}
-
-		break;
-	}
-
-
-
-	return leaves;
 }
 
 void SolverGUI::drawPropertiesPanel() {
@@ -318,9 +282,6 @@ void SolverGUI::drawPropertiesPanel() {
 			labelRow("Add Convection Term");
 			checkBox("##ConvectionTerm", &solver.addConvectionTerm);
 
-			labelRow("Energy Equation");
-			checkBox("##EnergyEquation", &solver.energyEquation);
-
 			labelRow("Transient");
 			checkBox("##TransientTerm", &solver.transient);
 
@@ -337,7 +298,7 @@ void SolverGUI::drawPropertiesPanel() {
 		if (group) {
 			BoundaryCondition& bc = getOrCreateBC(*group, selectedBoundaryVariable);
 
-			drawBoundaryVariableEditor(selectedBoundaryVariable, bc);
+			drawBoundaryVariableEditor(selectedBoundaryVariable, bc, group->type);
 		}
 	}
 	else if (selectedItem == "Boundary Group") {
@@ -455,7 +416,10 @@ void SolverGUI::drawPropertiesPanel() {
 			inputDoubleWithUnits("##DynamicViscosity", solver.f.mu, varUnits.muUnit, Units::dynamicViscosityUnits, "%.6g");
 
 			labelRow("Diffusion Coefficient");
-			inputDoubleWithUnits("##Diffusion Coefficient", solver.f.D, varUnits.DUnit, Units::diffusionCoefficientUnits, "%.6g");
+			inputDoubleWithUnits("##DiffusionCoefficient", solver.f.D, varUnits.DUnit, Units::diffusionCoefficientUnits, "%.6g");
+
+			labelRow("Heat Capacity");
+			inputDoubleWithUnits("##HeatCapacity", solver.f.cp, varUnits.specificHeatUnit, Units::specificHeatUnits, "%.6g");
 
 			ImGui::EndTable();
 		}
@@ -483,9 +447,6 @@ void SolverGUI::drawPropertiesPanel() {
 			ImGui::EndTable();
 		}
 	}
-
-
-
 	ImGui::End();
 }
 
@@ -532,7 +493,11 @@ void SolverGUI::draw() {
 				}
 
 				if (isOpened) {
-					std::vector<BoundaryVariable> activeLeaves = getPhysicsValueLeaves(group);
+					std::vector<BoundaryVariable> activeLeaves = BoundaryDefaults::getVariableFromBoundaryType(
+						group, 
+						solver.fieldOption.solveEnergy,
+						solver.fieldOption.solveConcentration
+					);
 
 					for (BoundaryVariable var : activeLeaves) {
 						ImGui::PushID((int)(var));

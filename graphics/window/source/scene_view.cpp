@@ -2,6 +2,9 @@
 #include "display.h"
 #include "camera.h"
 #include "memory_manager.h"
+#include "unit_manager.h"
+
+#include "math_func.h"
 #include "printer.h"
 
 SceneView::SceneView(Display& disp, Camera& camera, Renderer& renderer, Bounding& bound)
@@ -18,6 +21,12 @@ SceneView::SceneView(Display& disp, Camera& camera, Renderer& renderer, Bounding
 {
 	frameBuffer.createBuffer(disp.width, disp.height, samples);
 };
+
+void SceneView::updateSceneScale() {
+
+	sceneScale.value = (float)(1.0 / Units::lengthUnits[sceneScale.index].toBase);
+
+}
 
 void SceneView::handleMouse() {
 
@@ -119,9 +128,12 @@ void SceneView::render() {
 
 	if (currentTab == TAB_RESULTS) {
 
+
 		// load transformation matrix for solution shader
-		shaderResults.loadTransformationMatrix(camera.model, camera.view, camera.projection);
-		shaderLine.loadTransformationMatrix(camera.model, camera.view, camera.projection);
+		glm::mat4 model = scaleMat4(camera.model, sceneScale.value);
+
+		shaderResults.loadTransformationMatrix(model, camera.view, camera.projection);
+		shaderLine.loadTransformationMatrix(model, camera.view, camera.projection);
 
 		// update picker
 		picker.update();

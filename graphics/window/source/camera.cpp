@@ -1,15 +1,19 @@
 #include "camera.h"
-#include "printer.h"
+
 #include <glm/gtc/matrix_transform.hpp>
+#include "unit_manager.h"
+#include "printer.h"
 
 void Camera::updateTransformationMatrix() {
 
 	float aspect = (float)width / (float)height;
 
 	model = glm::mat4(1.0f);
+
 	position = getPosition();
 	view = glm::lookAt(position, target, getUp());
 	projection = glm::perspective(glm::radians(fov), aspect, 0.1f, 100.0f);
+
 }
 
 void Camera::update() {
@@ -56,7 +60,6 @@ glm::vec3 Camera::mapToSphere(const glm::vec2& mouse) {
 		return glm::vec3(screenPos.x, screenPos.y, std::sqrt(1.0f - length2));
 	}
 	else {
-		//printf("ASDASDAD\n");
 		return glm::vec3(screenPos, 0.0f) / std::sqrt(length2);
 	}
 }

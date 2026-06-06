@@ -57,27 +57,13 @@ public:
     void clearPlot(int i);
 
     // set the variables which will be plotted onto the current plot
-    void setName(const std::array<ResidualPrintItem, 6>& residualsToPlot);
+    void setName(const std::vector<ResidualPrintItem>& residualsToPlot);
 
     // copy image to clipboard. DO NOT NEST INSIDE ANOTHER IMGUI FRAME
     bool copyActivePlotToClipboard();
 
     // add residuals to current plot
-    template <size_t N>
-    void add(int currentIteration, const std::array<ResidualPrintItem, N>& residualsToPrint) {
-
-        std::lock_guard<std::mutex> lock(mutex);
-        size_t idx = 0;
-        int activeTabID = residualDockSpace.getActiveTabID();
-
-        tabs[activeTabID].iterations.push_back((double)currentIteration);
-        for (const ResidualPrintItem& item : residualsToPrint) {
-            if (!item.enabled) continue;
-            
-            tabs[activeTabID].plots[idx++].y.push_back(*item.residual);
-        }
-    }
-
+    void add(int currentIteration, const std::vector<ResidualPrintItem>& residualsToPrint);
 
 private:
 

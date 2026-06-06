@@ -1,5 +1,6 @@
 #include "base_gui.h"
 #include "flag_manager.h"
+#include "printer.h"
 
 void BaseGUI::changeCursorOnHover() {
 	if (ImGui::IsItemHovered()) {
@@ -42,6 +43,36 @@ bool BaseGUI::createSimpleCombo(const char* label, const char* items[], int& cur
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	ImGui::AlignTextToFramePadding();
 	return ImGui::Combo(label, &currentItem, items, itemCount);
+}
+
+bool BaseGUI::createCombo(const char* label, const std::vector<std::string>& vec, int& currentItem) {
+
+	if (vec.empty()) return false;
+	
+	const char* preview = vec[currentItem].c_str();
+
+	bool changed = false;
+
+	if (ImGui::BeginCombo(label, preview)) {
+
+		for (int i = 0; i < static_cast<int>(vec.size()); i++) {
+			bool isSelected = currentItem == i;
+
+			if (ImGui::Selectable(vec[i].c_str(), isSelected)) {
+				if (currentItem != i) {
+					currentItem = i;
+					changed = true;
+				}
+			}
+
+			if (isSelected) {
+				ImGui::SetItemDefaultFocus();
+			}
+		}
+
+		ImGui::EndCombo();
+	}
+	return changed;
 }
 
 void BaseGUI::checkBox(const char* label, bool* value) {

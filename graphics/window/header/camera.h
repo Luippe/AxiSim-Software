@@ -19,7 +19,7 @@ public:
 	float sensitivity = 0.3f;
 	float zoom = 1.0f;
 	float fov = 45.0f;
-	float distance = 20.0f;
+	float distance = 1.0f;
 
 	glm::quat targetRotation;
 	glm::mat4 model, view, projection;
@@ -37,6 +37,7 @@ public:
 private:
 	int width, height;
 	ImVec2 rectPos;
+
 
 	bool snapping = false;
 	void snapCamera();
@@ -61,5 +62,6 @@ private:
 		{0.0f, 0.0f, 1.0f},
 		{0.0f, 0.0f, -1.0f}
 	};
+
 
 };

@@ -94,36 +94,35 @@ BoundarySolverDevice createBoundarySolverDevice(
 ) {
 	BoundarySolverDevice dBC{};
 
-	if (option.solveU) {
-		BoundaryFieldHost hU = createBoundaryFieldHost(
-			boundaryGroups,
-			BoundaryVariable::UVelocity
-		);
-		dBC.u = createBoundaryFieldDevice(hU);
-	}
 
-	if (option.solveV) {
-		BoundaryFieldHost hV = createBoundaryFieldHost(
-			boundaryGroups,
-			BoundaryVariable::VVelocity
-		);
-		dBC.v = createBoundaryFieldDevice(hV);
-	}
+	BoundaryFieldHost hU = createBoundaryFieldHost(
+		boundaryGroups,
+		BoundaryVariable::UVelocity
+	);
+	dBC.u = createBoundaryFieldDevice(hU);
 
-	if (option.solvePressure) {
-		BoundaryFieldHost hP = createBoundaryFieldHost(
-			boundaryGroups,
-			BoundaryVariable::Pressure
-		);
-		dBC.p = createBoundaryFieldDevice(hP);
-	}
+
+	BoundaryFieldHost hV = createBoundaryFieldHost(
+		boundaryGroups,
+		BoundaryVariable::VVelocity
+	);
+	dBC.v = createBoundaryFieldDevice(hV);
+	
+
+
+	BoundaryFieldHost hP = createBoundaryFieldHost(
+		boundaryGroups,
+		BoundaryVariable::Pressure
+	);
+	dBC.p = createBoundaryFieldDevice(hP);
+	
 
 	if (option.solveEnergy) {
 		BoundaryFieldHost hEnergy = createBoundaryFieldHost(
 			boundaryGroups,
 			BoundaryVariable::StaticTemperature
 		);
-		dBC.energy = createBoundaryFieldDevice(hEnergy);
+		dBC.temp = createBoundaryFieldDevice(hEnergy);
 	}
 
 	if (option.solveConcentration) {
@@ -300,7 +299,12 @@ FVMeshDevice createFVMeshDevice(const FVMesh& mesh) {
 	return d;
 }
 
-void allocateSimple(ConfigSolver& config, VariablesSimple& vars, FVMesh& mesh) {
+
+void allocateSimple(
+	ConfigSolver& config,
+	VariablesSimple& vars,
+	FVMesh& mesh
+) {
 
 	int nr = config.g.nr;
 	int nz = config.g.nz;
@@ -314,6 +318,7 @@ void allocateSimple(ConfigSolver& config, VariablesSimple& vars, FVMesh& mesh) {
 	vars.uTemp = deviceAlloc<double>(N);
 	vars.vTemp = deviceAlloc<double>(N);
 	vars.ppTemp = deviceAlloc<double>(N);
+	vars.tempTemp = deviceAlloc<double>(N);
 
 	CUDA_CHECK(cudaMemset(vars.DU, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(vars.DV, 0, N * sizeof(double)));
@@ -324,20 +329,24 @@ void allocateSimple(ConfigSolver& config, VariablesSimple& vars, FVMesh& mesh) {
 	std::vector<double> h_v(N, 0.0);
 	std::vector<double> h_pp(N, 0.0);
 	std::vector<double> h_p(N, 0.0);
+	std::vector<double> h_temp(N, 0.0);
 	std::vector<double> h_mDot(mesh.numFaces(), 0.0);
 
 	copyHostToDevice(vars.uOld, h_u);
 	copyHostToDevice(vars.vOld, h_v);
+	copyHostToDevice(vars.tempOld, h_temp);
 	copyHostToDevice(vars.mDot, h_mDot);
 
 	copyHostToDevice(vars.u, h_u);
 	copyHostToDevice(vars.v, h_v);
 	copyHostToDevice(vars.pp, h_pp);
 	copyHostToDevice(vars.p, h_p);
+	copyHostToDevice(vars.temp, h_temp);
 
 	CUDA_CHECK(cudaMemcpy(vars.uTemp, vars.u, N * sizeof(double), cudaMemcpyDeviceToDevice));
 	CUDA_CHECK(cudaMemcpy(vars.vTemp, vars.v, N * sizeof(double), cudaMemcpyDeviceToDevice));
 	CUDA_CHECK(cudaMemcpy(vars.ppTemp, vars.pp, N * sizeof(double), cudaMemcpyDeviceToDevice));
+	CUDA_CHECK(cudaMemcpy(vars.tempTemp, vars.temp, N * sizeof(double), cudaMemcpyDeviceToDevice));
 }
 
 

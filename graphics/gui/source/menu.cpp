@@ -6,7 +6,8 @@
 Menu::Menu(GUI& gui, SceneView& scene) :
 	scene(scene),
 	gui(gui){
-	loadAtLaunch(scene.mesh, scene.solver, scene.results);
+	loadAtLaunch(scene, "mesh");
+	loadAtLaunch(scene, "solver");
 	//scene.solver.setDefault();
 }
 

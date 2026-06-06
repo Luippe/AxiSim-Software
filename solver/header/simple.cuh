@@ -1,3 +1,4 @@
+#pragma once
 #include <cuda_runtime.h>
 #include "solver_struct.h"
 #include "boundary_struct.h"
@@ -74,12 +75,4 @@ void getCorrectionCoefficient(
 	FVMeshDevice mesh,
 	Coefficients coeff,
 	double* D
-);
-
-__global__
-void underRelaxEquation(
-	FVMeshDevice mesh,
-	Coefficients coeff,
-	const double* x,
-	double alpha
 );

@@ -14,8 +14,8 @@ struct GridConfig {
 
 	int nr = 170;
 	int nz = 100;
-	double R = 1.7;
-	double L = 10.0;
+	double R = 0.0017;
+	double L = 0.01;
 	std::vector<double> dz;
 	std::vector<double> dr;
 	std::vector<double> r;
@@ -72,8 +72,14 @@ struct MemoryConfig {
 // fluid variables
 struct FluidPropertyConfig {
 
-	double rho = 998.0 / 1e9;
-	double mu = 0.0010518 / 1000;
+	double rho = 998.0;
+	double mu = 0.0010518;
+
+	double cp = 4180.0;
+	double k = 0.6;
+
+
+
 	double Vmax = 2e-4;
 	double Km = 5e-4;
 	double n = 1.0;
@@ -83,7 +89,7 @@ struct FluidPropertyConfig {
 	double d = 0.313;
 
 	double D_isf = 1e-4;
-	double D = 3.0277e-3;
+	double D = 3.0277e-9;
 	double Umax = 8.444199e-2;
 
 };

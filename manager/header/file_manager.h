@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 class Solution;
+class SceneView;
 class Mesh;
 class Solver;
 class Results;
@@ -62,10 +63,8 @@ void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc);
 // read boundary condition from save file
 void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc);
 
-void readOneBoundaryCondition(std::ifstream& in);
-
 // load selected files when the application launches
-void loadAtLaunch(Mesh& mesh, Solver& solver, Results& results);
+void loadAtLaunch(SceneView& scene, const char* target);
 
 // read boundary condition config from save file
 template<typename...Args>

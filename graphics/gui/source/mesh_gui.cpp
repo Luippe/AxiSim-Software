@@ -127,8 +127,6 @@ void MeshGUI::drawOverview() {
 				column("Value", 100.0f, ImGuiTableColumnFlags_WidthStretch)
 			);
 
-			
-
 			std::string numCells = std::to_string(mesh.g.nr * mesh.g.nz);
 			std::string numNodes = std::to_string((mesh.g.nr + 1) * (mesh.g.nz + 1));
 
@@ -136,7 +134,6 @@ void MeshGUI::drawOverview() {
 			drawTableProperty("Number of Nodes", numNodes.c_str());
 			ImGui::EndTable();
 		}
-
 	}
 	else if (selectedItem == "Edit") {
 
@@ -213,7 +210,6 @@ void MeshGUI::drawOverview() {
 			drawTableProperty("Groups", numGroups.c_str());
 			ImGui::EndTable();
 		}
-
 	}
 
 	drawBoundaryGroupGUI();

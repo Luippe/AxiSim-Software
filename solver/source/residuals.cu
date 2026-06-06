@@ -5,9 +5,8 @@
 #include "device_launch_parameters.h"
 
 __device__
-void residualRaw(ResidualPairs& pairs, int n) {
+void residualRaw(const FVMeshDevice& fvMesh, ResidualPairs& pairs, int n) {
 
-	FVMeshDevice fvMesh = pairs.fvMesh;
 	Coefficients coeff = pairs.coeff;
 	const double* x = pairs.x;
 

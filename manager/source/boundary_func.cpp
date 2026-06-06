@@ -1,5 +1,5 @@
 #include "boundary_func.h"
-
+#include "printer.h"
 
 namespace BoundaryDefaults {
 
@@ -28,8 +28,6 @@ namespace BoundaryDefaults {
 			case BoundaryVariable::VVelocity:
 			case BoundaryVariable::StaticTemperature:
 			case BoundaryVariable::Concentration:
-			case BoundaryVariable::TurbulenceIntensity:
-			case BoundaryVariable::TurbulentViscosityRatio:
 				return BCType::DIRICHLET;
 
 			case BoundaryVariable::Pressure:
@@ -88,6 +86,7 @@ namespace BoundaryDefaults {
 		return BCType::NONE;
 	}
 
+
 	double getDefaultBCValue(
 		BoundaryType boundaryType,
 		BoundaryVariable var
@@ -107,14 +106,74 @@ namespace BoundaryDefaults {
 		case BoundaryVariable::Concentration:
 			return 0.0;
 
-		case BoundaryVariable::TurbulenceIntensity:
-			return 5.0;
-
-		case BoundaryVariable::TurbulentViscosityRatio:
-			return 10.0;
 		}
-
 		return 0.0;
+	}
+
+	std::vector<BCType> getAllowedBCType(
+		const BoundaryVariable& var,
+		const BoundaryType& type
+	) {
+
+		switch (type) {
+
+		case BoundaryType::VELOCITY_INLET:
+			switch (var) {
+			case BoundaryVariable::UVelocity:
+				return { BCType::DIRICHLET, BCType::FULLY_DEVELOPED};
+			case BoundaryVariable::VVelocity:
+			case BoundaryVariable::StaticTemperature:
+			case BoundaryVariable::Concentration:
+				return { BCType::DIRICHLET };
+			case BoundaryVariable::Pressure:
+				return { BCType::NEUMANN };
+			default:
+				return { BCType::NONE };
+			}
+
+		case BoundaryType::PRESSURE_OUTLET:
+			switch (var) {
+			case BoundaryVariable::Pressure:
+				return { BCType::DIRICHLET };
+			case BoundaryVariable::StaticTemperature:
+				return { BCType::DIRICHLET, BCType::NEUMANN };
+			case BoundaryVariable::UVelocity:
+			case BoundaryVariable::VVelocity:
+			case BoundaryVariable::Concentration:
+				return { BCType::NEUMANN };
+			default:
+				return { BCType::NONE };
+			}
+
+		case BoundaryType::WALL:
+			switch (var) {
+			case BoundaryVariable::UVelocity:
+			case BoundaryVariable::VVelocity:
+				return { BCType::DIRICHLET }; // no-slip, value = 0
+			case BoundaryVariable::StaticTemperature:
+				return { BCType::DIRICHLET, BCType::NEUMANN };
+			case BoundaryVariable::Pressure:
+			case BoundaryVariable::Concentration:
+				return { BCType::NEUMANN};
+			default:
+				return { BCType::NONE };
+			}
+
+		case BoundaryType::SYMMETRY:
+			switch (var) {
+			case BoundaryVariable::VVelocity:
+				return { BCType::DIRICHLET }; // normal velocity = 0, depending on orientation
+			case BoundaryVariable::StaticTemperature:
+				return { BCType::DIRICHLET, BCType::NEUMANN };
+			case BoundaryVariable::UVelocity:
+			case BoundaryVariable::Pressure:
+			case BoundaryVariable::Concentration:
+				return { BCType::NEUMANN };
+			default:
+				return { BCType::NONE };
+			}
+		}
+		return { BCType::NONE };
 	}
 
 	bool isVariableInBoundaryType(BoundaryVariable variable, BoundaryType type) {
@@ -198,8 +257,6 @@ namespace BoundaryDefaults {
 				variables.push_back(BoundaryVariable::Concentration);
 			}
 
-			variables.push_back(BoundaryVariable::TurbulenceIntensity);
-			variables.push_back(BoundaryVariable::TurbulentViscosityRatio);
 			break;
 
 		case BoundaryType::PRESSURE_OUTLET:

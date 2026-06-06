@@ -7,27 +7,9 @@
 // holds solvers for solving system of linear equations
 
 struct SolverFieldOption {
-	bool solveU = true;
-	bool solveV = true;
-	bool solvePressure = true;
 	bool solveEnergy = true;
 	bool solveConcentration = true;
 };
-
-enum class BoundaryPropertyID : uint8_t {
-	VelocityMagnitude,
-	UVelocity,
-	VVelocity,
-
-	StaticPressure,
-	StaticTemperature,
-	Concentration,
-
-	TurbulenceIntensity,
-	TurbulentViscosityRatio
-};
-
-
 
 enum ResidualType {
 	RESIDUAL_RAW = 0,
@@ -80,12 +62,6 @@ struct EnabledResiduals {
 	bool plotCont = true;
 	bool plotTemp = false;
 	bool plotConc = false;
-};
-
-struct ResidualPrintItem {
-	const char* name;
-	bool enabled;
-	double* residual;
 };
 
 
@@ -144,6 +120,12 @@ struct Coefficients {
 	}
 };
 
+struct ResidualPrintItem {
+	const char* name;
+	bool enabled;
+	Coefficients* coeff;
+};
+
 struct LinearSolverConfig {
 	LinearSolverType type = LINEAR_JACOBI;
 	int maxIter = 20;
@@ -195,13 +177,17 @@ struct VariablesSimple {
 	double* pp = nullptr;
 	double* u = nullptr;
 	double* v = nullptr;
+	double* temp = nullptr;
 
 	double* uTemp = nullptr;
 	double* vTemp = nullptr;
 	double* ppTemp = nullptr;
+	double* tempTemp = nullptr;
 
 	double* uOld = nullptr;
 	double* vOld = nullptr;
+	double* tempOld = nullptr;
+
 
 	double* gradPZ = nullptr;
 	double* gradPR = nullptr;
@@ -213,7 +199,7 @@ struct VariablesSimple {
 	double* mDot = nullptr;
 
 	void free() {
-		freeAllDev(DU, DV, p, pp, u, v, uTemp, vTemp, ppTemp, uOld, vOld);
+		freeAllDev(DU, DV, p, pp, u, v, uTemp, vTemp, ppTemp, uOld, vOld, gradPZ, gradPR, mDot);
 	}
 };
 
@@ -389,7 +375,7 @@ struct BoundarySolverDevice {
 	BoundaryFieldDevice u;
 	BoundaryFieldDevice v;
 	BoundaryFieldDevice p;
-	BoundaryFieldDevice energy;
+	BoundaryFieldDevice temp;
 	BoundaryFieldDevice concentration;
 };
 

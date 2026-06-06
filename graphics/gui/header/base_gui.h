@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 #include "imgui.h"
 #include "unit_manager.h"
 #include "flag_manager.h"
@@ -34,8 +35,12 @@ public:
 	// helper function to move to next row, set text, and move to next column
 	void labelRow(const char* text);
 
-	// create a simple combo box with label and items, current item is updated by reference. returns true if the combo box value was changed
+	// create a simple combo box with label and items, current item is updated by reference
+	// returns true if the combo box value was changed
 	bool createSimpleCombo(const char* label, const char* items[], int& currentItem, int itemCount);
+
+	// create a combo using std::vector as input
+	bool createCombo(const char* label, const std::vector<std::string>& vec, int& currentItem);
 
 	// create an input double field
 	void inputDouble(const char* label, double* value, const char* format = "%.3g");
@@ -65,6 +70,43 @@ public:
 	template <typename... Columns>
 	void setupTableColumns(Columns... columns) {
 		(ImGui::TableSetupColumn(columns.label, columns.flags, columns.width), ...);
+	}
+
+
+	// draw combobox units
+	template <typename UnitT, size_t N>
+	bool createComboUnit(
+		const char* label,
+		std::uint8_t& unitIndex,
+		const std::array<UnitT, N>& units
+	) {
+		if constexpr (N == 0) {
+			return false;
+		}
+
+		const char* preview = units[unitIndex].name;
+
+		bool changed = false;
+
+		if (ImGui::BeginCombo("##unit", preview)) {
+			for (int i = 0; i < (int)(N); i++) {
+				bool isSelected = unitIndex == i;
+
+				if (ImGui::Selectable(units[i].name, isSelected)) {
+					if (unitIndex != i) {
+						unitIndex = (uint8_t)(i);
+						changed = true;
+					}
+				}
+
+				if (isSelected) {
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+
+			ImGui::EndCombo();
+		}
+		return changed;
 	}
 
 

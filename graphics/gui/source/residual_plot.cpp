@@ -91,7 +91,18 @@ int closestPlotY(std::vector<Plot>& plots, int idx, double mouseY) {
     return best;
 }
 
+void ResidualPlot::add(int currentIteration, const std::vector<ResidualPrintItem>& residualsToPrint) {
+    std::lock_guard<std::mutex> lock(mutex);
+    size_t idx = 0;
+    int activeTabID = residualDockSpace.getActiveTabID();
 
+    tabs[activeTabID].iterations.push_back((double)currentIteration);
+    for (const ResidualPrintItem& item : residualsToPrint) {
+        if (!item.enabled) continue;
+
+        tabs[activeTabID].plots[idx++].y.push_back(item.coeff->resVal);
+    }
+}
 
 bool ResidualPlot::copyActivePlotToClipboard() {
 
@@ -147,7 +158,7 @@ void displayTextAtPos(double x, double y, ImPlotSpec& marker) {
 }
 
 
-void ResidualPlot::setName(const std::array<ResidualPrintItem, 6>& residualsToPlot) {
+void ResidualPlot::setName(const std::vector<ResidualPrintItem>& residualsToPlot) {
     for (const ResidualPrintItem& residualPrint : residualsToPlot) {
         if (residualPrint.enabled) {
             int activeTabID = residualDockSpace.getActiveTabID();

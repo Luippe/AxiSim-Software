@@ -15,10 +15,19 @@ class Bounding;
 
 class SceneView {
 public:
+
+	struct SceneScale{
+		uint8_t index = 0;
+		float value = 1.0f;
+	};
+
 	SceneView(Display& disp, Camera& camera, Renderer& renderer, Bounding& bound);
 
 	void render();
 
+	void updateSceneScale();
+
+	SceneScale sceneScale;
 	Config config;
 	ViewTab currentTab = TAB_MESH;
 	Mesh mesh;

@@ -33,9 +33,10 @@ public:
 	float currentInner;
 
 	int currentItem = 0;
+
+	std::vector<std::string> fieldType;
 	CompareType currentCompareType = CompareType::GreaterThan;
 	ShadingType currentShadingType = ShadingType::Interp;
-	const char* fieldType[3] = { "Axial Velocity", "Radial Velocity", "Pressure" };
 	const char* compareType[5] = { "Less Than", "Equal To", "Greater Than", "Between", "Exclude"};
 	const char* shadingType[2] = { "Interp", "Flat" };
 	Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader);
@@ -89,9 +90,6 @@ public:
 
 private:
 
-
-
-
 	int nseg;
 	std::vector<double> dz;
 	std::vector<double> dr;
@@ -109,6 +107,7 @@ private:
 	Field vField;
 	Field pField;
 	Field concField;
+	Field tempField;
 	Solver& solver;
 	Mesh& mesh;
 
@@ -126,10 +125,7 @@ private:
 	// copy buffer from the mesh class
 	void createBuffer();
 	
-	// copy the cv variables from the mesh class
-	void copyMeshData();
-
-	void drawCap();
-	void drawEdge();
+	// copy variables from mesh and solver class
+	void copyData();
 
 };

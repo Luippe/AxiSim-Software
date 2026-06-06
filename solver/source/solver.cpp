@@ -25,8 +25,8 @@
   } \
 } while(0)
 
-template <size_t N>
-void printResidualConsole(int currentIteration, const std::array<ResidualPrintItem, N>& residualsToPrint, Console* console) {
+
+void printResidualConsole(int currentIteration, const std::vector<ResidualPrintItem>& residualsToPrint, Console* console) {
     std::ostringstream line;
 
     line << "ITERAITON: " << currentIteration;
@@ -35,7 +35,7 @@ void printResidualConsole(int currentIteration, const std::array<ResidualPrintIt
     for (const ResidualPrintItem& item : residualsToPrint) {
         if (!item.enabled) continue;
 
-        line << "  " << item.name << ": " << *item.residual;
+        line << "  " << item.name << ": " << item.coeff->resVal;
 
     }
 
@@ -61,12 +61,10 @@ void Solver::setDefault() {
 
     addConvectionTerm = false;
     transient = false;
-    energyEquation = false;
     dt = 0.1;
     tEnd = 2.0;
     configSimple.maxIter = 10;
     linearSolverConfig.maxIter = 10;
-
 
 }
 
@@ -79,12 +77,48 @@ void Solver::run() {
     }
 
     shutdown();                 // end any previous solver threads
+    addFieldType();             // add all solving field
+    createResidualPrintItems(); // must be called before residualPlot->setName
 
     solverRunning = true;
     solverThread = std::thread([&]() {
         runSimple();
         solverRunning = false;
         });
+}
+
+void Solver::createResidualPrintItems() {
+
+    residualsToPrint.clear();
+
+    residualsToPrint.push_back({ "U", enabledResiduals.plotU, &uCoeff });
+    residualsToPrint.push_back({ "V", enabledResiduals.plotV, &vCoeff });
+    residualsToPrint.push_back({ "Continuity", enabledResiduals.plotCont, &massFluxCoeff});
+
+    if (enabledResiduals.plotTemp) {
+        residualsToPrint.push_back({ "Temperature", enabledResiduals.plotTemp, &tempCoeff });
+    }
+
+    if (enabledResiduals.plotConc) {
+        residualsToPrint.push_back({ "Concentration", enabledResiduals.plotConc, nullptr});
+    }
+}
+
+void Solver::addFieldType() {
+
+    fieldType.clear();
+
+    fieldType.push_back("Axial Velocity");
+    fieldType.push_back("Radial Velocity");
+    fieldType.push_back("Pressure");
+
+    if (fieldOption.solveEnergy) {
+        fieldType.push_back("Temperature");
+    }
+
+    if (fieldOption.solveConcentration) {
+        fieldType.push_back("Concentration");
+    }
 }
 
 bool Solver::runCheck() {
@@ -223,6 +257,8 @@ void Solver::runBiCGStab() {
 
 void Solver::runSimple() {
 
+    bool solveEnergy = fieldOption.solveEnergy;
+
 
     // create configs for solver and residual
     ConfigSolver configSolver{ g, f, addConvectionTerm, transient, dt};
@@ -234,14 +270,6 @@ void Solver::runSimple() {
 	BoundarySolverDevice bcDevice = createBoundarySolverDevice(scene.mesh.boundaryGroups, fieldOption);
 
     // initialize residuals
-    std::array<ResidualPrintItem, 6> residualsToPrint = { {
-        {"U",             enabledResiduals.plotU,   &uCoeff.resVal},
-        {"V",             enabledResiduals.plotV,   &vCoeff.resVal},
-        {"P",             enabledResiduals.plotP,   nullptr},
-        {"Continuity",    enabledResiduals.plotCont, &massFluxCoeff.resVal},
-        {"Temperature",   enabledResiduals.plotTemp, nullptr},
-        {"Concentration", enabledResiduals.plotConc, nullptr}
-    } };
 
     // allocate memory
     if (!solutionReady || !continueSolver) {
@@ -252,7 +280,11 @@ void Solver::runSimple() {
         allocateCoefficients(configSolver, vCoeff);
         allocateCoefficients(configSolver, ppCoeff);
         allocateCoefficients(configSolver, massFluxCoeff);
+        allocateCoefficients(configSolver, tempCoeff);
+
         allocateSimple(configSolver, simple, fvMesh);
+
+
         currentIteration = 0;
     }
 
@@ -260,7 +292,6 @@ void Solver::runSimple() {
     const int threadsPerBlock = mem.threadsPerBlock;
     const int shmem = mem.shmem;
     const int blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
-    const int maxBlocks = (std::max({ uCoeff.N,vCoeff.N,ppCoeff.N }) + threadsPerBlock - 1) / threadsPerBlock;
     int faceThreads = 128;
     int faceBlocks = (fvMeshDevice.faces.nFaces + faceThreads - 1) / faceThreads;
 
@@ -278,7 +309,6 @@ void Solver::runSimple() {
         //    copyDeviceToHostVector(simple.p, N));
 
     }
-
 
     // record time
     CudaTimer timer;
@@ -335,7 +365,6 @@ void Solver::runSimple() {
             getCorrectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, simple.DU);
             getCorrectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.DV);
             CUDA_CHECK(cudaStreamSynchronize(stream));
-            
 
             // solve velocity
             solveLinearSystem(fvMeshDevice, uCoeff, linearSolverConfig, stream, simple.u, simple.uTemp, threadsPerBlock);
@@ -348,7 +377,6 @@ void Solver::runSimple() {
             CUDA_CHECK(cudaGetLastError());
             CUDA_CHECK(cudaStreamSynchronize(stream));
             
-
             computePressureGradient << <blocks, threadsPerBlock, 0, stream >> > (
                 fvMeshDevice,
                 bcDevice.p,
@@ -356,9 +384,6 @@ void Solver::runSimple() {
                 simple.gradPZ,
                 simple.gradPR
                 );
-
-            CUDA_CHECK(cudaGetLastError());
-            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             computeFaceMassFluxRhieChow << <faceBlocks, faceThreads, 0, stream >> > (
                 configSolver,
@@ -368,10 +393,7 @@ void Solver::runSimple() {
                 );
 
             createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppCoeff, simple);
-            CUDA_CHECK(cudaGetLastError());
-            CUDA_CHECK(cudaStreamSynchronize(stream));
             solveLinearSystem(fvMeshDevice, ppCoeff, linearSolverConfig, stream, simple.pp, simple.ppTemp, threadsPerBlock);
-            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             // update field variables
             updateVelocity << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, bcDevice.p);
@@ -380,13 +402,35 @@ void Solver::runSimple() {
             CUDA_CHECK(cudaGetLastError());
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
+            // ======================================================================
+            // -----------------------ENERGY EQUATION--------------------------------
+            // ======================================================================
+            
+            if (solveEnergy) {
+
+                addEnergyDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, tempCoeff, bcDevice.temp);
+
+                solveLinearSystem(fvMeshDevice, tempCoeff, linearSolverConfig, stream, simple.temp, simple.tempTemp, threadsPerBlock);
+
+            }
+
+            CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+            // ======================================================================
+            // -----------------------RESIDUAL---------------------------------------
+            // ======================================================================
             // check for convergence and print residual to console
             if (k % configSimple.checkConv == 0) {
 
-                residualAll << <maxBlocks, threadsPerBlock, 0, stream >> > (
-                    ResidualPairs{ fvMeshDevice, uCoeff, simple.u},
-                    ResidualPairs{ fvMeshDevice, vCoeff, simple.v});
-
+                residualAll << <blocks, threadsPerBlock, 0, stream >> > (
+                    fvMeshDevice,
+                    ResidualPairs{ uCoeff, simple.u },
+                    ResidualPairs{ vCoeff, simple.v },
+                    ResidualPairs{ tempCoeff, simple.temp}
+                    );
+                
+                CUDA_CHECK(cudaGetLastError());
+                CUDA_CHECK(cudaStreamSynchronize(stream));
                 continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (
                     fvMeshDevice,
                     configSolver,
@@ -395,7 +439,7 @@ void Solver::runSimple() {
                     );
                 
                 CUDA_CHECK(cudaStreamSynchronize(stream));
-                residualAllHost(configResidual, uCoeff, vCoeff, massFluxCoeff);
+                residualAllHost(configResidual, uCoeff, vCoeff, massFluxCoeff, tempCoeff);
                 residualPlot->add(currentIteration, residualsToPrint);
                 printResidualConsole(currentIteration, residualsToPrint, console);
                 //if (contRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
@@ -428,7 +472,9 @@ void Solver::runSimple() {
     uSol = SolutionField{ copyDeviceToHostVector(simple.u, N), g.dr, g.dz, BoundaryVariable::UVelocity};
     vSol = SolutionField{ copyDeviceToHostVector(simple.v, N), g.dr, g.dz, BoundaryVariable::VVelocity};
     pSol = SolutionField{ copyDeviceToHostVector(simple.p, N), g.dr, g.dz, BoundaryVariable::Pressure};
-    
+    tempSol = SolutionField{ copyDeviceToHostVector(simple.temp, N), g.dr, g.dz, BoundaryVariable::StaticTemperature};
+
+    //mFlux = SolutionField{copyDevice}
     solutionReady = true;
 
     // free memory

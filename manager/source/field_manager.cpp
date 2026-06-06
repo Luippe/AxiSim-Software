@@ -88,8 +88,8 @@ void Field::createVertexValues() {
 	for (int i = 0; i < nr + 1; i++) {
 		for (int j = 0; j < nz + 1; j++) {
 
-			float x = static_cast<float>(zFace[j]);
-			float r = static_cast<float>(rFace[i]);
+			float x = (float)(zFace[j]);
+			float r = (float)(rFace[i]);
 
 			vertexValues.push_back(getData(glm::vec2(x, r)));
 		}
@@ -103,8 +103,8 @@ void Field::createCellValues() {
 	for (int i = 0; i < nr; i++) {
 		for (int j = 0; j < nz; j++) {
 
-			float x = static_cast<float>(zCell[j]);
-			float r = static_cast<float>(rCell[i]);
+			float x = (float)(zCell[j]);
+			float r = (float)(rCell[i]);
 
 			cellValues.push_back(getData(glm::vec2(x, r)));
 		}
@@ -114,9 +114,9 @@ void Field::createCellValues() {
 int findIndex(const std::vector<double>& coords, double x) {
 	auto it = std::upper_bound(coords.begin(), coords.end(), x);
 
-	int idx = static_cast<int>(it - coords.begin()) - 1;
+	int idx = (int)(it - coords.begin()) - 1;
 
-	idx = std::clamp(idx, 0, static_cast<int>(coords.size()) - 2);
+	idx = std::clamp(idx, 0, (int)(coords.size()) - 2);
 
 	return idx;
 }
@@ -133,15 +133,15 @@ int findLowerIndex(const std::vector<double>& x, double value) {
 	}
 
 	if (value >= x.back()) {
-		return static_cast<int>(x.size()) - 2;
+		return (int)(x.size()) - 2;
 	}
 
 	auto it = std::upper_bound(x.begin(), x.end(), value);
 
-	int upper = static_cast<int>(it - x.begin());
+	int upper = (int)(it - x.begin());
 	int lower = upper - 1;
 
-	return std::clamp(lower, 0, static_cast<int>(x.size()) - 2);
+	return std::clamp(lower, 0, (int)(x.size()) - 2);
 }
 
 void Field::buildExtendedCoordinates() {
@@ -170,8 +170,8 @@ void Field::buildExtendedCoordinates() {
 
 	extendedR.push_back(rFace.back());
 
-	extNz = static_cast<int>(extendedZ.size());
-	extNr = static_cast<int>(extendedR.size());
+	extNz = (int)(extendedZ.size());
+	extNr = (int)(extendedR.size());
 }
 
 double Field::sampleBoundary(
@@ -358,7 +358,7 @@ float Field::getData(const glm::vec2& pos) const {
 	double dr = r2 - r1;
 
 	if (std::abs(dz) < 1.0e-30 || std::abs(dr) < 1.0e-30) {
-		return static_cast<float>(f11);
+		return (float)(f11);
 	}
 
 	double tz = std::clamp((z - z1) / dz, 0.0, 1.0);

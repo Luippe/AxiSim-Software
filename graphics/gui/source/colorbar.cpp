@@ -80,9 +80,7 @@ float Colorbar::getValueAtY(float localY) {
 
 void Colorbar::drawLabel() {
 
-	const char* label = results.fieldType[results.currentItem];
-
-	std::string text = label;
+	std::string text = results.fieldType[results.currentItem];
 	std::vector<std::string> lines;
 
 	std::stringstream ss(text);

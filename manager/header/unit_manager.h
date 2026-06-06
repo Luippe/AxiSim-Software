@@ -15,6 +15,10 @@ struct VariableUnits {
     std::uint8_t  rhoUnit = 0;
     std::uint8_t  muUnit = 0;
     std::uint8_t  DUnit = 0;
+    
+    std::uint8_t specificHeatUnit = 0;
+    std::uint8_t heatCondUnit = 0;
+
 
 };
 
@@ -54,64 +58,78 @@ inline double fromBaseValue(double baseValue, const LinearUnitOption& unit) {
 
 
 namespace Units {
-    
+
     inline constexpr std::array<UnitOption, 4> velocityUnits = { {
-        { "mm/s", 1.0    },
-        { "m/s",  1000.0 },
-        { "cm/s", 10.0   },
-        { "um/s", 0.001  }
+        { "m/s",  1.0     },
+        { "mm/s", 1.0e-3  },
+        { "cm/s", 1.0e-2  },
+        { "um/s", 1.0e-6  }
     } };
 
     inline constexpr std::array<UnitOption, 6> pressureUnits = { {
-        { "kg*mm^-1*s^-2", 1.0        },
-        { "Pa",            1.0e-3     },
-        { "kPa",           1.0        },
-        { "MPa",           1.0e3      },
-        { "bar",           100.0      },
-        { "atm",           101.325    }
+        { "Pa",             1.0      },
+        { "kPa",            1.0e3    },
+        { "MPa",            1.0e6    },
+        { "bar",            1.0e5    },
+        { "kg*m^-1*s^-2",   1.0      },
+        { "atm",            101325.0 }
+    } };
+
+    inline constexpr std::array<UnitOption, 4> specificHeatUnits = { {
+        { "J/(kg K)",    1.0    },
+        { "kJ/(kg K)",   1.0e3  },
+        { "J/(g K)",     1.0e3  },
+        { "cal/(g K)",   4184.0 }
+    } };
+
+    inline constexpr std::array<UnitOption, 4> thermalConductivityUnits = { {
+        { "W/(m K)",     1.0    },
+        { "W/(cm K)",    100.0  },
+        { "W/(mm K)",    1000.0 },
+        { "mW/(mm K)",   1.0    }
     } };
 
     inline constexpr std::array<LinearUnitOption, 3> temperatureUnits = { {
-    { "K",  1.0,        0.0      },
-    { "C",  1.0,        273.15   },
-    { "F",  5.0 / 9.0,  255.3722222222222 }
-} };
+        { "K",  1.0,        0.0 },
+        { "C",  1.0,        273.15 },
+        { "F",  5.0 / 9.0,  255.3722222222222 }
+    } };
 
     inline constexpr std::array<UnitOption, 4> diffusionUnits = { {
-        { "mm^2/s", 1.0    },
-        { "m^2/s",  1.0e6  },
-        { "cm^2/s", 100.0  },
-        { "um^2/s", 1.0e-6 }
+        { "m^2/s",   1.0     },
+        { "mm^2/s",  1.0e-6  },
+        { "cm^2/s",  1.0e-4  },
+        { "um^2/s",  1.0e-12 }
     } };
 
     inline constexpr std::array<UnitOption, 4> dynamicViscosityUnits = { {
-        { "kg*mm^-1*s^-1", 1.0    },
-        { "kg*m^-1*s^-1",  1.0e-3 },
-        { "Pa*s",          1.0e-3 },
-        { "mPa*s",         1.0e-6 }
+        { "Pa*s",           1.0    },
+        { "kg*m^-1*s^-1",   1.0    },
+        { "kg*mm^-1*s^-1",  1000.0 },
+        { "mPa*s",          1.0e-3 }
     } };
 
     inline constexpr std::array<UnitOption, 2> densityUnits = { {
-        { "kg/mm^3", 1.0    },
-        { "kg/m^3",  1.0e-9 }
+        { "kg/m^3",   1.0    },
+        { "kg/mm^3",  1.0e9  }
     } };
 
     inline constexpr std::array<UnitOption, 4> diffusionCoefficientUnits = { {
-        { "mm^2/s", 1.0     },
-        { "m^2/s",  1.0e6   },
-        { "cm^2/s", 1.0e2   },
-        { "um^2/s", 1.0e-6  }
+        { "m^2/s",   1.0     },
+        { "mm^2/s",  1.0e-6  },
+        { "cm^2/s",  1.0e-4  },
+        { "um^2/s",  1.0e-12 }
     } };
 
     inline constexpr std::array<UnitOption, 3> lengthUnits = { {
-        {"mm",	1.0},
-        {"m",	1000.0},
-        {"um",	0.001}
+        { "m",   1.0    },
+        { "mm",  1.0e-3 },
+        { "um",  1.0e-6 }
     } };
 
-    inline constexpr std::array<UnitOption, 3> timeUnits = { {
-        {"s",	1.0},
-        {"min", 1.0}
+    inline constexpr std::array<UnitOption, 2> timeUnits = { {
+        { "s",    1.0  },
+        { "min",  60.0 }
     } };
 
 }

@@ -11,6 +11,12 @@ namespace BoundaryDefaults {
 		BoundaryVariable var
 	);
 
+	// given a boundary variable and boundary type, get all the allowed BCTypes
+	std::vector<BCType> getAllowedBCType(
+		const BoundaryVariable& var,
+		const BoundaryType& type
+	);
+
 	double getDefaultBCValue(
 		BoundaryType boundaryType,
 		BoundaryVariable var

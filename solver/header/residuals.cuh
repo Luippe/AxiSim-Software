@@ -5,7 +5,6 @@
 #include "boundary_struct.h"
 
 struct ResidualPairs {
-	FVMeshDevice fvMesh;
 	Coefficients coeff;
 	const double* x = nullptr;
 };
@@ -14,17 +13,18 @@ __global__
 void continuityResidual(FVMeshDevice mesh, ConfigSolver config, Coefficients coeff, VariablesSimple simple);
 
 
+
 template <typename... Systems>
 __global__
-void residualAll(Systems...systems) {
+void residualAll(FVMeshDevice mesh, Systems...systems) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
-	(residualRaw(systems, n), ...);
+	(residualRaw(mesh, systems, n), ...);
 
 }
 
 __device__
-void residualRaw(ResidualPairs& pairs, int n);
+void residualRaw(const FVMeshDevice& mesh, ResidualPairs& pairs, int n);
 
 template <typename... Coefficients>
 void residualAllHost(ConfigResidual& configResidual, Coefficients&...coeff) {

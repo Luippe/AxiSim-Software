@@ -16,7 +16,6 @@ public:
 	Solver(SceneView& scene, Config& config);
 	
 	const char* boundaryType[4] = { "Wall", "Velocity Inlet", "Pressure Outlet", "Symmetry"};
-	const char* fieldType[5] = { "Axial Velocity", "Radial Velocity", "Pressure", "Concentration", "Temperature"};
 	const char* residualType[3] = { "Raw Residual", "RMS", "Custom Residual"};
 	const char* residualNormType[3] = { "L1 Norm", "L2 Norm", "Linf Norm" };
 	const char* residualScalingType[3] = { "None", "N", "sqrt(N)" };
@@ -26,6 +25,11 @@ public:
 	const char* bcInletTypeNames[3]{ "Constant", "Flux", "Fully Developed" };
 	const char* convectionDiscretizationType[3] = { "First Order Upwind", "Central Difference", "Second Order Upwind"};
 	const char* residualPlotType[6] = { "U", "V", "P", "Continuity", "Temperature", "Concentration" };
+	std::vector<std::string> fieldType = {
+		"Axial Velocity",
+		"Radial Velocity",
+		"Pressure"
+	};
 
 	VelocitySolverType currentVelocitySolver = SOLVER_SIMPLE;
 	ResidualType currentResidual = RESIDUAL_RAW;
@@ -35,7 +39,6 @@ public:
 
 	bool addConvectionTerm = false;
 	bool transient = false;
-	bool energyEquation = false;
 	int saveKeyFrameIter = 2;
 
 	std::thread solverThread;
@@ -72,6 +75,7 @@ public:
 	SolutionField vSol;
 	SolutionField pSol;
 	SolutionField concSol;
+	SolutionField tempSol;
 
 	// fvMesh
 	FVMesh fvMesh;
@@ -92,10 +96,18 @@ public:
 
 private:
 
+	// store all the coeffs which will be printed
+	std::vector<ResidualPrintItem> residualsToPrint;
+
 	int currentIteration = 0;
 	// check if the solver can run
 	bool runCheck();
-	Coefficients uCoeff, vCoeff, ppCoeff, massFluxCoeff;
+
+	void createResidualPrintItems();
+
+	void addFieldType();
+
+	Coefficients uCoeff, vCoeff, ppCoeff, massFluxCoeff, tempCoeff;
 	MemoryConfig mem;
 
 };

@@ -61,6 +61,10 @@ glm::vec2 getNormalizedDeviceCoords(float xpos, float ypos, int width, int heigh
 	return glm::vec2(x, y);
 }
 
+glm::mat4 scaleMat4(const glm::mat4& mat, double scale) {
+	return glm::scale(mat, glm::vec3(scale));
+}
+
 std::string toLower(std::string str) {
 	for (char& c : str) {
 		c = (char)std::tolower((unsigned char)c);

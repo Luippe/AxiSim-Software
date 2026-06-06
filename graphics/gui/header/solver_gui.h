@@ -23,11 +23,7 @@ private:
 
 	void drawFieldCheckbox();
 
-	void drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc);
-
-	std::vector<BoundaryVariable> getPhysicsValueLeaves(
-		const BoundarySegmentGroup& group
-	) const;
+	void drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc, BoundaryType type);
 
 	BoundaryCondition& getOrCreateBC(
 		BoundarySegmentGroup& group,

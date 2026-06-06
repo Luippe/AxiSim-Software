@@ -14,9 +14,6 @@ enum class BoundaryVariable : uint8_t {
 	StaticTemperature,
 	Concentration,
 
-	TurbulenceIntensity,
-	TurbulentViscosityRatio,
-
 	None
 };
 
@@ -37,6 +34,7 @@ enum BCType {
 	FULLY_DEVELOPED,
 	NONE
 };
+
 
 struct BoundaryCondition {
 	BCType type = DIRICHLET;

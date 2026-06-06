@@ -104,8 +104,6 @@ void createPPCoeff(
 	}
 }
 
-
-
 __global__
 void computePressureGradient(
 	FVMeshDevice mesh,
@@ -202,6 +200,7 @@ void createMomentumPressureRhs(
 
 	uCoeff.b[n] += -volume * gradPZ;
 	vCoeff.b[n] += -volume * gradPR;
+
 }
 
 __global__
@@ -300,7 +299,6 @@ void updateMassFlux(
 
 		double dPN = getDistanceCellToCell(mesh, owner, neighbor, normalZ, normalR);
 
-
 		if (dPN <= 1.0e-30) return;
 
 		double ppP = simple.pp[owner];
@@ -337,25 +335,3 @@ void updateMassFlux(
 	}
 }
 
-__global__
-void underRelaxEquation(
-	FVMeshDevice mesh,
-	Coefficients coeff,
-	const double* x,
-	double alpha
-) {
-	int n = blockIdx.x * blockDim.x + threadIdx.x;
-
-	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) return;
-
-	if (alpha <= 0.0 || alpha > 1.0) return;
-
-	double AC_old = coeff.AC[n];
-
-	if (fabs(AC_old) < 1.0e-30) return;
-
-	coeff.AC[n] = AC_old / alpha;
-
-	coeff.b[n] += ((1.0 - alpha) / alpha) * AC_old * x[n];
-}

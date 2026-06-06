@@ -20,5 +20,8 @@ glm::quat getQuat(glm::vec3 A, glm::vec3 B);
 // convert given mouse coordinates to device coordinates
 glm::vec2 getNormalizedDeviceCoords(float xpos, float ypos, int width, int height);
 
+// scale mat4 by some value
+glm::mat4 scaleMat4(const glm::mat4& mat, double scale);
+
 // converts a string to lower case
 std::string toLower(std::string str);

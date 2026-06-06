@@ -77,6 +77,14 @@ __device__
 double faceValue(double phiC, double phiF, double dFf, double dFC);
 
 __global__
+void addEnergyDiffusionCoefficient(
+	ConfigSolver config,
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	BoundaryFieldDevice bc
+);
+
+__global__
 void addDiffusionCoefficient(
 	ConfigSolver config,
 	FVMeshDevice mesh,
@@ -101,3 +109,11 @@ void addMomentumConvectionCoefficient(
 
 __global__
 void clearCoefficients(Coefficients coeff);
+
+__global__
+void underRelaxEquation(
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	const double* x,
+	double alpha
+);

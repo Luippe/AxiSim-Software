@@ -2,9 +2,7 @@
 
 #include "tinyfiledialogs.h"
 
-#include "solver.h"
-#include "mesh.h"
-#include "results.h"
+#include "scene_view.h"
 
 #include "solver_struct.h"
 #include "boundary_struct.h"
@@ -181,7 +179,7 @@ void saveFromPathSolver(const char* path, Solver& solver) {
 
 	std::ofstream out(path, std::ios::binary);
 
-	saveBinary(out, solver.varUnits, solver.fieldOption);
+	saveBinary(out, solver.varUnits, solver.fieldOption, solver.enabledResiduals);
 	saveBinary(out, 
 		solver.linearSolverConfig, 
 		solver.currentVelocitySolver,
@@ -213,7 +211,7 @@ void loadFromPathSolver(const char* path, Solver& solver) {
 
 	std::ifstream in(path, std::ios::binary);
 
-	readBinary(in, solver.varUnits, solver.fieldOption);
+	readBinary(in, solver.varUnits, solver.fieldOption, solver.enabledResiduals);
 	readBinary(in,
 		solver.linearSolverConfig,
 		solver.currentVelocitySolver,
@@ -249,40 +247,60 @@ void saveLaunchSolver(Solver& solver) {
 	saveFromPathSolver(path, solver);
 }
 
-//void saveFromExplorerResults(Results& results) {
-//	const char* path = "openAtLaunchResults.bin";
-//	saveFromPathResults(path, results);
-//}
+// ====================================================
+// -------------------REUSLTS--------------------------
+// ====================================================
+void saveFromPathResults(const char* path, const Results& results) {
 
-//void saveLaunchResults(Results& results) {
-//	const char* path = "openAtLaunchResults.bin";
-//	if (!path) return;
-//	saveFromPathMesh(path, results);
-//}
+	std::ofstream out(path, std::ios::binary);
 
-void loadAtLaunch(Mesh& mesh, Solver& solver, Results& results) {
+	//saveBinary(out, )
+	out.close();
+
+}
+
+void saveFromExplorerResults(Results& results) {
+	const char* path = "openAtLaunchResults.bin";
+	saveFromPathResults(path, results);
+}
+
+void saveLaunchResults(Results& results) {
+	const char* path = "openAtLaunchResults.bin";
+	if (!path) return;
+	saveFromPathResults(path, results);
+}
+
+void loadAtLaunch(SceneView& scene, const char* target) {
 
 	const char* meshFile = "openAtLaunchMesh.bin";
 	const char* solverFile = "openAtLaunchSolver.bin";
 	const char* resultsFile = "openAtLaunchResults.bin";
 
 	// load mesh file if it exists
-	{
+	if (target == "mesh") {
 		std::ifstream in(meshFile, std::ios::binary);
 		if (in) {
-			loadFromPathMesh(meshFile, mesh);
+			loadFromPathMesh(meshFile, scene.mesh);
 
-			mesh.updateAfterLoadingFile();
+			scene.mesh.updateAfterLoadingFile();
 		}
 	}
 
 	// load solver file if it exists
-	{
+	if (target == "solver") {
 		std::ifstream in(solverFile, std::ios::binary);
 		if (in) {
-			loadFromPathSolver(solverFile, solver);
+			loadFromPathSolver(solverFile, scene.solver);
 		}
 	}
+
+	// load solver file if it exists
+	//{
+	//	std::ifstream in(resultsFile, std::ios::binary);
+	//	if (in) {
+	//		loadFromPathResults(resultsFile, solver);
+	//	}
+	//}
 }
 
 void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc) {
@@ -299,10 +317,6 @@ void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc) {
 	in.read((char*)&bc.value, sizeof(bc.value));
 
 	bc.type = (BCType)(type);
-}
-
-void readOneBoundaryCondition(std::ifstream& in) {
-
 }
 
 std::ofstream openBinaryFile(const char* path) {

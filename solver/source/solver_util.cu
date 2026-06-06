@@ -552,6 +552,106 @@ double secondOrderUpwindCorrection(double F, double phiLL, double phiL, double p
 // ==================DIFFUSION TERM==============================
 // ==============================================================
 __global__
+void addEnergyDiffusionCoefficient(
+	ConfigSolver config,
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	BoundaryFieldDevice bc
+) {
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (n >= mesh.cells.nCells) return;
+	if (!mesh.cells.active[n]) return;
+
+	const FluidPropertyConfig& f = config.f;
+
+	double k = f.k;
+	double cp = f.cp;
+	double rho = f.rho;
+	double thermDiffusivity = k / (rho * cp);
+
+	double* AC = coeff.AC;
+	double* AE = coeff.AE;
+	double* AW = coeff.AW;
+	double* AN = coeff.AN;
+	double* AS = coeff.AS;
+	double* b = coeff.b;
+
+	int nz = mesh.nz;
+	int start = mesh.cells.faceStart[n];
+	int end = mesh.cells.faceStart[n + 1];
+
+	for (int k = start; k < end; k++) {
+
+		int faceID = mesh.cells.faceIDs[k];
+
+		int owner = mesh.faces.owner[faceID];
+		int neighbor = mesh.faces.neighbor[faceID];
+
+		double area = mesh.faces.area[faceID];
+
+		double normalZ, normalR;
+		getOutwardNormalForCell(mesh, n, faceID, normalZ, normalR);
+
+
+		// ------------------------------------------------------------
+		// Interior face
+		// ------------------------------------------------------------
+		if (neighbor >= 0) {
+
+			int nb = (owner == n) ? neighbor : owner;
+
+			double dPN = getDistanceCellToCell(mesh, n, nb, normalZ, normalR);
+
+			if (dPN <= 0.0) continue;
+
+			double K = thermDiffusivity * area / dPN;
+
+			// Add diagonal contribution
+			AC[n] += K;
+
+			addStructuredNeighborCoeff(n, nb, nz, -K, coeff);
+
+		}
+
+		// ------------------------------------------------------------
+		// Boundary face
+		// ------------------------------------------------------------
+		else {
+
+			int groupID = mesh.faces.boundaryGroupID[faceID];
+
+			if (groupID < 0 || groupID >= bc.nGroups) {
+				// Unassigned boundary face.
+				// Usually you should avoid this by assigning all boundary faces
+				// to a boundary group.
+				continue;
+			}
+
+			uint8_t bcType = bc.typeByGroup[groupID];
+			double bcValue = bc.valueByGroup[groupID];
+
+			double dPF = getDistanceCellToFace(mesh, n, faceID, normalZ, normalR);
+
+			if (dPF <= 0.0) continue;
+
+			double K = thermDiffusivity * area / dPF;
+
+			if (isDirichletType(bcType)) {
+				AC[n] += K;
+				b[n] += K * bcValue;
+			}
+			else if (isNeumannType(bcType)) {
+				// For zero-gradient Neumann, bcValue = 0, so this adds nothing.
+				// If bcValue = du/dn, then this adds prescribed diffusive flux.
+
+				b[n] += thermDiffusivity * area * bcValue;
+			}
+		}
+	}
+}
+
+__global__
 void addDiffusionCoefficient(
 	ConfigSolver config,
 	FVMeshDevice mesh,
@@ -635,38 +735,10 @@ void addDiffusionCoefficient(
 			double K = mu * area / dPF;
 
 			if (isDirichletType(bcType)) {
-				//if (n == 0) {
-				//	printf(
-				//		"n=%d faceID=%d groupID=%d normal=(%f,%f) area=%e K=%e bcType=%d bcValue=%f\n",
-				//		n,
-				//		faceID,
-				//		groupID,
-				//		nzHat,
-				//		nrHat,
-				//		area,
-				//		K,
-				//		(int)bcType,
-				//		bcValue
-				//	);
-				//}
 				AC[n] += K;
 				b[n] += K * bcValue;
 			}
 			else if (isNeumannType(bcType)) {
-				//if (n == 0) {
-				//	printf(
-				//		"n=%d faceID=%d groupID=%d normal=(%f,%f) area=%e K=%e bcType=%d bcValue=%f\n",
-				//		n,
-				//		faceID,
-				//		groupID,
-				//		nzHat,
-				//		nrHat,
-				//		area,
-				//		K,
-				//		(int)bcType,
-				//		bcValue
-				//	);
-				//}
 				// For zero-gradient Neumann, bcValue = 0, so this adds nothing.
 				// If bcValue = du/dn, then this adds prescribed diffusive flux.
 
@@ -949,4 +1021,28 @@ void clearCoefficients(Coefficients coeff) {
 	coeff.b[n] = 0.0;
 	coeff.res[n] = 0.0;
 
+}
+
+
+__global__
+void underRelaxEquation(
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	const double* x,
+	double alpha
+) {
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (n >= mesh.cells.nCells) return;
+	if (!mesh.cells.active[n]) return;
+
+	if (alpha <= 0.0 || alpha > 1.0) return;
+
+	double AC_old = coeff.AC[n];
+
+	if (fabs(AC_old) < 1.0e-30) return;
+
+	coeff.AC[n] = AC_old / alpha;
+
+	coeff.b[n] += ((1.0 - alpha) / alpha) * AC_old * x[n];
 }
