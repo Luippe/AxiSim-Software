@@ -169,6 +169,57 @@ std::array<MeshEdge, 4> MeshInspector::getCellEdges(int i, int j) const {
 	};
 }
 
+void MeshInspector::setGroupTotalLength(BoundarySegmentGroup& group) {
+
+	double totalLength = 0.0;
+
+	for (const int& id : group.segmentIDs) {
+		
+		BoundarySegment* seg = mesh.getBoundarySegmentByID(id);
+
+		double r0 = g.rFace[seg->a.i];
+		double z0 = g.zFace[seg->a.j];
+
+		double r1 = g.rFace[seg->b.i];
+		double z1 = g.zFace[seg->b.j];
+
+		totalLength += abs(r0 - r1);
+		totalLength += abs(z0 - z1);
+
+	}
+	printFloat(totalLength);
+	group.totalLength = totalLength;
+
+}
+
+void MeshInspector::setGroupOrientation(BoundarySegmentGroup& group) {
+
+	bool hasVertical = false;
+	bool hasHorizontal = false;
+
+	for (const MeshEdge& edge : group.edges) {
+
+		if (edge.orient == EdgeOrient::Horizontal) {
+			hasHorizontal = true;
+		}
+		else if (edge.orient == EdgeOrient::Vertical) {
+			hasVertical = true;
+		}
+
+		if (hasHorizontal && hasVertical) {
+			group.includesOrientation = EdgeOrient::Both;
+			return;
+		}
+	}
+
+	if (hasHorizontal) {
+		group.includesOrientation = EdgeOrient::Horizontal;
+	}
+	else if (hasVertical) {
+		group.includesOrientation = EdgeOrient::Vertical;
+	}
+}
+
 void MeshInspector::fillBoundaryGroupEdges(BoundarySegmentGroup& group) {
 	group.edges.clear();
 
@@ -991,6 +1042,8 @@ void MeshInspector::drawPopup() {
 		if (drawNamingPopup("Naming Segment", *pendingBoundaryGroup, mesh.boundaryGroups)) {
 
 			fillBoundaryGroupEdges(*pendingBoundaryGroup);
+			setGroupOrientation(*pendingBoundaryGroup);
+			setGroupTotalLength(*pendingBoundaryGroup);
 
 			printf(
 				"new group edge count = %zu\n",

@@ -744,6 +744,10 @@ void addDiffusionCoefficient(
 
 				b[n] += mu * area * bcValue;
 			}
+			else if (isFullyDevelopedType(bcType)) {
+				//AC[n] += K;
+				//b[n] += K * bcValue * (1 - (;
+			}
 		}
 	}
 }

@@ -74,6 +74,12 @@ private:
 	bool isDomainBoundaryEdge(const MeshEdge& e) const;
 	bool domainEdgeTouchesSolid(const MeshEdge& e, const std::unordered_set<int>& obstacleIndices) const;
 
+	// set group total length
+	void setGroupTotalLength(BoundarySegmentGroup& group);
+
+	// finds what orientation the group includes in its edges vector
+	void setGroupOrientation(BoundarySegmentGroup& group);
+
 	// render the preview onto fbo
 	void renderPreview();
 

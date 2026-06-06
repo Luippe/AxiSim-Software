@@ -259,7 +259,6 @@ void Solver::runSimple() {
 
     bool solveEnergy = fieldOption.solveEnergy;
 
-
     // create configs for solver and residual
     ConfigSolver configSolver{ g, f, addConvectionTerm, transient, dt};
     ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
@@ -269,7 +268,6 @@ void Solver::runSimple() {
 	FVMeshDevice fvMeshDevice = createFVMeshDevice(fvMesh);
 	BoundarySolverDevice bcDevice = createBoundarySolverDevice(scene.mesh.boundaryGroups, fieldOption);
 
-    // initialize residuals
 
     // allocate memory
     if (!solutionReady || !continueSolver) {

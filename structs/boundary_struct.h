@@ -4,7 +4,7 @@
 #include <cstdint>     // std::uint8_t
 #include <functional>  // std::hash
 #include <string>	   // std::string
-
+#include <unordered_map>
 
 enum class BoundaryVariable : uint8_t {
 	UVelocity,
@@ -98,7 +98,8 @@ struct FVMesh {
 // ======================================================================
 enum class EdgeOrient : uint8_t {
 	Vertical,
-	Horizontal
+	Horizontal,
+	Both
 };
 
 struct MeshEdge {
@@ -175,9 +176,15 @@ struct BoundarySegmentGroup {
 	// boundary type
 	BoundaryType type = BoundaryType::WALL;
 
-	// vector of all segment IDs in this group
+	// vector of all segment IDs and edges
 	std::vector<int> segmentIDs;
 	std::vector<MeshEdge> edges;
+
+	// edge orientation for this group
+	EdgeOrient includesOrientation = EdgeOrient::Horizontal;
+
+	// length of group (total length of all edges)
+	float totalLength = 0.0f;
 
 	// each group stores
 	std::unordered_map<

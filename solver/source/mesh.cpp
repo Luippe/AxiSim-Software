@@ -285,6 +285,8 @@ std::vector<FVCell> createFVCells(
 	return cells;
 }
 
+
+
 FVMesh Mesh::createStructuredMesh(const std::vector<uint8_t>& activeCell) {
 
 	FVMesh mesh;
@@ -315,6 +317,7 @@ FVMesh Mesh::createStructuredMesh(const std::vector<uint8_t>& activeCell) {
 	mesh.nz = g.nz;
 	mesh.faces = std::move(faces);
 	mesh.cells = std::move(cells);
+
 
 	return mesh;
 }
@@ -438,6 +441,8 @@ std::optional<BoundarySegmentGroup> Mesh::createBoundaryGroupFromSelection() {
 		selectedBoundaryIDs.begin(),
 		selectedBoundaryIDs.end()
 	);
+
+
 
 	std::snprintf(
 		group.nameBuffer,
