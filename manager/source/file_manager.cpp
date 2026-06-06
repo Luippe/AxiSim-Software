@@ -22,13 +22,15 @@ void writeBoundarySegmentGroup(std::ofstream& out, const BoundarySegmentGroup& g
 	//printInt(group.type);
 
 	writeAll(out, 
-		group.id, 
-		group.name, 
+		group.id,
+		group.name,
 		group.nameBuffer,
+		group.type,
 		group.segmentIDs,
 		group.edges,
-		group.bcs,
-		group.type);
+		group.includesOrientation,
+		group.totalLength,
+		group.bcs);
 
 }
 
@@ -50,10 +52,12 @@ void readBoundarySegmentGroup(std::ifstream& in, BoundarySegmentGroup& group) {
 		group.id,
 		group.name,
 		group.nameBuffer,
+		group.type,
 		group.segmentIDs,
 		group.edges,
-		group.bcs,
-		group.type);
+		group.includesOrientation,
+		group.totalLength,
+		group.bcs);
 
 }
 

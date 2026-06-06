@@ -4,13 +4,13 @@
 namespace BoundaryDefaults {
 
 	BoundaryCondition makeDefaultBC(
-		BoundaryType boundaryType,
-		BoundaryVariable var
+		const BoundarySegmentGroup& group,
+		const BoundaryVariable& var
 	) {
 		BoundaryCondition bc{};
 		bc.enabled = true;
-		bc.type = getDefaultBCType(boundaryType, var);
-		bc.value = getDefaultBCValue(boundaryType, var);
+		bc.type = getDefaultBCType(group.type, var);
+		bc.value = getDefaultBCValue(group.type, var);
 
 		return bc;
 	}
@@ -112,16 +112,33 @@ namespace BoundaryDefaults {
 
 	std::vector<BCType> getAllowedBCType(
 		const BoundaryVariable& var,
-		const BoundaryType& type
+		const BoundarySegmentGroup& group
 	) {
 
-		switch (type) {
+		switch (group.type) {
 
 		case BoundaryType::VELOCITY_INLET:
 			switch (var) {
 			case BoundaryVariable::UVelocity:
-				return { BCType::DIRICHLET, BCType::FULLY_DEVELOPED};
+				switch (group.includesOrientation) {
+				case EdgeOrient::Vertical:
+					return { BCType::DIRICHLET, BCType::FULLY_DEVELOPED };
+				case EdgeOrient::Horizontal:
+					return { BCType::DIRICHLET };
+				default:
+					return { BCType::NONE };
+				}
+
 			case BoundaryVariable::VVelocity:
+				switch (group.includesOrientation) {
+				case EdgeOrient::Horizontal:
+					return { BCType::DIRICHLET, BCType::FULLY_DEVELOPED };
+				case EdgeOrient::Vertical:
+					return { BCType::DIRICHLET };
+				default:
+					return { BCType::NONE };
+				}
+
 			case BoundaryVariable::StaticTemperature:
 			case BoundaryVariable::Concentration:
 				return { BCType::DIRICHLET };
@@ -161,11 +178,33 @@ namespace BoundaryDefaults {
 
 		case BoundaryType::SYMMETRY:
 			switch (var) {
+			case BoundaryVariable::UVelocity:
+
+				switch (group.includesOrientation) {
+				case EdgeOrient::Vertical:
+					return { BCType::DIRICHLET };
+				case EdgeOrient::Horizontal:
+					return { BCType::NEUMANN };
+				case EdgeOrient::Both:
+					return { BCType::NONE };
+				default:
+					return { BCType::NONE };
+				}
+
 			case BoundaryVariable::VVelocity:
-				return { BCType::DIRICHLET }; // normal velocity = 0, depending on orientation
+				switch (group.includesOrientation) {
+				case EdgeOrient::Horizontal:
+					return { BCType::DIRICHLET };
+				case EdgeOrient::Vertical:
+					return { BCType::NEUMANN };
+				case EdgeOrient::Both:
+					return { BCType::NONE };
+				}
+				return { BCType::NONE };
+
 			case BoundaryVariable::StaticTemperature:
 				return { BCType::DIRICHLET, BCType::NEUMANN };
-			case BoundaryVariable::UVelocity:
+
 			case BoundaryVariable::Pressure:
 			case BoundaryVariable::Concentration:
 				return { BCType::NEUMANN };

@@ -14,7 +14,7 @@ namespace BoundaryDefaults {
 	// given a boundary variable and boundary type, get all the allowed BCTypes
 	std::vector<BCType> getAllowedBCType(
 		const BoundaryVariable& var,
-		const BoundaryType& type
+		const BoundarySegmentGroup& group
 	);
 
 	double getDefaultBCValue(
@@ -23,8 +23,8 @@ namespace BoundaryDefaults {
 	);
 
 	BoundaryCondition makeDefaultBC(
-		BoundaryType boundaryType,
-		BoundaryVariable var
+		const BoundarySegmentGroup& group,
+		const BoundaryVariable& var
 	);
 
 	bool isVariableInBoundaryType(

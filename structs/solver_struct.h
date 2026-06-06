@@ -193,7 +193,7 @@ struct VariablesSimple {
 	double* gradPR = nullptr;
 
 	double momentumRelaxation = 0.7;
-	double correctionRelaxation = 1.0;
+	double correctionRelaxation = 1.7;
 	double pressureRelaxation = 0.3;
 
 	double* mDot = nullptr;
@@ -367,6 +367,7 @@ struct FVMeshHostPacked {
 
 struct BoundaryFieldDevice {
 	uint8_t* typeByGroup = nullptr;
+	double* lengthByGroup = nullptr;
 	double* valueByGroup = nullptr;
 	int nGroups = 0;
 };
@@ -382,4 +383,5 @@ struct BoundarySolverDevice {
 struct BoundaryFieldHost {
 	std::vector<uint8_t> typeByGroup;
 	std::vector<double> valueByGroup;
+	std::vector<double> lengthByGroup;
 };

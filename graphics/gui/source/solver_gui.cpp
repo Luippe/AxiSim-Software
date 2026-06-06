@@ -65,7 +65,7 @@ BoundaryCondition& SolverGUI::getOrCreateBC(
 	}
 
 	BoundaryCondition bc =
-		BoundaryDefaults::makeDefaultBC(group.type, variable);
+		BoundaryDefaults::makeDefaultBC(group, variable);
 
 	auto [newIt, inserted] = group.bcs.emplace(variable, bc);
 
@@ -115,11 +115,11 @@ const char* bcTypeToString(BCType type) {
 bool createBCTypeCombo(
 	const char* label,
 	const BoundaryVariable selectedVar,
-	const BoundaryType& type,
-	BoundaryCondition& bc
+	BoundaryCondition& bc,
+	BoundarySegmentGroup& group
 ) {
 
-	std::vector<BCType> allowedBCTypes = BoundaryDefaults::getAllowedBCType(selectedVar, type);
+	std::vector<BCType> allowedBCTypes = BoundaryDefaults::getAllowedBCType(selectedVar, group);
 
 	bool changed = false;
 
@@ -159,7 +159,7 @@ bool createBCTypeCombo(
 	return changed;
 }
 
-void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc, BoundaryType type) {
+void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc, BoundarySegmentGroup& group) {
 
 	ImGui::SeparatorText(boundaryVariableToString(var));
 
@@ -177,22 +177,22 @@ void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryConditi
 		labelRow(label);
 		switch (var) {
 		case BoundaryVariable::UVelocity:
-			createBCTypeCombo("##UVelocity", var, type, bc);
+			createBCTypeCombo("##UVelocity", var, bc, group);
 			ImGui::TableNextColumn();
 			inputDoubleWithUnits("U Velocity", bc.value, varUnits.axialUnit, Units::velocityUnits);
 			break;
 		case BoundaryVariable::VVelocity:
-			createBCTypeCombo("##VVelocity", var, type, bc);
+			createBCTypeCombo("##VVelocity", var, bc, group);
 			ImGui::TableNextColumn();
 			inputDoubleWithUnits("V Velocity", bc.value, varUnits.radialUnit, Units::velocityUnits);
 			break;
 		case BoundaryVariable::Pressure:
-			createBCTypeCombo("##Pressure", var, type, bc);
+			createBCTypeCombo("##Pressure", var, bc, group);
 			ImGui::TableNextColumn();
 			inputDoubleWithUnits("Pressure", bc.value, varUnits.pressureUnit, Units::pressureUnits);
 			break;
 		case BoundaryVariable::StaticTemperature:
-			createBCTypeCombo("##StaticTemperature", var, type, bc);
+			createBCTypeCombo("##StaticTemperature", var, bc, group);
 			ImGui::TableNextColumn();
 			inputDoubleWithUnits("Static Temperature", bc.value, varUnits.temperatureUnit, Units::temperatureUnits);
 			break;
@@ -298,7 +298,7 @@ void SolverGUI::drawPropertiesPanel() {
 		if (group) {
 			BoundaryCondition& bc = getOrCreateBC(*group, selectedBoundaryVariable);
 
-			drawBoundaryVariableEditor(selectedBoundaryVariable, bc, group->type);
+			drawBoundaryVariableEditor(selectedBoundaryVariable, bc, *group);
 		}
 	}
 	else if (selectedItem == "Boundary Group") {

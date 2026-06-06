@@ -44,6 +44,7 @@ BoundaryFieldHost createBoundaryFieldHost(
 
 	h.typeByGroup.resize(nGroups, (uint8_t)(BCType::NONE));
 	h.valueByGroup.resize(nGroups, 0.0);
+	h.lengthByGroup.resize(nGroups, 0.0);
 
 	for (const BoundarySegmentGroup& group : boundaryGroups) {
 		if (group.id < 0) {
@@ -52,7 +53,7 @@ BoundaryFieldHost createBoundaryFieldHost(
 
 		// make default bc. if the bc already exists, replace the bc and use that instead
 		BoundaryCondition bc =
-			BoundaryDefaults::makeDefaultBC(group.type, variable);
+			BoundaryDefaults::makeDefaultBC(group, variable);
 
 		// find boundary variable inside the group, if it is, check if we should use the user specified or default value
 		auto it = group.bcs.find(variable);		
@@ -70,6 +71,9 @@ BoundaryFieldHost createBoundaryFieldHost(
 
 		h.valueByGroup[group.id] =
 			bc.value;
+
+		h.lengthByGroup[group.id] =
+			group.totalLength;
 	}
 
 	return h;
@@ -84,6 +88,7 @@ BoundaryFieldDevice createBoundaryFieldDevice(
 
 	copyHostToDevice(d.typeByGroup, h.typeByGroup);
 	copyHostToDevice(d.valueByGroup, h.valueByGroup);
+	copyHostToDevice(d.lengthByGroup, h.lengthByGroup);
 
 	return d;
 }

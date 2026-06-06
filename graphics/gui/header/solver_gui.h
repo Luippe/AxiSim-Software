@@ -23,7 +23,7 @@ private:
 
 	void drawFieldCheckbox();
 
-	void drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc, BoundaryType type);
+	void drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc, BoundarySegmentGroup& type);
 
 	BoundaryCondition& getOrCreateBC(
 		BoundarySegmentGroup& group,

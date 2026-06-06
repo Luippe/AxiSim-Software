@@ -226,6 +226,21 @@ double getNormalCorrectionCoeff(
 }
 
 __device__
+double getFaceCenterAlongOrientation(
+	FVMeshDevice mesh,
+	int faceID
+) {
+	double normalZ = mesh.faces.normalZ[faceID];
+	double normalR = mesh.faces.normalR[faceID];
+
+	double zF = mesh.faces.centerZ[faceID];
+	double rF = mesh.faces.centerR[faceID];
+
+	return rF * normalZ * normalZ
+		+ zF * normalR * normalR;
+}
+
+__device__
 double interpolateNormalCorrectionCoeffToFace(
 	int cellID,
 	int faceID,
@@ -727,6 +742,7 @@ void addDiffusionCoefficient(
 
 			uint8_t bcType = bc.typeByGroup[groupID];
 			double bcValue = bc.valueByGroup[groupID];
+			double totalLength = bc.lengthByGroup[groupID];
 
 			double dPF = getDistanceCellToFace(mesh, n, faceID, normalZ, normalR);
 
@@ -745,8 +761,9 @@ void addDiffusionCoefficient(
 				b[n] += mu * area * bcValue;
 			}
 			else if (isFullyDevelopedType(bcType)) {
-				//AC[n] += K;
-				//b[n] += K * bcValue * (1 - (;
+				double length = getFaceCenterAlongOrientation(mesh, faceID);
+				AC[n] += K;
+				b[n] += K * bcValue * (1 - ((length * length) / (totalLength * totalLength)));
 			}
 		}
 	}
