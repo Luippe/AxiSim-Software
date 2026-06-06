@@ -66,7 +66,7 @@ void MeshGUI::drawBoundaryGroupGUI() {
 
 	ImGui::Text("Group ID: %d", selectedGroup->id);
 	ImGui::Text("Number of boundary edges: %zu", selectedGroup->edges.size());
-
+	ImGui::Text("Total Length: %g", selectedGroup->totalLength);
 	ImGui::Spacing();
 
 	drawTableHeader("Edges");

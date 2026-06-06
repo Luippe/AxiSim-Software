@@ -28,6 +28,12 @@ void printInt(Args... args) {
 }
 
 template<typename... Args>
+void printBool(Args... args) {
+	(printf("%s ", args ? "true" : "false"), ...);
+	printf("\n");
+}
+
+template<typename... Args>
 void printSizeT(Args... args) {
 	(printf("%zu ", args), ...);
 	printf("\n");

@@ -59,10 +59,8 @@ private:
 	ImGuiContext* exportImGuiContext = nullptr;
 	ImPlotContext* exportImPlotContext = nullptr;
 
-
 	void drawUI();
 
-	void createAssetBuffers();
 };
 
 

@@ -330,11 +330,14 @@ void Mesh::updateAfterLoadingFile() {
 }
 
 BoundarySegment* Mesh::getBoundarySegmentByID(int id) {
+
 	for (BoundarySegment& seg : boundarySegments) {
+
 		if (seg.id == id) {
 			return &seg;
 		}
 	}
+
 	return nullptr;
 }
 
@@ -441,8 +444,6 @@ std::optional<BoundarySegmentGroup> Mesh::createBoundaryGroupFromSelection() {
 		selectedBoundaryIDs.begin(),
 		selectedBoundaryIDs.end()
 	);
-
-
 
 	std::snprintf(
 		group.nameBuffer,

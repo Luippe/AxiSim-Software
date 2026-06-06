@@ -9,6 +9,7 @@
 #include "file_manager.h"
 #include "solver_struct.h"
 #include "implot.h"
+#include "IconsFontAwesome7.h"
 
 #include "flag_manager.h"
 
@@ -25,6 +26,32 @@ void changeCursorOnHover() {
 void setContext(ImGuiContext* imguiContext, ImPlotContext* implotContext) {
 	ImGui::SetCurrentContext(imguiContext);
 	ImPlot::SetCurrentContext(implotContext);
+}
+
+// init imgui font awesome
+void initImGuiFonts() {
+
+	ImGuiIO& io = ImGui::GetIO();
+
+	io.Fonts->AddFontDefault();
+
+	ImFontConfig iconConfig;
+	iconConfig.MergeMode = true;
+	iconConfig.PixelSnapH = true;
+	iconConfig.GlyphMinAdvanceX = 13.0f;
+
+	static const ImWchar iconRanges[] = {
+		ICON_MIN_FA,
+		ICON_MAX_16_FA,
+		0
+	};
+
+	io.Fonts->AddFontFromFileTTF(
+		"assets/fonts/Font Awesome 7 Free-Solid-900.otf",
+		13.0f,
+		&iconConfig,
+		iconRanges
+	);
 }
 
 // initialize gui buffers
@@ -47,7 +74,7 @@ void initContext(ImGuiContext*& imguiContext, ImPlotContext*& implotContext, GLF
 
 }
 
-void GUI::createAssetBuffers() {
+void initAssetBuffers(AppAssets& assets) {
 
 	assets.houseIcon.createBuffer("assets/icons/house.png");
 	assets.clearIcon.createBuffer("assets/icons/circle-x.png");
@@ -109,8 +136,9 @@ GUI::GUI(GLFWwindow* window, SceneView& scene) :
 
 	setContext(mainImGuiContext, mainImPlotContext);
 
-	// initialize all icon assets
-	createAssetBuffers();
+	// initialize all fonts and icon assets
+	initImGuiFonts();
+	initAssetBuffers(assets);
 }
 
 

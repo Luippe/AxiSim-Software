@@ -128,7 +128,6 @@ void SceneView::render() {
 
 	if (currentTab == TAB_RESULTS) {
 
-
 		// load transformation matrix for solution shader
 		glm::mat4 model = scaleMat4(camera.model, sceneScale.value);
 

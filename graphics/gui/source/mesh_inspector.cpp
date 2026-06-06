@@ -174,8 +174,9 @@ void MeshInspector::setGroupTotalLength(BoundarySegmentGroup& group) {
 	double totalLength = 0.0;
 
 	for (const int& id : group.segmentIDs) {
-		
+
 		BoundarySegment* seg = mesh.getBoundarySegmentByID(id);
+
 
 		double r0 = g.rFace[seg->a.i];
 		double z0 = g.zFace[seg->a.j];
@@ -226,6 +227,7 @@ void MeshInspector::fillBoundaryGroupEdges(BoundarySegmentGroup& group) {
 	std::unordered_set<MeshEdge, MeshEdgeHash> uniqueEdges;
 
 	for (int selectedID : group.segmentIDs) {
+
 		auto it = std::find_if(
 			mesh.boundarySegments.begin(),
 			mesh.boundarySegments.end(),
@@ -728,8 +730,8 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 		handlePan(io);
 	}
 
-	if (toggleDrawCell || toggleConnecting || toggleRemoveCell || toggleRuler) return;
-
+	isPopupOpened = ImGui::IsPopupOpen("Mesh Inspector Popup");
+	if (toggleDrawCell || toggleConnecting || toggleRemoveCell || toggleRuler || isPopupOpened) return;
 
 
 
@@ -739,8 +741,8 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 
 
 	if (!hoveredId.has_value()) {
-
 		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+
 			mesh.selectedBoundaryIDs.clear();
 			mesh.highlightedBoundarySegmentIDs.clear();
 		}
@@ -777,9 +779,22 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 
 void MeshInspector::handleMouse() {
 
-	if (!ImGui::IsItemHovered()) return;
-
 	ImGuiIO& io = ImGui::GetIO();
+
+	ImVec2 imageMin = ImGui::GetItemRectMin();
+	ImVec2 imageMax = ImGui::GetItemRectMax();
+	float clickPadding = 10.0f;
+
+	ImVec2 hitMin = ImVec2(imageMin.x - clickPadding, imageMin.y - clickPadding);
+	ImVec2 hitMax = ImVec2(imageMax.x + clickPadding, imageMax.y + clickPadding);
+
+	ImVec2 mouse = ImGui::GetMousePos();
+
+	bool mouseNearImage =
+		mouse.x >= hitMin.x && mouse.x <= hitMax.x &&
+		mouse.y >= hitMin.y && mouse.y <= hitMax.y;
+
+	if (!mouseNearImage) return;
 
 	// constantly update current mouse position and mouse index (cell centered, i think)
 	currentMouseIndex = getMouseIndex(g.rFace,g.zFace);
@@ -790,9 +805,9 @@ void MeshInspector::handleMouse() {
 	handleItemButtonRemove();
 	handleCursor(io);
 
-
 	// handled regardless
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+
 		if (hoveredId.has_value() && mesh.selectedBoundaryIDs.contains(*hoveredId)) {
 			hoveringOverSelectedSegment = true;
 		}
@@ -1001,6 +1016,7 @@ void MeshInspector::drawPopup() {
 		openPopUp = false;
 	}
 
+
 	bool openNamingPopup = false;
 
 	if (ImGui::BeginPopup("Mesh Inspector Popup")) {
@@ -1015,11 +1031,13 @@ void MeshInspector::drawPopup() {
 
 		// draw naming menu item
 		if (hoveringOverSelectedSegment) {
-			if (ImGui::MenuItem("Name Segment")) {
 
+			if (ImGui::MenuItem("Name Segment")) {
+				check();
 				pendingBoundaryGroup = mesh.createBoundaryGroupFromSelection();
 
 				if (pendingBoundaryGroup) {
+
 					openNamingPopup = true;
 				}
 
@@ -1027,6 +1045,7 @@ void MeshInspector::drawPopup() {
 		}
 		ImGui::EndPopup();
 	}
+
 
 	// open naming popup
 	if (openNamingPopup) {
@@ -1039,10 +1058,13 @@ void MeshInspector::drawPopup() {
 
 	// add new boundary group
 	if (pendingBoundaryGroup) {
+		//check();
 		if (drawNamingPopup("Naming Segment", *pendingBoundaryGroup, mesh.boundaryGroups)) {
 
 			fillBoundaryGroupEdges(*pendingBoundaryGroup);
+
 			setGroupOrientation(*pendingBoundaryGroup);
+
 			setGroupTotalLength(*pendingBoundaryGroup);
 
 			printf(

@@ -61,6 +61,7 @@ private:
 	float pickRadiusPx = 12.0f;
 	std::optional<int> hoveredId;
 
+	bool isPopupOpened = false;
 	bool hoveringOverSegment = false;
 	bool hoveringOverSelectedSegment = false;
 	std::optional<BoundarySegmentGroup> pendingBoundaryGroup;

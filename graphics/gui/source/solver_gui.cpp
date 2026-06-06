@@ -3,6 +3,8 @@
 #include "mesh.h"
 #include "solver.h"
 
+#include "IconsFontAwesome7.h"
+
 #include "graphics_struct.h"
 #include "solver_struct.h"
 
@@ -162,8 +164,6 @@ bool createBCTypeCombo(
 void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc, BoundarySegmentGroup& group) {
 
 	ImGui::SeparatorText(boundaryVariableToString(var));
-
-
 
 	const char* label = boundaryVariableToString(var);
 	if (ImGui::BeginTable(label, 4)) {

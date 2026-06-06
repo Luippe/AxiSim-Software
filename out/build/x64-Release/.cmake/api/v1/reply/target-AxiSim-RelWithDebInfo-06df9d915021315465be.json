@@ -44,7 +44,7 @@
 			{
 				"command" : 2,
 				"file" : 1,
-				"line" : 182,
+				"line" : 183,
 				"parent" : 0
 			},
 			{
@@ -131,6 +131,10 @@
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/stb_image"
 				},
 				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/font_awesome"
+				},
+				{
 					"backtrace" : 3,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/clip-main"
 				},
@@ -193,7 +197,6 @@
 				29,
 				33,
 				35,
-				89,
 				90,
 				91,
 				92,
@@ -201,7 +204,8 @@
 				94,
 				95,
 				96,
-				98
+				97,
+				99
 			]
 		},
 		{
@@ -267,6 +271,10 @@
 				{
 					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/stb_image"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/font_awesome"
 				},
 				{
 					"backtrace" : 3,
@@ -374,6 +382,10 @@
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/stb_image"
 				},
 				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/font_awesome"
+				},
+				{
 					"backtrace" : 3,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/clip-main"
 				},
@@ -396,7 +408,7 @@
 			"language" : "C",
 			"sourceIndexes" : 
 			[
-				97
+				98
 			]
 		}
 	],
@@ -577,7 +589,7 @@
 			"sourceIndexes" : 
 			[
 				53,
-				97
+				98
 			]
 		},
 		{
@@ -611,14 +623,14 @@
 				72,
 				73,
 				74,
-				75
+				75,
+				76
 			]
 		},
 		{
 			"name" : "solver\\header",
 			"sourceIndexes" : 
 			[
-				76,
 				77,
 				78,
 				79,
@@ -626,50 +638,51 @@
 				81,
 				82,
 				83,
-				84
+				84,
+				85
 			]
 		},
 		{
 			"name" : "src\\header",
 			"sourceIndexes" : 
 			[
-				85
+				86
 			]
 		},
 		{
 			"name" : "structs",
 			"sourceIndexes" : 
 			[
-				86,
 				87,
-				88
+				88,
+				89
 			]
 		},
 		{
 			"name" : "graphics\\imgui",
 			"sourceIndexes" : 
 			[
-				89,
 				90,
 				91,
 				92,
-				95,
-				96
+				93,
+				96,
+				97
 			]
 		},
 		{
 			"name" : "graphics\\imgui\\backends",
 			"sourceIndexes" : 
 			[
-				93,
-				94
+				94,
+				95
 			]
 		},
 		{
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				98
+				99
 			]
 		}
 	],
@@ -1058,6 +1071,11 @@
 		{
 			"backtrace" : 2,
 			"path" : "manager/header/flag_manager.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/font_manager.h",
 			"sourceGroupIndex" : 8
 		},
 		{
