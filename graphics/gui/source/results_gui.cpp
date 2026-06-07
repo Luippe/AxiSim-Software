@@ -60,7 +60,7 @@ void ResultsGUI::drawPropertiesPanel() {
 			}
 
 			labelRow("Scale");
-			if (createComboUnit("##Unit", scene.sceneScale.index, Units::lengthUnits)) {
+			if (comboUnit("##Unit", scene.sceneScale.index, Units::lengthUnits)) {
 				scene.updateSceneScale();
 			}
 			labelRow("Value");

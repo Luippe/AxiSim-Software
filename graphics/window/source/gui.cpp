@@ -145,6 +145,80 @@ GUI::GUI(GLFWwindow* window, SceneView& scene) :
 // ======================================================================
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
+void GUI::drawStatusBar() {
+
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+	float height = 26.0f;
+
+	ImVec2 pos = ImVec2(
+		viewport->WorkPos.x,
+		viewport->WorkPos.y + viewport->WorkSize.y - height
+	);
+
+	ImVec2 size = ImVec2(
+		viewport->WorkSize.x,
+		height
+	);
+
+	ImGui::SetNextWindowPos(pos);
+	ImGui::SetNextWindowSize(size);
+
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 4));
+
+	ImGui::Begin("##MainStatusBar", nullptr, UIFlags::StatusBarWindowFlags);
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	ImVec2 winMin = ImGui::GetWindowPos();
+	ImVec2 winMax = ImVec2(
+		winMin.x + ImGui::GetWindowWidth(),
+		winMin.y + ImGui::GetWindowHeight()
+	);
+
+	// green ready dot
+	ImVec2 dotCenter = ImVec2(winMin.x + 16.0f, winMin.y + height * 0.5f);
+	drawList->AddCircleFilled(dotCenter, 5.0f, IM_COL32(50, 220, 80, 255));
+
+	ImGui::SetCursorScreenPos(ImVec2(winMin.x + 30.0f, winMin.y + 5.0f));
+	if (scene.currentTab == ViewTab::TAB_MESH) {
+
+	}
+	ImGui::TextUnformatted("Ready");
+
+	// right side info
+	const char* projectText = "Project: Untitled";
+	const char* unitsText = "Units: m";
+
+	ImVec2 projectSize = ImGui::CalcTextSize(projectText);
+	ImVec2 unitsSize = ImGui::CalcTextSize(unitsText);
+
+	float rightPad = 20.0f;
+	float gap = 24.0f;
+
+	float unitsX = winMax.x - rightPad - unitsSize.x;
+	float sepX = unitsX - gap;
+	float projectX = sepX - gap - projectSize.x;
+
+	ImGui::SetCursorScreenPos(ImVec2(projectX, winMin.y + 5.0f));
+	ImGui::TextDisabled("%s", projectText);
+
+	drawList->AddLine(
+		ImVec2(sepX, winMin.y + 5.0f),
+		ImVec2(sepX, winMax.y - 5.0f),
+		IM_COL32(80, 95, 115, 180),
+		1.0f
+	);
+
+	ImGui::SetCursorScreenPos(ImVec2(unitsX, winMin.y + 5.0f));
+	ImGui::TextDisabled("%s", unitsText);
+
+	ImGui::End();
+
+	ImGui::PopStyleVar(3);
+}
+
 void GUI::drawUI() {
 	ImGui::Begin("Project");
 	if (ImGui::BeginTabBar("Main"), UIFlags::TabBarFlags) {
@@ -188,23 +262,25 @@ void GUI::render() {
 	drawUI();
 
 	// mesh GUI render
-	if (scene.currentTab == TAB_MESH && mesh.isReady) {
+	if (scene.currentTab == ViewTab::TAB_MESH && mesh.isReady) {
 		meshInspector.render();
 	}
 
 	// solver GUI render
-	if (scene.currentTab == TAB_SOLVER) {
+	if (scene.currentTab == ViewTab::TAB_SOLVER) {
 		residualPlot.draw();
 	}
 
 	// results GUI render
-	if (scene.currentTab == TAB_RESULTS && results.isReady) {
+	if (scene.currentTab == ViewTab::TAB_RESULTS && results.isReady) {
 		inspector.render();
 
 		if (scene.solver.transient) {
 			animationGUI.render();
 		}
 	}
+
+	drawStatusBar();
 
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

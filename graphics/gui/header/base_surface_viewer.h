@@ -277,7 +277,14 @@ protected:
 	bool openPopUp = false;
 
 	// rect variables
+	struct Rect {
+		ImVec2 min;
+		ImVec2 max;
 
+		ImVec2 size() const {
+			return ImVec2(max.x - min.x, max.y - min.y);
+		}
+	};
 
 	// image dimensions
 	int imageWidth, imageHeight;
@@ -290,11 +297,22 @@ protected:
 	float u1 = 1.0f;
 	float v1 = 1.0f;
 
-	// ruler button
+
 	
 	// ======================================================================
 	// -----------------------HELPER FUNCTION--------------------------------
 	// ======================================================================
+
+	// create rect that is padded on all sides
+	Rect makePaddedRect(
+		const ImVec2& pos,
+		const ImVec2& size,
+		float left,
+		float right,
+		float top,
+		float bottom
+	);
+
 	std::optional<ImVec2> mouseToGridPoint(int nrBase, int nzBase);
 
 	void updateUV(float halfW, float halfH);
@@ -337,13 +355,30 @@ protected:
 
 	void handlePopup(const char* text);
 
-	void resizeImage(ImVec2 padding);
+	void resizeImage(const ImVec2 size);
 
 	// ======================================================================
 	// -----------------------DRAW CALLS-------------------------------------
 	// ======================================================================
+	
 	// draw rectangle when mouse is dragged
 	void displayRect(int nrBase, int nzBase);
+
+	// draws the main surface
+	void drawSurface(const Rect& rect);
+
+	// draws rectangular canvas
+	void drawCanvas(
+		ImDrawList* drawList,
+		const Rect& rect,
+		const float rounding
+	);
+
+	void drawHorizontalSeparator(
+		ImDrawList* drawList,
+		float inset = 12.0f,
+		float spacingY = 8.0f
+	);
 
 	void drawHighlightedCells(
 		ImDrawList* drawList,

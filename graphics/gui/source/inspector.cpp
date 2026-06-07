@@ -289,7 +289,19 @@ void Inspector::render() {
 
 	drawToolBar();
 
-	resizeImage(ImVec2(colorbar.width, 0.0f));
+	ImVec2 pos = ImGui::GetCursorScreenPos();
+	ImVec2 size = ImGui::GetContentRegionAvail();
+
+	Rect surfaceRect = makePaddedRect(
+		pos,
+		size,
+		0.0f,
+		colorbar.width,
+		0.0f,
+		0.0f
+	);
+
+	resizeImage(surfaceRect.size());
 	
 	renderPreview();
 

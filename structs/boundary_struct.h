@@ -164,6 +164,26 @@ struct BoundarySegment {
 
 };
 
+struct BoundarySegmentGroupMesh {
+	// stable group ID used by mesh + solver
+	int id = -1;
+
+	// naming variables
+	std::string name;
+	char nameBuffer[128] = {}; // UI only, probably do not serialize
+
+	// vector of all segment IDs and edges
+	std::vector<int> segmentIDs;
+	std::vector<MeshEdge> edges;
+
+	// edge orientation for this group
+	EdgeOrient includesOrientation = EdgeOrient::Horizontal;
+
+	// cached value; can also be recomputed instead of saved
+	float totalLength = 0.0f;
+
+};
+
 struct BoundarySegmentGroup {
 
 	// group ID
@@ -192,23 +212,6 @@ struct BoundarySegmentGroup {
 		BoundaryCondition, 
 		BoundaryVariableHash> bcs;
 
-};
-
-struct BoundaryConditionDevice {
-	uint8_t* uType = nullptr;
-	double* uValue = nullptr;
-
-	uint8_t* vType = nullptr;
-	double* vValue = nullptr;
-
-	uint8_t* pType = nullptr;
-	double* pValue = nullptr;
-
-	uint8_t* tType = nullptr;
-	double* tValue = nullptr;
-
-	uint8_t* cType = nullptr;
-	double* cValue = nullptr;
 };
 
 struct SolutionField {

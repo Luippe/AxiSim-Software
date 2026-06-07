@@ -80,16 +80,16 @@ void BaseGUI::checkBox(const char* label, bool* value) {
 	ImGui::Checkbox(label, value);
 }
 
-void BaseGUI::inputDouble(const char* label, double* value, const char* format) {
+bool BaseGUI::inputDouble(const char* label, double* value, const char* format) {
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	ImGui::AlignTextToFramePadding();
-	ImGui::InputDouble(label, value, 0.0, 0.0, format);
+	return ImGui::InputDouble(label, value, 0.0, 0.0, format);
 }
 
-void BaseGUI::inputInt(const char* label, int* value) {
+bool BaseGUI::inputInt(const char* label, int* value) {
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	ImGui::AlignTextToFramePadding();
-	ImGui::InputInt(label, value, 0.0, 0.0);
+	return ImGui::InputInt(label, value, 0.0, 0.0);
 }
 
 void BaseGUI::drawTableHeader(const char* label) {

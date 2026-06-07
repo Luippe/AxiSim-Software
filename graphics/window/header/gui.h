@@ -59,7 +59,13 @@ private:
 	ImGuiContext* exportImGuiContext = nullptr;
 	ImPlotContext* exportImPlotContext = nullptr;
 
+
+	// draw main ui on screen
 	void drawUI();
+
+	// draw status bar at the bottom of screen
+	void drawStatusBar();
+
 
 };
 

@@ -730,12 +730,9 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 		handlePan(io);
 	}
 
+	// do not run this if any of the toggled tools are active, or if a popup is opened
 	isPopupOpened = ImGui::IsPopupOpen("Mesh Inspector Popup");
 	if (toggleDrawCell || toggleConnecting || toggleRemoveCell || toggleRuler || isPopupOpened) return;
-
-
-
-
 
 
 
@@ -897,7 +894,7 @@ void MeshInspector::drawBoundarySegments(
 
 
 		ImU32 color = IM_COL32(203, 209, 224, 255);
-		float thickness = 2.0f;
+		float thickness = 3.0f;
 
 		if (hovered) {
 			color = IM_COL32(255, 255, 0, 255);
@@ -962,7 +959,6 @@ void MeshInspector::drawToolBar() {
 	ImGui::SameLine();
 
 	ImGui::EndChild();
-	ImGui::Separator();
 }
 
 void MeshInspector::drawTextAtSurfacePoint(ImDrawList* drawList) {
@@ -1117,14 +1113,6 @@ void MeshInspector::renderPreview() {
 
 	frameBuffer.unbind();
 
-	// center the image
-	ImVec2 cursor = ImGui::GetCursorPos();
-	ImGui::SetCursorPos(ImVec2(
-		cursor.x + padding.x,
-		cursor.y + padding.y
-	));
-	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
-
 }
 // ======================================================================
 // -----------------------BUILDING SEGMENTS------------------------------
@@ -1253,19 +1241,60 @@ bool MeshInspector::deleteBoundaryGroupByID(int groupID) {
 	return true;
 }
 
+void MeshInspector::drawStatusBar() {
+
+	ImGui::Text(
+		"Hello"
+	);
+
+}
+
 void MeshInspector::render() {
 	setBaseNrNz();
 
 	ImGui::Begin("Mesh Inspector");
-
 	vertexBuffer.bufferSubData(
 		mesh.gridLineVertices.size() * sizeof(float),
 		mesh.gridLineVertices.data()
 	);
 
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
 	drawToolBar();
-	resizeImage(padding);
+
+	ImVec2 pos = ImGui::GetCursorScreenPos();
+	ImVec2 size = ImGui::GetContentRegionAvail();
+
+	Rect canvasRect = makePaddedRect(
+		pos,
+		size,
+		0.0f,
+		0.0f,
+		0.0f,
+		0.0f
+	);
+
+	Rect surfaceRect = makePaddedRect(
+		pos,
+		size,
+		20.0f,
+		20.0f,
+		50.0f,
+		50.0f
+	);
+
+	resizeImage(surfaceRect.size());
+
+	// draw canvas first, then the image on top
+	drawCanvas(drawList, canvasRect, 5.0f);
+
 	renderPreview();
+
+	drawSurface(surfaceRect);
+
+	//ImGui::SetCursorScreenPos()
+
+	//drawStatusBar();
 
 	// Build current segments before hover/mouse logic
 	buildSegments();
@@ -1283,7 +1312,7 @@ void MeshInspector::render() {
 	ImVec2 imageMin = ImGui::GetItemRectMin();
 	ImVec2 imageMax = ImGui::GetItemRectMax();
 
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
 	drawList->PushClipRect(imageMin, imageMax, true);
 
 	drawHighlightedCells(drawList, g.obstacleIndices, g.rFace, g.zFace);
@@ -1293,6 +1322,9 @@ void MeshInspector::render() {
 	drawPopup();
 
 	drawList->PopClipRect();
+
+
+
 
 	ImGui::End();
 }

@@ -22,6 +22,8 @@ public:
 		return { label, width, flags };
 	}
 
+	bool hasChanged = false;
+
 	std::string selectedItem;
 
 	void changeCursorOnHover();
@@ -43,10 +45,10 @@ public:
 	bool createCombo(const char* label, const std::vector<std::string>& vec, int& currentItem);
 
 	// create an input double field
-	void inputDouble(const char* label, double* value, const char* format = "%.3g");
+	bool inputDouble(const char* label, double* value, const char* format = "%.3g");
 
 	// create an input int field
-	void inputInt(const char* label, int* value);
+	bool inputInt(const char* label, int* value);
 
 	// create checkbox in table
 	void checkBox(const char* label, bool* value);
@@ -75,7 +77,7 @@ public:
 
 	// draw combobox units
 	template <typename UnitT, size_t N>
-	bool createComboUnit(
+	bool comboUnit(
 		const char* label,
 		std::uint8_t& unitIndex,
 		const std::array<UnitT, N>& units
@@ -88,6 +90,10 @@ public:
 
 		bool changed = false;
 
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		ImGui::AlignTextToFramePadding();
+
+		ImGui::PushID(label);
 		if (ImGui::BeginCombo("##unit", preview)) {
 			for (int i = 0; i < (int)(N); i++) {
 				bool isSelected = unitIndex == i;
@@ -103,16 +109,18 @@ public:
 					ImGui::SetItemDefaultFocus();
 				}
 			}
-
 			ImGui::EndCombo();
 		}
+		ImGui::PopID();
+
+		ImGui::TableNextColumn();
+
 		return changed;
 	}
 
-
-	// draw input and unit using two columns
-	template <typename UnitT, size_t N>
-	void inputDoubleWithUnits(
+	// draw input double
+	template<typename UnitT, size_t N>
+	bool inputDouble(
 		const char* label,
 		double& value,
 		std::uint8_t& unitIndex,
@@ -128,38 +136,22 @@ public:
 		double baseValue = (double)(value);
 		double displayValue = fromBaseValue(baseValue, unit);
 
-		ImGui::PushID(label);
-
 		ImGui::SetNextItemWidth(-FLT_MIN);
+		ImGui::AlignTextToFramePadding();
 
+		bool changed = false;
+
+		ImGui::PushID(label);
 		if (ImGui::InputDouble("##value", &displayValue, 0.0, 0.0, format)) {
 			value = toBaseValue(displayValue, unit);
+			changed = true;
 		}
+		ImGui::PopID();
 
 		ImGui::TableNextColumn();
 
-		ImGui::SetNextItemWidth(-FLT_MIN);
-
-		if (ImGui::BeginCombo("##unit", unit.name)) {
-			for (int i = 0; i < (int)(N); i++) {
-				bool selected = unitIndex == i;
-
-				if (ImGui::Selectable(units[i].name, selected)) {
-					unitIndex = (std::uint8_t)(i);
-				}
-
-				if (selected) {
-					ImGui::SetItemDefaultFocus();
-				}
-			}
-
-			ImGui::EndCombo();
-		}
-
-		ImGui::PopID();
+		return true;
 	}
-
-
 
 private:
 

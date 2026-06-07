@@ -107,6 +107,9 @@ void MeshGUI::drawBoundaryGroupGUI() {
 	}
 
 	if (ImGui::Button("Delete Boundary Group")) {
+
+		hasChanged = true;
+
 		if (gui.meshInspector.deleteBoundaryGroupByID(selectedGroup->id)) {
 			selectedBoundaryGroupID = -1;
 		}
@@ -148,20 +151,16 @@ void MeshGUI::drawOverview() {
 			);
 
 			labelRow("Length");
-			inputDoubleWithUnits(
-				"##Length",
-				gridConfigEdits.L,
-				config.varUnits.LUnit,
-				Units::lengthUnits
-			);
+			if (inputDouble("##Length", gridConfigEdits.L, config.varUnits.LUnit, Units::lengthUnits)) {
+				hasChanged = true;
+			}
+			comboUnit("##Length", config.varUnits.LUnit, Units::lengthUnits);
 
 			labelRow("Radius");
-			inputDoubleWithUnits(
-				"##Radius",
-				gridConfigEdits.R,
-				config.varUnits.RUnit,
-				Units::lengthUnits
-			);
+			if (inputDouble("##Radius", gridConfigEdits.R, config.varUnits.RUnit, Units::lengthUnits)) {
+				hasChanged = true;
+			}
+			comboUnit("##Radius", config.varUnits.RUnit, Units::lengthUnits);
 
 			ImGui::EndTable();
 		}
@@ -178,16 +177,24 @@ void MeshGUI::drawOverview() {
 			);
 
 			labelRow("Axial Segments");
-			inputInt("##Meshnz", &gridConfigEdits.nz);
+			if (inputInt("##Meshnz", &gridConfigEdits.nz)) {
+				hasChanged = true;
+			}
 
 			labelRow("Radial Segments");
-			inputInt("##Meshnr", &gridConfigEdits.nr);
+			if (inputInt("##Meshnr", &gridConfigEdits.nr)) {
+				hasChanged = true;
+			}
 
 			labelRow("Axial Bias Factor");
-			inputDouble("##MeshAxialBias", &config.g.zBias);
+			if (inputDouble("##MeshAxialBias", &config.g.zBias)) {
+				hasChanged = true;
+			}
 
 			labelRow("Radial Bias Factor");
-			inputDouble("##MeshRadialBias", &config.g.rBias);
+			if (inputDouble("##MeshRadialBias", &config.g.rBias)) {
+				hasChanged = true;
+			}
 
 			ImGui::EndTable();
 		}

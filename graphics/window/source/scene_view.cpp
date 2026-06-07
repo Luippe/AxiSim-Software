@@ -95,7 +95,7 @@ void SceneView::handleMouse() {
 
 void SceneView::render() {
 
-	if (currentTab == TAB_SOLVER || currentTab == TAB_MESH) return;
+	if (currentTab == ViewTab::TAB_SOLVER || currentTab == ViewTab::TAB_MESH) return;
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 	ImGui::Begin("Scene");
@@ -126,7 +126,7 @@ void SceneView::render() {
 	glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	if (currentTab == TAB_RESULTS) {
+	if (currentTab == ViewTab::TAB_RESULTS) {
 
 		// load transformation matrix for solution shader
 		glm::mat4 model = scaleMat4(camera.model, sceneScale.value);

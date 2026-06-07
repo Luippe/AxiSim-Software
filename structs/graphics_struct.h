@@ -58,7 +58,7 @@ struct VertexLine {
 	glm::vec3 color;
 };
 
-enum ViewTab {
+enum class ViewTab {
 	TAB_MESH = 0,
 	TAB_SOLVER = 1,
 	TAB_RESULTS = 2

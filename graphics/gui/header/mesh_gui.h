@@ -22,8 +22,6 @@ public:
 
 	void draw();
 
-	void drawSections();
-
 	void getGridConfigEdits();
 
 	void setGridConfigEdits();

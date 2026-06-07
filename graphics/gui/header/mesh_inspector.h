@@ -51,7 +51,6 @@ private:
 	// ----------mesh analyzer region-----------
 	int nrBase = 0;
 	int nzBase = 0;
-	ImVec2 padding = ImVec2(20.0f, 20.0f);
 
 	// ----------resources-----------
 	AppAssets& assets;
@@ -68,6 +67,9 @@ private:
 	std::string obstacleError;
 	std::vector<int> namedIDs;
 
+	//-------------status bar--------------
+	float statusBarHeight = 100.0f;
+
 	int cellIndex(int i, int j) const;
 	bool isInsideCellGrid(int i, int j) const;
 	bool isSolidCell(int i, int j, const std::unordered_set<int>& obstacleIndices) const;
@@ -83,6 +85,7 @@ private:
 
 	// render the preview onto fbo
 	void renderPreview();
+
 
 	// build all boundary segments
 	void buildSegments();
@@ -106,6 +109,9 @@ private:
 	// draw popup menu when right clicked
 	void drawPopup();
 	
+	// draw a status bar that shows important detail of the mesh
+	void drawStatusBar();
+
 	// draw text at clicked position
 	void drawTextAtSurfacePoint(ImDrawList* drawList);
 

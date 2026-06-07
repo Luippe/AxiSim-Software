@@ -39,8 +39,6 @@ public:
 	int nextGroupID = 0;
 
 
-
-
 	Mesh(Config& config);
 
 	GridConfig& g;

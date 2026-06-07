@@ -179,22 +179,27 @@ void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryConditi
 		case BoundaryVariable::UVelocity:
 			createBCTypeCombo("##UVelocity", var, bc, group);
 			ImGui::TableNextColumn();
-			inputDoubleWithUnits("U Velocity", bc.value, varUnits.axialUnit, Units::velocityUnits);
+			inputDouble("U Velocity", bc.value, varUnits.axialUnit, Units::velocityUnits);
+			comboUnit("UVelocity", varUnits.axialUnit, Units::velocityUnits);
 			break;
 		case BoundaryVariable::VVelocity:
 			createBCTypeCombo("##VVelocity", var, bc, group);
 			ImGui::TableNextColumn();
-			inputDoubleWithUnits("V Velocity", bc.value, varUnits.radialUnit, Units::velocityUnits);
+			inputDouble("V Velocity", bc.value, varUnits.radialUnit, Units::velocityUnits);
+			comboUnit("VVelocity", varUnits.radialUnit, Units::velocityUnits);
 			break;
 		case BoundaryVariable::Pressure:
 			createBCTypeCombo("##Pressure", var, bc, group);
 			ImGui::TableNextColumn();
-			inputDoubleWithUnits("Pressure", bc.value, varUnits.pressureUnit, Units::pressureUnits);
+			inputDouble("Pressure", bc.value, varUnits.pressureUnit, Units::pressureUnits);
+			comboUnit("Pressure", varUnits.pressureUnit, Units::pressureUnits);
 			break;
 		case BoundaryVariable::StaticTemperature:
 			createBCTypeCombo("##StaticTemperature", var, bc, group);
 			ImGui::TableNextColumn();
-			inputDoubleWithUnits("Static Temperature", bc.value, varUnits.temperatureUnit, Units::temperatureUnits);
+			inputDouble("Static Temperature", bc.value, varUnits.temperatureUnit, Units::temperatureUnits);
+			comboUnit("StaticTemperature", varUnits.temperatureUnit, Units::temperatureUnits);
+
 			break;
 		}
 		ImGui::EndTable();
@@ -410,16 +415,20 @@ void SolverGUI::drawPropertiesPanel() {
 		if (ImGui::BeginTable("Fluid Settings", 3)) {
 
 			labelRow("Density");
-			inputDoubleWithUnits("##Density", solver.f.rho, varUnits.rhoUnit, Units::densityUnits, "%.6g");
+			inputDouble("##Density", solver.f.rho, varUnits.rhoUnit, Units::densityUnits, "%.6g");
+			comboUnit("##DensityUnit", varUnits.rhoUnit, Units::densityUnits);
 
 			labelRow("Dynamic Viscosity");
-			inputDoubleWithUnits("##DynamicViscosity", solver.f.mu, varUnits.muUnit, Units::dynamicViscosityUnits, "%.6g");
+			inputDouble("##DynamicViscosity", solver.f.mu, varUnits.muUnit, Units::dynamicViscosityUnits, "%.6g");
+			comboUnit("##DynamicViscosityUnit", varUnits.muUnit, Units::dynamicViscosityUnits);
 
 			labelRow("Diffusion Coefficient");
-			inputDoubleWithUnits("##DiffusionCoefficient", solver.f.D, varUnits.DUnit, Units::diffusionCoefficientUnits, "%.6g");
+			inputDouble("##DiffusionCoefficient", solver.f.D, varUnits.DUnit, Units::diffusionCoefficientUnits, "%.6g");
+			comboUnit("##DiffusionCoefficientUnit", varUnits.DUnit, Units::diffusionCoefficientUnits);
 
 			labelRow("Heat Capacity");
-			inputDoubleWithUnits("##HeatCapacity", solver.f.cp, varUnits.specificHeatUnit, Units::specificHeatUnits, "%.6g");
+			inputDouble("##HeatCapacity", solver.f.cp, varUnits.specificHeatUnit, Units::specificHeatUnits, "%.6g");
+			comboUnit("##HeatCapacityUnit", varUnits.specificHeatUnit, Units::specificHeatUnits);
 
 			ImGui::EndTable();
 		}

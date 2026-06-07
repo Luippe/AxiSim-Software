@@ -111,6 +111,21 @@ BaseSurfaceViewer::BaseSurfaceViewer(const char* vertexPath, const char* fragmen
 // ======================================================================
 // -----------------------HELPER FUNCTION--------------------------------
 // ======================================================================
+
+BaseSurfaceViewer::Rect BaseSurfaceViewer::makePaddedRect(
+	const ImVec2& pos,
+	const ImVec2& size,
+	float left,
+	float right,
+	float top,
+	float bottom
+) {
+	return {
+		ImVec2(pos.x + left,           pos.y + top),
+		ImVec2(pos.x + size.x - right, pos.y + size.y - bottom)
+	};
+}
+
 int findCellIndex(const std::vector<double>& face, double x) {
 	int nFaces = (int)(face.size());
 
@@ -293,11 +308,10 @@ ImVec2 BaseSurfaceViewer::screenToUV(const ImVec2& mousePos) {
 	return ImVec2(u, v);
 }
 
-void BaseSurfaceViewer::resizeImage(ImVec2 padding) {
+void BaseSurfaceViewer::resizeImage(const ImVec2 size) {
 
-	ImVec2 avail = ImGui::GetContentRegionAvail();
-	imageWidth = (int)(avail.x - 2.0f * padding.x);
-	imageHeight = (int)(avail.y - 2.0f * padding.y);
+	imageWidth = (int)size.x;
+	imageHeight = (int)size.y;
 
 	if (imageWidth != frameBuffer.width || imageHeight != frameBuffer.height) {
 		frameBuffer.create2DBuffer(imageWidth, imageHeight, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
@@ -435,6 +449,31 @@ void BaseSurfaceViewer::setToolTip(const char* text) {
 // ======================================================================
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
+void BaseSurfaceViewer::drawCanvas(ImDrawList* drawList, const Rect& rect, const float rounding) {
+
+	drawList->AddRectFilled(
+		rect.min,
+		rect.max,
+		IM_COL32(19, 27, 37, 255),
+		rounding
+	);
+
+	drawList->AddRect(
+		rect.min,
+		rect.max,
+		IM_COL32(76, 105, 140, 200),
+		rounding,
+		0,
+		1.5f
+	);
+
+}
+
+void BaseSurfaceViewer::drawSurface(const Rect& rect) {
+	ImGui::SetCursorScreenPos(rect.min);
+	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), rect.size(), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
+}
+
 void BaseSurfaceViewer::displayRect(int nrBase, int nzBase) {
 
 	if (!isRectReady) return;
@@ -509,6 +548,27 @@ void BaseSurfaceViewer::drawFilledCells(
 
 	drawList->PopClipRect();
 	
+}
+
+void BaseSurfaceViewer::drawHorizontalSeparator(
+	ImDrawList* drawList,
+	float inset,
+	float spacingY
+) {
+
+	ImVec2 pos = ImGui::GetCursorScreenPos();
+	float width = ImGui::GetContentRegionAvail().x;
+
+	ImU32 color = IM_COL32(70, 95, 125, 160);
+
+	drawList->AddLine(
+		ImVec2(pos.x + inset, pos.y),
+		ImVec2(pos.x + width - inset, pos.y),
+		color,
+		1.0f
+	);
+
+	ImGui::Dummy(ImVec2(width, spacingY));
 }
 
 void BaseSurfaceViewer::drawHighlightedCells(

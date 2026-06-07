@@ -29,7 +29,7 @@ public:
 
 	SceneScale sceneScale;
 	Config config;
-	ViewTab currentTab = TAB_MESH;
+	ViewTab currentTab = ViewTab::TAB_MESH;
 	Mesh mesh;
 	Solver solver;
 	Results results;
