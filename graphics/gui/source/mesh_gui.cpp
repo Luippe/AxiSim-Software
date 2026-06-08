@@ -226,7 +226,7 @@ void MeshGUI::drawOverview() {
 
 void MeshGUI::draw() {
 	if (ImGui::BeginTabItem("Mesh")) {
-		scene.currentTab = TAB_MESH;
+		scene.currentTab = ViewTab::TAB_MESH;
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 

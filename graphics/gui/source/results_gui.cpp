@@ -130,7 +130,7 @@ void ResultsGUI::drawPropertiesPanel() {
 void ResultsGUI::draw() {
 
 	if (ImGui::BeginTabItem("Results")) {
-		scene.currentTab = TAB_RESULTS;
+		scene.currentTab = ViewTab::TAB_RESULTS;
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 

@@ -162,7 +162,7 @@ bool MousePicker::ringIntersect(float radius, float& t) {
 
 bool MousePicker::dataPick() {
 
-	if (!scene.currentTab == TAB_RESULTS) return false;
+	if (!(scene.currentTab == ViewTab::TAB_RESULTS)) return false;
 
 	float t = FLT_MAX;
 

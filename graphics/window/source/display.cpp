@@ -4,7 +4,7 @@
 #include <GLFW/glfw3.h>
 
 
-Display::Display(Camera& camera) : camera(camera) {	// initialize shader
+Display::Display() {
 
 	// initialize display
 	glfwInit();
@@ -46,9 +46,6 @@ Display::Display(Camera& camera) : camera(camera) {	// initialize shader
 	// set width and height to the monitor's resolution
 	glfwGetWindowSize(window, &width, &height);
 
-	aspect = (float)width / (float)height;
-	worldWidth = 2.0f * camera.zoom * aspect;
-	worldHeight = 2.0f * camera.zoom;
 
 	// enable depth testing
 	glEnable(GL_DEPTH_TEST);

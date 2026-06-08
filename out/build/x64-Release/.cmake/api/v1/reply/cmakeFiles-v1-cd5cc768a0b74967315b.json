@@ -220,6 +220,7 @@
 			"paths" : 
 			[
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/mesh.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/project.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/results.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/solver.cpp"
 			],
@@ -256,6 +257,7 @@
 			"paths" : 
 			[
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/mesh.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/project.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/results.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/solver.h"
 			],

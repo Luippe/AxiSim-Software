@@ -12,15 +12,17 @@
 #include <GLFW/glfw3.h>
 #include "imgui_impl_opengl3.h"
 #include "printer.h"
+#include "project.h"
 
 int main() {
 
 	Camera camera;
-	Display disp(camera);
+	Display disp;
 
 	Renderer renderer;
 	Bounding bound(renderer);
 
+	//Project project;
 	SceneView scene(disp, camera, renderer, bound);
 
 	GUI gui(disp.window, scene);
@@ -28,6 +30,7 @@ int main() {
 	int frameCount = 0;
 
 	int counter = 0;
+	//
 
 	while (!glfwWindowShouldClose(disp.window)) {
 		glfwPollEvents();
@@ -46,11 +49,11 @@ int main() {
 		// draw scene
 		scene.render();
 
-		int displayWidth, displayHeight;
-		glfwGetFramebufferSize(disp.window, &displayWidth, &displayHeight);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glViewport(0, 0, displayWidth, displayHeight);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		//int displayWidth, displayHeight;
+		//glfwGetFramebufferSize(disp.window, &displayWidth, &displayHeight);
+		//glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		//glViewport(0, 0, displayWidth, displayHeight);
+		//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 		//glm::vec3 pos =  camera.getPosition();
 		gui.render();

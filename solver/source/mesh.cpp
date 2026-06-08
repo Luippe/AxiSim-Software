@@ -82,6 +82,7 @@ createBoundaryEdgeLookup(const std::vector<BoundarySegmentGroup>& groups) {
 			}
 		}
 	}
+
 	return lookup;
 }
 
@@ -114,7 +115,6 @@ void Mesh::generate() {
 
 	float endTime = endTimer(startTime);
 	console->addCompletionTime("Mesh", endTime);
-
 }
 
 
@@ -285,6 +285,8 @@ std::vector<FVCell> createFVCells(
 	return cells;
 }
 
+
+
 FVMesh Mesh::createStructuredMesh(const std::vector<uint8_t>& activeCell) {
 
 	FVMesh mesh;
@@ -315,6 +317,7 @@ FVMesh Mesh::createStructuredMesh(const std::vector<uint8_t>& activeCell) {
 	mesh.nz = g.nz;
 	mesh.faces = std::move(faces);
 	mesh.cells = std::move(cells);
+
 
 	return mesh;
 }

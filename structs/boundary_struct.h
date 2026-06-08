@@ -164,25 +164,40 @@ struct BoundarySegment {
 
 };
 
-struct BoundarySegmentGroupMesh {
-	// stable group ID used by mesh + solver
-	int id = -1;
-
-	// naming variables
-	std::string name;
-	char nameBuffer[128] = {}; // UI only, probably do not serialize
-
-	// vector of all segment IDs and edges
-	std::vector<int> segmentIDs;
-	std::vector<MeshEdge> edges;
-
-	// edge orientation for this group
-	EdgeOrient includesOrientation = EdgeOrient::Horizontal;
-
-	// cached value; can also be recomputed instead of saved
-	float totalLength = 0.0f;
-
-};
+//struct BoundaryGroup {
+//	// stable group ID used by mesh + solver
+//	int id = -1;
+//
+//	// naming variables
+//	std::string name;
+//	char nameBuffer[128] = {}; // UI only, probably do not serialize
+//
+//	// vector of all segment IDs and edges
+//	std::vector<int> segmentIDs;
+//	std::vector<MeshEdge> edges;
+//
+//	// edge orientation for this group
+//	EdgeOrient includesOrientation = EdgeOrient::Horizontal;
+//
+//	// cached value; can also be recomputed instead of saved
+//	float totalLength = 0.0f;
+//
+//};
+//
+//struct BoundaryGroupBC {
+//	// references BoundarySegmentGroupMesh::id
+//	int groupID = -1;
+//
+//	// boundary type
+//	BoundaryType type = BoundaryType::WALL;
+//
+//	// boundary conditions for this group
+//	std::unordered_map<
+//		BoundaryVariable,
+//		BoundaryCondition,
+//		BoundaryVariableHash
+//	> bcs;
+//};
 
 struct BoundarySegmentGroup {
 

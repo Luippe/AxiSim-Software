@@ -16,7 +16,7 @@ class Bounding;
 class Mesh;
 class Renderer;
 class Solver;
-enum ViewTab;
+enum class ViewTab;
 struct Config;
 
 
