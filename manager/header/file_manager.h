@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <unordered_map>
 
+class Project;
 class Solution;
 class SceneView;
 class Mesh;
@@ -64,7 +65,7 @@ void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc);
 void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc);
 
 // load selected files when the application launches
-void loadAtLaunch(SceneView& scene, const char* target);
+void loadAtLaunch(Project& project, const char* target);
 
 // read boundary condition config from save file
 template<typename...Args>

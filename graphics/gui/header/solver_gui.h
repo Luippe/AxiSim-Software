@@ -2,13 +2,13 @@
 #include "base_gui.h"
 #include "boundary_struct.h"
 
-class SceneView;
+class Project;
 class Solver;
 class Mesh;
 
 class SolverGUI : public BaseGUI  {
 public:
-	SolverGUI(SceneView& scene);
+	SolverGUI(Project& project);
 	void draw();
 
 private:
@@ -34,7 +34,7 @@ private:
 	int selectedBoundaryGroupID = -1;
 	BoundaryVariable selectedBoundaryVariable = BoundaryVariable::UVelocity;
 
-	SceneView& scene;
+	Project& project;
 	Solver& solver;
 	VariableUnits& varUnits;
 	Mesh& mesh;

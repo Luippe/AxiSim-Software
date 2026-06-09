@@ -10,7 +10,7 @@
 #include "linear_solver.cuh"
 #include "console.h"
 #include "simple.cuh"
-#include "scene_view.h"
+#include "mesh.h";
 #include "residuals.cuh"
 #include "solver_util.cuh"
 
@@ -44,8 +44,7 @@ void printResidualConsole(int currentIteration, const std::vector<ResidualPrintI
     console->addLine(line.str());
 }
 
-Solver::Solver(SceneView & scene, Config & config) :
-    scene(scene),
+Solver::Solver(Config& config) :
     config(config),
     g(config.g),
     f(config.f),
@@ -68,7 +67,7 @@ void Solver::setDefault() {
 
 }
 
-void Solver::run() {
+void Solver::run(const Mesh& mesh) {
 
     if (!runCheck()) return;
 
@@ -82,7 +81,7 @@ void Solver::run() {
 
     solverRunning = true;
     solverThread = std::thread([&]() {
-        runSimple();
+        runSimple(mesh);
         solverRunning = false;
         });
 }
@@ -128,10 +127,10 @@ bool Solver::runCheck() {
         return false;
     }
 
-    if (!scene.mesh.isReady) {
-        console->addLine("No mesh exists");
-        return false;
-    }
+    //if (!mesh.isReady) {
+    //    console->addLine("No mesh exists");
+    //    return false;
+    //}
 
     return true;
 }
@@ -255,7 +254,7 @@ void Solver::runBiCGStab() {
 
 }
 
-void Solver::runSimple() {
+void Solver::runSimple(const Mesh& mesh) {
 
     bool solveEnergy = fieldOption.solveEnergy;
 
@@ -264,9 +263,9 @@ void Solver::runSimple() {
     ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
     allocateGridConfig(configSolver.g, configSolver.f);
 
-    fvMesh = scene.mesh.createStructuredMesh(configSolver.g.activeCell);
+    fvMesh = mesh.createStructuredMesh(configSolver.g.activeCell);
 	FVMeshDevice fvMeshDevice = createFVMeshDevice(fvMesh);
-	BoundarySolverDevice bcDevice = createBoundarySolverDevice(scene.mesh.boundaryGroups, fieldOption);
+	BoundarySolverDevice bcDevice = createBoundarySolverDevice(mesh.boundaryGroups, fieldOption);
 
 
     // allocate memory

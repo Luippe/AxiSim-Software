@@ -11,12 +11,13 @@ class Mesh;
 class Results;
 class Colormap;
 struct GridConfig;
+class Project;
 class SceneView;
 
 class Inspector : public BaseSurfaceViewer {
 public:
 
-	Inspector(SceneView& scene, AppAssets& assets);
+	Inspector(Project& project, SceneView& scene, AppAssets& assets);
 
 	void generate();
 
@@ -34,6 +35,7 @@ public:
 private:
 
 	// ----------dependencies-----------
+	Project& project;
 	SceneView& scene;
 	Mesh& mesh;
 	Results& results;

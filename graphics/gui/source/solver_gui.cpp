@@ -5,20 +5,23 @@
 
 #include "IconsFontAwesome7.h"
 
+#include "project.h"
+
 #include "graphics_struct.h"
 #include "solver_struct.h"
+
+#include "boundary_func.h"
 
 #include "flag_manager.h"
 #include "unit_manager.h"
 #include "printer.h"
 
-#include "boundary_func.h"
 
-SolverGUI::SolverGUI(SceneView& scene) :
-	scene(scene),
-	mesh(scene.mesh),
-	solver(scene.solver),
-	varUnits(scene.solver.varUnits) {
+SolverGUI::SolverGUI(Project& project) :
+	project(project),
+	mesh(project.mesh),
+	solver(project.solver),
+	varUnits(project.solver.varUnits) {
 }
 
 // ======================================================================
@@ -392,19 +395,19 @@ void SolverGUI::drawPropertiesPanel() {
 				);
 
 				labelRow("Maximum Iterations");
-				ImGui::InputInt("##SimpleMaxIter", &scene.solver.configSimple.maxIter, 0.0, 0.0);
+				ImGui::InputInt("##SimpleMaxIter", &project.solver.configSimple.maxIter, 0.0, 0.0);
 
 				labelRow("Plot Residual Every # Iterations");
-				inputInt("##SimpleCheckConv", &scene.solver.configSimple.checkConv);
+				inputInt("##SimpleCheckConv", &project.solver.configSimple.checkConv);
 
 				labelRow("Momentum Tolerance");
-				ImGui::InputDouble("##SimpleMomTol", &scene.solver.configSimple.momTol, 0.0, 0.0, "%.3e");
+				ImGui::InputDouble("##SimpleMomTol", &project.solver.configSimple.momTol, 0.0, 0.0, "%.3e");
 
 				labelRow("Continuity Tolerance");
-				ImGui::InputDouble("##SimpleContTol", &scene.solver.configSimple.ppTol, 0.0, 0.0, "%.3e");
+				ImGui::InputDouble("##SimpleContTol", &project.solver.configSimple.ppTol, 0.0, 0.0, "%.3e");
 			
 				labelRow("Linear Solver Max Iteration");
-				ImGui::InputInt("##LinearSolverIteration", &scene.solver.linearSolverConfig.maxIter, 0.0, 0.0);
+				ImGui::InputInt("##LinearSolverIteration", &project.solver.linearSolverConfig.maxIter, 0.0, 0.0);
 			
 			}
 			ImGui::EndTable();
@@ -445,13 +448,13 @@ void SolverGUI::drawPropertiesPanel() {
 			);
 			
 			labelRow("dt");
-			ImGui::InputDouble("##timeStep", &scene.solver.dt, 0.0, 0.0, "%.3f");
+			ImGui::InputDouble("##timeStep", &project.solver.dt, 0.0, 0.0, "%.3f");
 
 			labelRow("tEnd");
-			ImGui::InputDouble("##endTime", &scene.solver.tEnd, 0.0, 0.0, "%.3f");
+			ImGui::InputDouble("##endTime", &project.solver.tEnd, 0.0, 0.0, "%.3f");
 
 			labelRow("Save keyframe every # Iterations");
-			ImGui::InputInt("##saveKeyFrameIter", &scene.solver.saveKeyFrameIter, 0.0, 0.0);
+			ImGui::InputInt("##saveKeyFrameIter", &project.solver.saveKeyFrameIter, 0.0, 0.0);
 
 			ImGui::EndTable();
 		}
@@ -461,7 +464,7 @@ void SolverGUI::drawPropertiesPanel() {
 
 void SolverGUI::draw() {
 	if (ImGui::BeginTabItem("Solver")) {
-		scene.currentTab = ViewTab::TAB_SOLVER;
+		project.currentTab = ViewTab::TAB_SOLVER;
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
@@ -582,7 +585,7 @@ void SolverGUI::draw() {
 		ImGui::Checkbox("Continue Solver", &solver.continueSolver);
 
 		if (ImGui::Button("Start Solver")) {
-			scene.solver.run();
+			project.solver.run(project.mesh);
 		}
 		changeCursorOnHover();
 

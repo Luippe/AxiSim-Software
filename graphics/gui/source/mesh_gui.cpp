@@ -1,7 +1,7 @@
 #include "mesh_gui.h"
-#include "scene_view.h"
+#include "project.h"
+
 #include "gui.h"
-#include "results.h"
 #include "colormap.h"
 #include "mesh.h"
 
@@ -13,13 +13,12 @@
 
 #include "printer.h"
 
-MeshGUI::MeshGUI(GUI& gui, SceneView& scene) :
+MeshGUI::MeshGUI(Project& project, GUI& gui) :
+	project(project),
 	gui(gui),
-	scene(scene),
-	mesh(scene.mesh),
-	results(scene.results),
-	colormap(scene.colormap),
-	config(scene.config){
+	mesh(project.mesh),
+	colormap(gui.scene.colormap),
+	config(project.config){
 
 	getGridConfigEdits();
 }
@@ -226,7 +225,7 @@ void MeshGUI::drawOverview() {
 
 void MeshGUI::draw() {
 	if (ImGui::BeginTabItem("Mesh")) {
-		scene.currentTab = ViewTab::TAB_MESH;
+		project.currentTab = ViewTab::TAB_MESH;
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 

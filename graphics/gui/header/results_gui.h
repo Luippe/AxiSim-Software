@@ -7,16 +7,18 @@ class Results;
 class Colormap;
 class Mesh;
 class Colorbar;
+class Project;
 
 class ResultsGUI : public BaseGUI {
 public:
 
-	ResultsGUI(GUI& gui, SceneView& scene);
+	ResultsGUI(Project& project, GUI& gui);
 	void drawPropertiesPanel();
 	void draw();
 
 private:
 
+	Project& project;
 	SceneView& scene;
 	GUI& gui;
 	Results& results;

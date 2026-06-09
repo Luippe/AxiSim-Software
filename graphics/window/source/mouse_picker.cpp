@@ -1,5 +1,8 @@
 #include "mouse_picker.h"
-#include "math_func.h"
+
+#include "project.h"
+
+
 #include "printer.h"
 #include "results.h"
 #include "camera.h"
@@ -7,13 +10,15 @@
 #include "console.h"
 #include "setting.cuh"
 #include "solver_struct.h"
+#include "math_func.h"
 
-MousePicker::MousePicker(SceneView& scene) :
+MousePicker::MousePicker(Project& project, SceneView& scene) :
+	project(project),
 	scene(scene),
 	bound(scene.bound),
 	camera(scene.camera),
-	results(scene.results),
-	g(scene.config.g){
+	results(project.results),
+	g(project.config.g){
 }
 
 void MousePicker::pick() {
@@ -112,7 +117,7 @@ bool MousePicker::capIntersect(const glm::vec3& capCenter, const glm::vec3& capN
 bool MousePicker::ringIntersect(float radius, float& t) {
 
 	bool collided = false;
-	glm::vec3 cylinderDirection = results.cylinderDirection;
+	glm::vec3 cylinderDirection = glm::vec3(1.0f, 0.0f, 0.0f);
 	glm::vec3 position = camera.position;
 	glm::vec3 OC = position;
 	glm::vec3 Dperp = currentRay - glm::dot(currentRay, cylinderDirection) * cylinderDirection;
@@ -162,13 +167,13 @@ bool MousePicker::ringIntersect(float radius, float& t) {
 
 bool MousePicker::dataPick() {
 
-	if (!(scene.currentTab == ViewTab::TAB_RESULTS)) return false;
+	if (!(project.currentTab == ViewTab::TAB_RESULTS)) return false;
 
 	float t = FLT_MAX;
-
+	glm::vec3 cylinderDirection = glm::vec3(1.0f, 0.0f, 0.0f);
 	// get the location of intersect
-	capIntersect({ results.currentFront, 0.0f, 0.0f },  -results.cylinderDirection, results.currentOuter, t);
-	capIntersect({ results.currentBack, 0.0f, 0.0f }, results.cylinderDirection, results.currentOuter, t);
+	capIntersect({ results.currentFront, 0.0f, 0.0f },  -cylinderDirection, results.currentOuter, t);
+	capIntersect({ results.currentBack, 0.0f, 0.0f }, cylinderDirection, results.currentOuter, t);
 	ringIntersect(results.currentOuter, t);
 
 	// get value at given location and print to console

@@ -7,11 +7,8 @@
 #include "boundary_struct.h"
 #include "graphics_struct.h"
 
-class Shader;
 class Console;
 class Config;
-
-
 
 class Mesh {
 public:
@@ -38,9 +35,6 @@ public:
 
 	int nextGroupID = 0;
 
-
-
-
 	Mesh(Config& config);
 
 	GridConfig& g;
@@ -52,13 +46,12 @@ public:
 
 	void generate();
 
-
 	void updateAfterLoadingFile();
 
 	void createGrid();
 	void createGridLineVertices();
 	void createGridVertices();
-	FVMesh createStructuredMesh(const std::vector<uint8_t>& activeCell);
+	FVMesh createStructuredMesh(const std::vector<uint8_t>& activeCell) const;
 
 	// search for segment with specific ID
 	BoundarySegment* getBoundarySegmentByID(int id);

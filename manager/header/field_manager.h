@@ -22,9 +22,9 @@ public:
 	void setMinMax(float vmin, float vmax);
 
 	void generate(
-		SolutionField& solution,
-		FVMesh& fvMesh,
-		std::vector<BoundarySegmentGroup>& boundaryGroup
+		const SolutionField& solution,
+		const FVMesh& fvMesh,
+		const std::vector<BoundarySegmentGroup>& boundaryGroup
 	);
 
 	// get value at given position using bilinear interpolation
@@ -33,8 +33,8 @@ public:
 
 private:
 
-	FVMesh* fvMesh;
-	std::vector<BoundarySegmentGroup>* boundaryGroups;
+	const FVMesh* fvMesh;
+	const std::vector<BoundarySegmentGroup>* boundaryGroups;
 	BoundaryVariable boundaryVariable = BoundaryVariable::None;
 
 	std::vector<double> extendedZ;

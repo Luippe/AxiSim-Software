@@ -16,6 +16,7 @@ set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/mesh_inspector.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/residual_plot.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/results_gui.cpp"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/scene_view.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/solver_gui.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_allegro5.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_android.cpp"
@@ -80,7 +81,6 @@ set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/gui.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/mouse_picker.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/renderer.cpp"
-  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/scene_view.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/source/shader.cpp"
   )
 if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
@@ -121,6 +121,7 @@ set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/mesh_inspector.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/residual_plot.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/results_gui.h"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/scene_view.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/solver_gui.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_allegro5.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_android.h"
@@ -171,7 +172,6 @@ set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/gui.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/mouse_picker.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/renderer.h"
-  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/scene_view.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header/shader.h"
   )
 if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")

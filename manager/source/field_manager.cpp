@@ -32,9 +32,10 @@ std::vector<double> buildCenters(const std::vector<double>& faces) {
 	return centers;
 }
 
-void Field::generate(SolutionField& solution,
-	FVMesh& fvMesh,
-	std::vector<BoundarySegmentGroup>& boundaryGroup
+void Field::generate(
+	const SolutionField& solution,
+	const FVMesh& fvMesh,
+	const std::vector<BoundarySegmentGroup>& boundaryGroup
 ) {
 
 	this->fvMesh = &fvMesh;

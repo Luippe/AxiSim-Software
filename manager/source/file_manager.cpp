@@ -2,7 +2,7 @@
 
 #include "tinyfiledialogs.h"
 
-#include "scene_view.h"
+#include "project.h"
 
 #include "solver_struct.h"
 #include "boundary_struct.h"
@@ -274,7 +274,7 @@ void saveLaunchResults(Results& results) {
 	saveFromPathResults(path, results);
 }
 
-void loadAtLaunch(SceneView& scene, const char* target) {
+void loadAtLaunch(Project& project, const char* target) {
 
 	const char* meshFile = "openAtLaunchMesh.bin";
 	const char* solverFile = "openAtLaunchSolver.bin";
@@ -284,9 +284,9 @@ void loadAtLaunch(SceneView& scene, const char* target) {
 	if (target == "mesh") {
 		std::ifstream in(meshFile, std::ios::binary);
 		if (in) {
-			loadFromPathMesh(meshFile, scene.mesh);
+			loadFromPathMesh(meshFile, project.mesh);
 
-			scene.mesh.updateAfterLoadingFile();
+			project.mesh.updateAfterLoadingFile();
 		}
 	}
 
@@ -294,7 +294,7 @@ void loadAtLaunch(SceneView& scene, const char* target) {
 	if (target == "solver") {
 		std::ifstream in(solverFile, std::ios::binary);
 		if (in) {
-			loadFromPathSolver(solverFile, scene.solver);
+			loadFromPathSolver(solverFile, project.solver);
 		}
 	}
 

@@ -7,11 +7,14 @@ class Camera;
 class Results;
 class Console;
 struct GridConfig;
+class Project;
+
 
 class MousePicker {
 public:
 
 	//Console& console;
+	Project& project;
 	Bounding& bound;
 	Camera& camera;
 	Results& results;
@@ -19,7 +22,7 @@ public:
 	GridConfig& g;
 	Console* console;
 
-	MousePicker(SceneView& scene);
+	MousePicker(Project& project, SceneView& scene);
 
 	// pick whatever is in scene
 	void pick();

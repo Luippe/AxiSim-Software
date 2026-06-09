@@ -1,13 +1,15 @@
 #include "menu.h"
-#include "scene_view.h"
-#include "file_manager.h"
+
+#include "project.h"
 #include "gui.h"
 
-Menu::Menu(GUI& gui, SceneView& scene) :
-	scene(scene),
+#include "file_manager.h"
+
+Menu::Menu(Project& project, GUI& gui) :
+	project(project),
 	gui(gui){
-	loadAtLaunch(scene, "mesh");
-	loadAtLaunch(scene, "solver");
+	loadAtLaunch(project, "mesh");
+	loadAtLaunch(project, "solver");
 	//scene.solver.setDefault();
 }
 
@@ -16,13 +18,13 @@ void Menu::drawOpen() {
 	if (ImGui::BeginMenu("Open")) {
 
 		if (ImGui::MenuItem("Mesh")) {
-			loadFromExplorerMesh(scene.mesh);
-			scene.mesh.updateAfterLoadingFile();
+			loadFromExplorerMesh(project.mesh);
+			project.mesh.updateAfterLoadingFile();
 			gui.meshGUI.getGridConfigEdits();
 		}
 
 		if (ImGui::MenuItem("Solver")) {
-			loadFromExplorerSolver(scene.solver);
+			loadFromExplorerSolver(project.solver);
 		}
 
 		if (ImGui::MenuItem("Results")) {
@@ -43,11 +45,11 @@ void Menu::drawOpenAtLaunch() {
 	if (ImGui::BeginMenu("Open At Launch")) {
 
 		if (ImGui::MenuItem("Mesh")) {
-			saveLaunchMesh(scene.mesh);
+			saveLaunchMesh(project.mesh);
 		}
 
 		if (ImGui::MenuItem("Solver")) {
-			saveLaunchSolver(scene.solver);
+			saveLaunchSolver(project.solver);
 		}
 
 		if (ImGui::MenuItem("Results")) {
@@ -67,15 +69,15 @@ void Menu::drawOpenAtLaunch() {
 void Menu::drawSave() {
 	if (ImGui::BeginMenu("Save")) {
 		if (ImGui::MenuItem("Mesh")) {
-			saveFromExplorerMesh(scene.mesh);
+			saveFromExplorerMesh(project.mesh);
 		}
 
 		if (ImGui::MenuItem("Solver")) {
-			saveFromExplorerSolver(scene.solver);
+			saveFromExplorerSolver(project.solver);
 		}
 
 		if (ImGui::MenuItem("Results")) {
-			//saveFromExplorerResults(scene.results);
+			//saveFromExplorerResults(project.results);
 		}
 
 		ImGui::Separator();

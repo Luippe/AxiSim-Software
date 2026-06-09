@@ -3,19 +3,21 @@
 #include <format>
 
 #include "scene_view.h"
+#include "project.h"
 #include "colorbar.h"
 
 #include "flag_manager.h"
 #include "printer.h"
 #include "math_func.h"
 
-Inspector::Inspector(SceneView& scene, AppAssets& assets) :
+Inspector::Inspector(Project& project, SceneView& scene, AppAssets& assets) :
 		scene(scene),
-		mesh(scene.mesh),
-		results(scene.results),
+		project(project),
+		mesh(project.mesh),
+		results(project.results),
 		g(mesh.g),
 		assets(assets),
-		colorbar(scene.colormap, scene.results),
+		colorbar(scene.colormap, project.results),
 		BaseSurfaceViewer("graphics/shaders/inspector.vert", "graphics/shaders/inspector.frag") {
 
 	// radial location
@@ -264,14 +266,14 @@ void Inspector::renderPreview() {
 	results.currentField->textureBuffer.bind();
 
 	glActiveTexture(GL_TEXTURE1);
-	results.colormap.bind();
+	scene.colormap.bind();
 
 	vertexBuffer.bind();
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 	vertexBuffer.unbind();
 
 	glActiveTexture(GL_TEXTURE1);
-	results.colormap.unbind();
+	scene.colormap.unbind();
 
 	glActiveTexture(GL_TEXTURE0);
 	results.currentField->textureBuffer.unbind();

@@ -1,6 +1,8 @@
 #pragma once
 #include "base_gui.h"
 
+
+class Project;
 class SceneView;
 class GUI;
 class Results;
@@ -18,7 +20,7 @@ struct GridConfigEdits {
 
 class MeshGUI : public BaseGUI {
 public:
-	MeshGUI(GUI& gui, SceneView& scene);
+	MeshGUI(Project& project, GUI& gui);
 
 	void draw();
 
@@ -37,9 +39,9 @@ private:
 	int selectedBoundaryGroupID = -1;
 
 	GridConfigEdits gridConfigEdits;
-	SceneView& scene;
+	Project& project;
 	GUI& gui;
-	Results& results;
+
 	Colormap& colormap;
 	Mesh& mesh;
 	Config& config;

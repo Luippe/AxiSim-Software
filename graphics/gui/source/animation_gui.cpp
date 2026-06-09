@@ -1,12 +1,20 @@
 #include "animation_gui.h"
-#include "imgui.h"
-#include "scene_view.h"
-#include "file_manager.h"
-#include "printer.h"
-#include "flag_manager.h"
 
-AnimationGUI::AnimationGUI(SceneView& scene) :
-scene(scene) {
+#include "imgui.h"
+
+#include "project.h"
+#include "gui.h"
+
+#include "scene_view.h"
+
+#include "file_manager.h"
+#include "flag_manager.h"
+#include "printer.h"
+
+
+AnimationGUI::AnimationGUI(Project& project, GUI& gui) :
+    project(project),
+    scene(gui.scene) {
 
 }
 
@@ -94,13 +102,13 @@ void AnimationGUI::updateCurrentFrame() {
 
 void AnimationGUI::updateCurrentField() {
 
-    Field& currentField = frames[currentFrame].fields[scene.results.currentItem];
-    scene.results.currentField = &currentField;
-    scene.results.updateTextureBuffer(currentField.vertexValues.data());
+    Field& currentField = frames[currentFrame].fields[project.results.currentItem];
+    project.results.currentField = &currentField;
+    project.results.updateTextureBuffer(currentField.vertexValues.data());
 
-    scene.results.currentField->setMinMax(
-        minmaxGlobals[scene.results.currentItem].vmin,
-        minmaxGlobals[scene.results.currentItem].vmax
+    project.results.currentField->setMinMax(
+        minmaxGlobals[project.results.currentItem].vmin,
+        minmaxGlobals[project.results.currentItem].vmax
     );
 
 }

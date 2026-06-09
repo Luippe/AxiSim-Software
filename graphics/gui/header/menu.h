@@ -1,17 +1,18 @@
 #pragma once
 class SceneView;
+class Project;
 class GUI;
 
 class Menu {
 public:
-	Menu(GUI& gui, SceneView& scene);
+	Menu(Project& project, GUI& gui);
 
 	void render();
 
 private:
 
+	Project& project;
 	GUI& gui;
-	SceneView& scene;
 
 	// open selected file
 	void drawOpen();

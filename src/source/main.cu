@@ -16,16 +16,11 @@
 
 int main() {
 
-	Camera camera;
+
 	Display disp;
+	Project project;
 
-	Renderer renderer;
-	Bounding bound(renderer);
-
-	//Project project;
-	SceneView scene(disp, camera, renderer, bound);
-
-	GUI gui(disp.window, scene);
+	GUI gui(project, disp.window);
 	double prevTime = glfwGetTime();
 	int frameCount = 0;
 
@@ -46,9 +41,6 @@ int main() {
 
 		gui.newFrame();
 
-		// draw scene
-		scene.render();
-
 		//int displayWidth, displayHeight;
 		//glfwGetFramebufferSize(disp.window, &displayWidth, &displayHeight);
 		//glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -64,8 +56,6 @@ int main() {
 	}
 
 	// properly shutdown
-	scene.solver.shutdown();
-	cudaStreamDestroy(scene.solver.stream);
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();

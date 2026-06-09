@@ -1,5 +1,6 @@
 #include "results_gui.h"
 
+#include "project.h"
 #include "gui.h"
 #include "scene_view.h"
 #include "results.h"
@@ -13,12 +14,13 @@
 #include "flag_manager.h"
 #include "unit_manager.h"
 
-ResultsGUI::ResultsGUI(GUI& gui, SceneView& scene) :
+ResultsGUI::ResultsGUI(Project& project, GUI& gui) :
+	project(project),
 	gui(gui),
-	scene(scene),
-	mesh(scene.mesh),
-	results(scene.results),
-	colormap(scene.colormap),
+	scene(gui.scene),
+	mesh(project.mesh),
+	results(project.results),
+	colormap(gui.scene.colormap),
 	colorbar(gui.inspector.colorbar){
 }
 
@@ -55,14 +57,13 @@ void ResultsGUI::drawPropertiesPanel() {
 			}
 
 			labelRow("Filter");
-			if (createSimpleCombo("##Filter", results.compareType, (int&)results.currentCompareType, IM_ARRAYSIZE(results.compareType))) {
-				results.updateSelectedInstances();
-			}
+			createSimpleCombo("##Filter", results.compareType, (int&)results.currentCompareType, IM_ARRAYSIZE(results.compareType));
 
 			labelRow("Scale");
 			if (comboUnit("##Unit", scene.sceneScale.index, Units::lengthUnits)) {
 				scene.updateSceneScale();
 			}
+
 			labelRow("Value");
 			if (results.currentCompareType == CompareType::Between || results.currentCompareType == CompareType::Exclude) {
 				ImGui::InputFloat("##LowerBound", &results.filterValues.valueLower, 0.0f, 0.0f);
@@ -130,7 +131,7 @@ void ResultsGUI::drawPropertiesPanel() {
 void ResultsGUI::draw() {
 
 	if (ImGui::BeginTabItem("Results")) {
-		scene.currentTab = ViewTab::TAB_RESULTS;
+		project.currentTab = ViewTab::TAB_RESULTS;
 
 		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
 
@@ -141,7 +142,7 @@ void ResultsGUI::draw() {
 			labelRow("Field");
 			if (createCombo(
 				"##SelectField",
-				scene.results.fieldType,
+				project.results.fieldType,
 				results.currentItem
 			)) {
 				results.updateCurrentField();
@@ -168,8 +169,9 @@ void ResultsGUI::draw() {
 
 		if (ImGui::Button("Generate Results")) {
 
-			scene.results.generate();
+			project.results.generate(project.mesh, project.solver);
 			gui.inspector.generate();
+			scene.createBuffer();
 
 		}
 		changeCursorOnHover();

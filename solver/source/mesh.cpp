@@ -1,5 +1,4 @@
 #include "mesh.h"
-#include "shader.h"
 #include "console.h"
 
 #include "time_manager.h"
@@ -287,9 +286,9 @@ std::vector<FVCell> createFVCells(
 
 
 
-FVMesh Mesh::createStructuredMesh(const std::vector<uint8_t>& activeCell) {
+FVMesh Mesh::createStructuredMesh(const std::vector<uint8_t>& activeCell) const {
 
-	FVMesh mesh;
+	FVMesh fvMesh;
 
 	std::vector<FVFace> faces = createFVFaces (
 		g.nr,
@@ -313,13 +312,13 @@ FVMesh Mesh::createStructuredMesh(const std::vector<uint8_t>& activeCell) {
 		faces
 	);	
 
-	mesh.nr = g.nr;
-	mesh.nz = g.nz;
-	mesh.faces = std::move(faces);
-	mesh.cells = std::move(cells);
+	fvMesh.nr = g.nr;
+	fvMesh.nz = g.nz;
+	fvMesh.faces = std::move(faces);
+	fvMesh.cells = std::move(cells);
 
 
-	return mesh;
+	return fvMesh;
 }
 
 void Mesh::updateAfterLoadingFile() {

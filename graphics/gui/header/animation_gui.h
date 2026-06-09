@@ -6,11 +6,13 @@
 #include "solver_struct.h"
 
 struct SceneView;
+class Project;
+class GUI;
 
 class AnimationGUI {
 public:
 
-	AnimationGUI(SceneView& scene);
+	AnimationGUI(Project& project, GUI& gui);
 
 	void render();
 
@@ -36,6 +38,7 @@ private:
 	std::vector<FlowFrame> frames;
 	std::vector<MinMaxGlobal> minmaxGlobals;
 	
+	Project& project;
 	SceneView& scene;
 
 	int widgetWidth;

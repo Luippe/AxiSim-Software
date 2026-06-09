@@ -1,40 +1,31 @@
 #include "results.h"
-#include "mesh.h"
-#include "colormap.h"
-#include "shader.h"
+
 #include <glm/gtc/matrix_transform.hpp>
+
+#include "solver.h"
+#include "mesh.h"
+
+#include "console.h"
 
 #include "printer.h"
 #include "time_manager.h"
 
-#include "console.h"
-#include "solver.h"
 
+Results::Results(Config& config) :
 
-bool Results::compareFloat(float value, FilterValues& filterValues) {
+	config(config),
+	currentField(&uField) {
 
-	constexpr float eps = 1e-6f;
+	colFront = 0;
+	colBack = config.g.nz;
+	rowTop = config.g.nr;
+	rowBot = 0;
 
-	switch (currentCompareType) {
+	currentFront = 0.0f;
+	currentBack = 0.0f;
+	currentOuter = 0.0f;
+	currentInner = 0.0f;
 
-	case CompareType::LessThan:
-		return value < filterValues.valueAt;
-
-	case CompareType::EqualTo:
-		return std::abs(value - filterValues.valueAt) < eps;
-
-	case CompareType::GreaterThan:
-		return value > filterValues.valueAt;
-
-	case CompareType::Between:
-		return value > filterValues.valueLower && value < filterValues.valueUpper;
-
-	case CompareType::Exclude:
-		return value < filterValues.valueLower || value > filterValues.valueUpper;
-
-	}
-
-	return false;
 }
 
 void createCylinderTemplate(std::vector<CylinderTemplateVertex>& vertices, std::vector<unsigned int>& indices, int nseg) {
@@ -177,72 +168,9 @@ void createCylinderTemplate(std::vector<CylinderTemplateVertex>& vertices, std::
 	}
 }
 
-std::vector<CylinderInstance> Results::createRowMergedCylinderInstances(std::vector<float>& field, FilterValues& filterValues) {
-
-	std::vector<CylinderInstance> instances;
-
-	for (int i = 0; i < nr; i++) {
-		int j = 0;
-
-		while (j < nz) {
-			int n = i * nz + j;
-
-			if (!compareFloat(field[n], filterValues)) {
-				j++;
-				continue;
-			}
-
-			// Start selected run
-			int j0 = j;
-
-			while (j < nz && compareFloat(field[i * nz + j], filterValues)) {
-				j++;
-			}
-
-			// j1 is one past the last selected cell
-			int j1 = j;
-
-			CylinderInstance inst{};
-
-			// Axial bounds from face locations
-			inst.x0 = static_cast<float>(g.zFace[j0]);
-			inst.x1 = static_cast<float>(g.zFace[j1]);
-
-			// Radial bounds from face locations
-			inst.innerR = static_cast<float>(g.rFace[i]);
-			inst.outerR = static_cast<float>(g.rFace[i + 1]);
-
-			instances.push_back(inst);
-		}
-	}
-
-	return instances;
-}
-
-Results::Results(Mesh& mesh, Solver& solver, Colormap& colormap, Shader& shader) :
-
-	colormap(colormap),
-	shader(shader),
-	solver(solver),
-	mesh(mesh),
-	currentField(&uField) {
-
-	colFront = 0;
-	colBack = solver.config.g.nz;
-	rowTop = solver.config.g.nr;
-	rowBot = 0;
-
-	currentFront = 0.0f;
-	currentBack = 0.0f;
-	currentOuter = 0.0f;
-	currentInner = 0.0f;
-
-}
 
 void Results::updateAfterLoadingFile() {
 
-	createOutlineBuffer();
-	createFields();
 	isReady = true;
 
 }
@@ -251,44 +179,11 @@ void Results::updateTextureBuffer(const void* data) {
 	currentField->textureBuffer.updateBuffer(g.nz + 1, g.nr + 1, GL_RED, GL_FLOAT, data);
 }
 
-void Results::createBuffer() {
-
-	createCylinderTemplate(verticesCV, indicesCV, nseg);
-
-	cvBuffer.createBuffer(verticesCV.size() * sizeof(CylinderTemplateVertex), verticesCV.data());
-
-	cvBuffer.bind(); // bind the VAO you will draw with
-
-	cvElementBuffer.createBuffer(indicesCV.size() * sizeof(unsigned int), indicesCV.data());
-
-	// Per-vertex attributes: locations 0, 1, 2
-	cvBuffer.enableAttribute(0, 3, GL_FLOAT, sizeof(CylinderTemplateVertex), (void*)offsetof(CylinderTemplateVertex, dir));
-	cvBuffer.enableAttribute(1, 1, GL_FLOAT, sizeof(CylinderTemplateVertex), (void*)offsetof(CylinderTemplateVertex, xCoord));
-	cvBuffer.enableAttribute(2, 1, GL_FLOAT, sizeof(CylinderTemplateVertex), (void*)offsetof(CylinderTemplateVertex, radialCoord));
-
-	// ---------------- Instance VBO ----------------
-	cvInstanceBuffer.createBuffer(nr * nz * sizeof(CylinderInstance), nullptr);
-
-	// IMPORTANT:
-	cvBuffer.bind(); // bind the VAO you draw with
-
-	glBindBuffer(GL_ARRAY_BUFFER, cvInstanceBuffer.getVBO());
-	cvBuffer.enableAttribute(3, 4, GL_FLOAT, sizeof(CylinderInstance), (void*)0);
-	glVertexAttribDivisor(3, 1);
-
-	glBindBuffer(GL_ARRAY_BUFFER, cvInstanceBuffer.getVBO());
-	glBufferSubData(GL_ARRAY_BUFFER, 0, allInstances.size() * sizeof(CylinderInstance), allInstances.data());
-
-	cvBuffer.unbind();
-
-}
-
-void Results::copyData() {
+void Results::copyData(const Mesh& mesh, const Solver& solver) {
 
 	// copy variables and structs
 	g = mesh.g;
 	nseg = mesh.nseg;
-	vertices = mesh.vertices;
 	nr = g.nr;
 	nz = g.nz;
 	dr = g.dr;
@@ -298,8 +193,7 @@ void Results::copyData() {
 
 }
 
-
-void Results::generate() {
+void Results::generate(Mesh& mesh, Solver& solver) {
 
 	Clock::time_point startTime = startTimer();
 
@@ -307,24 +201,17 @@ void Results::generate() {
 	indicesCV.clear();
 
 	// copy all relevant data from mesh class
-	copyData();
+	copyData(mesh, solver);
 
 	// create instances and create buffer
-	createAllCVInstances();
-	createBuffer();
-	console->addCompletionMessage("Completed copying data and generating control volume buffers");
+	createCylinderTemplate(verticesCV, indicesCV, nseg);
 
 	// generate all fields (values and buffers)
-	createFields();
+	createFields(mesh, solver);
 	updateCurrentField();
+
 	console->addCompletionMessage("Completed generating field variables");
 
-
-	// make buffer for outline
-	createOutlineBuffer();
-	console->addCompletionMessage("Completed generating buffers");
-
-	showOutline = true;
 	isReady = true;
 
 	float endTime = endTimer(startTime);
@@ -332,7 +219,7 @@ void Results::generate() {
 
 }
 
-void Results::createFields() {
+void Results::createFields(const Mesh& mesh, const Solver& solver) {
 
 	uField.generate(solver.uSol, solver.fvMesh, mesh.boundaryGroups);
 	vField.generate(solver.vSol, solver.fvMesh, mesh.boundaryGroups);
@@ -367,107 +254,3 @@ void Results::updateCurrentField() {
 		printf("ERROR: UNIDENTIFIED FIELD");
 	}
 }
-
-void Results::createOutlineBuffer() {
-
-	// ------------- Cap outline buffers ---------------------
-	capBuffer.createBuffer(verticesCap.size() * sizeof(VertexLine), &verticesCap[0]);
-	capBuffer.bind();
-	capBuffer.enableAttribute(0, 3, GL_FLOAT, sizeof(VertexLine), (void*)0);
-	capBuffer.enableAttribute(1, 3, GL_FLOAT, sizeof(VertexLine), (void*)(3 * sizeof(float)));
-	capBuffer.unbind();
-
-	// ------------- Edge outline buffers ---------------------
-	edgeBuffer.createBuffer(verticesEdge.size() * sizeof(VertexEdge), &verticesEdge[0]);
-	edgeBuffer.bind();
-	edgeBuffer.enableAttribute(0, 3, GL_FLOAT, sizeof(VertexEdge), (void*)0);
-	edgeBuffer.enableAttribute(1, 3, GL_FLOAT, sizeof(VertexEdge), (void*)(3 * sizeof(float)));
-	edgeBuffer.enableAttribute(2, 3, GL_FLOAT, sizeof(VertexEdge), (void*)(6 * sizeof(float)));
-	edgeBuffer.enableAttribute(3, 3, GL_FLOAT, sizeof(VertexEdge), (void*)(9 * sizeof(float)));
-	edgeBuffer.enableAttribute(4, 3, GL_FLOAT, sizeof(VertexEdge), (void*)(12 * sizeof(float)));
-	edgeBuffer.unbind();
-
-}
-
-void Results::uploadUniforms() {
-
-	shader.use();
-	shader.SetFloat("vmin", currentField->vmin);
-	shader.SetFloat("vmax", currentField->vmax);
-	shader.SetFloat("R", g.R);
-	shader.SetFloat("L", g.L);
-	shader.SetInt("fieldTex", 0);
-	shader.SetInt("uColormap", 1);
-
-}
-
-
-void Results::createAllCVInstances() {
-
-	allInstances.clear();
-
-	for (int i = 0; i < g.nr; i++) {
-		for (int j = 0; j < g.nz; j++) {
-			int n = i * g.nz + j;
-
-
-			float x0 = (float)g.zFace[j];
-			float x1 = (float)g.zFace[j + 1];
-
-			float r0 = (float)g.rFace[i];
-			float r1 = (float)g.rFace[i + 1];
-
-			allInstances.push_back({ x0, x1, r0, r1 });
-		}
-	}
-}
-
-void Results::updateSelectedInstances() {	// might be heavy on the cpu, optimize if AxiSim starts lagging
-
-	selectedInstances = createRowMergedCylinderInstances(currentField->cellValues, filterValues);
-	cvInstanceBuffer.bufferSubData(selectedInstances.size() * sizeof(CylinderInstance), selectedInstances.data());
-
-}
-
-void Results::render() {
-
-	//return;
-	if (!isReady) return;
-	updateSelectedInstances();
-	//updateCurrentField();
-
-	//GLuint query;
-	//glGenQueries(1, &query);
-	//glBeginQuery(GL_TIME_ELAPSED, query);
-	shader.use();
-	uploadUniforms();
-
-	glActiveTexture(GL_TEXTURE0);
-	currentField->textureBuffer.bind();
-
-	glActiveTexture(GL_TEXTURE1);
-	colormap.bind();
-
-	cvBuffer.bind();
-	glDrawElementsInstanced(GL_TRIANGLES, (GLsizei)(indicesCV.size()), GL_UNSIGNED_INT, 0, (GLsizei)(selectedInstances.size()));
-	cvBuffer.unbind();
-
-	glActiveTexture(GL_TEXTURE1);
-	colormap.unbind();
-
-	glActiveTexture(GL_TEXTURE0);
-	currentField->textureBuffer.unbind();
-
-	//// End GPU timer
-	//glEndQuery(GL_TIME_ELAPSED);
-
-	//// Get result
-	//GLuint64 elapsedTime = 0;
-	//glGetQueryObjectui64v(query, GL_QUERY_RESULT, &elapsedTime);
-
-	//double timeMs = elapsedTime / 1'000'000.0;
-
-	//printf("GPU time: %f ms\n", timeMs);
-
-}
-

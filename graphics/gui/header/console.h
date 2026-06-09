@@ -5,15 +5,14 @@
 #include <functional>
 #include "imgui.h"
 
-class SceneView;
 class GUI;
-
+class Project;
 
 // create a console for displaying messages and accepting user input
 class Console {
 public:
 
-	Console(GUI& gui, SceneView& scene);
+	Console(GUI& gui, Project& project);
 
 	// add line to console
 	void addLine(const std::string& s);
@@ -41,7 +40,7 @@ private:
 	using CommandFn = std::function<void(const CommandArgs&)>;
 
 	GUI& gui;
-	SceneView& scene;
+	Project& project;
 
 	struct Command {
 		CommandFn run;

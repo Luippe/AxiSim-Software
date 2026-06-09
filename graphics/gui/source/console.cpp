@@ -6,13 +6,16 @@
 
 #include "clip.h"
 
-#include "scene_view.h"
-#include "console_keywords.h"
-#include "printer.h"
+#include "project.h"
 #include "gui.h"
+
+#include "scene_view.h"
 
 #include "file_manager.h"
 #include "flag_manager.h"
+
+#include "printer.h"
+#include "console_keywords.h"
 
 struct InputFocusData {
 	bool moveCursorToEnd = false;
@@ -56,8 +59,8 @@ std::string formatPrecision(double value) {
 }
 
 
-Console::Console(GUI& gui, SceneView& scene) :
-	scene(scene),
+Console::Console(GUI& gui, Project& project) :
+	project(project),
 	gui(gui){
 	registerCommands();
 }
@@ -89,13 +92,13 @@ void Console::registerRunCommands() {
 			
 		if (object == "mesh") {
 			gui.meshGUI.setGridConfigEdits();
-			scene.mesh.generate();
+			project.mesh.generate();
 		}
 		else if (object == "solver") {
-			scene.solver.run();
+			project.solver.run(project.mesh);
 		}
 		else if (object == "results") {
-			scene.results.generate();
+			project.results.generate(project.mesh, project.solver);
 			gui.inspector.generate();
 		}
 		else {
@@ -108,7 +111,13 @@ void Console::registerRunCommands() {
 }
 
 void Console::registerSetCommands() {
+
+
 	addCommand("set", [this](const std::vector<std::string>& words) {
+
+		SceneView& scene = gui.scene;
+
+
 		std::string object = getWord(words, 1);
 		std::string value = getWord(words, 2);
 
@@ -144,6 +153,9 @@ void Console::registerSetCommands() {
 
 void Console::registerGetCommands() {
 	addCommand("get", [this](const std::vector<std::string>& words) {
+
+		SceneView& scene = gui.scene;
+
 		std::string object = getWord(words, 1);
 		std::string value = getWord(words, 2);
 
@@ -206,6 +218,9 @@ void Console::registerGetCommands() {
 
 void Console::registerCopyCommands() {
 	addCommand("copy", [this](const std::vector<std::string>& words) {
+
+		SceneView& scene = gui.scene;
+
 		std::string object = getWord(words, 1);
 		std::string value = getWord(words, 2);
 
@@ -246,10 +261,10 @@ void Console::registerSaveAndLoadCommands() {
 		std::string object = getWord(words, 1);
 
 		if (object == "mesh") {
-			saveFromExplorerMesh(scene.mesh);
+			saveFromExplorerMesh(project.mesh);
 		}
 		else if (object == "solver") {
-			saveFromExplorerSolver(scene.solver);
+			saveFromExplorerSolver(project.solver);
 		}
 		else if (object == "residual") {
 			
@@ -266,12 +281,12 @@ void Console::registerSaveAndLoadCommands() {
 		std::string object = getWord(words, 1);
 
 		if (object == "mesh") {
-			loadFromExplorerMesh(scene.mesh);
-			scene.mesh.updateAfterLoadingFile();
+			loadFromExplorerMesh(project.mesh);
+			project.mesh.updateAfterLoadingFile();
 			gui.meshGUI.getGridConfigEdits();
 		}
 		else if (object == "solver") {
-			loadFromExplorerSolver(scene.solver);
+			loadFromExplorerSolver(project.solver);
 		}
 		else if (object == "residual") {
 

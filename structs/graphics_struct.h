@@ -76,3 +76,9 @@ struct CylinderTemplateVertex {
 	float xCoord;           // 0 = front, 1 = back
 	float radialCoord;      // 0 = inner, 1 = outer
 };
+
+struct FilterValues {
+	float valueAt = 0.0;
+	float valueLower = 0.0;
+	float valueUpper = 0.0;
+};

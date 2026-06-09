@@ -8,12 +8,13 @@
 
 class Console;
 class SceneView;
+class Mesh;
 struct VariableUnits;
 
 class Solver {
 public:
 
-	Solver(SceneView& scene, Config& config);
+	Solver(Config& config);
 	
 	const char* boundaryType[4] = { "Wall", "Velocity Inlet", "Pressure Outlet", "Symmetry"};
 	const char* residualType[3] = { "Raw Residual", "RMS", "Custom Residual"};
@@ -51,12 +52,11 @@ public:
 	double dt = 0.1;
 	double tEnd = 2.0;
 
-	void run();
-	void runSimple();
+	void run(const Mesh& mesh);
+	void runSimple(const Mesh& mesh);
 	void runBiCGStab();
 	void shutdown();
 
-	SceneView& scene;
 	Config& config;
 	GridConfig& g;
 	FluidPropertyConfig& f;

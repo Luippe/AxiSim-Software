@@ -1,14 +1,19 @@
 #include "pch.h"
+
+#include "implot.h"
+
+#include "project.h"
 #include "gui.h"
-#include "results.h"
-#include "scene_view.h"
-#include "bounding.h"
-#include "solver.h"
+
 #include "mesh.h"
+#include "solver.h"
+#include "results.h"
+
+#include "bounding.h"
 #include "printer.h"
 #include "file_manager.h"
 #include "solver_struct.h"
-#include "implot.h"
+
 #include "IconsFontAwesome7.h"
 
 #include "flag_manager.h"
@@ -95,29 +100,27 @@ void GUI::newFrame() {
 	ImGui::NewFrame();
 	ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), UIFlags::BaseDockspaceFlags);
 
-}
+}	
 
 // ======================================================================
 // -----------------------INITIALIZATION---------------------------------
 // ======================================================================
-GUI::GUI(GLFWwindow* window, SceneView& scene) :
-	scene(scene),
-	menu(*this, scene),
-	inspector(scene, assets),
-	meshInspector(scene.mesh, assets),
-	console(*this, scene),
-	mesh(scene.mesh),
-	solver(scene.solver),
-	results(scene.results),
-	renderer(scene.renderer),
-	bound(scene.bound),
-	colormap(scene.colormap),
-	meshGUI(*this, scene),
-	solverGUI(scene),
-	resultsGUI(*this, scene),
-	residualPlot(scene.solver, assets),
-	animationGUI(scene),
-	config(scene.config)
+GUI::GUI(Project& project, GLFWwindow* window) :
+	project(project),
+	scene(project, *this),
+	menu(project, *this),
+	inspector(project, scene, assets),
+	meshInspector(project.mesh, assets),
+	console(*this, project),
+	mesh(project.mesh),
+	solver(project.solver),
+	results(project.results),
+	meshGUI(project, *this),
+	solverGUI(project),
+	resultsGUI(project, *this),
+	residualPlot(project.solver, assets),
+	animationGUI(project, *this),
+	config(project.config)
 
 {
 
@@ -182,7 +185,7 @@ void GUI::drawStatusBar() {
 	drawList->AddCircleFilled(dotCenter, 5.0f, IM_COL32(50, 220, 80, 255));
 
 	ImGui::SetCursorScreenPos(ImVec2(winMin.x + 30.0f, winMin.y + 5.0f));
-	if (scene.currentTab == ViewTab::TAB_MESH) {
+	if (project.currentTab == ViewTab::TAB_MESH) {
 
 	}
 	ImGui::TextUnformatted("Ready");
@@ -229,22 +232,6 @@ void GUI::drawUI() {
 
 		resultsGUI.draw();
 
-// ----------------------------------------- SETTINGS --------------------------------------
-		if (ImGui::BeginTabItem("Settings")) {
-			if (ImGui::CollapsingHeader("Bounding Box")) {
-				ImGui::Checkbox("Show Bounding Box", &bound.showBB);
-			}
-			changeCursorOnHover();
-
-			if (ImGui::CollapsingHeader("Options")) {
-				ImGui::Checkbox("Show Mesh", &mesh.showMesh);
-				ImGui::BeginDisabled(!results.isReady);
-				ImGui::Checkbox("Show Wireframe", &results.showOutline);
-				ImGui::EndDisabled();
-			}
-			changeCursorOnHover();
-			ImGui::EndTabItem();
-		}
 		ImGui::EndTabBar();
 	}
 	ImGui::End();
@@ -262,20 +249,21 @@ void GUI::render() {
 	drawUI();
 
 	// mesh GUI render
-	if (scene.currentTab == ViewTab::TAB_MESH && mesh.isReady) {
+	if (project.currentTab == ViewTab::TAB_MESH && mesh.isReady) {
 		meshInspector.render();
 	}
 
 	// solver GUI render
-	if (scene.currentTab == ViewTab::TAB_SOLVER) {
+	if (project.currentTab == ViewTab::TAB_SOLVER) {
 		residualPlot.draw();
 	}
 
 	// results GUI render
-	if (scene.currentTab == ViewTab::TAB_RESULTS && results.isReady) {
+	if (project.currentTab == ViewTab::TAB_RESULTS && results.isReady) {
+		scene.render();
 		inspector.render();
 
-		if (scene.solver.transient) {
+		if (project.solver.transient) {
 			animationGUI.render();
 		}
 	}

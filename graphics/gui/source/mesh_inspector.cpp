@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <glm/glm.hpp>
 
-#include "scene_view.h"
+#include "mesh.h"
 #include "colorbar.h"
 
 #include "flag_manager.h"

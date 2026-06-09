@@ -1,5 +1,5 @@
 #pragma once
-#include "colorbar.h"
+
 #include "console.h"
 #include "inspector.h"
 #include "solver_gui.h"
@@ -9,41 +9,41 @@
 #include "animation_gui.h"
 #include "residual_plot.h"
 #include "mesh_inspector.h"
+#include "scene_view.h"
 
-class Results;
-class SceneView;
-class Bounding;
 class Mesh;
-class Renderer;
 class Solver;
-enum class ViewTab;
+class Results;
+class Project;
 struct Config;
 
+enum class ViewTab;
 
 // class for managing GUI
 class GUI {
 public:
-	Menu menu;			// menu must come before anything else since it loads the mesh/solver/results
+	Menu menu;			// menu must come before anything else since it loads the mesh/solver/results when constructed
+	
+	SceneView scene;
 	Inspector inspector;
 	MeshInspector meshInspector;
 	Console console;
 	AppAssets assets;
 	ResidualPlot residualPlot;
+
+
+	Project& project;
 	Mesh& mesh;
 	Solver& solver;
 	Results& results;
-	Renderer& renderer;
 	GLFWwindow* window;
-	Bounding& bound;
-	SceneView& scene;
-	Colormap& colormap;
 	MeshGUI meshGUI;
 	SolverGUI solverGUI;
 	ResultsGUI resultsGUI;
 	AnimationGUI animationGUI;
 	Config& config;
 
-	GUI(GLFWwindow* window, SceneView& scene);
+	GUI(Project& project, GLFWwindow* window);
 
 	void newFrame();
 

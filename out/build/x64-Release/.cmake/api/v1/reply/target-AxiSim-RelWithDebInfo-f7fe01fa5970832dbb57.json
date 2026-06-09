@@ -511,14 +511,14 @@
 				8,
 				9,
 				10,
-				11
+				11,
+				12
 			]
 		},
 		{
 			"name" : "graphics\\window\\source",
 			"sourceIndexes" : 
 			[
-				12,
 				13,
 				14,
 				15,
@@ -583,14 +583,15 @@
 				50,
 				51,
 				52,
-				53
+				53,
+				54
 			]
 		},
 		{
 			"name" : "graphics\\tinyfiledialogs",
 			"sourceIndexes" : 
 			[
-				54,
+				55,
 				100
 			]
 		},
@@ -598,7 +599,6 @@
 			"name" : "graphics\\window\\header",
 			"sourceIndexes" : 
 			[
-				55,
 				56,
 				57,
 				58,
@@ -760,6 +760,12 @@
 		{
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/scene_view.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
 			"path" : "graphics/gui/source/solver_gui.cpp",
 			"sourceGroupIndex" : 0
 		},
@@ -797,12 +803,6 @@
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "graphics/window/source/renderer.cpp",
-			"sourceGroupIndex" : 1
-		},
-		{
-			"backtrace" : 2,
-			"compileGroupIndex" : 0,
-			"path" : "graphics/window/source/scene_view.cpp",
 			"sourceGroupIndex" : 1
 		},
 		{
@@ -999,6 +999,11 @@
 		},
 		{
 			"backtrace" : 2,
+			"path" : "graphics/gui/header/scene_view.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
 			"path" : "graphics/gui/header/solver_gui.h",
 			"sourceGroupIndex" : 5
 		},
@@ -1035,11 +1040,6 @@
 		{
 			"backtrace" : 2,
 			"path" : "graphics/window/header/renderer.h",
-			"sourceGroupIndex" : 7
-		},
-		{
-			"backtrace" : 2,
-			"path" : "graphics/window/header/scene_view.h",
 			"sourceGroupIndex" : 7
 		},
 		{
