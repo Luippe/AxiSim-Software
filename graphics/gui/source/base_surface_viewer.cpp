@@ -675,19 +675,20 @@ void BaseSurfaceViewer::addImageButtonNewTab(TextureBuffer& icon, ImVec2 buttonS
 
 bool BaseSurfaceViewer::addImageButton(const char* id, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize) {
 	ImGui::PushID(id);
-
+	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, imageButtonRounding);
 	bool clicked = ImGui::ImageButton("##addImageButton", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize);
 
 	setToolTip(tooltip);
 
 	ImGui::PopID();
+	ImGui::PopStyleVar();
 	return clicked;
 }
 
 bool BaseSurfaceViewer::addImageButtonToggle(const char* id, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle) {
 
 	ImGui::PushID(id);
-
+	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, imageButtonRounding);
 	bool pushed = false;
 
 	// highlight button when toggle is on
@@ -711,6 +712,7 @@ bool BaseSurfaceViewer::addImageButtonToggle(const char* id, const char* tooltip
 	setToolTip(tooltip);
 
 	ImGui::PopID();
+	ImGui::PopStyleVar();
 
 	return pushed;
 }

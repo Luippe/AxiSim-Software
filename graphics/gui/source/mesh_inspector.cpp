@@ -916,7 +916,7 @@ void MeshInspector::drawBoundarySegments(
 }
 
 void MeshInspector::drawToolBar() {
-	float toolbarHeight = 32.0f;
+	float toolbarHeight = 40.0f;
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 

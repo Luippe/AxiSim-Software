@@ -268,7 +268,7 @@ protected:
 	ImVec2 currentMousePos = ImVec2(0.0f, 0.0f);
 	ImVec2 rectPos1 = ImVec2(0.0f, 0.0f);
 	ImVec2 rectPos2 = ImVec2(0.0f, 0.0f);
-	ImVec2 buttonSize = ImVec2(22.0f, 22.0f);
+	ImVec2 buttonSize = ImVec2(30.0f, 30.0f);
 
 	// shader
 	Shader shader;
@@ -410,6 +410,8 @@ protected:
 	void addImageButtonNewTab(TextureBuffer& icon, ImVec2 buttonSize, ImGuiID currentDockID, ImGuiID& pendingAddDockID, ImGuiID dockspaceID);
 
 private:
+
+	const float imageButtonRounding = 6.0f;
 
 	void drawFilledCells(
 		ImDrawList* drawList,
