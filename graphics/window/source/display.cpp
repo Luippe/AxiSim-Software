@@ -61,9 +61,4 @@ Display::Display() {
 	// enable vsync
 	glfwSwapInterval(1);
 
-
-	// tell GLFW to capture our mouse
-	//glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
-
 }

@@ -47,7 +47,7 @@ public:
 
 	bool solverRunning = false;
 	bool continueSolver = false;
-	bool solutionReady = false;
+	bool isReady = false;
 
 	double dt = 0.1;
 	double tEnd = 2.0;

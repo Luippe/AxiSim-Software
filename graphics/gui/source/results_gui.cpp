@@ -133,7 +133,7 @@ void ResultsGUI::draw() {
 	if (ImGui::BeginTabItem("Results")) {
 		project.currentTab = ViewTab::TAB_RESULTS;
 
-		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
+		ImGui::BeginChild("SetupTree", ImVec2(0.0f, 600.0f), true);
 
 		if (ImGui::BeginTable("Field", 2)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
@@ -168,11 +168,11 @@ void ResultsGUI::draw() {
 		ImGui::EndChild();
 
 		if (ImGui::Button("Generate Results")) {
-
-			project.results.generate(project.mesh, project.solver);
-			gui.inspector.generate();
-			scene.createBuffer();
-
+			if (project.solver.isReady) {
+				project.results.generate(project.mesh, project.solver);
+				gui.inspector.generate();
+				scene.createBuffer();
+			}
 		}
 		changeCursorOnHover();
 

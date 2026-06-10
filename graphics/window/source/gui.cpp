@@ -1,20 +1,20 @@
 #include "pch.h"
+#include "gui.h"
 
 #include "implot.h"
 
 #include "project.h"
-#include "gui.h"
 
 #include "mesh.h"
 #include "solver.h"
 #include "results.h"
 
-#include "bounding.h"
 #include "printer.h"
 #include "file_manager.h"
 #include "solver_struct.h"
 
 #include "IconsFontAwesome7.h"
+
 
 #include "flag_manager.h"
 
@@ -33,30 +33,30 @@ void setContext(ImGuiContext* imguiContext, ImPlotContext* implotContext) {
 	ImPlot::SetCurrentContext(implotContext);
 }
 
-// init imgui font awesome
+void applyTextColors() {
+	ImGuiStyle& style = ImGui::GetStyle();
+	ImVec4* colors = style.Colors;
+
+	// Main normal text
+	colors[ImGuiCol_Text] = ImVec4(1.0f, 1.0f, 1.0f, 1.00f);
+
+	// Disabled text / gray text
+	colors[ImGuiCol_TextDisabled] = ImVec4(0.55f, 0.60f, 0.65f, 1.00f);
+}
+
 void initImGuiFonts() {
+    ImGuiIO& io = ImGui::GetIO();
 
-	ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->Clear();
 
-	io.Fonts->AddFontDefault();
-
-	ImFontConfig iconConfig;
-	iconConfig.MergeMode = true;
-	iconConfig.PixelSnapH = true;
-	iconConfig.GlyphMinAdvanceX = 13.0f;
-
-	static const ImWchar iconRanges[] = {
-		ICON_MIN_FA,
-		ICON_MAX_16_FA,
-		0
-	};
-
-	io.Fonts->AddFontFromFileTTF(
-		"assets/fonts/Font Awesome 7 Free-Solid-900.otf",
-		13.0f,
-		&iconConfig,
-		iconRanges
+	ImFont* uiFont = io.Fonts->AddFontFromFileTTF(
+		"assets/fonts/Roboto-Regular.ttf",
+		16.0f
 	);
+
+    IM_ASSERT(uiFont != nullptr);
+
+    io.FontDefault = uiFont;
 }
 
 // initialize gui buffers
@@ -95,12 +95,36 @@ void initAssetBuffers(AppAssets& assets) {
 
 void GUI::newFrame() {
 
+	setContext(mainImGuiContext, mainImPlotContext);
+
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
-	ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), UIFlags::BaseDockspaceFlags);
 
-}	
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+	ImVec2 dockPos = viewport->WorkPos;
+	ImVec2 dockSize = viewport->WorkSize;
+	dockSize.y -= statusBarHeight;
+
+	ImGui::SetNextWindowPos(dockPos);
+	ImGui::SetNextWindowSize(dockSize);
+	ImGui::SetNextWindowViewport(viewport->ID);
+
+
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+
+	ImGui::Begin("MainDockSpace", nullptr, UIFlagsDocking::MainDockWindowFlags);
+
+	ImGuiID dockspaceID = ImGui::GetID("MainDockSpaceID");
+	ImGui::DockSpace(dockspaceID, ImVec2(0.0f, 0.0f), UIFlags::BaseDockspaceFlags);
+
+	ImGui::End();
+
+	ImGui::PopStyleVar(3);
+}
 
 // ======================================================================
 // -----------------------INITIALIZATION---------------------------------
@@ -141,6 +165,7 @@ GUI::GUI(Project& project, GLFWwindow* window) :
 
 	// initialize all fonts and icon assets
 	initImGuiFonts();
+	applyTextColors();
 	initAssetBuffers(assets);
 }
 
@@ -224,7 +249,7 @@ void GUI::drawStatusBar() {
 
 void GUI::drawUI() {
 	ImGui::Begin("Project");
-	if (ImGui::BeginTabBar("Main"), UIFlags::TabBarFlags) {
+	if (ImGui::BeginTabBar("Main", UIFlags::TabBarFlags)) {
 
 		meshGUI.draw();
 

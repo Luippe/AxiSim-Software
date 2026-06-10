@@ -24,6 +24,18 @@ namespace UIFlagsTree{
 
 }
 
+namespace UIFlagsDocking {
+	inline constexpr ImGuiWindowFlags MainDockWindowFlags =
+		ImGuiWindowFlags_NoTitleBar |
+		ImGuiWindowFlags_NoCollapse |
+		ImGuiWindowFlags_NoResize |
+		ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_NoBringToFrontOnFocus |
+		ImGuiWindowFlags_NoNavFocus |
+		ImGuiWindowFlags_NoBackground |
+		ImGuiWindowFlags_NoDecoration;
+}
+
 namespace UIFlags {
 
 	inline constexpr ImGuiWindowFlags StatusBarWindowFlags =

@@ -227,7 +227,7 @@ void MeshGUI::draw() {
 	if (ImGui::BeginTabItem("Mesh")) {
 		project.currentTab = ViewTab::TAB_MESH;
 
-		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
+		ImGui::BeginChild("SetupTree", ImVec2(0.0f, 600), true);
 
 		// draw general tree node
 		bool generalOpen = ImGui::TreeNodeEx("General", UIFlagsTree::BranchOpenedFlags);
@@ -280,6 +280,7 @@ void MeshGUI::draw() {
 		ImGui::EndChild();
 
 		// draw generate button
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
 		if (ImGui::Button("Generate Mesh")) {
 			bool topologyChanged =
 				gridConfigEdits.nr != config.g.nr ||
@@ -300,6 +301,7 @@ void MeshGUI::draw() {
 			gui.meshInspector.createGridBuffer();
 		}
 		changeCursorOnHover();
+		ImGui::PopStyleVar();
 
 		// draw overview window
 		drawOverview();

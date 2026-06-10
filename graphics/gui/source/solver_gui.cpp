@@ -466,7 +466,7 @@ void SolverGUI::draw() {
 	if (ImGui::BeginTabItem("Solver")) {
 		project.currentTab = ViewTab::TAB_SOLVER;
 
-		ImGui::BeginChild("SetupTree", ImVec2(260, 600), true);
+		ImGui::BeginChild("SetupTree", ImVec2(0.0f, 600.0f), true);
 
 		bool generalOpen = false;
 		

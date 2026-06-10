@@ -51,6 +51,9 @@ public:
 	void render();
 
 private:
+
+	const float statusBarHeight = 26.0f;
+
 	// main context
 	ImGuiContext* mainImGuiContext = nullptr;
 	ImPlotContext* mainImPlotContext = nullptr;

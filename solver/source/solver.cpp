@@ -269,7 +269,7 @@ void Solver::runSimple(const Mesh& mesh) {
 
 
     // allocate memory
-    if (!solutionReady || !continueSolver) {
+    if (!isReady || !continueSolver) {
 
         residualPlot->setName(residualsToPrint);
 
@@ -472,7 +472,7 @@ void Solver::runSimple(const Mesh& mesh) {
     tempSol = SolutionField{ copyDeviceToHostVector(simple.temp, N), g.dr, g.dz, BoundaryVariable::StaticTemperature};
 
     //mFlux = SolutionField{copyDevice}
-    solutionReady = true;
+    isReady = true;
 
     // free memory
     //uCoeff.free();

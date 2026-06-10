@@ -252,7 +252,6 @@ void SceneView::draw3DPreview() {
 	glActiveTexture(GL_TEXTURE0);
 	results.currentField->textureBuffer.unbind();
 
-
 	// draw coordinate axes
 	renderer.renderAxis(shaderLine);
 
@@ -303,8 +302,6 @@ void SceneView::render() {
 
 
 	draw3DPreview();
-		
-
 
 
 	// end draw and render calls
