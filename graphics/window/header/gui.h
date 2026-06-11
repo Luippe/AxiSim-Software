@@ -28,9 +28,8 @@ public:
 	Inspector inspector;
 	MeshInspector meshInspector;
 	Console console;
-	AppAssets assets;
+	AppConfig appConfig;
 	ResidualPlot residualPlot;
-
 
 	Project& project;
 	Mesh& mesh;

@@ -25,8 +25,13 @@ std::ofstream openBinaryFile(const char* path);
 // ====================================================
 // -------------------PROJECT--------------------------
 // ====================================================
+// save project by opening explorer
+void saveFromExplorerProject(Project& project);
+
+// load project at startup
 void saveLaunchProject(Project& project);
 
+// load project from explorer
 void loadFromExplorerProject(Project& project);
 
 
@@ -37,16 +42,13 @@ void loadFromExplorerProject(Project& project);
 void saveFromExplorerMesh(Mesh& mesh);
 
 // save mesh given a path
-void saveFromPathMesh(const char* path, Mesh& mesh);
+void saveFromPathMesh(std::ofstream& out, Mesh& mesh);
 
 // load mesh from explorer
 void loadFromExplorerMesh(Mesh& mesh);
 
 // load mesh from given path
-void loadFromPathMesh(const char* path, Mesh& mesh);
-
-// save mesh which will be launched when application opens
-void saveLaunchMesh(Mesh& mesh);
+void loadFromPathMesh(std::ifstream& in, Mesh& mesh);
 
 // ======================================================================
 // -----------------------SOLVER-----------------------------------------
@@ -55,16 +57,13 @@ void saveLaunchMesh(Mesh& mesh);
 void saveFromExplorerSolver(Solver& solver);
 
 // save solver given a path
-void saveFromPathSolver(const char* path, Solver& solver);
+void saveFromPathSolver(std::ofstream& out, Solver& solver);
 
 // load all necessary variables for the solver config and boundary conditions
-void loadFromPathSolver(const char* path, Solver& solver);
+void loadFromPathSolver(std::ifstream& in, Solver& solver);
 
 // load solver after opening explorer
 void loadFromExplorerSolver(Solver& solver);
-
-// save solver which will be launched when application oepns
-void saveLaunchSolver(Solver& solver);
 
 // write boundarycondtion struct to save file
 void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc);

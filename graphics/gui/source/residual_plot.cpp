@@ -2,16 +2,21 @@
 #include <format>
 #include <algorithm>
 
-#include "residual_plot.h"
-#include "graphics_struct.h"
-#include "solver.h"
-#include "flag_manager.h"
 #include "imgui_internal.h"
+
+#include "residual_plot.h"
+
+#include "solver.h"
+
+#include "graphics_struct.h"
+
+#include "flag_manager.h"
 #include "printer.h"
 
-ResidualPlot::ResidualPlot(Solver& solver, AppAssets& assets) :
+ResidualPlot::ResidualPlot(Solver& solver, AppConfig& appConfig) :
     solver(solver),
-    assets(assets){
+    assets(appConfig.assets){
+
 }
 
 void ResidualPlot::resetState() {

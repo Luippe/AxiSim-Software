@@ -10,13 +10,13 @@
 #include "printer.h"
 #include "math_func.h"
 
-Inspector::Inspector(Project& project, SceneView& scene, AppAssets& assets) :
+Inspector::Inspector(Project& project, SceneView& scene, AppConfig& appConfig) :
 		scene(scene),
 		project(project),
 		mesh(project.mesh),
 		results(project.results),
 		g(mesh.g),
-		assets(assets),
+		assets(appConfig.assets),
 		colorbar(scene.colormap, project.results),
 		BaseSurfaceViewer("graphics/shaders/inspector.vert", "graphics/shaders/inspector.frag") {
 

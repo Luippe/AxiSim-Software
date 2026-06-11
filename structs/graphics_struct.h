@@ -17,6 +17,15 @@ struct AppAssets {
 	TextureBuffer fillCellIcon;
 };
 
+struct AppFonts {
+	ImFont* defaultFont = nullptr;
+	ImFont* uiFont = nullptr;
+};
+
+struct AppConfig {
+	AppAssets assets;
+	AppFonts fonts;
+};
 
 enum class CompareType {
 	LessThan,

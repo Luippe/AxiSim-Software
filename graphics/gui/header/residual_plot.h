@@ -10,7 +10,7 @@
 #include "buffer_manager.h"
 
 class Solver;
-struct AppAssets;
+struct AppConfig;
 
 struct Plot {
     std::string name;
@@ -25,7 +25,7 @@ struct TextPos {
 class ResidualPlot {
 
 public:
-	ResidualPlot(Solver& solver, AppAssets& assets);
+	ResidualPlot(Solver& solver, AppConfig& appConfig);
 
     // create dockspace to have multiple tabs
     DockingSpace residualDockSpace{ "Residual Plot" };

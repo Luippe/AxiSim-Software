@@ -34,6 +34,7 @@ public:
 	// draw the console UI
 	void draw();
 
+
 private:
 
 	using CommandArgs = std::vector<std::string>;
@@ -57,8 +58,8 @@ private:
 
 	std::string getWord(const std::vector<std::string>& words, size_t index);
 
+
 	void registerCommands();
-	void registerRunCommands();
 	void registerSetCommands();
 	void registerGetCommands();
 	void registerCopyCommands();
@@ -67,7 +68,8 @@ private:
 
 	void addCommand(const std::string& name, CommandFn function, const std::string& usage, const std::string& description);
 
-	void handleEvents();
+	// check if auto scroll is on, if it is, scroll to bottom whener a line is added
+	void checkAutoScroll();
 
 	std::vector<std::string> commandHistory;
 	int historyPos = -1;

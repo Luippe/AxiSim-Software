@@ -467,6 +467,7 @@ void SolverGUI::drawPropertiesPanel() {
 }
 
 void SolverGUI::draw() {
+
 	if (ImGui::BeginTabItem("Solver")) {
 		project.currentTab = ViewTab::TAB_SOLVER;
 
@@ -583,8 +584,6 @@ void SolverGUI::draw() {
 		changeCursorOnHover();
 
 		ImGui::EndChild();
-
-
 
 		ImGui::Checkbox("Continue Solver", &solver.continueSolver);
 

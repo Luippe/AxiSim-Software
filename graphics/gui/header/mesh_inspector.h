@@ -20,13 +20,12 @@ struct GridConfig;
 class MeshInspector : public BaseSurfaceViewer {
 public:
 
-	MeshInspector(Mesh& mesh, AppAssets& assets);
+	MeshInspector(Mesh& mesh, AppConfig& appConfig);
 
 	VertexBuffer vertexBuffer;
 
 	// create dockspace to have multiple tabs
 	DockingSpace meshDockSpace{ "Mesh Inspector" };
-
 
 	void generate();
 

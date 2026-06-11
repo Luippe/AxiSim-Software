@@ -17,7 +17,7 @@ class SceneView;
 class Inspector : public BaseSurfaceViewer {
 public:
 
-	Inspector(Project& project, SceneView& scene, AppAssets& assets);
+	Inspector(Project& project, SceneView& scene, AppConfig& appConfig);
 
 	void generate();
 

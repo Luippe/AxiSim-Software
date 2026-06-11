@@ -13,10 +13,10 @@
 
 #include <iostream>
 
-MeshInspector::MeshInspector(Mesh& mesh, AppAssets& assets) :
+MeshInspector::MeshInspector(Mesh& mesh, AppConfig& appConfig) :
 	mesh(mesh),
 	g(mesh.g),
-	assets(assets),
+	assets(appConfig.assets),
 	BaseSurfaceViewer("graphics/shaders/mesh.vert", "graphics/shaders/mesh.frag") {
 
 	// radial location

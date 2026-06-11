@@ -17,13 +17,6 @@
 #include "printer.h"
 #include "console_keywords.h"
 
-struct InputFocusData {
-	bool moveCursorToEnd = false;
-};
-struct MultilineScrollData {
-	bool scrollToBottom = false;
-};
-
 // parse words separated by space
 std::vector<std::string> parseWords(const std::string& line) {
 
@@ -62,11 +55,20 @@ std::string formatPrecision(double value) {
 Console::Console(GUI& gui, Project& project) :
 	project(project),
 	gui(gui){
+
+	// initialize all commands and set the font
 	registerCommands();
+
 }
 
 void Console::addCommand(const std::string& name, CommandFn function, const std::string& usage, const std::string& description) {
 	commands[name] = Command{ function, usage, description };
+}
+
+void Console::checkAutoScroll() {
+	if (autoScroll) {
+		scrollToBottom = true;
+	}
 }
 
 std::string Console::getWord(const std::vector<std::string>& words, size_t index) {
@@ -78,36 +80,11 @@ std::string Console::getWord(const std::vector<std::string>& words, size_t index
 }
 
 void Console::registerCommands() {
-	registerRunCommands();
 	registerSetCommands();
 	registerGetCommands();
 	registerCopyCommands();
 	registerSaveAndLoadCommands();
 	registerUtilityCommands();
-}
-
-void Console::registerRunCommands() {
-	addCommand("run", [this](const std::vector<std::string>& words) {
-		std::string object = getWord(words, 1);
-			
-		if (object == "mesh") {
-			gui.meshGUI.setGridConfigEdits();
-			project.mesh.generate();
-		}
-		else if (object == "solver") {
-			project.solver.run(project.mesh);
-		}
-		else if (object == "results") {
-			project.results.generate(project.mesh, project.solver);
-			gui.inspector.generate();
-		}
-		else {
-			addLine("Invalid argument");
-		}
-		},
-		"run <mesh|solver|results>",
-		"Runs a major program operation"
-	);
 }
 
 void Console::registerSetCommands() {
@@ -226,11 +203,12 @@ void Console::registerCopyCommands() {
 
 		if (object == "residual") {
 			gui.residualPlot.consoleCopy = true;
-			addLine("copied to clipboard");
+		}
+		else if (object == "mesh") {
+			gui.meshInspector.consoleCopy = true;
 		}
 		else if (object == "inspector") {
 			gui.inspector.consoleCopy = true;
-			addLine("copied to clipboard");
 		}
 		else if (object == "colormap") {
 
@@ -245,7 +223,7 @@ void Console::registerCopyCommands() {
 					<< std::setw(3) << (int)cmap[i][2] << " }\n";
 			}
 			clip::set_text(ss.str());
-			addLine("copied to clipboard");
+			addLine("copied RGB values to clipboard");
 		}
 		else {
 			addLine("Invalid object: " + object);
@@ -259,15 +237,8 @@ void Console::registerCopyCommands() {
 void Console::registerSaveAndLoadCommands() {
 	addCommand("save", [this](const std::vector<std::string>& words) {
 		std::string object = getWord(words, 1);
-
-		if (object == "mesh") {
-			saveFromExplorerMesh(project.mesh);
-		}
-		else if (object == "solver") {
-			saveFromExplorerSolver(project.solver);
-		}
-		else if (object == "residual") {
-			
+		if (object == "project") {
+			saveFromExplorerProject(project);
 		}
 		else {
 			addLine("Invalid object: " + object);
@@ -280,16 +251,10 @@ void Console::registerSaveAndLoadCommands() {
 	addCommand("load", [this](const std::vector<std::string>& words) {
 		std::string object = getWord(words, 1);
 
-		if (object == "mesh") {
-			loadFromExplorerMesh(project.mesh);
+		if (object == "project") {
+			loadFromExplorerProject(project);
 			project.mesh.updateAfterLoadingFile();
 			gui.meshGUI.getGridConfigEdits();
-		}
-		else if (object == "solver") {
-			loadFromExplorerSolver(project.solver);
-		}
-		else if (object == "residual") {
-
 		}
 		else {
 			addLine("Invalid object: " + object);
@@ -329,13 +294,14 @@ void Console::registerUtilityCommands() {
 }
 
 void Console::addLine(const std::string& s) {
+
 	lines.push_back({ s });
-	scrollToBottom = true;
+	checkAutoScroll();
 }
 
 void Console::addCompletionMessage(const std::string& s) {
 	lines.push_back({ "		" + s });
-	scrollToBottom = true;
+	checkAutoScroll();
 }
 
 void Console::addCompletionTime(const std::string& object, float& ms) {
@@ -344,9 +310,11 @@ void Console::addCompletionTime(const std::string& object, float& ms) {
 	addSeparator();
 }
 
+
+
 void Console::addSeparator() {
 	lines.push_back({ "-----------------------------------------" });
-	scrollToBottom = true;
+	checkAutoScroll();
 }
 
 void Console::clear() {
@@ -411,19 +379,12 @@ int Console::textEditCallback(ImGuiInputTextCallbackData* data) {
 	return 0;
 }
 
-void Console::handleEvents() {
-
-}
-
-void drawOutput() {
-
-}
-
 void Console::draw() {
 
 	ImGui::Begin("Console");
 
 	ImGuiIO& io = ImGui::GetIO();
+	ImFont* defaultFont = gui.appConfig.fonts.defaultFont;
 
 	if (ImGui::Button("Clear")) {
 		clear();
@@ -433,6 +394,7 @@ void Console::draw() {
 	ImGui::Checkbox("Auto scroll", &autoScroll);
 	ImGui::Separator();
 
+	ImGui::PushFont(defaultFont);
 	ImGui::BeginChild(
 		"ConsoleOutput",
 		ImVec2(0, -ImGui::GetFrameHeightWithSpacing()),
@@ -440,17 +402,20 @@ void Console::draw() {
 		ImGuiWindowFlags_HorizontalScrollbar
 	);
 
+
 	for (const std::string& line : lines) {
 		ImGui::TextUnformatted(line.c_str());
 	}
 
-	if (scrollToBottom || autoScroll) {
+
+	if (scrollToBottom) {
 		ImGui::SetScrollHereY(1.0f);
 		scrollToBottom = false;
 	}
 
 	ImGui::EndChild();
 
+	ImGui::SetNextItemWidth(-FLT_MIN);
 	if (ImGui::InputText("##Console", inputBuffer, sizeof(inputBuffer), UIFlags::ConsoleInputFlags, &Console::textEditCallbackStub, this)) {
 		std::string cmd = inputBuffer;
 		scrollToBottom = true;
@@ -465,5 +430,6 @@ void Console::draw() {
 		ImGui::SetKeyboardFocusHere(-1);
 	}
 
+	ImGui::PopFont();
 	ImGui::End();
 }

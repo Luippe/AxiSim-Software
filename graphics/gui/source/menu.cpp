@@ -9,8 +9,6 @@ Menu::Menu(Project& project, GUI& gui) :
 	project(project),
 	gui(gui){
 	loadAtLaunch(project);
-	//loadAtLaunch(project, "solver");
-	//scene.solver.setDefault();
 }
 
 
@@ -18,8 +16,6 @@ void Menu::drawOpen() {
 	if (ImGui::BeginMenu("Open")) {
 		if (ImGui::MenuItem("Project")) {
 			loadFromExplorerProject(project);
-			project.mesh.updateAfterLoadingFile();
-			gui.meshGUI.getGridConfigEdits();
 		}
 
 		ImGui::EndMenu();
@@ -39,22 +35,9 @@ void Menu::drawOpenAtLaunch() {
 
 void Menu::drawSave() {
 	if (ImGui::BeginMenu("Save")) {
-		if (ImGui::MenuItem("Mesh")) {
-			saveFromExplorerMesh(project.mesh);
-		}
-
-		if (ImGui::MenuItem("Solver")) {
-			saveFromExplorerSolver(project.solver);
-		}
-
-		if (ImGui::MenuItem("Results")) {
-			//saveFromExplorerResults(project.results);
-		}
-
-		ImGui::Separator();
 
 		if (ImGui::MenuItem("Save Entire Project")) {
-
+			saveFromExplorerProject(project);
 		}
 
 		ImGui::EndMenu();

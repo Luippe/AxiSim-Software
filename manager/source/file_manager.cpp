@@ -81,11 +81,31 @@ void readBoundaryGroups(std::ifstream& in, std::vector<BoundarySegmentGroup>& gr
 // ====================================================
 // -------------------PROJECT--------------------------
 // ====================================================
+void saveFromPathProject(const char* path, Project& project) {
+
+	std::ofstream out(path, std::ios::binary);
+	saveFromPathMesh(out, project.mesh);
+	saveFromPathSolver(out, project.solver);
+	out.close();
+}
+
 void saveLaunchProject(Project& project) {
+	const char* path = "openAtLaunchProject.bin";
+	saveFromPathProject(path, project);
+}
 
-	saveLaunchMesh(project.mesh);
-	saveLaunchSolver(project.solver);
+void saveFromExplorerProject(Project& project) {
+	const char* path = tinyfd_saveFileDialog(
+		"Save Project",          // dialog title
+		"project.bin",           // default filename
+		0,                    // number of filters
+		nullptr,              // filter patterns
+		nullptr               // filter description
+	);
 
+	if (!path) return;
+
+	saveFromPathProject(path, project);
 }
 
 void loadFromExplorerProject(Project& project) {
@@ -103,8 +123,9 @@ void loadFromExplorerProject(Project& project) {
 
 	if (!path) return;
 
-	loadFromPathMesh(path, project.mesh);
-	loadFromPathSolver(path, project.solver);
+	std::ifstream in(path, std::ios::binary);
+	loadFromPathMesh(in, project.mesh);
+	loadFromPathSolver(in, project.solver);
 
 }
 
@@ -122,11 +143,11 @@ void saveFromExplorerMesh(Mesh& mesh) {
 
 	if (!path) return;
 
-	saveFromPathMesh(path, mesh);
+	std::ofstream out(path, std::ios::binary);
+	saveFromPathMesh(out, mesh);
 }
 
-void saveFromPathMesh(const char* path, Mesh& mesh) {
-	std::ofstream out(path, std::ios::binary);
+void saveFromPathMesh(std::ofstream& out, Mesh& mesh) {
 
 	// save user specific input
 	writeAll(
@@ -154,7 +175,7 @@ void saveFromPathMesh(const char* path, Mesh& mesh) {
 
 	writeBoundaryGroups(out, mesh.boundaryGroups);
 
-	out.close();
+
 }
 
 void loadFromExplorerMesh(Mesh& mesh) {
@@ -170,16 +191,13 @@ void loadFromExplorerMesh(Mesh& mesh) {
 	);
 
 	if (!path) return;
-
-	loadFromPathMesh(path, mesh);
+	std::ifstream in(path, std::ios::binary);
+	loadFromPathMesh(in, mesh);
 }
 
-void loadFromPathMesh(const char* path, Mesh& mesh) {
-
-	std::ifstream in(path, std::ios::binary);
+void loadFromPathMesh(std::ifstream& in, Mesh& mesh) {
 
 	// load dimensions
-
 	readAll(in,
 		mesh.nseg,
 		mesh.gridVertices,
@@ -205,17 +223,10 @@ void loadFromPathMesh(const char* path, Mesh& mesh) {
 	readBoundaryGroups(in, mesh.boundaryGroups);
 }
 
-void saveLaunchMesh(Mesh& mesh) {
-	const char* path = "openAtLaunchMesh.bin";
-	saveFromPathMesh(path, mesh);
-}
-
 // ====================================================
 // -------------------SOLVER---------------------------
 // ====================================================
-void saveFromPathSolver(const char* path, Solver& solver) {
-
-	std::ofstream out(path, std::ios::binary);
+void saveFromPathSolver(std::ofstream& out, Solver& solver) {
 
 	saveBinary(out, solver.varUnits, solver.fieldOption, solver.enabledResiduals);
 	saveBinary(out, 
@@ -227,8 +238,6 @@ void saveFromPathSolver(const char* path, Solver& solver) {
 	saveBinary(out, solver.addConvectionTerm, solver.transient);
 	saveBinary(out, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
 	writeAll(out, solver.configSimple);
-
-	out.close();
 
 }
 
@@ -242,13 +251,11 @@ void saveFromExplorerSolver(Solver& solver) {
 	);
 
 	if (!path) return;
-
-	saveFromPathSolver(path, solver);
+	std::ofstream out(path, std::ios::binary);
+	saveFromPathSolver(out, solver);
 }
 
-void loadFromPathSolver(const char* path, Solver& solver) {
-
-	std::ifstream in(path, std::ios::binary);
+void loadFromPathSolver(std::ifstream& in, Solver& solver) {
 
 	readBinary(in, solver.varUnits, solver.fieldOption, solver.enabledResiduals);
 	readBinary(in,
@@ -277,13 +284,8 @@ void loadFromExplorerSolver(Solver& solver) {
 
 	if (!path) return;
 
-	loadFromPathSolver(path, solver);
-}
-
-void saveLaunchSolver(Solver& solver) {
-	const char* path = "openAtLaunchSolver.bin";
-	//check();
-	saveFromPathSolver(path, solver);
+	std::ifstream in(path, std::ios::binary);
+	loadFromPathSolver(in, solver);
 }
 
 // ====================================================
@@ -319,8 +321,7 @@ void loadAtLaunch(Project& project) {
 	{
 		std::ifstream in(meshFile, std::ios::binary);
 		if (in) {
-			loadFromPathMesh(meshFile, project.mesh);
-
+			loadFromPathMesh(in, project.mesh);
 			project.mesh.updateAfterLoadingFile();
 		}
 	}
@@ -329,7 +330,7 @@ void loadAtLaunch(Project& project) {
 	{
 		std::ifstream in(solverFile, std::ios::binary);
 		if (in) {
-			loadFromPathSolver(solverFile, project.solver);
+			loadFromPathSolver(in, project.solver);
 		}
 	}
 

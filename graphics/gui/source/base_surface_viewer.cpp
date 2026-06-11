@@ -5,6 +5,8 @@
 #include "imgui_internal.h"
 
 DockingSpace::DockingSpace(const char* name) : dockName(name) {
+
+
 }
 
 int DockingSpace::getActiveTabID() {
@@ -104,6 +106,9 @@ bool DockingSpace::isCurrentDockTabDoubleClicked() {
 
 BaseSurfaceViewer::BaseSurfaceViewer(const char* vertexPath, const char* fragmentPath) :
 	shader(vertexPath, fragmentPath) {
+
+
+
 }
 
 

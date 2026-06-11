@@ -84,6 +84,7 @@ void Solver::run(const Mesh& mesh) {
         runSimple(mesh);
         solverRunning = false;
         });
+
 }
 
 void Solver::createResidualPrintItems() {

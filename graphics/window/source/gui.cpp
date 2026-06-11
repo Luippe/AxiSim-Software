@@ -44,19 +44,22 @@ void applyTextColors() {
 	colors[ImGuiCol_TextDisabled] = ImVec4(0.55f, 0.60f, 0.65f, 1.00f);
 }
 
-void initImGuiFonts() {
-    ImGuiIO& io = ImGui::GetIO();
+void initImGuiFonts(AppFonts& fonts) {
 
-    io.Fonts->Clear();
 
-	ImFont* uiFont = io.Fonts->AddFontFromFileTTF(
+	ImGuiIO& io = ImGui::GetIO();
+	io.Fonts->Clear();
+
+	fonts.defaultFont = io.Fonts->AddFontDefault();
+	fonts.uiFont = io.Fonts->AddFontFromFileTTF(
 		"assets/fonts/Roboto-Regular.ttf",
 		16.0f
 	);
 
-    IM_ASSERT(uiFont != nullptr);
+    IM_ASSERT(fonts.uiFont != nullptr);
 
-    io.FontDefault = uiFont;
+    io.FontDefault = fonts.uiFont;
+
 }
 
 // initialize gui buffers
@@ -111,7 +114,6 @@ void GUI::newFrame() {
 	ImGui::SetNextWindowSize(dockSize);
 	ImGui::SetNextWindowViewport(viewport->ID);
 
-
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -133,8 +135,8 @@ GUI::GUI(Project& project, GLFWwindow* window) :
 	project(project),
 	scene(project, *this),
 	menu(project, *this),
-	inspector(project, scene, assets),
-	meshInspector(project.mesh, assets),
+	inspector(project, scene, appConfig),
+	meshInspector(project.mesh, appConfig),
 	console(*this, project),
 	mesh(project.mesh),
 	solver(project.solver),
@@ -142,7 +144,7 @@ GUI::GUI(Project& project, GLFWwindow* window) :
 	meshGUI(project, *this),
 	solverGUI(project),
 	resultsGUI(project, *this),
-	residualPlot(project.solver, assets),
+	residualPlot(project.solver, appConfig),
 	animationGUI(project, *this),
 	config(project.config)
 
@@ -155,6 +157,8 @@ GUI::GUI(Project& project, GLFWwindow* window) :
 
 	solver.residualPlot = &residualPlot;
 
+
+
 	IMGUI_CHECKVERSION();
 
 	// initialize context. make sure to finish by setting the current context to main context
@@ -164,9 +168,10 @@ GUI::GUI(Project& project, GLFWwindow* window) :
 	setContext(mainImGuiContext, mainImPlotContext);
 
 	// initialize all fonts and icon assets
-	initImGuiFonts();
+	initImGuiFonts(appConfig.fonts);
 	applyTextColors();
-	initAssetBuffers(assets);
+	initAssetBuffers(appConfig.assets);
+
 }
 
 
