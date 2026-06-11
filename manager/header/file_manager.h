@@ -22,6 +22,14 @@ bool fileExists(const std::string& filename);
 // open .bin file and return stream
 std::ofstream openBinaryFile(const char* path);
 
+// ====================================================
+// -------------------PROJECT--------------------------
+// ====================================================
+void saveLaunchProject(Project& project);
+
+void loadFromExplorerProject(Project& project);
+
+
 // ======================================================================
 // -----------------------MESH-------------------------------------------
 // ======================================================================
@@ -65,7 +73,7 @@ void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc);
 void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc);
 
 // load selected files when the application launches
-void loadAtLaunch(Project& project, const char* target);
+void loadAtLaunch(Project& project);
 
 // read boundary condition config from save file
 template<typename...Args>

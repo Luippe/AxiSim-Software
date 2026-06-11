@@ -2,7 +2,31 @@
 
 #include "boundary_struct.h"
 
+// getters
+namespace BoundaryGet {
 
+	// get a specific boundary group bc from group id
+	BoundaryGroupBC* getBoundaryGroupBCByID(
+		std::vector<BoundaryGroupBC>& boundaryGroupBCs,
+		int id
+	);
+
+	const BoundaryGroupBC* getBoundaryGroupBCByID(
+		const std::vector<BoundaryGroupBC>& boundaryGroupBCs,
+		int id
+	);
+
+	// get a specific boundary group from group id
+	BoundaryGroup* getBoundaryGroupByID(
+		std::vector<BoundaryGroup>& boundaryGroups,
+		int id
+	);
+
+	const BoundaryGroup* getBoundaryGroupByID(
+		const std::vector<BoundaryGroup>& boundaryGroups,
+		int id
+	);
+}
 // helper functions for boundary conditions
 namespace BoundaryDefaults {
 
@@ -14,16 +38,16 @@ namespace BoundaryDefaults {
 	// given a boundary variable and boundary type, get all the allowed BCTypes
 	std::vector<BCType> getAllowedBCType(
 		const BoundaryVariable& var,
-		const BoundarySegmentGroup& group
+		const BoundaryGroup& group,
+		const BoundaryGroupBC& groupBC
 	);
 
 	double getDefaultBCValue(
-		BoundaryType boundaryType,
 		BoundaryVariable var
 	);
 
 	BoundaryCondition makeDefaultBC(
-		const BoundarySegmentGroup& group,
+		const BoundaryGroupBC& groupBC,
 		const BoundaryVariable& var
 	);
 
@@ -33,7 +57,7 @@ namespace BoundaryDefaults {
 	);
 
 	std::vector<BoundaryVariable> getVariableFromBoundaryType(
-		const BoundarySegmentGroup& group,
+		BoundaryType type,
 		bool solveEnergy,
 		bool solveConcentration
 	);

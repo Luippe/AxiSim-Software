@@ -17,60 +17,134 @@ bool fileExists(const std::string& filename) {
 	return file.good();
 
 }
+// ====================================================
+// ----------BOUNDARY GROUP AND BCS--------------------
+// ====================================================
+void writeBoundaryGroupBC(std::ofstream& out, const BoundaryGroupBC& groupBC) {
 
-void writeBoundarySegmentGroup(std::ofstream& out, const BoundarySegmentGroup& group) {
-	//printInt(group.type);
+	writeAll(out,
+		groupBC.groupID,
+		groupBC.type,
+		groupBC.bcs
+	);
+
+}
+
+void writeBoundaryGroupBCs(std::ofstream& out, const std::vector<BoundaryGroupBC>& groupBCs) {
+
+	size_t size = groupBCs.size();
+
+	out.write((const char*)(&size), sizeof(size));
+
+	for (const BoundaryGroupBC& groupBC : groupBCs) {
+		writeBoundaryGroupBC(out, groupBC);
+	}
+
+}
+
+void readBoundaryGroupBC(std::ifstream& in, BoundaryGroupBC& groupBC) {
+
+	readAll(in,
+		groupBC.groupID,
+		groupBC.type,
+		groupBC.bcs
+	);
+
+}
+
+void readBoundaryGroupBCs(std::ifstream& in, std::vector<BoundaryGroupBC>& groupBCs) {
+
+	size_t size = 0;
+
+	in.read((char*)(&size), sizeof(size));
+	groupBCs.resize(size);
+
+	for (BoundaryGroupBC& groupBC : groupBCs) {
+		readBoundaryGroupBC(in, groupBC);
+	}
+
+}
+
+void writeBoundaryGroup(std::ofstream& out, const BoundaryGroup& group) {
 
 	writeAll(out, 
 		group.id,
 		group.name,
 		group.nameBuffer,
-		group.type,
 		group.segmentIDs,
 		group.edges,
 		group.includesOrientation,
-		group.totalLength,
-		group.bcs);
+		group.totalLength
+	);
 
 }
 
-void writeBoundarySegmentGroups(std::ofstream& out, const std::vector<BoundarySegmentGroup>& groups) {
+void writeBoundaryGroups(std::ofstream& out, const std::vector<BoundaryGroup>& groups) {
 
 	size_t size = groups.size();
 
 	out.write((const char*)(&size), sizeof(size));
 
-	for (const BoundarySegmentGroup& group : groups) {
-		writeBoundarySegmentGroup(out, group);
+	for (const BoundaryGroup& group : groups) {
+		writeBoundaryGroup(out, group);
 	}
 
 }
 
-void readBoundarySegmentGroup(std::ifstream& in, BoundarySegmentGroup& group) {
+void readBoundaryGroup(std::ifstream& in, BoundaryGroup& group) {
 
 	readAll(in,
 		group.id,
 		group.name,
 		group.nameBuffer,
-		group.type,
 		group.segmentIDs,
 		group.edges,
 		group.includesOrientation,
-		group.totalLength,
-		group.bcs);
+		group.totalLength
+	);
 
 }
 
-void readBoundarySegmentGroups(std::ifstream& in, std::vector<BoundarySegmentGroup>& groups) {
+void readBoundaryGroups(std::ifstream& in, std::vector<BoundaryGroup>& groups) {
 
 	size_t size = 0;
 
 	in.read((char*)(&size), sizeof(size));
 	groups.resize(size);
 
-	for (BoundarySegmentGroup& group : groups) {
-		readBoundarySegmentGroup(in, group);
+	for (BoundaryGroup& group : groups) {
+		readBoundaryGroup(in, group);
 	}
+
+}
+
+// ====================================================
+// -------------------PROJECT--------------------------
+// ====================================================
+void saveLaunchProject(Project& project) {
+
+	saveLaunchMesh(project.mesh);
+	saveLaunchSolver(project.solver);
+
+}
+
+void loadFromExplorerProject(Project& project) {
+
+	const char* filters[] = { "*.bin" };
+
+	const char* path = tinyfd_openFileDialog(
+		"Load Project",
+		"",
+		1,
+		filters,
+		"Binary Project Files",
+		0 // 0 = single file, 1 = multiple files
+	);
+
+	if (!path) return;
+
+	loadFromPathMesh(path, project.mesh);
+	loadFromPathSolver(path, project.solver);
 
 }
 
@@ -118,7 +192,7 @@ void saveFromPathMesh(const char* path, Mesh& mesh) {
 		mesh.g.zFace
 	);
 
-	writeBoundarySegmentGroups(out, mesh.boundaryGroups);
+	writeBoundaryGroups(out, mesh.boundaryGroups);
 
 	out.close();
 }
@@ -168,7 +242,7 @@ void loadFromPathMesh(const char* path, Mesh& mesh) {
 		mesh.g.zFace
 	);
 
-	readBoundarySegmentGroups(in, mesh.boundaryGroups);
+	readBoundaryGroups(in, mesh.boundaryGroups);
 }
 
 void saveLaunchMesh(Mesh& mesh) {
@@ -193,6 +267,9 @@ void saveFromPathSolver(const char* path, Solver& solver) {
 	saveBinary(out, solver.addConvectionTerm, solver.transient);
 	saveBinary(out, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
 	writeAll(out, solver.configSimple);
+
+	writeBoundaryGroupBCs(out, solver.boundaryGroupBCs);
+
 	out.close();
 
 }
@@ -225,6 +302,8 @@ void loadFromPathSolver(const char* path, Solver& solver) {
 	readBinary(in, solver.addConvectionTerm, solver.transient);
 	readBinary(in, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
 	readVar(in, solver.configSimple);
+
+	readBoundaryGroupBCs(in, solver.boundaryGroupBCs);
 }
 
 void loadFromExplorerSolver(Solver& solver) {
@@ -274,14 +353,14 @@ void saveLaunchResults(Results& results) {
 	saveFromPathResults(path, results);
 }
 
-void loadAtLaunch(Project& project, const char* target) {
+void loadAtLaunch(Project& project) {
 
 	const char* meshFile = "openAtLaunchMesh.bin";
 	const char* solverFile = "openAtLaunchSolver.bin";
 	const char* resultsFile = "openAtLaunchResults.bin";
 
 	// load mesh file if it exists
-	if (target == "mesh") {
+	{
 		std::ifstream in(meshFile, std::ios::binary);
 		if (in) {
 			loadFromPathMesh(meshFile, project.mesh);
@@ -291,7 +370,7 @@ void loadAtLaunch(Project& project, const char* target) {
 	}
 
 	// load solver file if it exists
-	if (target == "solver") {
+	{
 		std::ifstream in(solverFile, std::ios::binary);
 		if (in) {
 			loadFromPathSolver(solverFile, project.solver);

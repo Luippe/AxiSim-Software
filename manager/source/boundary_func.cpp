@@ -1,16 +1,81 @@
 #include "boundary_func.h"
 #include "printer.h"
 
+namespace BoundaryGet {
+
+
+	BoundaryGroupBC* getBoundaryGroupBCByID(
+		std::vector<BoundaryGroupBC>& boundaryGroupBCs,
+		int id
+	) {
+
+		auto it = std::find_if(boundaryGroupBCs.begin(), boundaryGroupBCs.end(),
+			[id](const BoundaryGroupBC& groupBC) {
+				return groupBC.groupID == id;
+			}
+		);
+
+		if (it == boundaryGroupBCs.end()) {
+			return nullptr;
+		}
+
+		return &(*it);
+	}
+
+	const BoundaryGroupBC* getBoundaryGroupBCByID(
+		const std::vector<BoundaryGroupBC>& boundaryGroupBCs,
+		int id
+	) {
+
+		auto it = std::find_if(boundaryGroupBCs.begin(), boundaryGroupBCs.end(),
+			[id](const BoundaryGroupBC& groupBC) {
+				return groupBC.groupID == id;
+			}
+		);
+
+		if (it == boundaryGroupBCs.end()) {
+			return nullptr;
+		}
+
+		return &(*it);
+	}
+
+
+	BoundaryGroup* getBoundaryGroupByID(
+		std::vector<BoundaryGroup>& boundaryGroups,
+		int id
+	) {
+		for (BoundaryGroup& group : boundaryGroups) {
+			if (group.id == id) {
+				return &group;
+			}
+		}
+		return nullptr;
+	}
+
+	const BoundaryGroup* getBoundaryGroupByID(
+		const std::vector<BoundaryGroup>& boundaryGroups,
+		int id
+	) {
+		for (const BoundaryGroup& group : boundaryGroups) {
+			if (group.id == id) {
+				return &group;
+			}
+		}
+		return nullptr;
+	}
+}
+
 namespace BoundaryDefaults {
 
 	BoundaryCondition makeDefaultBC(
-		const BoundarySegmentGroup& group,
+		const BoundaryGroupBC& groupBC,
 		const BoundaryVariable& var
 	) {
 		BoundaryCondition bc{};
 		bc.enabled = true;
-		bc.type = getDefaultBCType(group.type, var);
-		bc.value = getDefaultBCValue(group.type, var);
+		bc.type = getDefaultBCType(groupBC.type, var);
+		bc.value = getDefaultBCValue(var);
 
 		return bc;
 	}
@@ -88,7 +153,6 @@ namespace BoundaryDefaults {
 
 
 	double getDefaultBCValue(
-		BoundaryType boundaryType,
 		BoundaryVariable var
 	) {
 		switch (var) {
@@ -112,10 +176,11 @@ namespace BoundaryDefaults {
 
 	std::vector<BCType> getAllowedBCType(
 		const BoundaryVariable& var,
-		const BoundarySegmentGroup& group
+		const BoundaryGroup& group,
+		const BoundaryGroupBC& groupBC
 	) {
 
-		switch (group.type) {
+		switch (groupBC.type) {
 
 		case BoundaryType::VELOCITY_INLET:
 			switch (var) {
@@ -259,13 +324,13 @@ namespace BoundaryDefaults {
 	}
 
 	std::vector<BoundaryVariable> getVariableFromBoundaryType(
-		const BoundarySegmentGroup& group,
+		BoundaryType type,
 		bool solveEnergy,
 		bool solveConcentration
 	) {
 		std::vector<BoundaryVariable> variables;
 
-		switch (group.type) {
+		switch (type) {
 
 		case BoundaryType::WALL:
 			variables.push_back(BoundaryVariable::UVelocity);
@@ -314,5 +379,4 @@ namespace BoundaryDefaults {
 
 		return variables;
 	}
-
 }

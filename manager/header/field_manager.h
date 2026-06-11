@@ -24,7 +24,8 @@ public:
 	void generate(
 		const SolutionField& solution,
 		const FVMesh& fvMesh,
-		const std::vector<BoundarySegmentGroup>& boundaryGroup
+		const std::vector<BoundaryGroup>& boundaryGroups,
+		const std::vector<BoundaryGroupBC>& boundaryGroupBCs
 	);
 
 	// get value at given position using bilinear interpolation
@@ -34,7 +35,8 @@ public:
 private:
 
 	const FVMesh* fvMesh;
-	const std::vector<BoundarySegmentGroup>* boundaryGroups;
+	const std::vector<BoundaryGroup>* boundaryGroups;
+	const std::vector<BoundaryGroupBC>* boundaryGroupBCs;
 	BoundaryVariable boundaryVariable = BoundaryVariable::None;
 
 	std::vector<double> extendedZ;

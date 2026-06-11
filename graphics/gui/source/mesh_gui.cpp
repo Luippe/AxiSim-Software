@@ -52,7 +52,7 @@ const char* edgeOrientName(EdgeOrient orient) {
 }
 
 void MeshGUI::drawBoundaryGroupGUI() {
-	BoundarySegmentGroup* selectedGroup =
+	BoundaryGroup* selectedGroup =
 		mesh.getBoundaryGroupByID(selectedBoundaryGroupID);
 
 	if (!selectedGroup) {
@@ -262,7 +262,7 @@ void MeshGUI::draw() {
 		}
 
 		if (boundariesOpen) {
-			for (BoundarySegmentGroup& group : mesh.boundaryGroups) {
+			for (BoundaryGroup& group : mesh.boundaryGroups) {
 				ImGui::PushID(group.id);
 
 				if (drawLeaf(group.name.c_str())) {

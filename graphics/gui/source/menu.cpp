@@ -8,33 +8,18 @@
 Menu::Menu(Project& project, GUI& gui) :
 	project(project),
 	gui(gui){
-	loadAtLaunch(project, "mesh");
-	loadAtLaunch(project, "solver");
+	loadAtLaunch(project);
+	//loadAtLaunch(project, "solver");
 	//scene.solver.setDefault();
 }
 
 
 void Menu::drawOpen() {
 	if (ImGui::BeginMenu("Open")) {
-
-		if (ImGui::MenuItem("Mesh")) {
-			loadFromExplorerMesh(project.mesh);
+		if (ImGui::MenuItem("Project")) {
+			loadFromExplorerProject(project);
 			project.mesh.updateAfterLoadingFile();
 			gui.meshGUI.getGridConfigEdits();
-		}
-
-		if (ImGui::MenuItem("Solver")) {
-			loadFromExplorerSolver(project.solver);
-		}
-
-		if (ImGui::MenuItem("Results")) {
-
-		}
-
-		ImGui::Separator();
-
-		if (ImGui::MenuItem("Project")) {
-
 		}
 
 		ImGui::EndMenu();
@@ -44,22 +29,8 @@ void Menu::drawOpen() {
 void Menu::drawOpenAtLaunch() {
 	if (ImGui::BeginMenu("Open At Launch")) {
 
-		if (ImGui::MenuItem("Mesh")) {
-			saveLaunchMesh(project.mesh);
-		}
-
-		if (ImGui::MenuItem("Solver")) {
-			saveLaunchSolver(project.solver);
-		}
-
-		if (ImGui::MenuItem("Results")) {
-
-		}
-
-		ImGui::Separator();
-
 		if (ImGui::MenuItem("Project")) {
-
+			saveLaunchProject(project);
 		}
 
 		ImGui::EndMenu();

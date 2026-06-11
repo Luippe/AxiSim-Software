@@ -59,20 +59,20 @@ const char* boundaryTypeToString(BoundaryType type) {
 	}
 }
 
-BoundaryCondition& SolverGUI::getOrCreateBC(
-	BoundarySegmentGroup& group,
+BoundaryCondition& getOrCreateBC(
+	BoundaryGroupBC& groupBC,
 	BoundaryVariable variable
 ) {
-	auto it = group.bcs.find(variable);
+	auto it = groupBC.bcs.find(variable);
 
-	if (it != group.bcs.end()) {
+	if (it != groupBC.bcs.end()) {
 		return it->second;
 	}
 
 	BoundaryCondition bc =
-		BoundaryDefaults::makeDefaultBC(group, variable);
+		BoundaryDefaults::makeDefaultBC(groupBC, variable);
 
-	auto [newIt, inserted] = group.bcs.emplace(variable, bc);
+	auto [newIt, inserted] = groupBC.bcs.emplace(variable, bc);
 
 	return newIt->second;
 }
@@ -119,12 +119,13 @@ const char* bcTypeToString(BCType type) {
 // ======================================================================
 bool createBCTypeCombo(
 	const char* label,
-	const BoundaryVariable selectedVar,
-	BoundaryCondition& bc,
-	BoundarySegmentGroup& group
+	BoundaryGroup& group,
+	BoundaryGroupBC& groupBC,
+	BoundaryVariable selectedVar,
+	BoundaryCondition& bc
 ) {
 
-	std::vector<BCType> allowedBCTypes = BoundaryDefaults::getAllowedBCType(selectedVar, group);
+	std::vector<BCType> allowedBCTypes = BoundaryDefaults::getAllowedBCType(selectedVar, group, groupBC);
 
 	bool changed = false;
 
@@ -164,7 +165,12 @@ bool createBCTypeCombo(
 	return changed;
 }
 
-void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc, BoundarySegmentGroup& group) {
+void SolverGUI::drawBoundaryVariableEditor(
+	BoundaryGroup& group, 
+	BoundaryGroupBC& groupBC,
+	BoundaryVariable var,
+	BoundaryCondition& bc
+) {
 
 	ImGui::SeparatorText(boundaryVariableToString(var));
 
@@ -180,25 +186,25 @@ void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryConditi
 		labelRow(label);
 		switch (var) {
 		case BoundaryVariable::UVelocity:
-			createBCTypeCombo("##UVelocity", var, bc, group);
+			createBCTypeCombo("##UVelocity", group, groupBC, var, bc);
 			ImGui::TableNextColumn();
 			inputDouble("U Velocity", bc.value, varUnits.axialUnit, Units::velocityUnits);
 			comboUnit("UVelocity", varUnits.axialUnit, Units::velocityUnits);
 			break;
 		case BoundaryVariable::VVelocity:
-			createBCTypeCombo("##VVelocity", var, bc, group);
+			createBCTypeCombo("##VVelocity", group, groupBC, var, bc);
 			ImGui::TableNextColumn();
 			inputDouble("V Velocity", bc.value, varUnits.radialUnit, Units::velocityUnits);
 			comboUnit("VVelocity", varUnits.radialUnit, Units::velocityUnits);
 			break;
 		case BoundaryVariable::Pressure:
-			createBCTypeCombo("##Pressure", var, bc, group);
+			createBCTypeCombo("##Pressure", group, groupBC, var, bc);
 			ImGui::TableNextColumn();
 			inputDouble("Pressure", bc.value, varUnits.pressureUnit, Units::pressureUnits);
 			comboUnit("Pressure", varUnits.pressureUnit, Units::pressureUnits);
 			break;
 		case BoundaryVariable::StaticTemperature:
-			createBCTypeCombo("##StaticTemperature", var, bc, group);
+			createBCTypeCombo("##StaticTemperature", group, groupBC, var, bc);
 			ImGui::TableNextColumn();
 			inputDouble("Static Temperature", bc.value, varUnits.temperatureUnit, Units::temperatureUnits);
 			comboUnit("StaticTemperature", varUnits.temperatureUnit, Units::temperatureUnits);
@@ -212,8 +218,11 @@ void SolverGUI::drawBoundaryVariableEditor(BoundaryVariable var, BoundaryConditi
 
 void SolverGUI::drawBoundaryConditionGUI() {
 
-	BoundarySegmentGroup* selectedGroup =
+	BoundaryGroup* selectedGroup =
 		mesh.getBoundaryGroupByID(selectedBoundaryGroupID);
+
+	BoundaryGroupBC* selectedGroupBC =
+		solver.getBoundaryGroupBCFromID(selectedBoundaryGroupID);
 
 	if (!selectedGroup) {
 		selectedBoundaryGroupID = -1;
@@ -233,7 +242,7 @@ void SolverGUI::drawBoundaryConditionGUI() {
 		);
 
 		labelRow("Type");
-		if (createSimpleCombo("##BoundaryType", solver.boundaryType, (int&)selectedGroup->type, IM_ARRAYSIZE(solver.boundaryType))) {
+		if (createSimpleCombo("##BoundaryType", solver.boundaryType, (int&)selectedGroupBC->type, IM_ARRAYSIZE(solver.boundaryType))) {
 			check();
 		}
 		ImGui::EndTable();
@@ -301,12 +310,13 @@ void SolverGUI::drawPropertiesPanel() {
 
 	else if (selectedItem == "Boundary Variable") {
 
-		BoundarySegmentGroup* group = mesh.getBoundaryGroupByID(selectedBoundaryGroupID);
+		BoundaryGroup* group = mesh.getBoundaryGroupByID(selectedBoundaryGroupID);
+		BoundaryGroupBC* groupBC = solver.getBoundaryGroupBCFromID(selectedBoundaryGroupID);
 
 		if (group) {
-			BoundaryCondition& bc = getOrCreateBC(*group, selectedBoundaryVariable);
+			BoundaryCondition& bc = getOrCreateBC(*groupBC, selectedBoundaryVariable);
 
-			drawBoundaryVariableEditor(selectedBoundaryVariable, bc, *group);
+			drawBoundaryVariableEditor(*group, *groupBC, selectedBoundaryVariable, bc);
 		}
 	}
 	else if (selectedItem == "Boundary Group") {
@@ -493,7 +503,7 @@ void SolverGUI::draw() {
 
 		if (boundaryOpen) {
 
-			for (BoundarySegmentGroup& group : mesh.boundaryGroups) {
+			for (BoundaryGroup& group : mesh.boundaryGroups) {
 				ImGui::PushID(group.id);
 
 				bool isOpened = false;
@@ -505,8 +515,11 @@ void SolverGUI::draw() {
 				}
 
 				if (isOpened) {
+
+					BoundaryGroupBC* groupBC = solver.getBoundaryGroupBCFromID(group.id);
+
 					std::vector<BoundaryVariable> activeLeaves = BoundaryDefaults::getVariableFromBoundaryType(
-						group, 
+						groupBC->type, 
 						solver.fieldOption.solveEnergy,
 						solver.fieldOption.solveConcentration
 					);

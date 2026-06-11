@@ -66,10 +66,10 @@ bool isFluidCell(
 }
 
 std::unordered_map<MeshEdge, int, MeshEdgeHash>
-createBoundaryEdgeLookup(const std::vector<BoundarySegmentGroup>& groups) {
+createBoundaryEdgeLookup(const std::vector<BoundaryGroup>& groups) {
 	std::unordered_map<MeshEdge, int, MeshEdgeHash> lookup;
 
-	for (const BoundarySegmentGroup& group : groups) {
+	for (const BoundaryGroup& group : groups) {
 		for (const MeshEdge& edge : group.edges) {
 
 			auto [it, inserted] = lookup.emplace(edge, group.id);
@@ -125,7 +125,7 @@ std::vector<FVFace> createFVFaces(
 	const std::vector<double>& zFace,
 	const std::vector<double>& r,
 	const std::vector<double>& z,
-	const std::vector<BoundarySegmentGroup>& boundaryGroups
+	const std::vector<BoundaryGroup>& boundaryGroups
 ) {
 	std::vector<FVFace> faces;
 	auto boundaryLookup = createBoundaryEdgeLookup(boundaryGroups);
@@ -340,8 +340,8 @@ BoundarySegment* Mesh::getBoundarySegmentByID(int id) {
 	return nullptr;
 }
 
-BoundarySegmentGroup* Mesh::getBoundaryGroupByID(int id) {
-	for (BoundarySegmentGroup& group : boundaryGroups) {
+BoundaryGroup* Mesh::getBoundaryGroupByID(int id) {
+	for (BoundaryGroup& group : boundaryGroups) {
 		if (group.id == id) {
 			return &group;
 		}
@@ -349,8 +349,8 @@ BoundarySegmentGroup* Mesh::getBoundaryGroupByID(int id) {
 	return nullptr;
 }
 
-BoundarySegmentGroup* Mesh::getBoundaryGroupByName(const std::string& name) {
-	for (BoundarySegmentGroup& group : boundaryGroups) {
+BoundaryGroup* Mesh::getBoundaryGroupByName(const std::string& name) {
+	for (BoundaryGroup& group : boundaryGroups) {
 		if (group.name == name) {
 			return &group;
 		}
@@ -367,7 +367,7 @@ int Mesh::getAvailableBoundaryGroupID() const {
 		bool idExists = std::any_of(
             boundaryGroups.begin(),
             boundaryGroups.end(),
-            [&](const BoundarySegmentGroup& group) {
+            [&](const BoundaryGroup& group) {
                 return group.id == id;
             }
         );
@@ -409,7 +409,7 @@ std::vector<MeshEdge> Mesh::edgesFromBoundarySegment(
 
 	return edges;
 }
-void Mesh::highlightSegmentsInGroup(const BoundarySegmentGroup& group) {
+void Mesh::highlightSegmentsInGroup(const BoundaryGroup& group) {
 	highlightedBoundarySegmentIDs.clear();
 
 	std::unordered_set<MeshEdge, MeshEdgeHash> groupEdges(
@@ -429,12 +429,21 @@ void Mesh::highlightSegmentsInGroup(const BoundarySegmentGroup& group) {
 	}
 }
 
-std::optional<BoundarySegmentGroup> Mesh::createBoundaryGroupFromSelection() {
+std::optional<BoundaryGroupBC> Mesh::createBoundaryGroupBCFromID(int id) {
+
+	BoundaryGroupBC groupBC;
+	groupBC.groupID = id;
+
+	return groupBC;
+}
+
+
+std::optional<BoundaryGroup> Mesh::createBoundaryGroupFromSelection() {
 	if (selectedBoundaryIDs.empty()) {
 		return {};
 	}
 
-	BoundarySegmentGroup group;
+	BoundaryGroup group;
 
 	group.id = getAvailableBoundaryGroupID();
 	group.name = "Boundary " + std::to_string(group.id);

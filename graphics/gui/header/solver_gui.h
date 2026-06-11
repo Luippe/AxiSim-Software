@@ -23,13 +23,11 @@ private:
 
 	void drawFieldCheckbox();
 
-	void drawBoundaryVariableEditor(BoundaryVariable var, BoundaryCondition& bc, BoundarySegmentGroup& type);
-
-	BoundaryCondition& getOrCreateBC(
-		BoundarySegmentGroup& group,
-		BoundaryVariable variable
+	void drawBoundaryVariableEditor(BoundaryGroup& group,
+		BoundaryGroupBC& groupBC,
+		BoundaryVariable var,
+		BoundaryCondition& bc
 	);
-
 
 	int selectedBoundaryGroupID = -1;
 	BoundaryVariable selectedBoundaryVariable = BoundaryVariable::UVelocity;

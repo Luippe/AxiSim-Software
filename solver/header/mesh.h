@@ -30,7 +30,7 @@ public:
 	std::unordered_set<int> selectedBoundaryIDs;
 	std::unordered_set<MeshEdge, MeshEdgeHash> selectableOuterEdges;
 	std::vector<BoundarySegment> boundarySegments;
-	std::vector<BoundarySegmentGroup> boundaryGroups;
+	std::vector<BoundaryGroup> boundaryGroups;
 	std::unordered_set<int> highlightedBoundarySegmentIDs;
 
 	int nextGroupID = 0;
@@ -56,18 +56,21 @@ public:
 	// search for segment with specific ID
 	BoundarySegment* getBoundarySegmentByID(int id);
 
-	BoundarySegmentGroup* getBoundaryGroupByID(int id);
+	BoundaryGroup* getBoundaryGroupByID(int id);
 
-	BoundarySegmentGroup* getBoundaryGroupByName(const std::string& name);
+	BoundaryGroup* getBoundaryGroupByName(const std::string& name);
 
 	// get the next avaiable group id that does not conflict with existing group ids
 	int getAvailableBoundaryGroupID() const;
 
 	// highlight all boundary segment in a group
-	void highlightSegmentsInGroup(const BoundarySegmentGroup& group);
+	void highlightSegmentsInGroup(const BoundaryGroup& group);
+
+	// create boundary group bc using a group id
+	std::optional<BoundaryGroupBC> createBoundaryGroupBCFromID(int id);
 
 	// create boundary group using the selected boundary segments
-	std::optional<BoundarySegmentGroup> createBoundaryGroupFromSelection();
+	std::optional<BoundaryGroup> createBoundaryGroupFromSelection();
 
 
 private:

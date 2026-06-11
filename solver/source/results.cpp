@@ -221,11 +221,11 @@ void Results::generate(Mesh& mesh, Solver& solver) {
 
 void Results::createFields(const Mesh& mesh, const Solver& solver) {
 
-	uField.generate(solver.uSol, solver.fvMesh, mesh.boundaryGroups);
-	vField.generate(solver.vSol, solver.fvMesh, mesh.boundaryGroups);
-	pField.generate(solver.pSol, solver.fvMesh, mesh.boundaryGroups);
+	uField.generate(solver.uSol, solver.fvMesh, mesh.boundaryGroups, solver.boundaryGroupBCs);
+	vField.generate(solver.vSol, solver.fvMesh, mesh.boundaryGroups, solver.boundaryGroupBCs);
+	pField.generate(solver.pSol, solver.fvMesh, mesh.boundaryGroups, solver.boundaryGroupBCs);
 	if (solver.fieldOption.solveEnergy) {
-		tempField.generate(solver.tempSol, solver.fvMesh, mesh.boundaryGroups);
+		tempField.generate(solver.tempSol, solver.fvMesh, mesh.boundaryGroups, solver.boundaryGroupBCs);
 	}
 }
 
