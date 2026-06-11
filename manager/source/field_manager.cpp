@@ -38,13 +38,11 @@ std::vector<double> buildCenters(const std::vector<double>& faces) {
 void Field::generate(
 	const SolutionField& solution,
 	const FVMesh& fvMesh,
-	const std::vector<BoundaryGroup>& boundaryGroups,
-	const std::vector<BoundaryGroupBC>& boundaryGroupBCs
+	const std::vector<BoundarySegmentGroup>& boundaryGroups
 ) {
 
 	this->fvMesh = &fvMesh;
 	this->boundaryGroups = &boundaryGroups;
-	this->boundaryGroupBCs = &boundaryGroupBCs;
 
 	unProcessedData = solution.field;
 
@@ -216,23 +214,22 @@ double Field::sampleBoundary(
 			continue;
 		}
 
-		const BoundaryGroup* group = getBoundaryGroupByID(*boundaryGroups, face.boundaryGroupID);
-		const BoundaryGroupBC* groupBC = getBoundaryGroupBCByID(*boundaryGroupBCs, face.boundaryGroupID);
+		const BoundarySegmentGroup* group = getBoundaryGroupByID(*boundaryGroups, face.boundaryGroupID);
 
 		if (!group) {
 			return unProcessedData[c];
 		}
 
-		auto it = groupBC->bcs.find(boundaryVariable);
+		auto it = group->bcs.find(boundaryVariable);
 
-		if (it == groupBC->bcs.end()) {
+		if (it == group->bcs.end()) {
 			return unProcessedData[c];
 		}
 
 		const BoundaryCondition& bc = it->second;
 
 		// if the variable is not in the type of boundary, then get the nearest value instead
-		if (!isVariableInBoundaryType(boundaryVariable, groupBC->type)) {
+		if (!isVariableInBoundaryType(boundaryVariable, group->type)) {
 			return unProcessedData[c];
 		}
 

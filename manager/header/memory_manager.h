@@ -22,7 +22,6 @@ void free_GridConfig(GridConfig& g);
 FVMeshDevice createFVMeshDevice(const FVMesh& fvMesh);
 
 BoundarySolverDevice createBoundarySolverDevice(
-	const std::vector<BoundaryGroup>& boundaryGroups,
-	const std::vector<BoundaryGroupBC>& boundaryGroupBCs,
+	const std::vector<BoundarySegmentGroup>& boundaryGroups,
 	const SolverFieldOption& option
 );

@@ -55,20 +55,6 @@ Solver::Solver(Config& config) :
     //setDefault();
 }
 
-BoundaryGroupBC* Solver::getBoundaryGroupBCFromID(int id) {
-
-    auto it = std::find_if(boundaryGroupBCs.begin(), boundaryGroupBCs.end(),
-        [id](const BoundaryGroupBC& groupBC) {
-            return groupBC.groupID == id;
-        }
-    );
-
-    if (it == boundaryGroupBCs.end()) {
-        return nullptr;
-    }
-
-    return &(*it);
-}
 
 void Solver::setDefault() {
 
@@ -279,7 +265,7 @@ void Solver::runSimple(const Mesh& mesh) {
 
     fvMesh = mesh.createStructuredMesh(configSolver.g.activeCell);
 	FVMeshDevice fvMeshDevice = createFVMeshDevice(fvMesh);
-	BoundarySolverDevice bcDevice = createBoundarySolverDevice(mesh.boundaryGroups, boundaryGroupBCs, fieldOption);
+	BoundarySolverDevice bcDevice = createBoundarySolverDevice(mesh.boundaryGroups, fieldOption);
 
 
     // allocate memory

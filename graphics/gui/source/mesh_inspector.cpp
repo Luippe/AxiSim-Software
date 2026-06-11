@@ -4,8 +4,6 @@
 #include <algorithm>
 #include <glm/glm.hpp>
 
-#include "project.h"
-#include "solver.h"
 #include "mesh.h"
 #include "colorbar.h"
 
@@ -15,9 +13,8 @@
 
 #include <iostream>
 
-MeshInspector::MeshInspector(Project& project, AppAssets& assets) :
-	solver(project.solver),
-	mesh(project.mesh),
+MeshInspector::MeshInspector(Mesh& mesh, AppAssets& assets) :
+	mesh(mesh),
 	g(mesh.g),
 	assets(assets),
 	BaseSurfaceViewer("graphics/shaders/mesh.vert", "graphics/shaders/mesh.frag") {
@@ -67,7 +64,7 @@ bool MeshInspector::removeInvalidBoundaryGroups() {
 		std::remove_if(
 			mesh.boundaryGroups.begin(),
 			mesh.boundaryGroups.end(),
-			[&](const BoundaryGroup& group) {
+			[&](const BoundarySegmentGroup& group) {
 				return !boundaryGroupStillValid(group, validEdges);
 			}
 		),
@@ -78,7 +75,7 @@ bool MeshInspector::removeInvalidBoundaryGroups() {
 }
 
 bool MeshInspector::boundaryGroupStillValid(
-	const BoundaryGroup& group,
+	const BoundarySegmentGroup& group,
 	const std::unordered_set<MeshEdge, MeshEdgeHash>& validEdges
 ) const {
 	if (group.edges.empty()) {
@@ -146,7 +143,7 @@ bool MeshInspector::obstacleCellTouchesBoundaryGroup(int cellIndex) const {
 
 	std::array<MeshEdge, 4> cellEdges = getCellEdges(i, j);
 
-	for (const BoundaryGroup& group : mesh.boundaryGroups) {
+	for (const BoundarySegmentGroup& group : mesh.boundaryGroups) {
 		for (const MeshEdge& cellEdge : cellEdges) {
 			auto it = std::find(
 				group.edges.begin(),
@@ -172,7 +169,7 @@ std::array<MeshEdge, 4> MeshInspector::getCellEdges(int i, int j) const {
 	};
 }
 
-void MeshInspector::setGroupTotalLength(BoundaryGroup& group) {
+void MeshInspector::setGroupTotalLength(BoundarySegmentGroup& group) {
 
 	double totalLength = 0.0;
 
@@ -191,12 +188,12 @@ void MeshInspector::setGroupTotalLength(BoundaryGroup& group) {
 		totalLength += abs(z0 - z1);
 
 	}
-
+	printFloat(totalLength);
 	group.totalLength = totalLength;
 
 }
 
-void MeshInspector::setGroupOrientation(BoundaryGroup& group) {
+void MeshInspector::setGroupOrientation(BoundarySegmentGroup& group) {
 
 	bool hasVertical = false;
 	bool hasHorizontal = false;
@@ -224,7 +221,7 @@ void MeshInspector::setGroupOrientation(BoundaryGroup& group) {
 	}
 }
 
-void MeshInspector::fillBoundaryGroupEdges(BoundaryGroup& group) {
+void MeshInspector::fillBoundaryGroupEdges(BoundarySegmentGroup& group) {
 	group.edges.clear();
 
 	std::unordered_set<MeshEdge, MeshEdgeHash> uniqueEdges;
@@ -1032,9 +1029,8 @@ void MeshInspector::drawPopup() {
 		if (hoveringOverSelectedSegment) {
 
 			if (ImGui::MenuItem("Name Segment")) {
-
+				check();
 				pendingBoundaryGroup = mesh.createBoundaryGroupFromSelection();
-				pendingBoundaryGroupBC = mesh.createBoundaryGroupBCFromID(pendingBoundaryGroup->id);
 
 				if (pendingBoundaryGroup) {
 
@@ -1052,7 +1048,7 @@ void MeshInspector::drawPopup() {
 		ImGui::OpenPopup("Naming Segment");
 	}
 
-	//for (const BoundaryGroup& group : mesh.boundaryGroups) {
+	//for (const BoundarySegmentGroup& group : mesh.boundaryGroups) {
 	//	printf("%s\n", group.name);
 	//}
 
@@ -1073,9 +1069,7 @@ void MeshInspector::drawPopup() {
 			);
 
 			if (!pendingBoundaryGroup->edges.empty()) {
-
 				mesh.boundaryGroups.push_back(std::move(*pendingBoundaryGroup));
-				solver.boundaryGroupBCs.push_back(std::move(*pendingBoundaryGroupBC));
 
 				printf(
 					"boundary group count = %zu\n",
@@ -1221,7 +1215,7 @@ bool MeshInspector::deleteBoundaryGroupByID(int groupID) {
 	auto it = std::remove_if(
 		groups.begin(),
 		groups.end(),
-		[&](const BoundaryGroup& group) {
+		[&](const BoundarySegmentGroup& group) {
 			return group.id == groupID;
 		}
 	);

@@ -63,8 +63,6 @@ public:
 	IterationConfig& itr;
 	VariableUnits& varUnits;
 
-	std::vector<BoundaryGroupBC> boundaryGroupBCs;
-
 	// struct to determine which fields to solve for
 	SolverFieldOption fieldOption;
 
@@ -95,8 +93,6 @@ public:
 
 	// set all variables to default values
 	void setDefault();
-
-	BoundaryGroupBC* getBoundaryGroupBCFromID(int id);
 
 private:
 

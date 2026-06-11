@@ -20,99 +20,59 @@ bool fileExists(const std::string& filename) {
 // ====================================================
 // ----------BOUNDARY GROUP AND BCS--------------------
 // ====================================================
-void writeBoundaryGroupBC(std::ofstream& out, const BoundaryGroupBC& groupBC) {
 
-	writeAll(out,
-		groupBC.groupID,
-		groupBC.type,
-		groupBC.bcs
-	);
-
-}
-
-void writeBoundaryGroupBCs(std::ofstream& out, const std::vector<BoundaryGroupBC>& groupBCs) {
-
-	size_t size = groupBCs.size();
-
-	out.write((const char*)(&size), sizeof(size));
-
-	for (const BoundaryGroupBC& groupBC : groupBCs) {
-		writeBoundaryGroupBC(out, groupBC);
-	}
-
-}
-
-void readBoundaryGroupBC(std::ifstream& in, BoundaryGroupBC& groupBC) {
-
-	readAll(in,
-		groupBC.groupID,
-		groupBC.type,
-		groupBC.bcs
-	);
-
-}
-
-void readBoundaryGroupBCs(std::ifstream& in, std::vector<BoundaryGroupBC>& groupBCs) {
-
-	size_t size = 0;
-
-	in.read((char*)(&size), sizeof(size));
-	groupBCs.resize(size);
-
-	for (BoundaryGroupBC& groupBC : groupBCs) {
-		readBoundaryGroupBC(in, groupBC);
-	}
-
-}
-
-void writeBoundaryGroup(std::ofstream& out, const BoundaryGroup& group) {
+void writeBoundaryGroup(std::ofstream& out, const BoundarySegmentGroup& group) {
 
 	writeAll(out, 
 		group.id,
 		group.name,
 		group.nameBuffer,
+		group.type,
 		group.segmentIDs,
 		group.edges,
 		group.includesOrientation,
-		group.totalLength
+		group.totalLength,
+		group.bcs
 	);
 
 }
 
-void writeBoundaryGroups(std::ofstream& out, const std::vector<BoundaryGroup>& groups) {
+void writeBoundaryGroups(std::ofstream& out, const std::vector<BoundarySegmentGroup>& groups) {
 
 	size_t size = groups.size();
 
 	out.write((const char*)(&size), sizeof(size));
 
-	for (const BoundaryGroup& group : groups) {
+	for (const BoundarySegmentGroup& group : groups) {
 		writeBoundaryGroup(out, group);
 	}
 
 }
 
-void readBoundaryGroup(std::ifstream& in, BoundaryGroup& group) {
+void readBoundaryGroup(std::ifstream& in, BoundarySegmentGroup& group) {
 
 	readAll(in,
 		group.id,
 		group.name,
 		group.nameBuffer,
+		group.type,
 		group.segmentIDs,
 		group.edges,
 		group.includesOrientation,
-		group.totalLength
+		group.totalLength,
+		group.bcs
 	);
 
 }
 
-void readBoundaryGroups(std::ifstream& in, std::vector<BoundaryGroup>& groups) {
+void readBoundaryGroups(std::ifstream& in, std::vector<BoundarySegmentGroup>& groups) {
 
 	size_t size = 0;
 
 	in.read((char*)(&size), sizeof(size));
 	groups.resize(size);
 
-	for (BoundaryGroup& group : groups) {
+	for (BoundarySegmentGroup& group : groups) {
 		readBoundaryGroup(in, group);
 	}
 
@@ -268,8 +228,6 @@ void saveFromPathSolver(const char* path, Solver& solver) {
 	saveBinary(out, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
 	writeAll(out, solver.configSimple);
 
-	writeBoundaryGroupBCs(out, solver.boundaryGroupBCs);
-
 	out.close();
 
 }
@@ -302,8 +260,6 @@ void loadFromPathSolver(const char* path, Solver& solver) {
 	readBinary(in, solver.addConvectionTerm, solver.transient);
 	readBinary(in, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
 	readVar(in, solver.configSimple);
-
-	readBoundaryGroupBCs(in, solver.boundaryGroupBCs);
 }
 
 void loadFromExplorerSolver(Solver& solver) {

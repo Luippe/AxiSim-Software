@@ -23,10 +23,15 @@ private:
 
 	void drawFieldCheckbox();
 
-	void drawBoundaryVariableEditor(BoundaryGroup& group,
-		BoundaryGroupBC& groupBC,
+	void drawBoundaryVariableEditor(
+		BoundarySegmentGroup& group,
 		BoundaryVariable var,
 		BoundaryCondition& bc
+	);
+
+	BoundaryCondition& getOrCreateBC(
+		BoundarySegmentGroup& group,
+		BoundaryVariable variable
 	);
 
 	int selectedBoundaryGroupID = -1;

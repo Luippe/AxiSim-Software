@@ -3,49 +3,12 @@
 
 namespace BoundaryGet {
 
-
-	BoundaryGroupBC* getBoundaryGroupBCByID(
-		std::vector<BoundaryGroupBC>& boundaryGroupBCs,
+	// get a specific boundary group from group id
+	BoundarySegmentGroup* getBoundaryGroupByID(
+		std::vector<BoundarySegmentGroup>& boundaryGroups,
 		int id
 	) {
-
-		auto it = std::find_if(boundaryGroupBCs.begin(), boundaryGroupBCs.end(),
-			[id](const BoundaryGroupBC& groupBC) {
-				return groupBC.groupID == id;
-			}
-		);
-
-		if (it == boundaryGroupBCs.end()) {
-			return nullptr;
-		}
-
-		return &(*it);
-	}
-
-	const BoundaryGroupBC* getBoundaryGroupBCByID(
-		const std::vector<BoundaryGroupBC>& boundaryGroupBCs,
-		int id
-	) {
-
-		auto it = std::find_if(boundaryGroupBCs.begin(), boundaryGroupBCs.end(),
-			[id](const BoundaryGroupBC& groupBC) {
-				return groupBC.groupID == id;
-			}
-		);
-
-		if (it == boundaryGroupBCs.end()) {
-			return nullptr;
-		}
-
-		return &(*it);
-	}
-
-
-	BoundaryGroup* getBoundaryGroupByID(
-		std::vector<BoundaryGroup>& boundaryGroups,
-		int id
-	) {
-		for (BoundaryGroup& group : boundaryGroups) {
+		for (BoundarySegmentGroup& group : boundaryGroups) {
 			if (group.id == id) {
 				return &group;
 			}
@@ -53,11 +16,11 @@ namespace BoundaryGet {
 		return nullptr;
 	}
 
-	const BoundaryGroup* getBoundaryGroupByID(
-		const std::vector<BoundaryGroup>& boundaryGroups,
+	const BoundarySegmentGroup* getBoundaryGroupByID(
+		const std::vector<BoundarySegmentGroup>& boundaryGroups,
 		int id
 	) {
-		for (const BoundaryGroup& group : boundaryGroups) {
+		for (const BoundarySegmentGroup& group : boundaryGroups) {
 			if (group.id == id) {
 				return &group;
 			}
@@ -69,12 +32,12 @@ namespace BoundaryGet {
 namespace BoundaryDefaults {
 
 	BoundaryCondition makeDefaultBC(
-		const BoundaryGroupBC& groupBC,
+		const BoundarySegmentGroup& group,
 		const BoundaryVariable& var
 	) {
 		BoundaryCondition bc{};
 		bc.enabled = true;
-		bc.type = getDefaultBCType(groupBC.type, var);
+		bc.type = getDefaultBCType(group.type, var);
 		bc.value = getDefaultBCValue(var);
 
 		return bc;
@@ -176,11 +139,10 @@ namespace BoundaryDefaults {
 
 	std::vector<BCType> getAllowedBCType(
 		const BoundaryVariable& var,
-		const BoundaryGroup& group,
-		const BoundaryGroupBC& groupBC
+		const BoundarySegmentGroup& group
 	) {
 
-		switch (groupBC.type) {
+		switch (group.type) {
 
 		case BoundaryType::VELOCITY_INLET:
 			switch (var) {

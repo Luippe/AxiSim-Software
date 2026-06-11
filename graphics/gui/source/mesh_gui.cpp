@@ -8,10 +8,13 @@
 #include "solver_struct.h"
 #include "boundary_struct.h"
 
+#include "boundary_func.h"
 #include "unit_manager.h"
 #include "flag_manager.h"
 
 #include "printer.h"
+
+using namespace BoundaryGet;
 
 MeshGUI::MeshGUI(Project& project, GUI& gui) :
 	project(project),
@@ -52,8 +55,7 @@ const char* edgeOrientName(EdgeOrient orient) {
 }
 
 void MeshGUI::drawBoundaryGroupGUI() {
-	BoundaryGroup* selectedGroup =
-		mesh.getBoundaryGroupByID(selectedBoundaryGroupID);
+	BoundarySegmentGroup* selectedGroup = getBoundaryGroupByID(mesh.boundaryGroups, selectedBoundaryGroupID);
 
 	if (!selectedGroup) {
 		selectedBoundaryGroupID = -1;
@@ -262,7 +264,7 @@ void MeshGUI::draw() {
 		}
 
 		if (boundariesOpen) {
-			for (BoundaryGroup& group : mesh.boundaryGroups) {
+			for (BoundarySegmentGroup& group : mesh.boundaryGroups) {
 				ImGui::PushID(group.id);
 
 				if (drawLeaf(group.name.c_str())) {

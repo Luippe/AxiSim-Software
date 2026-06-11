@@ -25,13 +25,12 @@ bool isObstacleCell(
 }
 
 BoundaryFieldHost createBoundaryFieldHost(
-	const std::vector<BoundaryGroup>& boundaryGroups,
-	const std::vector<BoundaryGroupBC>& boundaryGroupBCs,
+	const std::vector<BoundarySegmentGroup>& boundaryGroups,
 	BoundaryVariable variable
 ) {
 	int maxGroupID = -1;
 
-	for (const BoundaryGroup& group : boundaryGroups) {
+	for (const BoundarySegmentGroup& group : boundaryGroups) {
 		maxGroupID = std::max(maxGroupID, group.id);
 	}
 
@@ -47,9 +46,7 @@ BoundaryFieldHost createBoundaryFieldHost(
 	h.valueByGroup.resize(nGroups, 0.0);
 	h.lengthByGroup.resize(nGroups, 0.0);
 
-	for (const BoundaryGroup& group : boundaryGroups) {
-
-		const BoundaryGroupBC* groupBC = BoundaryGet::getBoundaryGroupBCByID(boundaryGroupBCs, group.id);
+	for (const BoundarySegmentGroup& group : boundaryGroups) {
 
 		if (group.id < 0) {
 			continue;
@@ -57,16 +54,16 @@ BoundaryFieldHost createBoundaryFieldHost(
 
 		// make default bc. if the bc already exists, replace the bc and use that instead
 		BoundaryCondition bc =
-			BoundaryDefaults::makeDefaultBC(*groupBC, variable);
+			BoundaryDefaults::makeDefaultBC(group, variable);
 
 		// find boundary variable inside the group, if it is, check if we should use the user specified or default value
-		auto it = groupBC->bcs.find(variable);		
+		auto it = group.bcs.find(variable);		
 
-		if ((it != groupBC->bcs.end()) && (BoundaryDefaults::isVariableInBoundaryType(variable, groupBC->type))) {
+		if ((it != group.bcs.end()) && (BoundaryDefaults::isVariableInBoundaryType(variable, group.type))) {
 			bc = it->second;
 		}
 
-		if (variable == BoundaryVariable::UVelocity && groupBC->type == BoundaryType::PRESSURE_OUTLET) {
+		if (variable == BoundaryVariable::UVelocity && group.type == BoundaryType::PRESSURE_OUTLET) {
 			printf("%f\n", bc.value);
 		}
 
@@ -98,8 +95,7 @@ BoundaryFieldDevice createBoundaryFieldDevice(
 }
 
 BoundarySolverDevice createBoundarySolverDevice(
-	const std::vector<BoundaryGroup>& boundaryGroups,
-	const std::vector<BoundaryGroupBC>& boundaryGroupBCs,
+	const std::vector<BoundarySegmentGroup>& boundaryGroups,
 	const SolverFieldOption& option
 ) {
 	BoundarySolverDevice dBC{};
@@ -107,7 +103,6 @@ BoundarySolverDevice createBoundarySolverDevice(
 
 	BoundaryFieldHost hU = createBoundaryFieldHost(
 		boundaryGroups,
-		boundaryGroupBCs,
 		BoundaryVariable::UVelocity
 	);
 	dBC.u = createBoundaryFieldDevice(hU);
@@ -115,7 +110,6 @@ BoundarySolverDevice createBoundarySolverDevice(
 
 	BoundaryFieldHost hV = createBoundaryFieldHost(
 		boundaryGroups,
-		boundaryGroupBCs,
 		BoundaryVariable::VVelocity
 	);
 	dBC.v = createBoundaryFieldDevice(hV);
@@ -124,7 +118,6 @@ BoundarySolverDevice createBoundarySolverDevice(
 
 	BoundaryFieldHost hP = createBoundaryFieldHost(
 		boundaryGroups,
-		boundaryGroupBCs,
 		BoundaryVariable::Pressure
 	);
 	dBC.p = createBoundaryFieldDevice(hP);
@@ -133,7 +126,6 @@ BoundarySolverDevice createBoundarySolverDevice(
 	if (option.solveEnergy) {
 		BoundaryFieldHost hEnergy = createBoundaryFieldHost(
 			boundaryGroups,
-			boundaryGroupBCs,
 			BoundaryVariable::StaticTemperature
 		);
 		dBC.temp = createBoundaryFieldDevice(hEnergy);
@@ -142,7 +134,6 @@ BoundarySolverDevice createBoundarySolverDevice(
 	if (option.solveConcentration) {
 		BoundaryFieldHost hConcentration = createBoundaryFieldHost(
 			boundaryGroups,
-			boundaryGroupBCs,
 			BoundaryVariable::Concentration
 		);
 		dBC.concentration = createBoundaryFieldDevice(hConcentration);

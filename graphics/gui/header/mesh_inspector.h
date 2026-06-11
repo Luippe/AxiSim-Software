@@ -15,14 +15,12 @@
 #include "boundary_struct.h"
 
 class Mesh;
-class Solver;
-class Project;
 struct GridConfig;
 
 class MeshInspector : public BaseSurfaceViewer {
 public:
 
-	MeshInspector(Project& project, AppAssets& assets);
+	MeshInspector(Mesh& mesh, AppAssets& assets);
 
 	VertexBuffer vertexBuffer;
 
@@ -48,7 +46,6 @@ private:
 
 	// ----------dependencies-----------
 	Mesh& mesh;
-	Solver& solver;
 	GridConfig& g;
 
 	// ----------mesh analyzer region-----------
@@ -66,10 +63,7 @@ private:
 	bool isPopupOpened = false;
 	bool hoveringOverSegment = false;
 	bool hoveringOverSelectedSegment = false;
-	//std::optional<BoundaryGroup> pendingBoundaryGroup;
-	std::optional<BoundaryGroup> pendingBoundaryGroup;
-	std::optional<BoundaryGroupBC> pendingBoundaryGroupBC;
-	
+	std::optional<BoundarySegmentGroup> pendingBoundaryGroup;
 	std::string obstacleError;
 	std::vector<int> namedIDs;
 
@@ -84,10 +78,10 @@ private:
 	bool domainEdgeTouchesSolid(const MeshEdge& e, const std::unordered_set<int>& obstacleIndices) const;
 
 	// set group total length
-	void setGroupTotalLength(BoundaryGroup& group);
+	void setGroupTotalLength(BoundarySegmentGroup& group);
 
 	// finds what orientation the group includes in its edges vector
-	void setGroupOrientation(BoundaryGroup& group);
+	void setGroupOrientation(BoundarySegmentGroup& group);
 
 	// render the preview onto fbo
 	void renderPreview();
@@ -122,7 +116,7 @@ private:
 	void drawTextAtSurfacePoint(ImDrawList* drawList);
 
 	void drawBoundarySegments(ImDrawList* drawList, const std::vector<double>& rFace, const std::vector<double>& zFace);
-	void fillBoundaryGroupEdges(BoundaryGroup& group);
+	void fillBoundaryGroupEdges(BoundarySegmentGroup& group);
 	bool obstacleCellTouchesBoundaryGroup(int cellIndex) const;
 	bool tryAddObstacleCell(int cellIndex);
 	void tryAddObstacleCellsInRect(
@@ -149,7 +143,7 @@ private:
 	// remove obstacles
 	void syncAfterObstacleEdit();
 	bool boundaryGroupStillValid(
-		const BoundaryGroup& group,
+		const BoundarySegmentGroup& group,
 		const std::unordered_set<MeshEdge, MeshEdgeHash>& validEdges
 	) const;
 	bool removeInvalidBoundaryGroups();

@@ -15,7 +15,7 @@
 // ======================================================================
 
 template<typename TypeT>
-bool drawNamingPopup(const char* label, TypeT& target, std::vector<TypeT>& groups) {
+bool drawNamingPopup(const char* label, TypeT& target, std::vector<TypeT>& groups, bool* canceled = nullptr) {
 
 	bool enterPressed = false;
 	bool exitPopup = false;
@@ -57,6 +57,7 @@ bool drawNamingPopup(const char* label, TypeT& target, std::vector<TypeT>& group
 		}
 
 		if (clickedOutside || pressedEscape) {
+			*canceled = true;
 			ImGui::CloseCurrentPopup();
 		}
 
