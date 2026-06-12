@@ -285,7 +285,6 @@ std::vector<FVCell> createFVCells(
 }
 
 
-
 FVMesh Mesh::createStructuredMesh(const std::vector<uint8_t>& activeCell) const {
 
 	FVMesh fvMesh;

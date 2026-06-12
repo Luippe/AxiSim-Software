@@ -3,6 +3,8 @@
 
 #include <unordered_set>
 
+#include "multigrid.cuh"
+
 #include "math_func.h"
 #include "solver.h"
 #include "printer.h"
@@ -142,26 +144,13 @@ BoundarySolverDevice createBoundarySolverDevice(
 	return dBC;
 }
 
-void allocateCoefficients(ConfigSolver& config, Coefficients& coeff) {
+void allocateCoefficients(Coefficients& coeff, int nr, int nz) {
 
-	// get size of nr and nz
-	int nr = config.g.nr;
-	int nz = config.g.nz;
+	// get N
 	int N = nr * nz;
-	double x = 0.0;
-	double y = 0.0;
-
 	coeff.N = N;
 	coeff.nr = nr;
 	coeff.nz = nz;
-
-	std::vector<double> dz = config.g.dz;
-	std::vector<double> dr = config.g.dr;
-	std::vector<double> r = config.g.r;
-	std::vector<double> z = config.g.z;
-	std::vector<double> rFace = config.g.rFace;
-	std::vector<double> zFace = config.g.zFace;
-	std::unordered_set<int> obstacleIndices = config.g.obstacleIndices;
 
 	coeff.AE = deviceAlloc<double>(N);
 	coeff.AW = deviceAlloc<double>(N);
@@ -671,6 +660,25 @@ void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& 
 	vars.snorm_val = d_snorm_val;
 	vars.resnorm_val = d_resnorm_val;
 	vars.OCR_num_val = d_OCR_num_val;
+}
+
+
+void allocateMultigridLevel(MultigridLevel& level) {
+
+	int N = level.grid.N;
+
+	allocateCoefficients(level.coeff, level.grid.nr, level.grid.nz);
+
+	cudaMalloc(&level.x, N * sizeof(double));
+	cudaMalloc(&level.xTemp, N * sizeof(double));
+	cudaMalloc(&level.d_volume, N * sizeof(double));
+	cudaMalloc(&level.d_active, N * sizeof(uint8_t));
+
+	cudaMemset(level.x, 0, N * sizeof(double));
+	cudaMemset(level.xTemp, 0, N * sizeof(double));
+	cudaMemset(level.d_volume, 0, N * sizeof(double));
+	cudaMemset(level.d_active, 0, N * sizeof(uint8_t));
+
 }
 
 void free_GridConfig(GridConfig& g) {

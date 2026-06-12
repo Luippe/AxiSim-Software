@@ -5,10 +5,11 @@
 class Project;
 class Solver;
 class Mesh;
+struct AppConfig;
 
 class SolverGUI : public BaseGUI  {
 public:
-	SolverGUI(Project& project);
+	SolverGUI(Project& project, AppConfig& appConfig);
 	void draw();
 
 private:
@@ -19,11 +20,9 @@ private:
 	// draw properties panel when a tree node is clicked on
 	void drawPropertiesPanel();
 
-	void drawBoundaryConditionGUI();
-
 	void drawFieldCheckbox();
 
-	void drawBoundaryVariableEditor(
+	void drawRowBoundaryVariableEditor(
 		BoundarySegmentGroup& group,
 		BoundaryVariable var,
 		BoundaryCondition& bc
@@ -41,6 +40,7 @@ private:
 	Solver& solver;
 	VariableUnits& varUnits;
 	Mesh& mesh;
+	AppConfig& appConfig;
 
 
 };

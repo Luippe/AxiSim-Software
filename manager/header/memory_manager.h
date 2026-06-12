@@ -4,18 +4,22 @@
 
 struct GridConfig;
 struct FluidPropertyConfig;
+struct MultigridLevel;
 
 // initialize and allocate GridConfig variables
 void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f);
 
 // allocate memory for coefficient matrix
-void allocateCoefficients(ConfigSolver& config, Coefficients& coeff);
+void allocateCoefficients(Coefficients& coeff, int nr, int nz);
 
 // allocate memory for simple algorithm
 void allocateSimple(ConfigSolver& config, VariablesSimple& vars, FVMesh& mesh);
 
 // initialize and allocate cell variables
 void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& vars);
+
+// allocate variables used for the multigrid method
+void allocateMultigridLevel(MultigridLevel& level);
 
 void free_GridConfig(GridConfig& g);
 

@@ -19,7 +19,9 @@ struct AppAssets {
 
 struct AppFonts {
 	ImFont* defaultFont = nullptr;
-	ImFont* uiFont = nullptr;
+	ImFont* uiFontSmall = nullptr;
+	ImFont* uiFontNormal = nullptr;
+	ImFont* uiFontLarge = nullptr;
 };
 
 struct AppConfig {

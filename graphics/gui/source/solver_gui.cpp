@@ -19,10 +19,11 @@
 using namespace BoundaryDefaults;
 using namespace BoundaryGet;
 
-SolverGUI::SolverGUI(Project& project) :
+SolverGUI::SolverGUI(Project& project, AppConfig& appConfig) :
 	project(project),
 	mesh(project.mesh),
 	solver(project.solver),
+	appConfig(appConfig),
 	varUnits(project.solver.varUnits) {
 }
 
@@ -165,82 +166,41 @@ bool createBCTypeCombo(
 	return changed;
 }
 
-void SolverGUI::drawBoundaryVariableEditor(
+void SolverGUI::drawRowBoundaryVariableEditor(
 	BoundarySegmentGroup& group,
 	BoundaryVariable var,
 	BoundaryCondition& bc
 ) {
 
-	ImGui::SeparatorText(boundaryVariableToString(var));
-
 	const char* label = boundaryVariableToString(var);
-	if (ImGui::BeginTable(label, 4)) {
-		setupTableColumns(
-			column("Label", 100.0f),
-			column("BC", 100.0f),
-			column("Value", 100.0f),
-			column("Unit", 100.0f)
-		);
 
-		labelRow(label);
-		switch (var) {
-		case BoundaryVariable::UVelocity:
-			createBCTypeCombo("##UVelocity", var, bc, group);
-			ImGui::TableNextColumn();
-			inputDouble("U Velocity", bc.value, varUnits.axialUnit, Units::velocityUnits);
-			comboUnit("UVelocity", varUnits.axialUnit, Units::velocityUnits);
-			break;
-		case BoundaryVariable::VVelocity:
-			createBCTypeCombo("##VVelocity", var, bc, group);
-			ImGui::TableNextColumn();
-			inputDouble("V Velocity", bc.value, varUnits.radialUnit, Units::velocityUnits);
-			comboUnit("VVelocity", varUnits.radialUnit, Units::velocityUnits);
-			break;
-		case BoundaryVariable::Pressure:
-			createBCTypeCombo("##Pressure", var, bc, group);
-			ImGui::TableNextColumn();
-			inputDouble("Pressure", bc.value, varUnits.pressureUnit, Units::pressureUnits);
-			comboUnit("Pressure", varUnits.pressureUnit, Units::pressureUnits);
-			break;
-		case BoundaryVariable::StaticTemperature:
-			createBCTypeCombo("##StaticTemperature", var, bc, group);
-			ImGui::TableNextColumn();
-			inputDouble("Static Temperature", bc.value, varUnits.temperatureUnit, Units::temperatureUnits);
-			comboUnit("StaticTemperature", varUnits.temperatureUnit, Units::temperatureUnits);
+	labelRow(label);
+	switch (var) {
+	case BoundaryVariable::UVelocity:
+		createBCTypeCombo("##UVelocity", var, bc, group);
+		ImGui::TableNextColumn();
+		inputDouble("U Velocity", bc.value, varUnits.axialUnit, Units::velocityUnits);
+		comboUnit("UVelocity", varUnits.axialUnit, Units::velocityUnits);
+		break;
+	case BoundaryVariable::VVelocity:
+		createBCTypeCombo("##VVelocity", var, bc, group);
+		ImGui::TableNextColumn();
+		inputDouble("V Velocity", bc.value, varUnits.radialUnit, Units::velocityUnits);
+		comboUnit("VVelocity", varUnits.radialUnit, Units::velocityUnits);
+		break;
+	case BoundaryVariable::Pressure:
+		createBCTypeCombo("##Pressure", var, bc, group);
+		ImGui::TableNextColumn();
+		inputDouble("Pressure", bc.value, varUnits.pressureUnit, Units::pressureUnits);
+		comboUnit("Pressure", varUnits.pressureUnit, Units::pressureUnits);
+		break;
+	case BoundaryVariable::StaticTemperature:
+		createBCTypeCombo("##StaticTemperature", var, bc, group);
+		ImGui::TableNextColumn();
+		inputDouble("Static Temperature", bc.value, varUnits.temperatureUnit, Units::temperatureUnits);
+		comboUnit("StaticTemperature", varUnits.temperatureUnit, Units::temperatureUnits);
 
-			break;
-		}
-		ImGui::EndTable();
-	}
-}
-
-
-void SolverGUI::drawBoundaryConditionGUI() {
-
-	BoundarySegmentGroup* selectedGroup = getBoundaryGroupByID(mesh.boundaryGroups, selectedBoundaryGroupID);
-
-	if (!selectedGroup) {
-		selectedBoundaryGroupID = -1;
-		mesh.highlightedBoundarySegmentIDs.clear();
-		return;
-	}
-
-	ImGui::SeparatorText(selectedGroup->name.c_str());
-
-
-	drawTableHeader("Properties");
-
-	if (ImGui::BeginTable("PropertyTable", 2, UIFlags::TableSimpleFlags, ImVec2(0.0f, 120.0f))) {
-		setupTableColumns(
-			column("Label", 150.0f),
-			column("Value", 100.0f, ImGuiTableColumnFlags_WidthStretch)
-		);
-
-		labelRow("Type");
-		if (createSimpleCombo("##BoundaryType", solver.boundaryType, (int&)selectedGroup->type, IM_ARRAYSIZE(solver.boundaryType))) {
-			check();
-		}
-		ImGui::EndTable();
+		break;
 	}
 }
 
@@ -260,7 +220,8 @@ void SolverGUI::drawPropertiesPanel() {
 
 		// total width = sum of table width + 10 * num of columns to account for padding
 		// total height = number of rows * 31
-		ImGui::BeginChild("Solver", ImVec2(220.0f, 62.0f), true);	
+
+		ImGui::BeginChild("Solver", ImVec2(220.0f, 62.0f), true);
 		if (ImGui::BeginTable("Solver", 2)) {
 
 			setupTableColumns(
@@ -302,19 +263,60 @@ void SolverGUI::drawPropertiesPanel() {
 		}
 		ImGui::EndChild();
 	}
-
-	else if (selectedItem == "Boundary Variable") {
-
+	else if (selectedItem == "Boundary Group") {
 		BoundarySegmentGroup* group = getBoundaryGroupByID(mesh.boundaryGroups, selectedBoundaryGroupID);
 
-		if (group) {
-			BoundaryCondition& bc = getOrCreateBC(*group, selectedBoundaryVariable);
+		ImGui::PushFont(appConfig.fonts.uiFontLarge);
+		ImGui::SeparatorText(group->nameBuffer);
+		ImGui::PopFont();
 
-			drawBoundaryVariableEditor(*group, selectedBoundaryVariable, bc);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 10.0f));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.20f, 0.25f, 0.32f, 1.0f));
+		ImGui::BeginChild("Properties", ImVec2(0.0f, 0.0f), true);
+
+		if (ImGui::BeginTable("Boundary Type", 2)) {
+			setupTableColumns(
+				column("Label", 100.0f),
+				column("Boundary Type", 100.0f, ImGuiTableColumnFlags_WidthStretch)
+			);
+
+			labelRow("Type");
+			createSimpleCombo("##BoundaryType", solver.boundaryType, (int&)group->type, IM_ARRAYSIZE(solver.boundaryType));
+			
+			ImGui::EndTable();
 		}
-	}
-	else if (selectedItem == "Boundary Group") {
-		drawBoundaryConditionGUI();
+
+		ImGui::Dummy(ImVec2(0.0f, 10.0f));
+
+		std::vector<BoundaryVariable> activeLeaves = getVariableFromBoundaryType(
+			group->type,
+			solver.fieldOption.solveEnergy,
+			solver.fieldOption.solveConcentration
+		);
+
+		if (ImGui::BeginTable("Boundary Variable Editor", 4)) {
+			setupTableColumns(
+				column("Variable", 100.0f),
+				column("Condition", 100.0f),
+				column("Value", 100.0f),
+				column("Unit", 100.0f)
+			);
+
+			ImGui::TableHeadersRow();
+
+			for (BoundaryVariable& var : activeLeaves) {
+
+				BoundaryCondition& bc = getOrCreateBC(*group, var);
+				drawRowBoundaryVariableEditor(*group, var, bc);
+
+			}
+
+			ImGui::EndTable();
+		}
+		ImGui::EndChild();
+		ImGui::PopStyleColor();
+		ImGui::PopStyleVar();
+
 	}
 	else if (selectedItem == "Residuals") {
 		ImGui::SeparatorText("Residual Type");
@@ -322,8 +324,8 @@ void SolverGUI::drawPropertiesPanel() {
 		if (ImGui::BeginTable("Residual Type Settings", 3)) {
 
 			setupTableColumns(
-				column("Label", 300.0f),
-				column("Value", 200.0f),
+				column("Label", 100.0f),
+				column("Value", 150.0f),
 				column("Advanced", 50.0f)
 			);
 
@@ -409,10 +411,10 @@ void SolverGUI::drawPropertiesPanel() {
 
 				labelRow("Continuity Tolerance");
 				ImGui::InputDouble("##SimpleContTol", &project.solver.configSimple.ppTol, 0.0, 0.0, "%.3e");
-			
+
 				labelRow("Linear Solver Max Iteration");
 				ImGui::InputInt("##LinearSolverIteration", &project.solver.linearSolverConfig.maxIter, 0.0, 0.0);
-			
+
 			}
 			ImGui::EndTable();
 		}
@@ -450,7 +452,7 @@ void SolverGUI::drawPropertiesPanel() {
 				column("Label", 300.0f),
 				column("Value", 150.0f)
 			);
-			
+
 			labelRow("dt");
 			ImGui::InputDouble("##timeStep", &project.solver.dt, 0.0, 0.0, "%.3f");
 
@@ -490,54 +492,32 @@ void SolverGUI::draw() {
 
 
 		// draw boundary tree node
-		bool boundaryOpen = false;
+		bool boundariesOpen = ImGui::TreeNodeEx("Boundary", UIFlagsTree::BranchOpenedFlags);
 
-		if (drawTree("Boundary", boundaryOpen)) {
+		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+
 			selectedBoundaryGroupID = -1;
+			mesh.highlightedBoundarySegmentIDs.clear();
+			selectedItem = "Boundary";
+
 		}
 
-		if (boundaryOpen) {
-
+		if (boundariesOpen) {
 			for (BoundarySegmentGroup& group : mesh.boundaryGroups) {
 				ImGui::PushID(group.id);
 
-				bool isOpened = false;
-
-
-				if (drawTree(group.name.c_str(), isOpened, UIFlagsTree::BranchClosedFlags)) {
+				if (drawLeaf(group.name.c_str())) {
 					selectedBoundaryGroupID = group.id;
+					mesh.highlightSegmentsInGroup(group);
 					selectedItem = "Boundary Group";
-				}
-
-				if (isOpened) {
-					std::vector<BoundaryVariable> activeLeaves = getVariableFromBoundaryType(
-						group.type, 
-						solver.fieldOption.solveEnergy,
-						solver.fieldOption.solveConcentration
-					);
-
-					for (BoundaryVariable var : activeLeaves) {
-						ImGui::PushID((int)(var));
-
-						if (drawLeaf(boundaryVariableToString(var))) {
-							selectedBoundaryGroupID = group.id;
-							selectedBoundaryVariable = var;
-							selectedItem = "Boundary Variable";
-						}
-						ImGui::PopID();
-						changeCursorOnHover();
-					}
-					ImGui::TreePop();
 				}
 
 				ImGui::PopID();
 			}
+
 			ImGui::TreePop();
-
-
 		}
-
-
+		changeCursorOnHover();
 
 
 

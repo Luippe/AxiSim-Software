@@ -13,18 +13,18 @@ __global__
 void continuityResidual(FVMeshDevice mesh, ConfigSolver config, Coefficients coeff, VariablesSimple simple);
 
 
-
 template <typename... Systems>
 __global__
-void residualAll(FVMeshDevice mesh, Systems...systems) {
+void residualAll(uint8_t* activeCell, bool sign, Systems...systems) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
-	(residualRaw(mesh, systems, n), ...);
+	(residualRaw(activeCell, sign, systems, n), ...);
 
 }
 
 __device__
-void residualRaw(const FVMeshDevice& mesh, ResidualPairs& pairs, int n);
+void residualRaw(uint8_t* activeCell, bool sign, ResidualPairs& pairs, int n);
+
 
 template <typename... Coefficients>
 void residualAllHost(ConfigResidual& configResidual, Coefficients&...coeff) {

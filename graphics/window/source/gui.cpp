@@ -51,14 +51,13 @@ void initImGuiFonts(AppFonts& fonts) {
 	io.Fonts->Clear();
 
 	fonts.defaultFont = io.Fonts->AddFontDefault();
-	fonts.uiFont = io.Fonts->AddFontFromFileTTF(
-		"assets/fonts/Roboto-Regular.ttf",
-		16.0f
-	);
+	fonts.uiFontSmall = io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf", 14.0f);
+	fonts.uiFontNormal = io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf", 18.0f);
+	fonts.uiFontLarge = io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf",	24.0f);
 
-    IM_ASSERT(fonts.uiFont != nullptr);
+    IM_ASSERT(fonts.uiFontNormal != nullptr);
 
-    io.FontDefault = fonts.uiFont;
+    io.FontDefault = fonts.uiFontNormal;
 
 }
 
@@ -142,7 +141,7 @@ GUI::GUI(Project& project, GLFWwindow* window) :
 	solver(project.solver),
 	results(project.results),
 	meshGUI(project, *this),
-	solverGUI(project),
+	solverGUI(project, appConfig),
 	resultsGUI(project, *this),
 	residualPlot(project.solver, appConfig),
 	animationGUI(project, *this),

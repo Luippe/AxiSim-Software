@@ -5,22 +5,22 @@
 #include "device_launch_parameters.h"
 
 __device__
-void residualRaw(const FVMeshDevice& fvMesh, ResidualPairs& pairs, int n) {
+void residualRaw(uint8_t* activeCell, bool sign, ResidualPairs& pairs, int n) {
 
 	Coefficients coeff = pairs.coeff;
 	const double* x = pairs.x;
 
-	if (n >= fvMesh.cells.nCells) return;
+	if (n >= coeff.N) return;
 
-	if (!fvMesh.cells.active[n]) {
+	if (!activeCell[n]) {
 		if (coeff.res) {
 			coeff.res[n] = 0.0;
 		}
 		return;
 	}
 
-	int nr = fvMesh.nr;
-	int nz = fvMesh.nz;
+	int nr = coeff.nr;
+	int nz = coeff.nz;
 
 	int j = n % nz;
 	int i = n / nz;
@@ -43,8 +43,12 @@ void residualRaw(const FVMeshDevice& fvMesh, ResidualPairs& pairs, int n) {
 		Ax += coeff.AS[n] * x[n - nz];
 	}
 
-	coeff.res[n] = fabs(coeff.b[n] - Ax);
+	double r = coeff.b[n] - Ax;
+
+	coeff.res[n] = sign ? r : fabs(r);
+
 }
+
 
 __global__
 void continuityResidual(FVMeshDevice mesh, ConfigSolver config, Coefficients coeff, VariablesSimple simple) {

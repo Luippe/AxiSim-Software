@@ -13,6 +13,103 @@
 // ======================================================================
 // -----------------------PUBLIC HELPER FUNCTIONS------------------------
 // ======================================================================
+template<typename TypeT>
+bool drawRenamingPopup(
+	const char* label,
+	TypeT& target,
+	std::vector<TypeT>& groups,
+	bool* canceled = nullptr
+) {
+	bool confirmed = false;
+
+	if (canceled) {
+		*canceled = false;
+	}
+
+	if (ImGui::BeginPopupModal(
+		label,
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove
+	)) {
+		bool justOpened = ImGui::IsWindowAppearing();
+
+		if (justOpened) {
+			std::snprintf(
+				target.nameBuffer,
+				sizeof(target.nameBuffer),
+				"%s",
+				target.name.c_str()
+			);
+
+			ImGui::SetKeyboardFocusHere();
+		}
+
+		bool clickedOutside =
+			!justOpened &&
+			ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+			!ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+
+		bool pressedEscape = ImGui::IsKeyPressed(ImGuiKey_Escape);
+
+		ImGui::SetNextItemWidth(250.0f);
+
+		bool enterPressed = ImGui::InputText(
+			"##NameInput",
+			target.nameBuffer,
+			sizeof(target.nameBuffer),
+			ImGuiInputTextFlags_EnterReturnsTrue |
+			ImGuiInputTextFlags_AutoSelectAll
+		);
+
+		std::string newName = target.nameBuffer;
+
+		bool emptyName = newName.empty();
+
+		bool nameExists = std::any_of(
+			groups.begin(),
+			groups.end(),
+			[&](const TypeT& group) {
+				return group.id != target.id &&
+					group.name == newName;
+			}
+		);
+
+		bool invalidName = emptyName || nameExists;
+
+		if (clickedOutside || pressedEscape) {
+			if (canceled) {
+				*canceled = true;
+			}
+
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::Spacing();
+
+		if (emptyName) {
+			ImGui::TextColored(
+				ImVec4(1.0f, 0.2f, 0.2f, 1.0f),
+				"Name cannot be empty"
+			);
+		}
+		else if (nameExists) {
+			ImGui::TextColored(
+				ImVec4(1.0f, 0.2f, 0.2f, 1.0f),
+				"Name already exists"
+			);
+		}
+
+		if (enterPressed && !invalidName) {
+			target.name = newName;
+			confirmed = true;
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::EndPopup();
+	}
+
+	return confirmed;
+}
 
 template<typename TypeT>
 bool drawNamingPopup(const char* label, TypeT& target, std::vector<TypeT>& groups, bool* canceled = nullptr) {
@@ -22,8 +119,6 @@ bool drawNamingPopup(const char* label, TypeT& target, std::vector<TypeT>& group
 
 	if (ImGui::BeginPopupModal(label, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
 
-
-		std::string renameError = "Name already exists";
 
 		bool justOpened = ImGui::IsWindowAppearing();
 
@@ -49,25 +144,40 @@ bool drawNamingPopup(const char* label, TypeT& target, std::vector<TypeT>& group
 			target.name = target.nameBuffer;
 		}
 
-		bool nameExists = std::any_of(groups.begin(), groups.end(), [&](const TypeT& group) {return group.name == target.name; });
+		std::string newName = target.nameBuffer;
 
+		bool emptyName = newName.empty();
+
+		bool nameExists = std::any_of(
+			groups.begin(),
+			groups.end(),
+			[&](const TypeT& group)
+			{return group.name == target.name; }
+		);
 
 		if (justOpened) {
 			ImGui::SetKeyboardFocusHere(-1);
 		}
 
 		if (clickedOutside || pressedEscape) {
-			*canceled = true;
+			if (canceled) {
+				*canceled = true;
+			}
 			ImGui::CloseCurrentPopup();
 		}
 
 		ImGui::Spacing();
 
-		if (nameExists) {
+		if (emptyName) {
 			ImGui::TextColored(
 				ImVec4(1.0f, 0.2f, 0.2f, 1.0f),
-				"%s",
-				renameError.c_str()
+				"Name cannot be empty"
+			);
+		}
+		else if (nameExists) {
+			ImGui::TextColored(
+				ImVec4(1.0f, 0.2f, 0.2f, 1.0f),
+				"Name already exists"
 			);
 		}
 		if (enterPressed && !nameExists) {
@@ -170,7 +280,7 @@ public:
 
 					ImGui::OpenPopup("Rename Tab");
 				}
-				drawNamingPopup("Rename Tab", tab, tabs);
+				drawRenamingPopup("Rename Tab", tab, tabs);
 
 				drawTabContent(
 					tab,

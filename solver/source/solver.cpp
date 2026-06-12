@@ -7,6 +7,7 @@
 #include "printer.h"
 #include "file_manager.h"
 
+#include "multigrid.cuh"
 #include "linear_solver.cuh"
 #include "console.h"
 #include "simple.cuh"
@@ -274,14 +275,16 @@ void Solver::runSimple(const Mesh& mesh) {
 
         residualPlot->setName(residualsToPrint);
 
-        allocateCoefficients(configSolver, uCoeff);
-        allocateCoefficients(configSolver, vCoeff);
-        allocateCoefficients(configSolver, ppCoeff);
-        allocateCoefficients(configSolver, massFluxCoeff);
-        allocateCoefficients(configSolver, tempCoeff);
+        int nr = configSolver.g.nr;
+        int nz = configSolver.g.nz;
+
+        allocateCoefficients(uCoeff, nr, nz);
+        allocateCoefficients(vCoeff, nr, nz);
+        allocateCoefficients(ppCoeff, nr, nz);
+        allocateCoefficients(massFluxCoeff, nr, nz);
+        allocateCoefficients(tempCoeff, nr, nz);
 
         allocateSimple(configSolver, simple, fvMesh);
-
 
         currentIteration = 0;
     }
@@ -313,6 +316,14 @@ void Solver::runSimple(const Mesh& mesh) {
     timer.startTimer(stream);
 
     int numSteps = transient ? (int)std::ceil(tEnd / dt) : 1;
+
+    GridLevel fineGrid = createFineGrid(configSolver.g);
+    std::vector<GridLevel> gridLevels = createGridHierarchy(fineGrid, 4, 4);
+
+    MultigridSolver mg;
+    mg.allocateLevels(gridLevels);
+    mg.smootherConfig = linearSolverConfig;
+    mg.smootherConfig.maxIter = 3;
 
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
@@ -365,8 +376,8 @@ void Solver::runSimple(const Mesh& mesh) {
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
             // solve velocity
-            solveLinearSystem(fvMeshDevice, uCoeff, linearSolverConfig, stream, simple.u, simple.uTemp, threadsPerBlock);
-            solveLinearSystem(fvMeshDevice, vCoeff, linearSolverConfig, stream, simple.v, simple.vTemp, threadsPerBlock);
+            solveLinearSystem(uCoeff, linearSolverConfig, stream, simple.u, simple.uTemp, configSolver.g.d_activeCell, threadsPerBlock);
+            solveLinearSystem(vCoeff, linearSolverConfig, stream, simple.v, simple.vTemp, configSolver.g.d_activeCell, threadsPerBlock);
             CUDA_CHECK(cudaGetLastError());
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
@@ -391,7 +402,7 @@ void Solver::runSimple(const Mesh& mesh) {
                 );
 
             createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppCoeff, simple);
-            solveLinearSystem(fvMeshDevice, ppCoeff, linearSolverConfig, stream, simple.pp, simple.ppTemp, threadsPerBlock);
+            solveLinearSystem(ppCoeff, linearSolverConfig, stream, simple.pp, simple.ppTemp, configSolver.g.d_activeCell, threadsPerBlock);
 
             // update field variables
             updateVelocity << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, bcDevice.p);
@@ -408,7 +419,7 @@ void Solver::runSimple(const Mesh& mesh) {
 
                 addEnergyDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, tempCoeff, bcDevice.temp);
 
-                solveLinearSystem(fvMeshDevice, tempCoeff, linearSolverConfig, stream, simple.temp, simple.tempTemp, threadsPerBlock);
+                solveLinearSystem(tempCoeff, linearSolverConfig, stream, simple.temp, simple.tempTemp, configSolver.g.d_activeCell, threadsPerBlock);
 
             }
 
@@ -421,7 +432,8 @@ void Solver::runSimple(const Mesh& mesh) {
             if (k % configSimple.checkConv == 0) {
 
                 residualAll << <blocks, threadsPerBlock, 0, stream >> > (
-                    fvMeshDevice,
+                    fvMeshDevice.cells.active,
+                    false,
                     ResidualPairs{ uCoeff, simple.u },
                     ResidualPairs{ vCoeff, simple.v },
                     ResidualPairs{ tempCoeff, simple.temp}

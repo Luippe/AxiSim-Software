@@ -4,21 +4,21 @@
 
 __global__
 void jacobi(
-	FVMeshDevice mesh,
 	Coefficients coeff,
 	const double* xOld,
-	double* xNew
+	double* xNew,
+	uint8_t* active
 ) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) {
+	if (n >= coeff.N) return;
+	if (!active[n]) {
 		xNew[n] = xOld[n];
 		return;
 	}
 
-	int nz = mesh.nz;
-	int nr = mesh.nr;
+	int nz = coeff.nz;
+	int nr = coeff.nr;
 
 	int j = n % nz;
 	int i = n / nz;
@@ -56,12 +56,12 @@ void jacobi(
 }
 
 __global__
-void gaussSeidelRB(FVMeshDevice mesh, Coefficients coeff, double* x, int color) {
+void gaussSeidelRB(Coefficients coeff, uint8_t* active, double* x, int color) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= coeff.N) return;
-	if (!mesh.cells.active[n]) {
+	if (!active[n]) {
 		return;
 	}
 
@@ -103,23 +103,31 @@ void gaussSeidelRB(FVMeshDevice mesh, Coefficients coeff, double* x, int color) 
 	x[n] = val;
 }
 
-void solveLinearSystem(FVMeshDevice& mesh, Coefficients& coeff, const LinearSolverConfig& config, cudaStream_t stream, double*& x, double*& xTemp, int threadsPerBlock) {
+void solveLinearSystem(
+	Coefficients& coeff,
+	const LinearSolverConfig& config,
+	cudaStream_t stream,
+	double*& x,
+	double*& xTemp,
+	uint8_t*& active,
+	int threadsPerBlock
+) {
 
-	int N = mesh.cells.nCells;
+	int N = coeff.N;
 	int blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
 
 	switch (config.type) {
 	case LINEAR_JACOBI:
 		for (int k = 0; k < config.maxIter; k++) {
-			jacobi << <blocks, threadsPerBlock, 0, stream >> > (mesh, coeff, x, xTemp);
+			jacobi << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, xTemp, active);
 			std::swap(x, xTemp);
 		}
 		break;
 
 	case LINEAR_GS_RB:
 		for (int k = 0; k < config.maxIter; k++) {
-			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (mesh, coeff, x, 0);
-			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (mesh, coeff, x, 1);
+			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, active, x, 0);
+			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, active, x, 1);
 		}
 		break;
 	}

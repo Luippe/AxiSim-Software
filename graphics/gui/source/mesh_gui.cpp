@@ -142,7 +142,7 @@ void MeshGUI::drawOverview() {
 	else if (selectedItem == "Edit") {
 
 		ImGui::TextUnformatted("Geometry");
-		ImGui::BeginChild("Geometry", ImVec2(330.0f, 62.0f), true);	// total width = sum of table width + 10 * num of columns to account for padding
+		ImGui::BeginChild("Geometry", ImVec2(0.0f, 80.0f), true);	// total width = sum of table width + 10 * num of columns to account for padding
 		if (ImGui::BeginTable("Geometry", 3)) {
 
 			setupTableColumns(
@@ -169,7 +169,7 @@ void MeshGUI::drawOverview() {
 
 		ImGui::Spacing();
 		ImGui::TextUnformatted("Mesh");
-		ImGui::BeginChild("Mesh", ImVec2(270, 110), true);
+		ImGui::BeginChild("Mesh", ImVec2(0.0f, 140.0f), true);
 		if (ImGui::BeginTable("Mesh", 2)) {
 
 			setupTableColumns(

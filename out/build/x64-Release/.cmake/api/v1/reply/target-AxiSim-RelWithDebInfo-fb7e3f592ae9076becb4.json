@@ -196,17 +196,17 @@
 				28,
 				29,
 				33,
-				34,
-				36,
-				92,
-				93,
+				35,
+				37,
 				94,
 				95,
 				96,
 				97,
 				98,
 				99,
-				101
+				100,
+				101,
+				103
 			]
 		},
 		{
@@ -311,11 +311,12 @@
 				30,
 				31,
 				32,
-				35,
-				37,
+				34,
+				36,
 				38,
 				39,
-				40
+				40,
+				41
 			]
 		},
 		{
@@ -409,7 +410,7 @@
 			"language" : "C",
 			"sourceIndexes" : 
 			[
-				100
+				102
 			]
 		}
 	],
@@ -557,21 +558,21 @@
 				36,
 				37,
 				38,
-				39
+				39,
+				40
 			]
 		},
 		{
 			"name" : "src\\source",
 			"sourceIndexes" : 
 			[
-				40
+				41
 			]
 		},
 		{
 			"name" : "graphics\\gui\\header",
 			"sourceIndexes" : 
 			[
-				41,
 				42,
 				43,
 				44,
@@ -584,35 +585,35 @@
 				51,
 				52,
 				53,
-				54
+				54,
+				55
 			]
 		},
 		{
 			"name" : "graphics\\tinyfiledialogs",
 			"sourceIndexes" : 
 			[
-				55,
-				100
+				56,
+				102
 			]
 		},
 		{
 			"name" : "graphics\\window\\header",
 			"sourceIndexes" : 
 			[
-				56,
 				57,
 				58,
 				59,
 				60,
 				61,
-				62
+				62,
+				63
 			]
 		},
 		{
 			"name" : "manager\\header",
 			"sourceIndexes" : 
 			[
-				63,
 				64,
 				65,
 				66,
@@ -626,14 +627,14 @@
 				74,
 				75,
 				76,
-				77
+				77,
+				78
 			]
 		},
 		{
 			"name" : "solver\\header",
 			"sourceIndexes" : 
 			[
-				78,
 				79,
 				80,
 				81,
@@ -642,50 +643,52 @@
 				84,
 				85,
 				86,
-				87
+				87,
+				88,
+				89
 			]
 		},
 		{
 			"name" : "src\\header",
 			"sourceIndexes" : 
 			[
-				88
+				90
 			]
 		},
 		{
 			"name" : "structs",
 			"sourceIndexes" : 
 			[
-				89,
-				90,
-				91
+				91,
+				92,
+				93
 			]
 		},
 		{
 			"name" : "graphics\\imgui",
 			"sourceIndexes" : 
 			[
-				92,
-				93,
 				94,
 				95,
-				98,
-				99
+				96,
+				97,
+				100,
+				101
 			]
 		},
 		{
 			"name" : "graphics\\imgui\\backends",
 			"sourceIndexes" : 
 			[
-				96,
-				97
+				98,
+				99
 			]
 		},
 		{
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				101
+				103
 			]
 		}
 	],
@@ -893,6 +896,12 @@
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "solver/source/mesh.cpp",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
+			"path" : "solver/source/multigrid.cu",
 			"sourceGroupIndex" : 3
 		},
 		{
@@ -1140,6 +1149,11 @@
 		{
 			"backtrace" : 2,
 			"path" : "solver/header/mesh.h",
+			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/multigrid.cuh",
 			"sourceGroupIndex" : 9
 		},
 		{
