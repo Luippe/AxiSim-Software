@@ -22,6 +22,7 @@ public:
 	std::vector<unsigned int> VAOBB;
 	void renderBB(Shader& shaderLine);
 
+	//bool showBB = false;
 	bool showBB = false;
 
 private:

@@ -60,7 +60,7 @@ void ResultsGUI::drawPropertiesPanel() {
 			createSimpleCombo("##Filter", results.compareType, (int&)results.currentCompareType, IM_ARRAYSIZE(results.compareType));
 
 			labelRow("Scale");
-			if (comboUnit("##Unit", scene.sceneScale.index, Units::lengthUnits)) {
+			if (comboUnit("##Unit", results.sceneScale.index, Units::lengthUnits)) {
 				scene.updateSceneScale();
 			}
 
@@ -103,7 +103,8 @@ void ResultsGUI::drawPropertiesPanel() {
 			if (createSimpleCombo("##Shading", results.shadingType, (int&)results.currentShadingType, IM_ARRAYSIZE(results.shadingType))) {
 				
 				GLint shadingMode = (results.currentShadingType == ShadingType::Interp) ? GL_LINEAR : GL_NEAREST;	// choose lienar and flat shading
-				results.currentField->textureBuffer.setTextureShading(shadingMode);
+				results.setTextureShadingAllField(shadingMode);
+
 			}
 			ImGui::EndTable();
 		}

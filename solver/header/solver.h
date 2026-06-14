@@ -1,13 +1,15 @@
 #pragma once
-#include "jacobi_pcg.cuh"
 #include <string>
+#include <thread>
+#include <unordered_map>
+
+#include "jacobi_pcg.cuh"
+#include "residual_plot.h"
+
 #include "solver_struct.h"
 #include "boundary_struct.h"
-#include "residual_plot.h"
-#include <thread>
 
 class Console;
-class SceneView;
 class Mesh;
 struct VariableUnits;
 
@@ -70,7 +72,9 @@ public:
 	Console* console = nullptr;
 	ResidualPlot* residualPlot = nullptr;
 
-	// velocity fields
+	// variable fields
+	std::unordered_map<std::string, SolutionField> solutions;
+
 	SolutionField uSol;
 	SolutionField vSol;
 	SolutionField pSol;
@@ -106,6 +110,9 @@ private:
 	void createResidualPrintItems();
 
 	void addFieldType();
+
+	// create solution map
+	void createSolutions(int N);
 
 	Coefficients uCoeff, vCoeff, ppCoeff, massFluxCoeff, tempCoeff;
 	MemoryConfig mem;

@@ -55,7 +55,7 @@ bool SceneView::compareFloat(float value, FilterValues& filterValues) {
 
 void SceneView::updateSceneScale() {
 
-	sceneScale.value = (float)(1.0 / Units::lengthUnits[sceneScale.index].toBase);
+	results.sceneScale.value = (float)(1.0 / Units::lengthUnits[results.sceneScale.index].toBase);
 
 }
 
@@ -90,6 +90,7 @@ void SceneView::handleMouse() {
 		bool wasClick = abs(drag.x) < 3.0f && abs(drag.y) < 3.0f;	// check if the mouse movement is small enough to be considered a click
 
 		if (wasClick) {
+			check();
 			picker.pick();
 		}
 
@@ -112,6 +113,7 @@ void SceneView::handleMouse() {
 	}
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
+
 		glm::vec2 currentMouse(io.MousePos.x, io.MousePos.y);
 		glm::vec2 previousMouse = currentMouse - glm::vec2(io.MouseDelta.x, io.MouseDelta.y);
 
@@ -292,10 +294,10 @@ void SceneView::render() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	// load transformation matrix for solution shader
-	glm::mat4 model = scaleMat4(camera.model, sceneScale.value);
-
-	shaderResults.loadTransformationMatrix(model, camera.view, camera.projection);
+	glm::mat4 model = scaleMat4(camera.model, results.sceneScale.value);
 	shaderLine.loadTransformationMatrix(model, camera.view, camera.projection);
+	shaderResults.loadTransformationMatrix(model, camera.view, camera.projection);
+
 
 	// update picker
 	picker.update();

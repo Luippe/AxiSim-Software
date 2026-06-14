@@ -20,10 +20,7 @@ class Results;
 class SceneView {
 public:
 
-	struct SceneScale{
-		uint8_t index = 0;
-		float value = 1.0f;
-	};
+
 
 
 	SceneView(Project& project, GUI& gui);
@@ -36,8 +33,6 @@ public:
 
 	// create buffer for the cylinder and cylinder instances using the vertices and indices from results class
 	void createBuffer();
-
-	SceneScale sceneScale;
 
 	Camera camera;
 	Renderer renderer;

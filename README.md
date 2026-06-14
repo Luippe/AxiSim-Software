@@ -1,6 +1,6 @@
 # AxiSim
 
-Current Version: v1.02-alpha
+Current Version: v1.03-alpha
 This project is still work in progress, but is being updated very frequently. 
 The most up to date software manual can be found [here](docs/AxiSim_Software_Manual_v1.01-alpha.pdf).
 

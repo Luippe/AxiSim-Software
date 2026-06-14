@@ -1,9 +1,12 @@
 #pragma once
 #include <vector>
+#include <unordered_map>
+#include <string>
+#include <glm/mat4x4.hpp>
+
 #include "buffer_manager.h"
 #include "graphics_struct.h"
 #include "field_manager.h"
-#include <glm/mat4x4.hpp>
 
 class Colormap;
 class Shader;
@@ -13,6 +16,13 @@ class Solver;
 
 class Results {
 public:
+
+	struct SceneScale {
+		uint8_t index = 0;
+		float value = 1.0f;
+	};
+
+	SceneScale sceneScale;
 
 	CompareType currentCompareType = CompareType::GreaterThan;
 	FilterValues filterValues;
@@ -52,9 +62,11 @@ public:
 	// update all relevant variables
 	void updateCurrentField();
 
-
 	// update current buffer with new data, as texture buffers cannot be copied over, they must be updated instead
 	void updateTextureBuffer(const void* data);
+
+	// set shading mode for all fields
+	void setTextureShadingAllField(GLint shadingMode);
 
 	bool show = true;
 	bool showOutline = false;
@@ -66,6 +78,7 @@ public:
 
 	GridConfig g;
 
+	std::unordered_map<std::string, SolutionField> solutions;
 	std::vector<CylinderTemplateVertex> verticesCV;
 	std::vector<unsigned int> indicesCV;
 
@@ -78,6 +91,8 @@ public:
 	void generate(Mesh& mesh, Solver& solver);
 
 private:
+
+	std::vector<Field> fields;
 
 	Field uField;
 	Field vField;

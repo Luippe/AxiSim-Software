@@ -6,7 +6,7 @@
 class Camera {
 
 public:
-	Camera() {};
+	Camera();
 
 	glm::vec3 getPosition();
 
@@ -38,7 +38,6 @@ private:
 	int width, height;
 	ImVec2 rectPos;
 
-
 	bool snapping = false;
 	void snapCamera();
 
@@ -48,6 +47,9 @@ private:
 
 	// update model, view, and projection matrix
 	void updateTransformationMatrix();
+
+	// initialize position and angle of camera when constructing class
+	void initPositionAndAngle();
 
 	glm::vec3 mapToSphere(const glm::vec2& mouse);
 	glm::vec3 target = glm::vec3(0.0f, 0.0f, 0.0f);

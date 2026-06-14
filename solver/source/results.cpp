@@ -175,6 +175,11 @@ void Results::updateAfterLoadingFile() {
 
 }
 
+void Results::setTextureShadingAllField(GLint shadingMode) {
+
+	//results.currentField->textureBuffer.setTextureShading(shadingMode);
+}
+
 void Results::updateTextureBuffer(const void* data) {
 	currentField->textureBuffer.updateBuffer(g.nz + 1, g.nr + 1, GL_RED, GL_FLOAT, data);
 }
@@ -190,6 +195,7 @@ void Results::copyData(const Mesh& mesh, const Solver& solver) {
 	dz = g.dz;
 
 	fieldType = solver.fieldType;
+	solutions = solver.solutions;
 
 }
 
@@ -236,6 +242,7 @@ void Results::updateCurrentField() {
 	std::string currentFieldChar = fieldType[currentItem];
 
 	if (currentFieldChar == "Axial Velocity") {
+		currentField = &fields[0];
 		currentField = &uField;
 	}
 	else if (currentFieldChar == "Radial Velocity") {

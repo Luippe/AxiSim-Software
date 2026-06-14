@@ -196,8 +196,8 @@
 				28,
 				29,
 				33,
-				35,
-				37,
+				36,
+				41,
 				94,
 				95,
 				96,
@@ -312,11 +312,11 @@
 				31,
 				32,
 				34,
-				36,
+				35,
+				37,
 				38,
 				39,
-				40,
-				41
+				40
 			]
 		},
 		{
@@ -558,14 +558,14 @@
 				36,
 				37,
 				38,
-				39,
-				40
+				39
 			]
 		},
 		{
 			"name" : "src\\source",
 			"sourceIndexes" : 
 			[
+				40,
 				41
 			]
 		},
@@ -644,14 +644,14 @@
 				85,
 				86,
 				87,
-				88,
-				89
+				88
 			]
 		},
 		{
 			"name" : "src\\header",
 			"sourceIndexes" : 
 			[
+				89,
 				90
 			]
 		},
@@ -906,12 +906,6 @@
 		},
 		{
 			"backtrace" : 2,
-			"compileGroupIndex" : 0,
-			"path" : "solver/source/project.cpp",
-			"sourceGroupIndex" : 3
-		},
-		{
-			"backtrace" : 2,
 			"compileGroupIndex" : 1,
 			"path" : "solver/source/residuals.cu",
 			"sourceGroupIndex" : 3
@@ -944,6 +938,12 @@
 			"backtrace" : 2,
 			"compileGroupIndex" : 1,
 			"path" : "src/source/main.cu",
+			"sourceGroupIndex" : 4
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/source/project.cpp",
 			"sourceGroupIndex" : 4
 		},
 		{
@@ -1158,11 +1158,6 @@
 		},
 		{
 			"backtrace" : 2,
-			"path" : "solver/header/project.h",
-			"sourceGroupIndex" : 9
-		},
-		{
-			"backtrace" : 2,
 			"path" : "solver/header/residuals.cuh",
 			"sourceGroupIndex" : 9
 		},
@@ -1185,6 +1180,11 @@
 			"backtrace" : 2,
 			"path" : "solver/header/solver_util.cuh",
 			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
+			"path" : "src/header/project.h",
+			"sourceGroupIndex" : 10
 		},
 		{
 			"backtrace" : 2,

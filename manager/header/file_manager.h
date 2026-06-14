@@ -79,6 +79,12 @@ template<typename...Args>
 void readBoundaryConditionConfig(std::ifstream& in, Args&... args) {
 	(readOneBoundaryCondition(in, args),...);
 }
+// ======================================================================
+// -----------------------RESULTS----------------------------------------
+// ======================================================================
+void saveFromPathResults(std::ofstream& out, const Results& results);
+
+void loadFromPathResults(std::ifstream& in, Results& results);
 
 
 // ====================================================

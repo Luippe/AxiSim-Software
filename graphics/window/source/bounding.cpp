@@ -142,5 +142,6 @@ void Bounding::renderBB(Shader& shaderLine) {
 			glDrawArrays(GL_TRIANGLES, 0, 36);	// all bounding box has 36 vertices
 			glBindVertexArray(0);
 		}
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 	}
 }

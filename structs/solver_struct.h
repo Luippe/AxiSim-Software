@@ -7,8 +7,8 @@
 // holds solvers for solving system of linear equations
 
 struct SolverFieldOption {
-	bool solveEnergy = true;
-	bool solveConcentration = true;
+	bool solveEnergy = false;
+	bool solveConcentration = false;
 };
 
 enum ResidualType {
@@ -46,8 +46,6 @@ enum class CellStoreType {
 	RADIAL
 };
 
-
-
 enum ConvectionScheme {
 	CONV_UPWIND,
 	CONV_CENTRAL,
@@ -63,8 +61,6 @@ struct EnabledResiduals {
 	bool plotTemp = false;
 	bool plotConc = false;
 };
-
-
 
 struct CudaTimer {
 
@@ -193,7 +189,7 @@ struct VariablesSimple {
 	double* gradPR = nullptr;
 
 	double momentumRelaxation = 0.7;
-	double correctionRelaxation = 1.7;
+	double correctionRelaxation = 1.0;
 	double pressureRelaxation = 0.3;
 
 	double* mDot = nullptr;

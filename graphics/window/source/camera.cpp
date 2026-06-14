@@ -4,6 +4,26 @@
 #include "unit_manager.h"
 #include "printer.h"
 
+
+Camera::Camera() {
+	initPositionAndAngle();
+}
+
+void Camera::initPositionAndAngle() {
+
+	constexpr float yaw = glm::radians(-45.0f);
+	constexpr float pitch = glm::radians(-35.264f);
+	//constexpr float zRot = glm::radians(45.0f);
+
+	glm::quat quatYaw = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+	glm::quat quatPitch = glm::angleAxis(pitch, glm::vec3(1.0f, 0.0f, 0.0f));
+	//glm::quat quatZ = glm::angleAxis(zRot, glm::vec3(0.0f, 0.0f, 1.0f));
+
+	rotation = glm::normalize(quatYaw * quatPitch);
+
+}
+
+
 void Camera::updateTransformationMatrix() {
 
 	float aspect = (float)width / (float)height;

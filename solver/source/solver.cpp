@@ -105,6 +105,24 @@ void Solver::createResidualPrintItems() {
     }
 }
 
+
+void Solver::createSolutions(int N) {
+
+ 
+    solutions["Axial Velocity"] = SolutionField{ copyDeviceToHostVector(simple.u, N), g.dr, g.dz, BoundaryVariable::UVelocity };
+    solutions["Radial Velocity"] = SolutionField{ copyDeviceToHostVector(simple.v, N), g.dr, g.dz, BoundaryVariable::VVelocity };
+    solutions["Pressure"] = SolutionField{ copyDeviceToHostVector(simple.p, N), g.dr, g.dz, BoundaryVariable::Pressure };
+
+    if (fieldOption.solveEnergy) {
+        solutions["Temperature"] = SolutionField{copyDeviceToHostVector(simple.temp, N), g.dr, g.dz, BoundaryVariable::StaticTemperature};
+    }
+    
+    if (fieldOption.solveConcentration) {
+
+    }
+
+}
+
 void Solver::addFieldType() {
 
     fieldType.clear();
@@ -335,6 +353,7 @@ void Solver::runSimple(const Mesh& mesh) {
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (uCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (vCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
+            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (tempCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (massFluxCoeff);
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
@@ -378,13 +397,9 @@ void Solver::runSimple(const Mesh& mesh) {
             // solve velocity
             solveLinearSystem(uCoeff, linearSolverConfig, stream, simple.u, simple.uTemp, configSolver.g.d_activeCell, threadsPerBlock);
             solveLinearSystem(vCoeff, linearSolverConfig, stream, simple.v, simple.vTemp, configSolver.g.d_activeCell, threadsPerBlock);
-            CUDA_CHECK(cudaGetLastError());
-            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             // solve pressure correction
             createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, ppCoeff, simple, bcDevice.p);
-            CUDA_CHECK(cudaGetLastError());
-            CUDA_CHECK(cudaStreamSynchronize(stream));
             
             computePressureGradient << <blocks, threadsPerBlock, 0, stream >> > (
                 fvMeshDevice,
@@ -479,6 +494,8 @@ void Solver::runSimple(const Mesh& mesh) {
 
     // copy all necessary variables back to host
     CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    createSolutions(N);
     uSol = SolutionField{ copyDeviceToHostVector(simple.u, N), g.dr, g.dz, BoundaryVariable::UVelocity};
     vSol = SolutionField{ copyDeviceToHostVector(simple.v, N), g.dr, g.dz, BoundaryVariable::VVelocity};
     pSol = SolutionField{ copyDeviceToHostVector(simple.p, N), g.dr, g.dz, BoundaryVariable::Pressure};

@@ -86,6 +86,7 @@ void saveFromPathProject(const char* path, Project& project) {
 	std::ofstream out(path, std::ios::binary);
 	saveFromPathMesh(out, project.mesh);
 	saveFromPathSolver(out, project.solver);
+	saveFromPathResults(out, project.results);
 	out.close();
 }
 
@@ -291,35 +292,24 @@ void loadFromExplorerSolver(Solver& solver) {
 // ====================================================
 // -------------------REUSLTS--------------------------
 // ====================================================
-void saveFromPathResults(const char* path, const Results& results) {
+void saveFromPathResults(std::ofstream& out, const Results& results) {
 
-	std::ofstream out(path, std::ios::binary);
-
-	//saveBinary(out, )
-	out.close();
+	saveBinary(out, results.sceneScale);
 
 }
 
-void saveFromExplorerResults(Results& results) {
-	const char* path = "openAtLaunchResults.bin";
-	saveFromPathResults(path, results);
-}
+void loadFromPathResults(std::ifstream& in, Results& results) {
 
-void saveLaunchResults(Results& results) {
-	const char* path = "openAtLaunchResults.bin";
-	if (!path) return;
-	saveFromPathResults(path, results);
+	readBinary(in, results.sceneScale);
+
 }
 
 void loadAtLaunch(Project& project) {
 
-	const char* meshFile = "openAtLaunchMesh.bin";
-	const char* solverFile = "openAtLaunchSolver.bin";
-	const char* resultsFile = "openAtLaunchResults.bin";
+	const char* projectFile = "openAtLaunchProject.bin";
 
-	// load mesh file if it exists
+	std::ifstream in(projectFile, std::ios::binary);
 	{
-		std::ifstream in(meshFile, std::ios::binary);
 		if (in) {
 			loadFromPathMesh(in, project.mesh);
 			project.mesh.updateAfterLoadingFile();
@@ -328,19 +318,17 @@ void loadAtLaunch(Project& project) {
 
 	// load solver file if it exists
 	{
-		std::ifstream in(solverFile, std::ios::binary);
 		if (in) {
 			loadFromPathSolver(in, project.solver);
 		}
 	}
 
-	// load solver file if it exists
-	//{
-	//	std::ifstream in(resultsFile, std::ios::binary);
-	//	if (in) {
-	//		loadFromPathResults(resultsFile, solver);
-	//	}
-	//}
+	// load results file if it exists
+	{
+		if (in) {
+			loadFromPathResults(in, project.results);
+		}
+	}
 }
 
 void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc) {

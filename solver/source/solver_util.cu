@@ -169,13 +169,14 @@ double interpolateFieldToFace(
 	return phiP;
 }
 
+// find value of varaible at the adjacent cell. also finds coord, the coordinate of the cell
 __device__
 double phiAtSide(
 	int cellID,
 	int faceID,
 	FVMeshDevice mesh,
-	BoundaryFieldDevice pBC,
-	const double* pp,
+	BoundaryFieldDevice phiBC,
+	const double* phi,
 	bool useZCoord,
 	double& coord
 ) {
@@ -189,7 +190,7 @@ double phiAtSide(
 			? mesh.cells.centerZ[nb]
 			: mesh.cells.centerR[nb];
 
-		return pp[nb];
+		return phi[nb];
 	}
 
 	coord = useZCoord
@@ -200,8 +201,8 @@ double phiAtSide(
 		cellID,
 		faceID,
 		mesh,
-		pBC,
-		pp
+		phiBC,
+		phi
 	);
 }
 
@@ -262,7 +263,7 @@ double interpolateNormalCorrectionCoeffToFace(
 		simple
 	);
 
-	// Boundary face: use owner/current cell correction coefficient
+	// boundary face: use owner/current cell correction coefficient
 	if (neighbor < 0) {
 		return DP;
 	}
@@ -504,6 +505,7 @@ void computeFaceMassFluxRhieChow(
 	);
 
 	simple.mDot[f] = rho * unFace * area;
+
 }
 
 
@@ -965,7 +967,6 @@ void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, Variable
 	double* dr = g.d_dr;
 	double* dz = g.d_dz;
 	double* rFace = g.d_rFace;
-	double* z_dz = g.z_dz;
 	double* r = g.d_r;
 	double rho = f.rho;
 
@@ -985,11 +986,9 @@ void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, Variable
 	r2 = rFace[i + 1];
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-	double Ar2 = 2.0 * CUDART_PI * r2 * z_dz[j];
-	double Ar1 = 2.0 * CUDART_PI * r1 * z_dz[j];
 
-	AC[n] += (rho * Az * z_dz[j]) / dt;
-	b[n] += (rho * Az * z_dz[j] * uOld[n]) / dt;
+	AC[n] += (rho * Az * dz[j]) / dt;
+	b[n] += (rho * Az * dz[j] * uOld[n]) / dt;
 }
 
 __global__
@@ -1005,6 +1004,7 @@ void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, Variable
 	int nz = vCoeff.nz;
 	double* dr = g.d_dr;
 	double* dz = g.d_dz;
+	double* rFace = g.d_rFace;
 	double* r = g.d_r;
 	double mu = f.mu;
 	double rho = f.rho;
@@ -1019,8 +1019,8 @@ void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, Variable
 	double r1 = 0.0;
 	double r2 = 0.0;
 
-	r1 = r[i - 1];
-	r2 = r[i];
+	r1 = rFace[i];
+	r2 = rFace[i + 1];
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
 
@@ -1041,6 +1041,7 @@ void clearCoefficients(Coefficients coeff) {
 	coeff.AC[n] = 0.0;
 	coeff.b[n] = 0.0;
 	coeff.res[n] = 0.0;
+
 
 }
 
