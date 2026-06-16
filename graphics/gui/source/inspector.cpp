@@ -82,7 +82,7 @@ void Inspector::handleMouse() {
 		handleZoom(io);
 	}
 
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && toggleDrawCell) {
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && toggleDrawRect) {
 
 		rectPos1 = screenToUV(currentMousePos);
 		rectPos2 = rectPos1;
@@ -97,7 +97,7 @@ void Inspector::handleMouse() {
 
 	}
 
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && toggleDrawCell) {
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && toggleDrawRect) {
 
 		handleRectSelection(io);
 
@@ -123,7 +123,7 @@ void Inspector::handleMouse() {
 	}
 
 
-	if (toggleDrawCell) return;
+	if (toggleDrawRect) return;
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
 		handlePan(io);
@@ -221,7 +221,7 @@ void Inspector::drawToolBar() {
 	}
 	ImGui::SameLine();
 
-	addImageButtonToggle("Select", "Select", assets.selectRegionIcon, ImVec2(22.0f, 22.0f), toggleDrawCell);
+	addImageButtonToggle("Select", "Select", assets.selectRegionIcon, ImVec2(22.0f, 22.0f), toggleDrawRect);
 	ImGui::SameLine();
 
 	if (addImageButton("Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {

@@ -21,8 +21,10 @@ class MeshInspector : public BaseSurfaceViewer {
 public:
 
 	MeshInspector(Mesh& mesh, AppConfig& appConfig);
+	void updateGridBuffer();
 
 	VertexBuffer vertexBuffer;
+	GLsizeiptr gridLineBufferBytes = 0;
 
 	// create dockspace to have multiple tabs
 	DockingSpace meshDockSpace{ "Mesh Inspector" };
@@ -55,7 +57,6 @@ private:
 	AppAssets& assets;
 
 	//-------------boundary lines--------------
-	bool toggleConnecting = false;
 	float pickRadiusPx = 12.0f;
 	std::optional<int> hoveredId;
 
@@ -76,6 +77,12 @@ private:
 	bool isDomainBoundaryEdge(const MeshEdge& e) const;
 	bool domainEdgeTouchesSolid(const MeshEdge& e, const std::unordered_set<int>& obstacleIndices) const;
 
+	ImVec2 meshPosToScreen(
+		Vec2 p,
+		ImVec2 imageMin,
+		ImVec2 imageSize
+	) const;
+
 	// set group total length
 	void setGroupTotalLength(BoundarySegmentGroup& group);
 
@@ -91,15 +98,17 @@ private:
 
 	// handle mouse events
 	void handleMouse();
+	void handleOpenPopup();
 	void handleItemButtonSelect();
 	void handleItemButtonRemove();
+	void handleDrawCircle();
+	void handleDrawRectangle();
 
-	void handleItemButtonConnecting();
 	void handleCursor(ImGuiIO& io);
 	std::optional<int> findHoveredBoundarySegment(
-		const std::vector<double>& rFace,
-		const std::vector<double>& zFace
-		);
+		ImVec2 imageMin,
+		ImVec2 imageSize
+	);
 	std::array<MeshEdge, 4> getCellEdges(int i, int j) const;
 
 	// draw toolbar at the top of the mesh analyzer, which can be used for variety of functions
@@ -114,7 +123,11 @@ private:
 	// draw text at clicked position
 	void drawTextAtSurfacePoint(ImDrawList* drawList);
 
-	void drawBoundarySegments(ImDrawList* drawList, const std::vector<double>& rFace, const std::vector<double>& zFace);
+	void drawBoundarySegments(
+		ImDrawList* drawList,
+		ImVec2 imageMin,
+		ImVec2 imageSize
+	);
 	void fillBoundaryGroupEdges(BoundarySegmentGroup& group);
 	bool obstacleCellTouchesBoundaryGroup(int cellIndex) const;
 	bool tryAddObstacleCell(int cellIndex);
@@ -124,10 +137,7 @@ private:
 	);
 
 
-	// highlight boundary groups
-	std::vector<MeshEdge> edgesFromBoundarySegment(
-		const BoundarySegment& seg
-	) const;
+
 
 	// build domain segments
 	std::unordered_set<MeshEdge, MeshEdgeHash> buildDomainBoundaryEdges() const;

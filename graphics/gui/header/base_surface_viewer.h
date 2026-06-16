@@ -354,6 +354,9 @@ public:
 
 protected:
 
+	// store mouse position of where the user left clicked
+	ImVec2 initLeftMouse = ImVec2(0.0f, 0.0f);
+
 	// copy variables
 	int pendingCopyWidth = 1600;
 	int pendingCopyHeight = 420;
@@ -367,10 +370,12 @@ protected:
 	std::vector<SurfacePoint> points;
 
 	// rectangle selection
-	bool toggleDrawCell = false;
+	bool toggleDrawCircle = false;
+	bool toggleDrawRect = false;
 	bool toggleRemoveCell = false;
 	bool toggleRuler = false;
 	bool toggleFillCells = false;
+	bool toggleShowMesh = false;
 	bool isRectReady = false;
 
 
@@ -426,6 +431,9 @@ protected:
 
 	std::optional<ImVec2> mouseToGridPoint(int nrBase, int nzBase);
 
+	// update initLeftMouse when the user clicks. relative to the last drawn ImGui item
+	void updateInitialLeftClick(ImGuiIO& io);
+
 	void updateUV(float halfW, float halfH);
 
 	void clampZoomCenter(float& halfW, float& halfH);
@@ -439,7 +447,10 @@ protected:
 	void highlightCellsInRect(std::unordered_set<int>& indices, ImVec2 cellA, ImVec2 cellB, int nzBase, int nrBase);
 
 	// get physical z and r coordinates at mouse position
-	void getMousePhysicalCoord(ImVec2& mousePos, const std::vector<double>& rFace, const std::vector<double> zFace, double& r, double& z);
+	Vec2 getMousePhysicalCoord(const ImVec2& mousePos, double R, double L);
+
+	// get physical z and r coordinates at mouse position, snap to closest vertex (i think)
+	Vec2 getMousePhysicalClosestCoord(ImVec2& mousePos, const std::vector<double>& rFace, const std::vector<double>& zFace);
 
 	ImVec2 screenToUV(const ImVec2& mousePos);
 

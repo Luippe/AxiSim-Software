@@ -5,6 +5,8 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/fwd.hpp>
 
+#include "boundary_struct.h"
+
 // create spaced 1d vector
 std::vector<double> linspace(double start, double end, std::size_t N, double bias);
 
@@ -25,3 +27,18 @@ glm::mat4 scaleMat4(const glm::mat4& mat, double scale);
 
 // converts a string to lower case
 std::string toLower(std::string str);
+
+// mesh
+double distance(Vec2 a, Vec2 b);
+
+double pathLength(const std::vector<Vec2>& points);
+
+Vec2 interpolatePath(
+	const std::vector<Vec2>& points,
+	double t
+);
+
+double biasedT(double s, double bias);
+
+bool edgeInRange(const BoundaryEdge& e, std::size_t n);
+

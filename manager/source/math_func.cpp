@@ -71,3 +71,81 @@ std::string toLower(std::string str) {
 	}
 	return str;
 }
+
+// mesh
+double distance(Vec2 a, Vec2 b) {
+	double dz = b.z - a.z;
+	double dr = b.r - a.r;
+
+	return std::sqrt(dz * dz + dr * dr);
+}
+
+double pathLength(const std::vector<Vec2>& points) {
+	double length = 0.0;
+
+	for (int i = 0; i < (int)(points.size()) - 1; i++) {
+		length += distance(points[i], points[i + 1]);
+	}
+
+	return length;
+}
+
+Vec2 interpolatePath(
+	const std::vector<Vec2>& points,
+	double t
+) {
+	if (points.empty()) {
+		return {};
+	}
+
+	if (points.size() == 1) {
+		return points[0];
+	}
+
+	double totalLength = pathLength(points);
+
+	if (totalLength <= 1e-30) {
+		return points.front();
+	}
+
+	double target = t * totalLength;
+	double accumulated = 0.0;
+
+	for (int i = 0; i < (int)(points.size()) - 1; i++) {
+		Vec2 a = points[i];
+		Vec2 b = points[i + 1];
+
+		double len = distance(a, b);
+
+		if (accumulated + len >= target) {
+			double localT = (target - accumulated) / len;
+
+			Vec2 p{};
+			p.z = a.z + localT * (b.z - a.z);
+			p.r = a.r + localT * (b.r - a.r);
+
+			return p;
+		}
+
+		accumulated += len;
+	}
+
+	return points.back();
+}
+
+double biasedT(double s, double bias) {
+	if (bias <= 0.0) {
+		return s;
+	}
+
+	if (std::abs(bias - 1.0) < 1e-12) {
+		return s;
+	}
+
+	return std::pow(s, bias);
+}
+
+bool edgeInRange(const BoundaryEdge& e, std::size_t n) {
+	return e.v0 >= 0 && e.v1 >= 0 &&
+		e.v0 < (int)n && e.v1 < (int)n;
+}

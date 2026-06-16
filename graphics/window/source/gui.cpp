@@ -92,6 +92,8 @@ void initAssetBuffers(AppAssets& assets) {
 	assets.eraseIcon.createBuffer("assets/icons/eraser.png");
 	assets.rulerIcon.createBuffer("assets/icons/ruler.png");
 	assets.fillCellIcon.createBuffer("assets/icons/fill-cell.png");
+	assets.drawRectangleIcon.createBuffer("assets/icons/draw-rectangle.png");
+	assets.drawCircleIcon.createBuffer("assets/icons/draw-circle.png");
 
 }
 
@@ -278,7 +280,7 @@ void GUI::render() {
 	drawUI();
 
 	// mesh GUI render
-	if (project.currentTab == ViewTab::TAB_MESH && mesh.isReady) {
+	if (project.currentTab == ViewTab::TAB_MESH) {
 		meshInspector.render();
 	}
 

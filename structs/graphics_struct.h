@@ -15,6 +15,8 @@ struct AppAssets {
 	TextureBuffer eraseIcon;
 	TextureBuffer rulerIcon;
 	TextureBuffer fillCellIcon;
+	TextureBuffer drawRectangleIcon;
+	TextureBuffer drawCircleIcon;
 };
 
 struct AppFonts {

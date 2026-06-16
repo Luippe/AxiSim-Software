@@ -66,8 +66,44 @@ void MeshGUI::drawBoundaryGroupGUI() {
 	ImGui::SeparatorText(selectedGroup->name.c_str());
 
 	ImGui::Text("Group ID: %d", selectedGroup->id);
-	ImGui::Text("Number of boundary edges: %zu", selectedGroup->edges.size());
 	ImGui::Text("Total Length: %g", selectedGroup->totalLength);
+
+	ImGui::SeparatorText("Sizing");
+
+	BoundarySizing& sizing = selectedGroup->sizing;
+
+	if (createSimpleCombo("##SizingType", mesh.sizingType, (int&)sizing.mode, IM_ARRAYSIZE(mesh.sizingType))) {
+		if (!(sizing.mode == BoundarySizingMode::None)) {
+			sizing.enabled = true;
+		}
+		else {
+			sizing.enabled = false;
+		}
+	}
+
+	if (sizing.mode == BoundarySizingMode::EdgeCount) {
+		ImGui::InputInt("Edge Count", &sizing.edgeCount);
+		ImGui::InputDouble("Bias", &sizing.bias, 0.1, 0.5, "%.3f");
+	}
+	else if (sizing.mode == BoundarySizingMode::TargetSpacing) {
+		ImGui::InputDouble("Target spacing", &sizing.targetSpacing, 0.0001, 0.001, "%.6f");
+		ImGui::InputDouble("Bias", &sizing.bias, 0.1, 0.5, "%.3f");
+	}
+
+
+	if (sizing.targetSpacing < 1e-12) {
+		sizing.targetSpacing = 1e-12;
+	}
+
+	if (sizing.bias < 0.05) {
+		sizing.bias = 0.05;
+	}
+
+	if (sizing.edgeCount < 1) {
+		sizing.edgeCount = 1;
+	}
+
+
 	ImGui::Spacing();
 
 	drawTableHeader("Edges");

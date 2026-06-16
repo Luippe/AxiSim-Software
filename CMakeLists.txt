@@ -155,6 +155,7 @@ set(CLIP_TESTS OFF CACHE BOOL "Compile clip tests")
 
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/externals/clip-main")
 
+
 add_executable(AxiSim
     ${PROJECT_SOURCES}
     ${PROJECT_HEADERS}
@@ -174,10 +175,15 @@ target_include_directories(AxiSim PRIVATE
     "${CMAKE_SOURCE_DIR}/externals/stb_image"
     "${CMAKE_SOURCE_DIR}/externals/font_awesome"
 
+
     "${IMPLOT_DIR}"
     "${TINYFILEDIALOGS_DIR}"
 
     ${CUDAToolkit_INCLUDE_DIRS}
+)
+
+target_include_directories(AxiSim PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/externals/CDT/CDT/include"
 )
 
 target_link_libraries(AxiSim PRIVATE

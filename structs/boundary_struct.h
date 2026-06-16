@@ -43,29 +43,60 @@ struct BoundaryCondition {
 };
 
 struct Vec2 {
-	double z = 0.0f;
-	double r = 0.0f;
+	double z = 0.0;
+	double r = 0.0;
+};
+
+struct EdgeKey {
+	int a;
+	int b;
+
+	EdgeKey(int v0, int v1) {
+		a = std::min(v0, v1);
+		b = std::max(v0, v1);
+	}
+
+	bool operator==(const EdgeKey& other) const {
+		return a == other.a && b == other.b;
+	}
+};
+
+struct EdgeKeyHash {
+	std::size_t operator()(const EdgeKey& e) const {
+		std::size_t h1 = std::hash<int>{}(e.a);
+		std::size_t h2 = std::hash<int>{}(e.b);
+		return h1 ^ (h2 << 1);
+	}
+};
+
+struct CDTConstraintEdge {
+	std::size_t v0;
+	std::size_t v1;
 };
 
 struct FVCell {
-
 	Vec2 center;
+
+	double area2D = 0.0;
 	double volume = 0.0;
 
 	std::vector<int> faceIDs;
 
 	bool active = true;
 	bool solid = false;
-
 };
 
 struct FVFace {
-
 	int owner = -1;
 	int neighbor = -1;
 
+	int v0 = -1;
+	int v1 = -1;
+
 	Vec2 normal;
 	Vec2 center;
+
+	double length2D = 0.0;
 	double area = 0.0;
 
 	int boundaryGroupID = -1;
@@ -143,6 +174,39 @@ struct GridVertexHash {
 	}
 };
 
+struct PointKey {
+	long long z;
+	long long r;
+
+	bool operator==(const PointKey& other) const {
+		return z == other.z && r == other.r;
+	}
+};
+
+struct PointKeyHash {
+	std::size_t operator()(const PointKey& key) const {
+		std::size_t h1 = std::hash<long long>{}(key.z);
+		std::size_t h2 = std::hash<long long>{}(key.r);
+		return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+	}
+};
+
+
+
+
+enum class MeshType {
+	Structured,
+	Unstructured
+};
+
+struct Triangle {
+
+	int v0 = -1;
+	int v1 = -1;
+	int v2 = -1;
+
+};
+
 enum class BoundaryType {
 	WALL,
 	VELOCITY_INLET,
@@ -155,43 +219,103 @@ enum class BoundarySource {
 	Obstacle
 };
 
-struct BoundarySegment {
-
-	// position variables and segment ID
-	GridVertex a;
-	GridVertex b;
+struct BoundaryVertex {
 	int id = -1;
 
+	// For unstructured meshes / CDT.
+	// Index into unstructuredPoints.
+	int pointID = -1;
+
+	Vec2 pos;
+
+	// Structured-grid only.
+	GridVertex grid{ -1, -1 };
+	bool hasGridVertex = false;
+};
+
+enum class BoundarySizingMode {
+	EdgeCount,
+	TargetSpacing,
+	None
+};
+
+struct BoundarySizing {
+	bool enabled = false;
+
+	BoundarySizingMode mode = BoundarySizingMode::None;
+
+	// Used when mode == TargetSpacing
+	double targetSpacing = 0.001;
+
+	// Used when mode == EdgeCount
+	int edgeCount = 20;
+
+	// 1.0 = uniform
+	// > 1.0 = clustered near start
+	// < 1.0 = clustered near end
+	double bias = 1.0;
+};
+
+struct BoundaryEdge {
+	int id = -1;
+
+	// Indices into boundaryVertices.
+	int v0 = -1;
+	int v1 = -1;
+
+	// Owning selectable boundary segment.
+	int segmentID = -1;
+
+	// Named boundary group, if assigned.
+	int groupID = -1;
+
+	BoundarySource source = BoundarySource::Domain;
+
+	// Structured-grid only.
+	bool hasMeshEdge = false;
+	MeshEdge meshEdge{};
+};
+
+struct BoundarySegment {
+	int id = -1;
+
+	std::vector<Vec2> controlPoints;
+	std::vector<int> edgeIDs;
+
+	BoundarySizing sizing;
+
+	int groupID = -1;
+	int loopID = -1;
+
+	BoundarySource source = BoundarySource::Domain;
 };
 
 struct BoundarySegmentGroup {
-
-	// group ID
 	int id = -1;
 
-	// naming variables
 	std::string name;
 	char nameBuffer[128] = {};
 
-	// boundary type
 	BoundaryType type = BoundaryType::WALL;
 
-	// vector of all segment IDs and edges
+	// Universal group membership.
 	std::vector<int> segmentIDs;
+
+	// Structured-only derived lookup.
 	std::vector<MeshEdge> edges;
 
-	// edge orientation for this group
 	EdgeOrient includesOrientation = EdgeOrient::Horizontal;
-
-	// length of group (total length of all edges)
 	float totalLength = 0.0f;
 
-	// each group stores
+	// sizing
+	BoundarySizing sizing;
+
+	// bcs
 	std::unordered_map<
 		BoundaryVariable,
-		BoundaryCondition, 
-		BoundaryVariableHash> bcs;
-
+		BoundaryCondition,
+		BoundaryVariableHash
+	> bcs;
 };
 
 struct SolutionField {

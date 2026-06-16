@@ -155,6 +155,17 @@ int findCellIndex(const std::vector<double>& face, double x) {
 	return std::clamp(cell, 0, nCells - 1);
 }
 
+void BaseSurfaceViewer::updateInitialLeftClick(ImGuiIO& io) {
+
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+
+		initLeftMouse = io.MousePos;
+
+		//ImVec2 itemMin = ImGui::GetItemRectMin();
+		//printFloat(itemMin.x, itemMin.y, initLeftMouse.x, initLeftMouse.y);
+	}
+}
+
 void BaseSurfaceViewer::updateUV(float halfW, float halfH) {
 	u0 = glm::clamp(zoomCenter.x - halfW, 0.0f, 1.0f);
 	u1 = glm::clamp(zoomCenter.x + halfW, 0.0f, 1.0f);
@@ -211,10 +222,32 @@ ImVec2 BaseSurfaceViewer::gridToScreen(int jFace, int iFace, const std::vector<d
 	return ImVec2(x, y);
 }
 
-void BaseSurfaceViewer::getMousePhysicalCoord(ImVec2& mousePos, const std::vector<double>& rFace, const std::vector<double> zFace, double& r, double& z) {
+Vec2 BaseSurfaceViewer::getMousePhysicalCoord(const ImVec2& mousePos, double R, double L) {
+
+	Vec2 physical;
 
 	ImVec2 itemMin = ImGui::GetItemRectMin();
 	ImVec2 itemMax = ImGui::GetItemRectMax();
+
+	// mouse position relative to image
+	float localX = mousePos.x - itemMin.x;
+	float localY = itemMax.y - mousePos.y; // bottom-up
+
+	// normalize to [0, 1]
+	double u = (double)(localX) / (double)(imageWidth);
+	double v = (double)(localY) / (double)(imageHeight);
+
+	physical.z = u * L;
+	physical.r = v * R;
+
+	return physical;
+}
+
+Vec2 BaseSurfaceViewer::getMousePhysicalClosestCoord(ImVec2& mousePos, const std::vector<double>& rFace, const std::vector<double>& zFace) {
+
+	ImVec2 itemMin = ImGui::GetItemRectMin();
+	ImVec2 itemMax = ImGui::GetItemRectMax();
+	Vec2 physical;
 
 	// Mouse position relative to image
 	float localX = mousePos.x - itemMin.x;
@@ -237,22 +270,21 @@ void BaseSurfaceViewer::getMousePhysicalCoord(ImVec2& mousePos, const std::vecto
 	double L = zFace.back();
 	double R = rFace.back();
 
-	z = texU * L;
-	r = texV * R;
+	physical.z = texU * L;
+	physical.r = texV * R;
+
+	return physical;
 }
 
 ImVec2 BaseSurfaceViewer::getMouseIndex(const std::vector<double>& rFace, const std::vector<double> zFace) {
 
-	double z;
-	double r;
-
 	// get closest index to current mouse position
 	ImVec2 mousePos = ImGui::GetMousePos();
-	getMousePhysicalCoord(mousePos, rFace, zFace, r, z);
+	Vec2 physical = getMousePhysicalClosestCoord(mousePos, rFace, zFace);
 
 	// Find cell containing physical coordinate
-	int j = findCellIndex(zFace, z);
-	int i = findCellIndex(rFace, r);
+	int j = findCellIndex(zFace, physical.z);
+	int i = findCellIndex(rFace, physical.r);
 
 	return ImVec2(j, i);
 }

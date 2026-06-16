@@ -104,6 +104,7 @@ private:
 	std::vector<ResidualPrintItem> residualsToPrint;
 
 	int currentIteration = 0;
+
 	// check if the solver can run
 	bool runCheck();
 
