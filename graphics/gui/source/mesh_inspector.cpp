@@ -97,22 +97,7 @@ int addBoundaryVertexFromGrid(
 	return vertex.id;
 }
 
-ImVec2 MeshInspector::meshPosToScreen(
-	Vec2 p,
-	ImVec2 imageMin,
-	ImVec2 imageSize
-) const {
-	float u = static_cast<float>(p.z / g.L);
-	float v = static_cast<float>(p.r / g.R);
 
-	float sx = (u - u0) / (u1 - u0);
-	float sy = (v1 - v) / (v1 - v0);
-
-	return ImVec2(
-		imageMin.x + sx * imageSize.x,
-		imageMin.y + sy * imageSize.y
-	);
-}
 
 void MeshInspector::clearObstacles() {
 	g.obstacleIndices.clear();
@@ -867,11 +852,20 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 
 void MeshInspector::handleDrawCircle() {
 
-	if (!toggleDrawCircle || mesh.meshType == MeshType::Structured) return;
+	if (!toggleDrawCircle || mesh.currentMeshType == MeshType::Structured) return;
 
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+		Vec2 initialPhysical = getMousePhysicalCoord(initLeftMouse, mesh.g.R, mesh.g.L);
+		Vec2 currentPhysical = getMousePhysicalCoord(currentMousePos, mesh.g.R, mesh.g.L);
+		pendingCircle.pending = true;
+		pendingCircle.radius = distance(initialPhysical, currentPhysical);
+	}
+
+	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+		pendingCircle.pending = false;
 		Vec2 physical = getMousePhysicalCoord(initLeftMouse, mesh.g.R, mesh.g.L);
-		mesh.addCircularObstacle(physical, mesh.g.R * 0.2, 80);
+		mesh.addCircularObstacle(physical, pendingCircle.radius, 80);
 	}
 }
 
@@ -884,6 +878,7 @@ bool isMouseNearImage(ImGuiIO& io) {
 
 	ImVec2 imageMin = ImGui::GetItemRectMin();
 	ImVec2 imageMax = ImGui::GetItemRectMax();
+
 	float clickPadding = 10.0f;
 
 	ImVec2 hitMin = ImVec2(imageMin.x - clickPadding, imageMin.y - clickPadding);
@@ -939,7 +934,7 @@ void MeshInspector::handleMouse() {
 
 
 
-	if (mesh.meshType == MeshType::Structured) {
+	if (mesh.currentMeshType == MeshType::Structured) {
 		// constantly update current mouse position and mouse index (cell centered, i think)
 		currentMouseIndex = getMouseIndex(g.rFace, g.zFace);
 		currentMousePos = gridToScreen((int)currentMouseIndex.x, (int)currentMouseIndex.y, g.rFace, g.zFace);
@@ -948,20 +943,13 @@ void MeshInspector::handleMouse() {
 
 		handleItemButtonRemove();
 	}
-	else if (mesh.meshType == MeshType::Unstructured) {
-
-
+	else if (mesh.currentMeshType == MeshType::Unstructured) {
 
 	}
-
-
-
 }
 
-std::optional<int> MeshInspector::findHoveredBoundarySegment(
-	ImVec2 imageMin,
-	ImVec2 imageSize
-) {
+
+std::optional<int> MeshInspector::findHoveredBoundarySegment() {
 	ImVec2 mouse = ImGui::GetIO().MousePos;
 
 	int bestSegmentID = -1;
@@ -977,8 +965,8 @@ std::optional<int> MeshInspector::findHoveredBoundarySegment(
 		const Vec2& p0World = mesh.boundaryVertices[edge.v0].pos;
 		const Vec2& p1World = mesh.boundaryVertices[edge.v1].pos;
 
-		ImVec2 p0 = meshPosToScreen(p0World, imageMin, imageSize);
-		ImVec2 p1 = meshPosToScreen(p1World, imageMin, imageSize);
+		ImVec2 p0 = physicalToScreen(p0World, g.L, g.R);
+		ImVec2 p1 = physicalToScreen(p1World, g.L, g.R);
 
 		float d = distPointToSegment(mouse, p0, p1);
 
@@ -1023,9 +1011,7 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
 void MeshInspector::drawBoundarySegments(
-	ImDrawList* drawList,
-	ImVec2 imageMin,
-	ImVec2 imageSize
+	ImDrawList* drawList
 ) {
 	//printSize(mesh.boundarySegments);
 	for (const BoundarySegment& seg : mesh.boundarySegments) {
@@ -1040,7 +1026,7 @@ void MeshInspector::drawBoundarySegments(
 			mesh.highlightedBoundarySegmentIDs.find(seg.id) !=
 			mesh.highlightedBoundarySegmentIDs.end();
 
-		ImU32 color = IM_COL32(203, 209, 224, 255);
+		ImU32 color = drawingColor;
 		float thickness = 3.0f;
 
 		if (hovered) {
@@ -1071,8 +1057,8 @@ void MeshInspector::drawBoundarySegments(
 			Vec2 p0World = mesh.boundaryVertices[edge.v0].pos;
 			Vec2 p1World = mesh.boundaryVertices[edge.v1].pos;
 
-			ImVec2 p0 = meshPosToScreen(p0World, imageMin, imageSize);
-			ImVec2 p1 = meshPosToScreen(p1World, imageMin, imageSize);
+			ImVec2 p0 = physicalToScreen(p0World, g.L, g.R);
+			ImVec2 p1 = physicalToScreen(p1World, g.L, g.R);
 
 			drawList->AddLine(p0, p1, color, thickness);
 		}
@@ -1224,7 +1210,7 @@ void MeshInspector::drawPopup() {
 		//check();
 		if (drawNamingPopup("Naming Segment", *pendingBoundaryGroup, mesh.boundaryGroups)) {
 
-			if (mesh.meshType == MeshType::Structured) {
+			if (mesh.currentMeshType == MeshType::Structured) {
 				fillBoundaryGroupEdges(*pendingBoundaryGroup);
 				setGroupOrientation(*pendingBoundaryGroup);
 			}
@@ -1420,6 +1406,19 @@ bool MeshInspector::deleteBoundaryGroupByID(int groupID) {
 	return true;
 }
 
+void MeshInspector::drawPendingObjects(ImDrawList* drawList) {
+
+	if (pendingCircle.pending) {
+
+		float radiusPx = static_cast<float>(
+			pendingCircle.radius * imageSize.x / ((u1 - u0) * g.L)
+			);
+
+		drawList->AddCircle(initLeftMouse, radiusPx, drawingColor, 80, 3.0f);
+
+	}
+}
+
 void MeshInspector::drawStatusBar() {
 
 	ImGui::Text(
@@ -1468,35 +1467,32 @@ void MeshInspector::render() {
 
 	drawSurface(surfaceRect);
 
-	ImVec2 imageMin = ImGui::GetItemRectMin();
-	ImVec2 imageMax = ImGui::GetItemRectMax();
-
-	ImVec2 imageSize{
-		imageMax.x - imageMin.x,
-		imageMax.y - imageMin.y
-	};
-
 	// Build current segments before hover/mouse logic
-	if (mesh.meshType == MeshType::Structured) {
+	if (mesh.currentMeshType == MeshType::Structured) {
 		buildSegments();
 	}
 
+	// update current global mouse pos
+	updateCurrentMousePos();
+
 	// Update hover before mouse logic
-	hoveredId = findHoveredBoundarySegment(imageMin, imageSize);
+	hoveredId = findHoveredBoundarySegment();
 	hoveringOverSegment = hoveredId.has_value();
 
 	// Now handle mouse using current hoveredId/current segments
 	handleMouse();
 
+
 	// If the mouse changed obstacles, this rebuilds before drawing
-	if (mesh.meshType == MeshType::Structured) {
+	if (mesh.currentMeshType == MeshType::Structured) {
 		buildSegments();
 	}
 
 	drawList->PushClipRect(imageMin, imageMax, true);
 
+	drawPendingObjects(drawList);
 	drawHighlightedCells(drawList, g.obstacleIndices, g.rFace, g.zFace);
-	drawBoundarySegments(drawList, imageMin, imageSize);
+	drawBoundarySegments(drawList);
 
 	drawTextAtSurfacePoint(drawList);
 	drawPopup();

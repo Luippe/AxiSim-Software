@@ -14,15 +14,7 @@ class Mesh {
 public:
 
 	const char* sizingType[3] = { "Edge Count", "Target Spacing", "None"};
-
-	void addInteriorPoints(
-		std::vector<Vec2>& points,
-		double zMin,
-		double zMax,
-		double rMin,
-		double rMax,
-		double spacing
-	);
+	const char* meshType[2] = { "Structured", "Unstructured" };
 
 	BoundarySizing getSizingForSegment(const BoundarySegment& seg) const;
 	void rebuildBoundaryDiscretization();
@@ -70,7 +62,7 @@ public:
 	int addUnstructuredBoundaryVertex(Vec2 p);
 	int getAvailableLoopID();
 
-	void runConstrainedDelaunay();
+	void runGmshTriangulation();
 
 	int nseg = 64;	// number of vertices on the circle
 	bool meshMode = false;
@@ -78,7 +70,7 @@ public:
 	bool isReady = false;
 
 	// current grid type
-	MeshType meshType = MeshType::Unstructured;
+	MeshType currentMeshType = MeshType::Unstructured;
 
 	// grid vertices and indices
 	std::vector<Vertex> vertices;

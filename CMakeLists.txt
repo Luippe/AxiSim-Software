@@ -20,6 +20,7 @@ find_package(CUDAToolkit REQUIRED)
 # Project source files
 # ------------------------------------------------------------
 
+
 file(GLOB_RECURSE PROJECT_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu"
@@ -112,6 +113,23 @@ set(IMPLOT_SOURCES
 )
 
 # ------------------------------------------------------------
+# gmsh
+# ------------------------------------------------------------
+
+set(GMSH_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/externals/gmsh")
+
+set(GMSH_INCLUDE_DIR "${GMSH_ROOT}/include")
+set(GMSH_LIB "${GMSH_ROOT}/lib/gmsh.dll.lib")
+
+if(NOT EXISTS "${GMSH_INCLUDE_DIR}/gmsh.h_cwrap")
+    message(FATAL_ERROR "Could not find gmsh.h_cwrap at: ${GMSH_INCLUDE_DIR}/gmsh.h_cwrap")
+endif()
+
+if(NOT EXISTS "${GMSH_LIB}")
+    message(FATAL_ERROR "Could not find gmsh.dll.lib at: ${GMSH_LIB}")
+endif()
+
+# ------------------------------------------------------------
 # tinyfiledialogs
 # ------------------------------------------------------------
 
@@ -164,6 +182,26 @@ add_executable(AxiSim
     ${TINYFILEDIALOGS_SOURCES}
   "externals/stb_image/stb_image.cpp" "manager/header/flag_manager.h"   "graphics/gui/source/mesh_inspector.cpp" "graphics/gui/header/base_surface_viewer.h" "manager/header/boundary_func.h"  "manager/header/font_manager.h" "src/source/project.cpp")
 
+set(GMSH_DLL "${GMSH_ROOT}/lib/gmsh.dll")
+
+if(NOT EXISTS "${GMSH_DLL}")
+    set(GMSH_DLL "${GMSH_ROOT}/bin/gmsh.dll")
+endif()
+
+if(NOT EXISTS "${GMSH_DLL}")
+    set(GMSH_DLL "${GMSH_ROOT}/lib/gmsh-4.15.dll")
+endif()
+
+if(EXISTS "${GMSH_DLL}")
+    add_custom_command(TARGET AxiSim POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${GMSH_DLL}"
+        "$<TARGET_FILE_DIR:AxiSim>"
+    )
+else()
+    message(WARNING "gmsh.dll was not found. The project may compile but fail to run.")
+endif()
+
 target_include_directories(AxiSim PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/structs"
@@ -175,15 +213,12 @@ target_include_directories(AxiSim PRIVATE
     "${CMAKE_SOURCE_DIR}/externals/stb_image"
     "${CMAKE_SOURCE_DIR}/externals/font_awesome"
 
+    "${GMSH_INCLUDE_DIR}"
 
     "${IMPLOT_DIR}"
     "${TINYFILEDIALOGS_DIR}"
 
     ${CUDAToolkit_INCLUDE_DIRS}
-)
-
-target_include_directories(AxiSim PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/externals/CDT/CDT/include"
 )
 
 target_link_libraries(AxiSim PRIVATE
@@ -193,6 +228,7 @@ target_link_libraries(AxiSim PRIVATE
     glm::glm
     CUDA::cudart
     clip
+    "${GMSH_LIB}"
 )
 
 set_target_properties(AxiSim PROPERTIES

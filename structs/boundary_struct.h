@@ -23,11 +23,25 @@ struct BoundaryVariableHash {
 	}
 };
 
+struct PendingCircle {
+
+	bool pending = false;
+	double radius = 0.0;
+
+
+};
+
+struct PendingRect {
+
+	bool pending = false;
+	double width = 0.0;
+	double height = 0.0;
+
+};
 
 // ======================================================================
 // -----------------------BOUNDARY CONDITIONS----------------------------
 // ======================================================================
-
 enum BCType {
 	DIRICHLET,
 	NEUMANN,

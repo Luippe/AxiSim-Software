@@ -1,0 +1,1288 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "AxiSim.exe"
+		},
+		{
+			"path" : "AxiSim.pdb"
+		}
+	],
+	"backtrace" : 2,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"_add_executable",
+			"add_executable",
+			"target_link_libraries",
+			"target_include_directories"
+		],
+		"files" : 
+		[
+			"C:/Users/luits/vcpkg/scripts/buildsystems/vcpkg.cmake",
+			"CMakeLists.txt",
+			"externals/clip-main/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 177,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 612,
+				"parent" : 1
+			},
+			{
+				"command" : 2,
+				"file" : 1,
+				"line" : 224,
+				"parent" : 0
+			},
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 54,
+				"parent" : 4
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 205,
+				"parent" : 0
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -std:c++20 -MDd"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 3,
+					"define" : "CLIP_ENABLE_IMAGE=1"
+				},
+				{
+					"backtrace" : 3,
+					"define" : "GLFW_DLL"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/tinyfiledialogs"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/stb_image"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/font_awesome"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/gmsh/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/clip-main"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include/cccl"
+				},
+				{
+					"backtrace" : 3,
+					"isSystem" : true,
+					"path" : "C:/Users/luits/vcpkg/installed/x64-windows/include"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					2
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				9,
+				10,
+				11,
+				12,
+				13,
+				14,
+				15,
+				16,
+				17,
+				18,
+				19,
+				20,
+				21,
+				22,
+				23,
+				24,
+				25,
+				26,
+				27,
+				28,
+				29,
+				33,
+				36,
+				41,
+				94,
+				95,
+				96,
+				97,
+				98,
+				99,
+				100,
+				101,
+				103
+			]
+		},
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "-D_WINDOWS -Xcompiler=\" /EHsc\" -Xcompiler=\" -Zi -Ob0 -Od /RTC1\" -std=c++17 \"--generate-code=arch=compute_75,code=[compute_75,sm_75]\" -Xcompiler=-MDd"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 3,
+					"define" : "CLIP_ENABLE_IMAGE=1"
+				},
+				{
+					"backtrace" : 3,
+					"define" : "GLFW_DLL"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/tinyfiledialogs"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/stb_image"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/font_awesome"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/gmsh/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/clip-main"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include/cccl"
+				},
+				{
+					"backtrace" : 3,
+					"isSystem" : true,
+					"path" : "C:/Users/luits/vcpkg/installed/x64-windows/include"
+				}
+			],
+			"language" : "CUDA",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					2
+				],
+				"standard" : "17"
+			},
+			"sourceIndexes" : 
+			[
+				30,
+				31,
+				32,
+				34,
+				35,
+				37,
+				38,
+				39,
+				40
+			]
+		},
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /Zi /Ob0 /Od /RTC1 -MDd"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 3,
+					"define" : "CLIP_ENABLE_IMAGE=1"
+				},
+				{
+					"backtrace" : 3,
+					"define" : "GLFW_DLL"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/tinyfiledialogs"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/header"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/stb_image"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/font_awesome"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/gmsh/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/clip-main"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include/cccl"
+				},
+				{
+					"backtrace" : 3,
+					"isSystem" : true,
+					"path" : "C:/Users/luits/vcpkg/installed/x64-windows/include"
+				}
+			],
+			"language" : "C",
+			"sourceIndexes" : 
+			[
+				102
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 3,
+			"id" : "clip::@bc704873fbbc61d958f5"
+		}
+	],
+	"id" : "AxiSim::@6890427a1f51a3e7e1df",
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /Ob0 /Od /RTC1 -MDd",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "/machine:x64 /debug /INCREMENTAL /subsystem:console",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "-LIBPATH:C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v13.0\\lib\\x64",
+				"role" : "libraryPath"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "opengl32.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "C:\\Users\\luits\\vcpkg\\installed\\x64-windows\\debug\\lib\\glad.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "C:\\Users\\luits\\vcpkg\\installed\\x64-windows\\debug\\lib\\glfw3dll.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "C:\\Users\\luits\\vcpkg\\installed\\x64-windows\\debug\\lib\\glm.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "\"C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.0\\lib\\x64\\cudart.lib\"",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "externals\\clip-main\\clip.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "\"C:\\Users\\luits\\source\\repos\\Concentration Solver Software\\Concentration Solver Software\\externals\\gmsh\\lib\\gmsh.dll.lib\"",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 5,
+				"fragment" : "shlwapi.lib",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "cudadevrt.lib",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "cudart.lib",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+				"role" : "libraries"
+			}
+		],
+		"language" : "CXX"
+	},
+	"name" : "AxiSim",
+	"nameOnDisk" : "AxiSim.exe",
+	"paths" : 
+	{
+		"build" : ".",
+		"source" : "."
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "graphics\\gui\\source",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6,
+				7,
+				8,
+				9,
+				10,
+				11,
+				12
+			]
+		},
+		{
+			"name" : "graphics\\window\\source",
+			"sourceIndexes" : 
+			[
+				13,
+				14,
+				15,
+				16,
+				17,
+				18,
+				19
+			]
+		},
+		{
+			"name" : "manager\\source",
+			"sourceIndexes" : 
+			[
+				20,
+				21,
+				22,
+				23,
+				24,
+				25,
+				26,
+				27,
+				28,
+				29
+			]
+		},
+		{
+			"name" : "solver\\source",
+			"sourceIndexes" : 
+			[
+				30,
+				31,
+				32,
+				33,
+				34,
+				35,
+				36,
+				37,
+				38,
+				39
+			]
+		},
+		{
+			"name" : "src\\source",
+			"sourceIndexes" : 
+			[
+				40,
+				41
+			]
+		},
+		{
+			"name" : "graphics\\gui\\header",
+			"sourceIndexes" : 
+			[
+				42,
+				43,
+				44,
+				45,
+				46,
+				47,
+				48,
+				49,
+				50,
+				51,
+				52,
+				53,
+				54,
+				55
+			]
+		},
+		{
+			"name" : "graphics\\tinyfiledialogs",
+			"sourceIndexes" : 
+			[
+				56,
+				102
+			]
+		},
+		{
+			"name" : "graphics\\window\\header",
+			"sourceIndexes" : 
+			[
+				57,
+				58,
+				59,
+				60,
+				61,
+				62,
+				63
+			]
+		},
+		{
+			"name" : "manager\\header",
+			"sourceIndexes" : 
+			[
+				64,
+				65,
+				66,
+				67,
+				68,
+				69,
+				70,
+				71,
+				72,
+				73,
+				74,
+				75,
+				76,
+				77,
+				78
+			]
+		},
+		{
+			"name" : "solver\\header",
+			"sourceIndexes" : 
+			[
+				79,
+				80,
+				81,
+				82,
+				83,
+				84,
+				85,
+				86,
+				87,
+				88
+			]
+		},
+		{
+			"name" : "src\\header",
+			"sourceIndexes" : 
+			[
+				89,
+				90
+			]
+		},
+		{
+			"name" : "structs",
+			"sourceIndexes" : 
+			[
+				91,
+				92,
+				93
+			]
+		},
+		{
+			"name" : "graphics\\imgui",
+			"sourceIndexes" : 
+			[
+				94,
+				95,
+				96,
+				97,
+				100,
+				101
+			]
+		},
+		{
+			"name" : "graphics\\imgui\\backends",
+			"sourceIndexes" : 
+			[
+				98,
+				99
+			]
+		},
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				103
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/animation_gui.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/base_gui.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/base_surface_viewer.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/colorbar.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/console.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/inspector.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/menu.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/mesh_gui.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/mesh_inspector.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/residual_plot.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/results_gui.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/scene_view.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/solver_gui.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/window/source/bounding.cpp",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/window/source/camera.cpp",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/window/source/display.cpp",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/window/source/gui.cpp",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/window/source/mouse_picker.cpp",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/window/source/renderer.cpp",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/window/source/shader.cpp",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "manager/source/boundary_func.cpp",
+			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "manager/source/buffer_manager.cpp",
+			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "manager/source/colormap.cpp",
+			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "manager/source/field_manager.cpp",
+			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "manager/source/file_manager.cpp",
+			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "manager/source/math_func.cpp",
+			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "manager/source/memory_manger.cpp",
+			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "manager/source/pch.cpp",
+			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "manager/source/printer.cpp",
+			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "manager/source/time_manager.cpp",
+			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
+			"path" : "solver/source/energy_equation.cu",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
+			"path" : "solver/source/jacobi_pcg.cu",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
+			"path" : "solver/source/linear_solver.cu",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "solver/source/mesh.cpp",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
+			"path" : "solver/source/multigrid.cu",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
+			"path" : "solver/source/residuals.cu",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "solver/source/results.cpp",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
+			"path" : "solver/source/simple.cu",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
+			"path" : "solver/source/solver.cpp",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
+			"path" : "solver/source/solver_util.cu",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
+			"path" : "src/source/main.cu",
+			"sourceGroupIndex" : 4
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "src/source/project.cpp",
+			"sourceGroupIndex" : 4
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/animation_gui.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/base_gui.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/base_surface_viewer.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/colorbar.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/console.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/console_keywords.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/inspector.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/menu.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/mesh_gui.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/mesh_inspector.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/residual_plot.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/results_gui.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/scene_view.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/solver_gui.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/tinyfiledialogs/tinyfiledialogs.h",
+			"sourceGroupIndex" : 6
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/window/header/bounding.h",
+			"sourceGroupIndex" : 7
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/window/header/camera.h",
+			"sourceGroupIndex" : 7
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/window/header/display.h",
+			"sourceGroupIndex" : 7
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/window/header/gui.h",
+			"sourceGroupIndex" : 7
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/window/header/mouse_picker.h",
+			"sourceGroupIndex" : 7
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/window/header/renderer.h",
+			"sourceGroupIndex" : 7
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/window/header/shader.h",
+			"sourceGroupIndex" : 7
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/boundary_func.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/buffer_manager.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/colormap.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/colormap_manager.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/field_manager.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/file_manager.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/flag_manager.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/font_manager.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/gpu_utils.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/math_func.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/memory_manager.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/pch.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/printer.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/time_manager.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/unit_manager.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/energy_equation.cuh",
+			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/jacobi_pcg.cuh",
+			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/linear_solver.cuh",
+			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/mesh.h",
+			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/multigrid.cuh",
+			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/residuals.cuh",
+			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/results.h",
+			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/simple.cuh",
+			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/solver.h",
+			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/solver_util.cuh",
+			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
+			"path" : "src/header/project.h",
+			"sourceGroupIndex" : 10
+		},
+		{
+			"backtrace" : 2,
+			"path" : "src/header/setting.cuh",
+			"sourceGroupIndex" : 10
+		},
+		{
+			"backtrace" : 2,
+			"path" : "structs/boundary_struct.h",
+			"sourceGroupIndex" : 11
+		},
+		{
+			"backtrace" : 2,
+			"path" : "structs/graphics_struct.h",
+			"sourceGroupIndex" : 11
+		},
+		{
+			"backtrace" : 2,
+			"path" : "structs/solver_struct.h",
+			"sourceGroupIndex" : 11
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/imgui/imgui.cpp",
+			"sourceGroupIndex" : 12
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/imgui/imgui_draw.cpp",
+			"sourceGroupIndex" : 12
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/imgui/imgui_tables.cpp",
+			"sourceGroupIndex" : 12
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/imgui/imgui_widgets.cpp",
+			"sourceGroupIndex" : 12
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/imgui/backends/imgui_impl_glfw.cpp",
+			"sourceGroupIndex" : 13
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/imgui/backends/imgui_impl_opengl3.cpp",
+			"sourceGroupIndex" : 13
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/imgui/implot.cpp",
+			"sourceGroupIndex" : 12
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/imgui/implot_items.cpp",
+			"sourceGroupIndex" : 12
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 2,
+			"path" : "graphics/tinyfiledialogs/tinyfiledialogs.c",
+			"sourceGroupIndex" : 6
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "externals/stb_image/stb_image.cpp",
+			"sourceGroupIndex" : 14
+		}
+	],
+	"type" : "EXECUTABLE"
+}

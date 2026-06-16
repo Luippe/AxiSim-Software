@@ -404,6 +404,9 @@ protected:
 
 	// image dimensions
 	int imageWidth, imageHeight;
+	ImVec2 imageMin = ImVec2(0.0f, 0.0f);
+	ImVec2 imageMax = ImVec2(0.0f, 0.0f);
+	ImVec2 imageSize = ImVec2(0.0f, 0.0f);
 	ImVec2 zoomCenter = ImVec2(0.5f, 0.5f);
 
 	float zoom = 1.0f;
@@ -413,8 +416,7 @@ protected:
 	float u1 = 1.0f;
 	float v1 = 1.0f;
 
-
-	
+		
 	// ======================================================================
 	// -----------------------HELPER FUNCTION--------------------------------
 	// ======================================================================
@@ -456,6 +458,8 @@ protected:
 
 	ImVec2 uvToScreen(const ImVec2& uv);
 
+	ImVec2 physicalToScreen(Vec2 p,	double L, double R) const;
+
 	ImVec2 gridFaceToScreen(int jFace, int iFace, const std::vector<double>& zFace, const std::vector<double>& rFace);
 
 	ImVec2 getMouseIndex(const std::vector<double>& rFace, const std::vector<double> zFace);
@@ -465,6 +469,8 @@ protected:
 
 	// add tooltip to image button when hovered
 	void setToolTip(const char* text);
+
+	void updateCurrentMousePos();
 
 	// ======================================================================
 	// -----------------------HANDLE INPUT-----------------------------------
@@ -486,7 +492,7 @@ protected:
 	// draw rectangle when mouse is dragged
 	void displayRect(int nrBase, int nzBase);
 
-	// draws the main surface
+	// draws the main surface. also updates imageMin, imageMax, and imageSize
 	void drawSurface(const Rect& rect);
 
 	// draws rectangular canvas

@@ -1,20 +1,19 @@
 #include "mesh.h"
 #include "console.h"
 
-#include "CDT.h"
-#include <iostream>
+#include "gmsh.h_cwrap"
 #include "time_manager.h"
 #include "solver_struct.h"
 #include "printer.h"
 #include <glm/trigonometric.hpp>
 #include <algorithm>
+#include <unordered_map>
 
 #include "math_func.h"
 
 
-
 Mesh::Mesh(Config& config) : g(config.g) {
-	initializeUnstructuredDomain(5,5);
+	initializeUnstructuredDomain(2,2);
 }
 
 PointKey makePointKey(Vec2 p, double tol) {
@@ -73,7 +72,7 @@ void Mesh::initializeUnstructuredDomain(
 	int nzPoints,
 	int nrPoints
 ) {
-	meshType = MeshType::Unstructured;
+	currentMeshType = MeshType::Unstructured;
 
 	clearUnstructuredGeometry();
 
@@ -258,8 +257,7 @@ void Mesh::addCircularObstacle(
 	segment.source = BoundarySource::Obstacle;
 
 	segment.sizing.enabled = true;
-	segment.sizing.targetSpacing =
-		2.0 * PI * radius / (double)(nObstaclePoints);
+	segment.sizing.targetSpacing = 2.0 * PI * radius / (double)(nObstaclePoints);
 	segment.sizing.bias = 1.0;
 
 	std::vector<int> vertexIDs;
@@ -310,59 +308,181 @@ void Mesh::addCircularObstacle(
 	boundarySegments.push_back(segment);
 }
 
-void Mesh::runConstrainedDelaunay() {
+void Mesh::runGmshTriangulation() {
 	unstructuredTriangles.clear();
 
-	std::vector<CDTConstraintEdge> constraints;
-	constraints.reserve(boundaryEdges.size());
+	gmsh::initialize();
+	gmsh::clear();
 
-	for (const BoundaryEdge& edge : boundaryEdges) {
-		if (edge.v0 < 0 || edge.v1 < 0) {
-			continue;
-		}
+	gmsh::model::add("AxiSimMesh");
 
-		if (!edgeInRange(edge, boundaryVertices.size())) continue;
+	std::unordered_map<int, int> pointTagByBoundaryVertex;
+	double defaultMeshSize = std::min(g.L, g.R) / 10.0;
 
-		const BoundaryVertex& a = boundaryVertices[edge.v0];
-		const BoundaryVertex& b = boundaryVertices[edge.v1];
-
-		if (a.pointID < 0 || b.pointID < 0) {
-			continue;
-		}
-
-		constraints.push_back({
-			static_cast<std::size_t>(a.pointID),
-			static_cast<std::size_t>(b.pointID)
-			});
+	if (defaultMeshSize <= 1e-30) {
+		defaultMeshSize = std::max(g.L, g.R) / 20.0;
 	}
 
-	CDT::Triangulation<double> cdt;
+	if (defaultMeshSize <= 1e-30) {
+		defaultMeshSize = 1.0;
+	}
 
-	cdt.insertVertices(
-		unstructuredPoints.begin(),
-		unstructuredPoints.end(),
-		[](const Vec2& p) { return p.z; },
-		[](const Vec2& p) { return p.r; }
+	std::vector<double> boundaryVertexSize(
+		boundaryVertices.size(),
+		defaultMeshSize
 	);
 
-	cdt.insertEdges(
-		constraints.begin(),
-		constraints.end(),
-		[](const CDTConstraintEdge& e) { return e.v0; },
-		[](const CDTConstraintEdge& e) { return e.v1; }
-	);
+	// for each segment, get the sizing
+	for (const BoundarySegment& segment : boundarySegments) {
+		BoundarySizing sizing = getSizingForSegment(segment);
 
-	cdt.eraseOuterTrianglesAndHoles();
+		if (!sizing.enabled ||
+			sizing.mode != BoundarySizingMode::TargetSpacing ||
+			sizing.targetSpacing <= 1e-30) {
+			continue;
+		}
 
-	for (const CDT::Triangle& t : cdt.triangles) {
+		for (int edgeID : segment.edgeIDs) {
+			if (edgeID < 0 ||
+				edgeID >= static_cast<int>(boundaryEdges.size())) {
+				continue;
+			}
+
+			const BoundaryEdge& edge = boundaryEdges[edgeID];
+
+			if (edge.v0 >= 0 &&
+				edge.v0 < static_cast<int>(boundaryVertexSize.size())) {
+				boundaryVertexSize[edge.v0] = std::min(
+					boundaryVertexSize[edge.v0],
+					sizing.targetSpacing
+				);
+			}
+
+			if (edge.v1 >= 0 &&
+				edge.v1 < static_cast<int>(boundaryVertexSize.size())) {
+				boundaryVertexSize[edge.v1] = std::min(
+					boundaryVertexSize[edge.v1],
+					sizing.targetSpacing
+				);
+			}
+		}
+	}
+
+	for (const BoundaryVertex& v : boundaryVertices) {
+		int tag = v.id + 1;
+		double lc = defaultMeshSize;
+
+		if (v.id >= 0 && v.id < static_cast<int>(boundaryVertexSize.size())) {
+			lc = boundaryVertexSize[v.id];
+		}
+
+		gmsh::model::geo::addPoint(v.pos.z, v.pos.r, 0.0, lc, tag);
+		pointTagByBoundaryVertex[v.id] = tag;
+	}
+
+	std::vector<int> outerLines;
+	std::vector<int> holeLoops;
+	std::unordered_map<int, int> segmentLoopIDByID;
+	std::unordered_map<int, std::vector<int>> holeLinesByLoopID;
+
+	for (const BoundarySegment& segment : boundarySegments) {
+		segmentLoopIDByID[segment.id] = segment.loopID;
+	}
+
+	for (const BoundaryEdge& edge : boundaryEdges) {
+		int lineTag = edge.id + 1;
+
+		int p0 = pointTagByBoundaryVertex[edge.v0];
+		int p1 = pointTagByBoundaryVertex[edge.v1];
+
+		gmsh::model::geo::addLine(p0, p1, lineTag);
+
+		if (edge.source == BoundarySource::Domain) {
+			outerLines.push_back(lineTag);
+		}
+		else {
+			auto loopIt = segmentLoopIDByID.find(edge.segmentID);
+
+			if (loopIt != segmentLoopIDByID.end() && loopIt->second >= 0) {
+				holeLinesByLoopID[loopIt->second].push_back(lineTag);
+			}
+		}
+	}
+
+	int outerLoop = gmsh::model::geo::addCurveLoop(outerLines, -1, true);
+
+	for (const auto& [loopID, holeLines] : holeLinesByLoopID) {
+		if (holeLines.empty()) {
+			continue;
+		}
+
+		int holeLoop = gmsh::model::geo::addCurveLoop(holeLines, -1, true);
+		holeLoops.push_back(holeLoop);
+	}
+
+	std::vector<int> surfaceLoops = { outerLoop };
+	surfaceLoops.insert(surfaceLoops.end(), holeLoops.begin(), holeLoops.end());
+
+	gmsh::model::geo::addPlaneSurface(surfaceLoops, 1);
+	gmsh::model::geo::synchronize();
+
+	gmsh::option::setNumber("Mesh.Algorithm", 6); // Frontal-Delaunay
+
+
+	gmsh::model::mesh::generate(2);
+
+	std::vector<std::size_t> nodeTags;
+	std::vector<double> coords;
+	std::vector<double> params;
+
+	gmsh::model::mesh::getNodes(nodeTags, coords, params);
+
+	unstructuredPoints.clear();
+
+	std::unordered_map<std::size_t, int> pointIDByNodeTag;
+
+	for (std::size_t n = 0; n < nodeTags.size(); n++) {
+		Vec2 p{};
+		p.z = coords[3 * n + 0];
+		p.r = coords[3 * n + 1];
+
+		int pointID = static_cast<int>(unstructuredPoints.size());
+		unstructuredPoints.push_back(p);
+
+		pointIDByNodeTag[nodeTags[n]] = pointID;
+	}
+
+	for (BoundaryVertex& vertex : boundaryVertices) {
+		auto tagIt = pointTagByBoundaryVertex.find(vertex.id);
+
+		if (tagIt == pointTagByBoundaryVertex.end()) {
+			continue;
+		}
+
+		auto pointIt = pointIDByNodeTag.find(
+			static_cast<std::size_t>(tagIt->second)
+		);
+
+		if (pointIt != pointIDByNodeTag.end()) {
+			vertex.pointID = pointIt->second;
+		}
+	}
+
+	std::vector<std::size_t> elemTags;
+	std::vector<std::size_t> triNodeTags;
+
+	gmsh::model::mesh::getElementsByType(2, elemTags, triNodeTags);
+
+	for (std::size_t k = 0; k + 2 < triNodeTags.size(); k += 3) {
 		Triangle tri{};
-
-		tri.v0 = static_cast<int>(t.vertices[0]);
-		tri.v1 = static_cast<int>(t.vertices[1]);
-		tri.v2 = static_cast<int>(t.vertices[2]);
+		tri.v0 = pointIDByNodeTag[triNodeTags[k + 0]];
+		tri.v1 = pointIDByNodeTag[triNodeTags[k + 1]];
+		tri.v2 = pointIDByNodeTag[triNodeTags[k + 2]];
 
 		unstructuredTriangles.push_back(tri);
 	}
+
+	gmsh::finalize();
 }
 
 float Mesh::displayZ(double z) const {
@@ -633,32 +753,6 @@ int Mesh::getNumberOfEdgesForSegment(
 	return nEdges;
 }
 
-void Mesh::addInteriorPoints(
-	std::vector<Vec2>& points,
-	double zMin,
-	double zMax,
-	double rMin,
-	double rMax,
-	double spacing
-) {
-	int row = 0;
-
-	for (double r = rMin + spacing; r < rMax; r += spacing) {
-		double zOffset = (row % 2 == 0) ? 0.0 : 0.5 * spacing;
-
-		for (double z = zMin + spacing + zOffset; z < zMax; z += spacing) {
-
-			Vec2 p;
-			p.z = z;
-			p.r = r;
-
-			points.push_back(p);
-		}
-
-		row++;
-	}
-}
-
 BoundarySizing Mesh::getSizingForSegment(const BoundarySegment& seg) const {
 	if (seg.groupID >= 0) {
 		for (const BoundarySegmentGroup& group : boundaryGroups) {
@@ -718,7 +812,7 @@ int getBoundaryGroupID(
 void Mesh::generate() {
 	Clock::time_point startTime = startTimer();
 
-	if (meshType == MeshType::Structured) {
+	if (currentMeshType == MeshType::Structured) {
 		createGrid();
 		createGridVertices();
 		createGridLineVertices();
@@ -726,10 +820,8 @@ void Mesh::generate() {
 	}
 	else {
 		rebuildBoundaryDiscretization();
-		addInteriorPoints(unstructuredPoints, 0.0, g.L, 0.0, g.R, 0.0001);
 
-		runConstrainedDelaunay();
-
+		runGmshTriangulation();
 
 		FVMesh fvMesh = createUnstructuredMesh(
 			unstructuredPoints,
@@ -1242,7 +1334,7 @@ void Mesh::createGrid() {
 }
 
 FVMesh Mesh::createFVMesh(const std::vector<uint8_t>& activeCell) const {
-	if (meshType == MeshType::Structured) {
+	if (currentMeshType == MeshType::Structured) {
 		return createStructuredMesh(activeCell);
 	}
 

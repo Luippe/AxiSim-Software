@@ -12,7 +12,3 @@ void printVec2(glm::vec2 vec) {
 void check() {
 	printf("THE PROGRAM IS RUNNING HERE!\n");
 }
-
-void checkInt(int n) {
-	printf("%d\n", n);
-}

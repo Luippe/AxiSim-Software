@@ -161,7 +161,7 @@ void MeshGUI::drawOverview() {
 
 		drawTableHeader("Statistics");
 
-		if (ImGui::BeginTable("StatisticsTable", 2, UIFlags::TableSimpleFlags, ImVec2(0.0f, 220.0f))) {
+		if (ImGui::BeginTable("StatisticsTable", 2, UIFlags::TableSimpleFlags, ImVec2(0.0f, 0.0f))) {
 			setupTableColumns(
 				column("Label", 150.0f),
 				column("Value", 100.0f, ImGuiTableColumnFlags_WidthStretch)
@@ -170,8 +170,11 @@ void MeshGUI::drawOverview() {
 			std::string numCells = std::to_string(mesh.g.nr * mesh.g.nz);
 			std::string numNodes = std::to_string((mesh.g.nr + 1) * (mesh.g.nz + 1));
 
+			labelRow("Mesh Type");
+			createSimpleCombo("##MeshType", mesh.meshType, (int&)mesh.currentMeshType, IM_ARRAYSIZE(mesh.meshType));
 			drawTableProperty("Number of Cells", numCells.c_str());
 			drawTableProperty("Number of Nodes", numNodes.c_str());
+
 			ImGui::EndTable();
 		}
 	}
@@ -322,16 +325,25 @@ void MeshGUI::draw() {
 		if (ImGui::Button("Generate Mesh")) {
 			bool topologyChanged =
 				gridConfigEdits.nr != config.g.nr ||
-				gridConfigEdits.nz != config.g.nz;
+				gridConfigEdits.nz != config.g.nz ||
+				gridConfigEdits.L != config.g.L ||
+				gridConfigEdits.R != config.g.R;
 
 			if (topologyChanged) {
+
+				mesh.clearUnstructuredGeometry();
 				mesh.boundaryGroups.clear();
+				mesh.boundarySegments.clear();
+				mesh.boundaryEdges.clear();
+				mesh.boundaryVertices.clear();
+				mesh.gridLineVertices.clear();
 				mesh.selectedBoundaryIDs.clear();
 				mesh.highlightedBoundarySegmentIDs.clear();
 				mesh.selectableOuterEdges.clear();
-				mesh.boundarySegments.clear();
+
 
 				selectedBoundaryGroupID = -1;
+				mesh.initializeUnstructuredDomain(5, 5);
 			}
 
 			setGridConfigEdits();
@@ -347,6 +359,4 @@ void MeshGUI::draw() {
 		ImGui::EndTabItem();
 	}
 	changeCursorOnHover();
-
-
 }

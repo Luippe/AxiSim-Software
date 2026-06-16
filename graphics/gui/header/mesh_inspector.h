@@ -67,8 +67,15 @@ private:
 	std::string obstacleError;
 	std::vector<int> namedIDs;
 
+	//-------------pending variables------------
+	PendingCircle pendingCircle;
+	PendingRect pendingRect;
+
 	//-------------status bar--------------
 	float statusBarHeight = 100.0f;
+
+	// -------------drawing variables--------------
+	ImColor drawingColor = IM_COL32(203, 209, 224, 255);
 
 	int cellIndex(int i, int j) const;
 	bool isInsideCellGrid(int i, int j) const;
@@ -76,12 +83,6 @@ private:
 	void rebuildSelectableOuterEdges(const std::unordered_set<int>& obstacleIndices);
 	bool isDomainBoundaryEdge(const MeshEdge& e) const;
 	bool domainEdgeTouchesSolid(const MeshEdge& e, const std::unordered_set<int>& obstacleIndices) const;
-
-	ImVec2 meshPosToScreen(
-		Vec2 p,
-		ImVec2 imageMin,
-		ImVec2 imageSize
-	) const;
 
 	// set group total length
 	void setGroupTotalLength(BoundarySegmentGroup& group);
@@ -91,7 +92,6 @@ private:
 
 	// render the preview onto fbo
 	void renderPreview();
-
 
 	// build all boundary segments
 	void buildSegments();
@@ -105,10 +105,8 @@ private:
 	void handleDrawRectangle();
 
 	void handleCursor(ImGuiIO& io);
-	std::optional<int> findHoveredBoundarySegment(
-		ImVec2 imageMin,
-		ImVec2 imageSize
-	);
+	std::optional<int> findHoveredBoundarySegment();
+
 	std::array<MeshEdge, 4> getCellEdges(int i, int j) const;
 
 	// draw toolbar at the top of the mesh analyzer, which can be used for variety of functions
@@ -123,11 +121,11 @@ private:
 	// draw text at clicked position
 	void drawTextAtSurfacePoint(ImDrawList* drawList);
 
-	void drawBoundarySegments(
-		ImDrawList* drawList,
-		ImVec2 imageMin,
-		ImVec2 imageSize
-	);
+	// draw pending objects such as circles and rectangles while they
+	void drawPendingObjects(ImDrawList* drawList);
+
+	void drawBoundarySegments(ImDrawList* drawList);
+
 	void fillBoundaryGroupEdges(BoundarySegmentGroup& group);
 	bool obstacleCellTouchesBoundaryGroup(int cellIndex) const;
 	bool tryAddObstacleCell(int cellIndex);
@@ -135,8 +133,6 @@ private:
 		const ImVec2& start,
 		const ImVec2& end
 	);
-
-
 
 
 	// build domain segments

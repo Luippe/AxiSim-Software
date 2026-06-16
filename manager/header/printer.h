@@ -1,5 +1,7 @@
 #pragma once
 #include <glm/fwd.hpp>
+#include <string>
+#include <cstdio>
 
 void printVec3(glm::vec3 vec);
 
@@ -7,30 +9,35 @@ void printVec2(glm::vec2 vec);
 
 void check();
 
-void checkInt(int n);
 
-template<typename... Args>
-void printStr(Args... args) {
-	(printf("%s ", args), ...);
-	printf("\n");
+inline void printOne(const char* value) {
+    std::printf("%s", value);
+}
+
+inline void printOne(const std::string& value) {
+    std::printf("%s", value.c_str());
+}
+
+inline void printOne(int value) {
+    std::printf("%d", value);
+}
+
+inline void printOne(float value) {
+    std::printf("%f", value);
+}
+
+inline void printOne(double value) {
+    std::printf("%f", value);
+}
+
+inline void printOne(bool value) {
+    std::printf("%s", value ? "true" : "false");
 }
 
 template<typename... Args>
-void printFloat(Args... args) {
-	(printf("%f ", args), ...);
-	printf("\n");
-}
-
-template<typename... Args>
-void printInt(Args... args) {
-	(printf("%d ", args), ...);
-	printf("\n");
-}
-
-template<typename... Args>
-void printBool(Args... args) {
-	(printf("%s ", args ? "true" : "false"), ...);
-	printf("\n");
+void print(const Args&... args) {
+    ((printOne(args), std::printf(" ")), ...);
+    std::printf("\n");
 }
 
 template<typename... Args>

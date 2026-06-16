@@ -332,8 +332,24 @@ ImVec2 BaseSurfaceViewer::uvToScreen(const ImVec2& uv) {
 	);
 }
 
+ImVec2 BaseSurfaceViewer::physicalToScreen(
+	Vec2 p,
+	double L,
+	double R
+) const {
+	float u = static_cast<float>(p.z / L);
+	float v = static_cast<float>(p.r / R);
+
+	float sx = (u - u0) / (u1 - u0);
+	float sy = (v1 - v) / (v1 - v0);
+
+	return ImVec2(
+		imageMin.x + sx * imageSize.x,
+		imageMin.y + sy * imageSize.y
+	);
+}
+
 ImVec2 BaseSurfaceViewer::screenToUV(const ImVec2& mousePos) {
-	ImVec2 imageMin = ImGui::GetItemRectMin();
 
 	float sx = (mousePos.x - imageMin.x) / imageWidth;
 	float sy = (mousePos.y - imageMin.y) / imageHeight;
@@ -387,8 +403,6 @@ void BaseSurfaceViewer::highlightCellsInRect(std::unordered_set<int>& indices, I
 }
 
 ImVec2 BaseSurfaceViewer::gridFaceToScreen(int jFace, int iFace, const std::vector<double>& zFace, const std::vector<double>& rFace) {
-	ImVec2 itemMin = ImGui::GetItemRectMin();
-	ImVec2 itemMax = ImGui::GetItemRectMax();
 
 	int nzBase = static_cast<int>(zFace.size()) - 1;
 	int nrBase = static_cast<int>(rFace.size()) - 1;
@@ -408,8 +422,8 @@ ImVec2 BaseSurfaceViewer::gridFaceToScreen(int jFace, int iFace, const std::vect
 	float localU = (texU - u0) / (u1 - u0);
 	float localV = (texV - v0) / (v1 - v0);
 
-	float x = itemMin.x + localU * imageWidth;
-	float y = itemMax.y - localV * imageHeight;
+	float x = imageMin.x + localU * imageWidth;
+	float y = imageMax.y - localV * imageHeight;
 
 	return ImVec2(x, y);
 }
@@ -463,6 +477,9 @@ void BaseSurfaceViewer::handleRectSelection(ImGuiIO& io) {
 	rectPos2 = screenToUV(currentMousePos);
 }
 
+void BaseSurfaceViewer::updateCurrentMousePos() {
+	currentMousePos = ImGui::GetMousePos();
+}
 
 void BaseSurfaceViewer::handlePopup(const char* text) {
 	openPopUp = true;
@@ -509,6 +526,12 @@ void BaseSurfaceViewer::drawCanvas(ImDrawList* drawList, const Rect& rect, const
 void BaseSurfaceViewer::drawSurface(const Rect& rect) {
 	ImGui::SetCursorScreenPos(rect.min);
 	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), rect.size(), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
+	imageMin = ImGui::GetItemRectMin();
+	imageMax = ImGui::GetItemRectMax();
+	imageSize = {
+		imageMax.x - imageMin.x,
+		imageMax.y - imageMin.y
+	};
 }
 
 void BaseSurfaceViewer::displayRect(int nrBase, int nzBase) {
