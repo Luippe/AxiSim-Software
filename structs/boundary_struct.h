@@ -6,6 +6,8 @@
 #include <string>	   // std::string
 #include <unordered_map>
 
+#include "core_struct.h"
+
 enum class BoundaryVariable : uint8_t {
 	UVelocity,
 	VVelocity,
@@ -56,10 +58,7 @@ struct BoundaryCondition {
 	bool enabled = true;
 };
 
-struct Vec2 {
-	double z = 0.0;
-	double r = 0.0;
-};
+
 
 struct EdgeKey {
 	int a;

@@ -2,6 +2,7 @@
 
 #include "console.h"
 #include "inspector.h"
+#include "geometry_gui.h"
 #include "solver_gui.h"
 #include "results_gui.h"
 #include "mesh_gui.h"
@@ -9,6 +10,7 @@
 #include "animation_gui.h"
 #include "residual_plot.h"
 #include "mesh_inspector.h"
+#include "sketch_view.h"
 #include "scene_view.h"
 
 class Mesh;
@@ -24,6 +26,7 @@ class GUI {
 public:
 	Menu menu;			// menu must come before anything else since it loads the mesh/solver/results when constructed
 	
+	SketchView sketch;
 	SceneView scene;
 	Inspector inspector;
 	MeshInspector meshInspector;
@@ -36,6 +39,7 @@ public:
 	Solver& solver;
 	Results& results;
 	GLFWwindow* window;
+	GeometryGUI geometryGUI;
 	MeshGUI meshGUI;
 	SolverGUI solverGUI;
 	ResultsGUI resultsGUI;

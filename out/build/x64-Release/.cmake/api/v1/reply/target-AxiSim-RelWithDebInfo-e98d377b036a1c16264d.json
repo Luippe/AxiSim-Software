@@ -199,18 +199,22 @@
 				27,
 				28,
 				29,
-				33,
-				36,
-				41,
-				94,
-				95,
-				96,
-				97,
-				98,
-				99,
-				100,
-				101,
-				103
+				30,
+				31,
+				32,
+				34,
+				37,
+				40,
+				45,
+				103,
+				104,
+				105,
+				106,
+				107,
+				108,
+				109,
+				110,
+				112
 			]
 		},
 		{
@@ -316,15 +320,15 @@
 			},
 			"sourceIndexes" : 
 			[
-				30,
-				31,
-				32,
-				34,
+				33,
 				35,
-				37,
+				36,
 				38,
 				39,
-				40
+				41,
+				42,
+				43,
+				44
 			]
 		},
 		{
@@ -422,7 +426,7 @@
 			"language" : "C",
 			"sourceIndexes" : 
 			[
-				102
+				111
 			]
 		}
 	],
@@ -530,70 +534,70 @@
 				9,
 				10,
 				11,
-				12
+				12,
+				13,
+				14,
+				15
 			]
 		},
 		{
 			"name" : "graphics\\window\\source",
 			"sourceIndexes" : 
 			[
-				13,
-				14,
-				15,
 				16,
 				17,
 				18,
-				19
+				19,
+				20,
+				21,
+				22
 			]
 		},
 		{
 			"name" : "manager\\source",
 			"sourceIndexes" : 
 			[
-				20,
-				21,
-				22,
 				23,
 				24,
 				25,
 				26,
 				27,
 				28,
-				29
+				29,
+				30,
+				31,
+				32
 			]
 		},
 		{
 			"name" : "solver\\source",
 			"sourceIndexes" : 
 			[
-				30,
-				31,
-				32,
 				33,
 				34,
 				35,
 				36,
 				37,
 				38,
-				39
+				39,
+				40,
+				41,
+				42,
+				43
 			]
 		},
 		{
 			"name" : "src\\source",
 			"sourceIndexes" : 
 			[
-				40,
-				41
+				44,
+				45
 			]
 		},
 		{
 			"name" : "graphics\\gui\\header",
 			"sourceIndexes" : 
 			[
-				42,
-				43,
-				44,
-				45,
 				46,
 				47,
 				48,
@@ -603,40 +607,40 @@
 				52,
 				53,
 				54,
-				55
+				55,
+				56,
+				57,
+				58,
+				59,
+				60,
+				61
 			]
 		},
 		{
 			"name" : "graphics\\tinyfiledialogs",
 			"sourceIndexes" : 
 			[
-				56,
-				102
+				62,
+				111
 			]
 		},
 		{
 			"name" : "graphics\\window\\header",
 			"sourceIndexes" : 
 			[
-				57,
-				58,
-				59,
-				60,
-				61,
-				62,
-				63
+				63,
+				64,
+				65,
+				66,
+				67,
+				68,
+				69
 			]
 		},
 		{
 			"name" : "manager\\header",
 			"sourceIndexes" : 
 			[
-				64,
-				65,
-				66,
-				67,
-				68,
-				69,
 				70,
 				71,
 				72,
@@ -645,67 +649,76 @@
 				75,
 				76,
 				77,
-				78
+				78,
+				79,
+				80,
+				81,
+				82,
+				83,
+				84
 			]
 		},
 		{
 			"name" : "solver\\header",
 			"sourceIndexes" : 
 			[
-				79,
-				80,
-				81,
-				82,
-				83,
-				84,
 				85,
 				86,
 				87,
-				88
+				88,
+				89,
+				90,
+				91,
+				92,
+				93,
+				94,
+				95
 			]
 		},
 		{
 			"name" : "src\\header",
 			"sourceIndexes" : 
 			[
-				89,
-				90
+				96,
+				97
 			]
 		},
 		{
 			"name" : "structs",
 			"sourceIndexes" : 
 			[
-				91,
-				92,
-				93
+				98,
+				99,
+				100,
+				101,
+				102
 			]
 		},
 		{
 			"name" : "graphics\\imgui",
 			"sourceIndexes" : 
 			[
-				94,
-				95,
-				96,
-				97,
-				100,
-				101
+				103,
+				104,
+				105,
+				106,
+				109,
+				110
 			]
 		},
 		{
 			"name" : "graphics\\imgui\\backends",
 			"sourceIndexes" : 
 			[
-				98,
-				99
+				107,
+				108
 			]
 		},
 		{
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				103
+				112
 			]
 		}
 	],
@@ -739,6 +752,12 @@
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "graphics/gui/source/console.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/geometry_gui.cpp",
 			"sourceGroupIndex" : 0
 		},
 		{
@@ -781,6 +800,18 @@
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "graphics/gui/source/scene_view.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/sketch_trim.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "graphics/gui/source/sketch_view.cpp",
 			"sourceGroupIndex" : 0
 		},
 		{
@@ -899,6 +930,12 @@
 		},
 		{
 			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "solver/source/geometry.cpp",
+			"sourceGroupIndex" : 3
+		},
+		{
+			"backtrace" : 2,
 			"compileGroupIndex" : 1,
 			"path" : "solver/source/jacobi_pcg.cu",
 			"sourceGroupIndex" : 3
@@ -995,6 +1032,11 @@
 		},
 		{
 			"backtrace" : 2,
+			"path" : "graphics/gui/header/geometry_gui.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
 			"path" : "graphics/gui/header/inspector.h",
 			"sourceGroupIndex" : 5
 		},
@@ -1026,6 +1068,11 @@
 		{
 			"backtrace" : 2,
 			"path" : "graphics/gui/header/scene_view.h",
+			"sourceGroupIndex" : 5
+		},
+		{
+			"backtrace" : 2,
+			"path" : "graphics/gui/header/sketch_view.h",
 			"sourceGroupIndex" : 5
 		},
 		{
@@ -1155,6 +1202,11 @@
 		},
 		{
 			"backtrace" : 2,
+			"path" : "solver/header/geometry.h",
+			"sourceGroupIndex" : 9
+		},
+		{
+			"backtrace" : 2,
 			"path" : "solver/header/jacobi_pcg.cuh",
 			"sourceGroupIndex" : 9
 		},
@@ -1215,7 +1267,17 @@
 		},
 		{
 			"backtrace" : 2,
+			"path" : "structs/core_struct.h",
+			"sourceGroupIndex" : 11
+		},
+		{
+			"backtrace" : 2,
 			"path" : "structs/graphics_struct.h",
+			"sourceGroupIndex" : 11
+		},
+		{
+			"backtrace" : 2,
+			"path" : "structs/sketch_struct.h",
 			"sourceGroupIndex" : 11
 		},
 		{

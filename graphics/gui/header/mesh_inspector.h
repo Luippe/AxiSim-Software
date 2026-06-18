@@ -10,6 +10,7 @@
 #include "base_surface_viewer.h"
 
 #include "buffer_manager.h"
+#include "core_struct.h"
 #include "graphics_struct.h"
 #include "solver_struct.h"
 #include "boundary_struct.h"

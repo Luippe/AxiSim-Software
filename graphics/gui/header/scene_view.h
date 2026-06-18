@@ -20,9 +20,6 @@ class Results;
 class SceneView {
 public:
 
-
-
-
 	SceneView(Project& project, GUI& gui);
 
 	void render();
@@ -34,7 +31,7 @@ public:
 	// create buffer for the cylinder and cylinder instances using the vertices and indices from results class
 	void createBuffer();
 
-	Camera camera;
+	Camera3D camera;
 	Renderer renderer;
 	Bounding bound{ renderer };
 	Colormap colormap;
@@ -68,8 +65,6 @@ private:
 		std::vector<float>& field,
 		FilterValues& filterValues
 	);
-
-
 
 	bool compareFloat(float value, FilterValues& filterValues);
 

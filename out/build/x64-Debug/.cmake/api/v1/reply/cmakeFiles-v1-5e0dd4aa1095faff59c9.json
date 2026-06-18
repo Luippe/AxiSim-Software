@@ -10,6 +10,7 @@
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/base_surface_viewer.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/colorbar.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/console.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/geometry_gui.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/inspector.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/menu.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/mesh_gui.cpp",
@@ -17,6 +18,8 @@
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/residual_plot.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/results_gui.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/scene_view.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/sketch_trim.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/sketch_view.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/solver_gui.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_allegro5.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_android.cpp",
@@ -105,6 +108,7 @@
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/colorbar.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/console.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/console_keywords.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/geometry_gui.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/inspector.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/menu.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/mesh_gui.h",
@@ -112,6 +116,7 @@
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/residual_plot.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/results_gui.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/scene_view.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/sketch_view.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/solver_gui.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_allegro5.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_android.h",
@@ -219,6 +224,7 @@
 			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cpp",
 			"paths" : 
 			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/geometry.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/mesh.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/results.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/solver.cpp"
@@ -257,6 +263,7 @@
 			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.h",
 			"paths" : 
 			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/geometry.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/mesh.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/results.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/solver.h"
@@ -315,7 +322,9 @@
 			"paths" : 
 			[
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/boundary_struct.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/core_struct.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/graphics_struct.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/sketch_struct.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/solver_struct.h"
 			],
 			"recurse" : true
@@ -328,7 +337,7 @@
 		},
 		{
 			"isGenerated" : true,
-			"path" : "out/build/x64-Release/CMakeFiles/3.31.6-msvc6/CMakeSystem.cmake"
+			"path" : "out/build/x64-Debug/CMakeFiles/3.31.6-msvc6/CMakeSystem.cmake"
 		},
 		{
 			"isExternal" : true,
@@ -351,15 +360,15 @@
 		},
 		{
 			"isGenerated" : true,
-			"path" : "out/build/x64-Release/CMakeFiles/3.31.6-msvc6/CMakeCCompiler.cmake"
+			"path" : "out/build/x64-Debug/CMakeFiles/3.31.6-msvc6/CMakeCCompiler.cmake"
 		},
 		{
 			"isGenerated" : true,
-			"path" : "out/build/x64-Release/CMakeFiles/3.31.6-msvc6/CMakeCXXCompiler.cmake"
+			"path" : "out/build/x64-Debug/CMakeFiles/3.31.6-msvc6/CMakeCXXCompiler.cmake"
 		},
 		{
 			"isGenerated" : true,
-			"path" : "out/build/x64-Release/CMakeFiles/3.31.6-msvc6/CMakeCUDACompiler.cmake"
+			"path" : "out/build/x64-Debug/CMakeFiles/3.31.6-msvc6/CMakeCUDACompiler.cmake"
 		},
 		{
 			"isCMake" : true,
@@ -423,7 +432,7 @@
 		},
 		{
 			"isGenerated" : true,
-			"path" : "out/build/x64-Release/CMakeFiles/3.31.6-msvc6/CMakeRCCompiler.cmake"
+			"path" : "out/build/x64-Debug/CMakeFiles/3.31.6-msvc6/CMakeRCCompiler.cmake"
 		},
 		{
 			"isCMake" : true,
@@ -721,7 +730,7 @@
 	"kind" : "cmakeFiles",
 	"paths" : 
 	{
-		"build" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Release",
+		"build" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/out/build/x64-Debug",
 		"source" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
 	},
 	"version" : 

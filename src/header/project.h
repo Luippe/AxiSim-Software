@@ -1,4 +1,5 @@
 #pragma once
+#include "geometry.h"
 #include "mesh.h"
 #include "solver.h"
 #include "results.h"
@@ -10,6 +11,7 @@ public:
 	//Project() {};
 	Config config;
 
+	Geometry geometry{ config };
 	Mesh mesh{ config };
 	Solver solver{ config };
 	Results results{ config };

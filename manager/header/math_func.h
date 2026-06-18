@@ -42,3 +42,4 @@ double biasedT(double s, double bias);
 
 bool edgeInRange(const BoundaryEdge& e, std::size_t n);
 
+Vec2 closestPointOnSegment(Vec2 p, Vec2 a, Vec2 b);

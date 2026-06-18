@@ -10,6 +10,7 @@ set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/base_surface_viewer.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/colorbar.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/console.cpp"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/geometry_gui.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/inspector.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/menu.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/mesh_gui.cpp"
@@ -17,6 +18,8 @@ set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/residual_plot.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/results_gui.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/scene_view.cpp"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/sketch_trim.cpp"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/sketch_view.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/source/solver_gui.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_allegro5.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_android.cpp"
@@ -115,6 +118,7 @@ set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/colorbar.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/console.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/console_keywords.h"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/geometry_gui.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/inspector.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/menu.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/mesh_gui.h"
@@ -122,6 +126,7 @@ set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/residual_plot.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/results_gui.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/scene_view.h"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/sketch_view.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header/solver_gui.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_allegro5.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends/imgui_impl_android.h"
@@ -243,6 +248,7 @@ endif()
 # PROJECT_SOURCES at CMakeLists.txt:24 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cpp")
 set(OLD_GLOB
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/geometry.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/mesh.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/results.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/solver.cpp"
@@ -287,6 +293,7 @@ endif()
 # PROJECT_HEADERS at CMakeLists.txt:41 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.h")
 set(OLD_GLOB
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/geometry.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/mesh.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/results.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/solver.h"
@@ -367,7 +374,9 @@ endif()
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/*.h")
 set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/boundary_struct.h"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/core_struct.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/graphics_struct.h"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/sketch_struct.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs/solver_struct.h"
   )
 if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")

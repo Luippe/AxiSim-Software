@@ -3,7 +3,7 @@
 #include "bounding.h"
 
 class SceneView;
-class Camera;
+class Camera3D;
 class Results;
 class Console;
 struct GridConfig;
@@ -16,7 +16,7 @@ public:
 	//Console& console;
 	Project& project;
 	Bounding& bound;
-	Camera& camera;
+	Camera3D& camera;
 	Results& results;
 	SceneView& scene;
 	GridConfig& g;

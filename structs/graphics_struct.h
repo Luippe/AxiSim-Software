@@ -17,6 +17,9 @@ struct AppAssets {
 	TextureBuffer fillCellIcon;
 	TextureBuffer drawRectangleIcon;
 	TextureBuffer drawCircleIcon;
+	TextureBuffer drawLineIcon;
+	TextureBuffer selectIcon;
+	TextureBuffer trimIcon;
 };
 
 struct AppFonts {
@@ -72,9 +75,10 @@ struct VertexLine {
 };
 
 enum class ViewTab {
-	TAB_MESH = 0,
-	TAB_SOLVER = 1,
-	TAB_RESULTS = 2
+	TAB_GEOMETRY = 0,
+	TAB_MESH = 1,
+	TAB_SOLVER = 2,
+	TAB_RESULTS = 3
 };
 
 struct CylinderInstance {

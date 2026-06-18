@@ -149,3 +149,22 @@ bool edgeInRange(const BoundaryEdge& e, std::size_t n) {
 	return e.v0 >= 0 && e.v1 >= 0 &&
 		e.v0 < (int)n && e.v1 < (int)n;
 }
+
+Vec2 closestPointOnSegment(Vec2 p, Vec2 a, Vec2 b) {
+	double abZ = b.z - a.z;
+	double abR = b.r - a.r;
+
+	double apZ = p.z - a.z;
+	double apR = p.r - a.r;
+
+	double ab2 = abZ * abZ + abR * abR;
+	if (ab2 <= 1e-30) return a;
+
+	double t = (apZ * abZ + apR * abR) / ab2;
+	t = std::clamp(t, 0.0, 1.0);
+
+	return Vec2{
+		a.z + t * abZ,
+		a.r + t * abR
+	};
+}

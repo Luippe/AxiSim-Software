@@ -11,8 +11,6 @@
 #include "printer.h"
 #include "math_func.h"
 
-#include <iostream>
-
 MeshInspector::MeshInspector(Mesh& mesh, AppConfig& appConfig) :
 	mesh(mesh),
 	g(mesh.g),
@@ -72,13 +70,6 @@ int addBoundaryVertexFromGrid(
 ) {
 	if (grid.i < 0 || grid.i >= static_cast<int>(rFace.size()) ||
 		grid.j < 0 || grid.j >= static_cast<int>(zFace.size())) {
-
-		std::cout << "Invalid boundary vertex grid index: "
-			<< "i=" << grid.i
-			<< ", j=" << grid.j
-			<< ", rFace.size=" << rFace.size()
-			<< ", zFace.size=" << zFace.size()
-			<< "\n";
 
 		return -1;
 	}
@@ -856,15 +847,15 @@ void MeshInspector::handleDrawCircle() {
 
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-		Vec2 initialPhysical = getMousePhysicalCoord(initLeftMouse, mesh.g.R, mesh.g.L);
-		Vec2 currentPhysical = getMousePhysicalCoord(currentMousePos, mesh.g.R, mesh.g.L);
+		Vec2 initialPhysical = screenToPhysical(initLeftMouse, mesh.g.R, mesh.g.L);
+		Vec2 currentPhysical = screenToPhysical(currentMousePos, mesh.g.R, mesh.g.L);
 		pendingCircle.pending = true;
 		pendingCircle.radius = distance(initialPhysical, currentPhysical);
 	}
 
 	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
 		pendingCircle.pending = false;
-		Vec2 physical = getMousePhysicalCoord(initLeftMouse, mesh.g.R, mesh.g.L);
+		Vec2 physical = screenToPhysical(initLeftMouse, mesh.g.R, mesh.g.L);
 		mesh.addCircularObstacle(physical, pendingCircle.radius, 80);
 	}
 }
@@ -1244,7 +1235,6 @@ void MeshInspector::drawPopup() {
 void MeshInspector::renderPreview() {
 
 
-
 	frameBuffer.bind();
 
 	glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
@@ -1410,9 +1400,11 @@ void MeshInspector::drawPendingObjects(ImDrawList* drawList) {
 
 	if (pendingCircle.pending) {
 
-		float radiusPx = static_cast<float>(
-			pendingCircle.radius * imageSize.x / ((u1 - u0) * g.L)
-			);
+		float radiusPx = physicalLengthToScreenLength(
+			pendingCircle.radius,
+			g.L,
+			g.R
+		);
 
 		drawList->AddCircle(initLeftMouse, radiusPx, drawingColor, 80, 3.0f);
 
@@ -1449,7 +1441,7 @@ void MeshInspector::render() {
 		0.0f
 	);
 
-	Rect surfaceRect = makePaddedRect(
+	Rect surfaceBounds = makePaddedRect(
 		pos,
 		size,
 		20.0f,
@@ -1457,6 +1449,14 @@ void MeshInspector::render() {
 		50.0f,
 		50.0f
 	);
+
+	double viewportAspect = 1.0;
+
+	if (g.R > 1e-30) {
+		viewportAspect = g.L / g.R;
+	}
+
+	Rect surfaceRect = fitRectToAspect(surfaceBounds, viewportAspect);
 
 	resizeImage(surfaceRect.size());
 

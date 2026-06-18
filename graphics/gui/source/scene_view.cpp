@@ -284,7 +284,8 @@ void SceneView::render() {
 	}
 
 	// update transformation matrix and snap camera
-	camera.update();
+	camera.updateTransformationMatrix();
+	camera.snapCamera();
 
 	// draw and render calls
 	frameBuffer.bind();
@@ -302,9 +303,7 @@ void SceneView::render() {
 	// update picker
 	picker.update();
 
-
 	draw3DPreview();
-
 
 	// end draw and render calls
 	frameBuffer.unbind();

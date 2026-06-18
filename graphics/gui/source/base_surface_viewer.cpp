@@ -1,6 +1,7 @@
 #include "base_surface_viewer.h"
 
 #include <algorithm>
+#include <cmath>
 #include <glm/glm.hpp>
 #include "imgui_internal.h"
 
@@ -131,6 +132,38 @@ BaseSurfaceViewer::Rect BaseSurfaceViewer::makePaddedRect(
 	};
 }
 
+BaseSurfaceViewer::Rect BaseSurfaceViewer::fitRectToAspect(
+	const Rect& rect,
+	double aspect
+) const {
+	if (aspect <= 1e-30) {
+		return rect;
+	}
+
+	float availableW = rect.max.x - rect.min.x;
+	float availableH = rect.max.y - rect.min.y;
+
+	if (availableW <= 0.0f || availableH <= 0.0f) {
+		return rect;
+	}
+
+	float targetW = availableW;
+	float targetH = targetW / static_cast<float>(aspect);
+
+	if (targetH > availableH) {
+		targetH = availableH;
+		targetW = targetH * static_cast<float>(aspect);
+	}
+
+	float x0 = rect.min.x + 0.5f * (availableW - targetW);
+	float y0 = rect.min.y + 0.5f * (availableH - targetH);
+
+	return {
+		ImVec2(x0, y0),
+		ImVec2(x0 + targetW, y0 + targetH)
+	};
+}
+
 int findCellIndex(const std::vector<double>& face, double x) {
 	int nFaces = (int)(face.size());
 
@@ -222,25 +255,14 @@ ImVec2 BaseSurfaceViewer::gridToScreen(int jFace, int iFace, const std::vector<d
 	return ImVec2(x, y);
 }
 
-Vec2 BaseSurfaceViewer::getMousePhysicalCoord(const ImVec2& mousePos, double R, double L) {
+Vec2 BaseSurfaceViewer::screenToPhysical(const ImVec2& mousePos, double R, double L) {
 
-	Vec2 physical;
+	ImVec2 uv = screenToUV(mousePos);
 
-	ImVec2 itemMin = ImGui::GetItemRectMin();
-	ImVec2 itemMax = ImGui::GetItemRectMax();
-
-	// mouse position relative to image
-	float localX = mousePos.x - itemMin.x;
-	float localY = itemMax.y - mousePos.y; // bottom-up
-
-	// normalize to [0, 1]
-	double u = (double)(localX) / (double)(imageWidth);
-	double v = (double)(localY) / (double)(imageHeight);
-
-	physical.z = u * L;
-	physical.r = v * R;
-
-	return physical;
+	return Vec2{
+		static_cast<double>(uv.x) * L,
+		static_cast<double>(uv.y) * R
+	};
 }
 
 Vec2 BaseSurfaceViewer::getMousePhysicalClosestCoord(ImVec2& mousePos, const std::vector<double>& rFace, const std::vector<double>& zFace) {
@@ -347,6 +369,24 @@ ImVec2 BaseSurfaceViewer::physicalToScreen(
 		imageMin.x + sx * imageSize.x,
 		imageMin.y + sy * imageSize.y
 	);
+}
+
+float BaseSurfaceViewer::physicalLengthToScreenLength(
+	double length,
+	double L,
+	double R
+) const {
+	if (L <= 1e-30 || R <= 1e-30 ||
+		imageSize.x <= 0.0f || imageSize.y <= 0.0f ||
+		std::abs(u1 - u0) <= 1e-30f ||
+		std::abs(v1 - v0) <= 1e-30f) {
+		return 0.0f;
+	}
+
+	double pixelsPerZ = imageSize.x / ((u1 - u0) * L);
+	double pixelsPerR = imageSize.y / ((v1 - v0) * R);
+
+	return static_cast<float>(length * 0.5 * (pixelsPerZ + pixelsPerR));
 }
 
 ImVec2 BaseSurfaceViewer::screenToUV(const ImVec2& mousePos) {
@@ -503,24 +543,49 @@ void BaseSurfaceViewer::setToolTip(const char* text) {
 // ======================================================================
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
-void BaseSurfaceViewer::drawCanvas(ImDrawList* drawList, const Rect& rect, const float rounding) {
+void BaseSurfaceViewer::drawCanvas(
+	ImDrawList* drawList, 
+	const Rect& rect, 
+	const float rounding,
+	ImColor fillColor,
+	ImColor outlineColor
+) {
 
 	drawList->AddRectFilled(
 		rect.min,
 		rect.max,
-		IM_COL32(19, 27, 37, 255),
+		fillColor,
 		rounding
 	);
 
 	drawList->AddRect(
 		rect.min,
 		rect.max,
-		IM_COL32(76, 105, 140, 200),
+		outlineColor,
 		rounding,
 		0,
 		1.5f
 	);
 
+}
+void BaseSurfaceViewer::addToolbarSeparator(float height) {
+	ImGui::SameLine();
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	ImVec2 pos = ImGui::GetCursorScreenPos();
+
+	float y0 = pos.y + 4.0f;
+	float y1 = y0 + height;
+
+	drawList->AddLine(
+		ImVec2(pos.x + 6.0f, y0),
+		ImVec2(pos.x + 6.0f, y1),
+		IM_COL32(120, 120, 120, 180),
+		2.0f
+	);
+
+	ImGui::Dummy(ImVec2(12.0f, height));
+	ImGui::SameLine();
 }
 
 void BaseSurfaceViewer::drawSurface(const Rect& rect) {

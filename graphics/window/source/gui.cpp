@@ -94,6 +94,9 @@ void initAssetBuffers(AppAssets& assets) {
 	assets.fillCellIcon.createBuffer("assets/icons/fill-cell.png");
 	assets.drawRectangleIcon.createBuffer("assets/icons/draw-rectangle.png");
 	assets.drawCircleIcon.createBuffer("assets/icons/draw-circle.png");
+	assets.drawLineIcon.createBuffer("assets/icons/draw-line.png");
+	assets.selectIcon.createBuffer("assets/icons/select.png");
+	assets.trimIcon.createBuffer("assets/icons/trim.png");
 
 }
 
@@ -134,6 +137,7 @@ void GUI::newFrame() {
 // ======================================================================
 GUI::GUI(Project& project, GLFWwindow* window) :
 	project(project),
+	sketch(project, *this),
 	scene(project, *this),
 	menu(project, *this),
 	inspector(project, scene, appConfig),
@@ -142,6 +146,7 @@ GUI::GUI(Project& project, GLFWwindow* window) :
 	mesh(project.mesh),
 	solver(project.solver),
 	results(project.results),
+	geometryGUI(project, *this),
 	meshGUI(project, *this),
 	solverGUI(project, appConfig),
 	resultsGUI(project, *this),
@@ -257,6 +262,8 @@ void GUI::drawUI() {
 	ImGui::Begin("Project");
 	if (ImGui::BeginTabBar("Main", UIFlags::TabBarFlags)) {
 
+		geometryGUI.draw();
+
 		meshGUI.draw();
 
 		solverGUI.draw();
@@ -280,6 +287,10 @@ void GUI::render() {
 	drawUI();
 
 	// mesh GUI render
+	if (project.currentTab == ViewTab::TAB_GEOMETRY) {
+		sketch.render();
+	}
+
 	if (project.currentTab == ViewTab::TAB_MESH) {
 		meshInspector.render();
 	}

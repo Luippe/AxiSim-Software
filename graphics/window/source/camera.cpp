@@ -1,15 +1,20 @@
 #include "camera.h"
 
+#include <algorithm>
+#include <cmath>
+
 #include <glm/gtc/matrix_transform.hpp>
 #include "unit_manager.h"
 #include "printer.h"
 
-
-Camera::Camera() {
+// ======================================================================
+// -----------------------CAMERA 3D--------------------------------------
+// ======================================================================
+Camera3D::Camera3D() {
 	initPositionAndAngle();
 }
 
-void Camera::initPositionAndAngle() {
+void Camera3D::initPositionAndAngle() {
 
 	constexpr float yaw = glm::radians(-45.0f);
 	constexpr float pitch = glm::radians(-35.264f);
@@ -24,7 +29,7 @@ void Camera::initPositionAndAngle() {
 }
 
 
-void Camera::updateTransformationMatrix() {
+void Camera3D::updateTransformationMatrix() {
 
 	float aspect = (float)width / (float)height;
 
@@ -36,16 +41,7 @@ void Camera::updateTransformationMatrix() {
 
 }
 
-void Camera::update() {
-
-	updateTransformationMatrix();
-
-	if (snapping) {
-		snapCamera();
-	}
-}
-
-void Camera::calculateRotation(const glm::vec2& prevMouse, const glm::vec2& currMouse) {
+void Camera3D::calculateRotation(const glm::vec2& prevMouse, const glm::vec2& currMouse) {
 
 	glm::vec3 va = mapToSphere(prevMouse);
 	glm::vec3 vb = mapToSphere(currMouse);
@@ -58,20 +54,20 @@ void Camera::calculateRotation(const glm::vec2& prevMouse, const glm::vec2& curr
 	rotation = glm::normalize(rotation * dq);
 }
 
-void Camera::calculateZoom(double yoffset) {
+void Camera3D::calculateZoom(double yoffset) {
 	// use exponential zoom to feel smoother
 	zoom = std::exp((float)(-yoffset * 0.1f));
 	distance *= zoom;
 	distance = glm::clamp(distance, 0.1f, 50.0f);
 }
 
-void Camera::calculatePan(float dx, float dy) {
+void Camera3D::calculatePan(float dx, float dy) {
 	float panSpeed = 0.001f * distance;
 	target += -dx * getRight() * panSpeed;
 	target += -dy * getUp()	   * panSpeed;
 }
 
-glm::vec3 Camera::mapToSphere(const glm::vec2& mouse) {
+glm::vec3 Camera3D::mapToSphere(const glm::vec2& mouse) {
 	glm::vec2 mousePos(mouse.x - rectPos.x, mouse.y - rectPos.y); // relative mouse position to the top left corner of the window
 	glm::vec2 screenPos = getNormalizedDeviceCoords(mousePos.x, mousePos.y, width, height);
 	float length2 = screenPos.x * screenPos.x + screenPos.y * screenPos.y;
@@ -84,7 +80,7 @@ glm::vec3 Camera::mapToSphere(const glm::vec2& mouse) {
 	}
 }
 
-void Camera::updateTargetRotation(glm::vec3& axis) {
+void Camera3D::updateTargetRotation(glm::vec3& axis) {
 	snapping = true;
 
 	// if already looking at the axis, then dont do anything
@@ -113,7 +109,10 @@ void Camera::updateTargetRotation(glm::vec3& axis) {
 	targetRotation = glm::normalize(glm::quat_cast(R));
 }
 
-void Camera::snapCamera() {
+void Camera3D::snapCamera() {
+
+	if (!snapping) return;
+
 	if (glm::dot(rotation, targetRotation) < 0.0f) {	// makes sure it takes the shortest path
 		targetRotation = -targetRotation;
 	}
@@ -133,29 +132,109 @@ void Camera::snapCamera() {
 	}
 }
 
-void Camera::home() {
+void Camera3D::home() {
 
 }
 
-glm::vec3 Camera::getFront() {
+glm::vec3 Camera3D::getFront() {
 	return glm::normalize(target - position);
 }
 
-glm::vec3 Camera::getPosition() {
+glm::vec3 Camera3D::getPosition() {
 	glm::vec3 offset = rotation * glm::vec3(0.0f, 0.0f, distance);
 	return target + offset;
 }
 
-glm::vec3 Camera::getRight() {
+glm::vec3 Camera3D::getRight() {
 	return rotation * glm::vec3(1.0f, 0.0f, 0.0f);
 }
 
-glm::vec3 Camera::getUp() {
+glm::vec3 Camera3D::getUp() {
 	return rotation * glm::vec3(0.0f, 1.0f, 0.0f);
 }
 
-void Camera::setDimensions(int w, int h, ImVec2 pos) {
+void Camera3D::setDimensions(int w, int h, ImVec2 pos) {
 	width = w;
 	height = h;
 	rectPos = pos;
+}
+
+// ======================================================================
+// -----------------------CAMERA 2D--------------------------------------
+// ======================================================================
+
+Camera2D::Camera2D() {
+	initPosition();
+}
+
+void Camera2D::initPosition() {
+	center = Vec2{ 0.0, 0.0 };
+	unitsPerPixel = 0.001;
+}
+
+void Camera2D::setDimensions(int w, int h, ImVec2 pos) {
+	width = std::max(w, 1);
+	height = std::max(h, 1);
+	rectPos = pos;
+}
+
+Vec2 Camera2D::screenToWorld(const ImVec2& screen) const {
+	ImVec2 centerScreen{
+		rectPos.x + 0.5f * static_cast<float>(width),
+		rectPos.y + 0.5f * static_cast<float>(height)
+	};
+
+	return Vec2{
+		center.z + (screen.x - centerScreen.x) * unitsPerPixel,
+		center.r + (centerScreen.y - screen.y) * unitsPerPixel
+	};
+}
+
+ImVec2 Camera2D::worldToScreen(Vec2 world) const {
+	ImVec2 centerScreen{
+		rectPos.x + 0.5f * static_cast<float>(width),
+		rectPos.y + 0.5f * static_cast<float>(height)
+	};
+
+	return ImVec2{
+		centerScreen.x + static_cast<float>((world.z - center.z) / unitsPerPixel),
+		centerScreen.y - static_cast<float>((world.r - center.r) / unitsPerPixel)
+	};
+}
+
+float Camera2D::worldLengthToScreen(double length) const {
+	if (unitsPerPixel <= 1e-30) {
+		return 0.0f;
+	}
+
+	return static_cast<float>(length / unitsPerPixel);
+}
+
+void Camera2D::calculatePan(float dx, float dy) {
+	center.z -= dx * unitsPerPixel;
+	center.r += dy * unitsPerPixel;
+}
+
+void Camera2D::calculateZoom(double yoffset, const ImVec2& focusScreen) {
+	if (yoffset == 0.0) {
+		return;
+	}
+
+	Vec2 beforeZoom = screenToWorld(focusScreen);
+
+	double zoomFactor = std::exp(-yoffset * 0.1);
+	unitsPerPixel = std::clamp(
+		unitsPerPixel * zoomFactor,
+		minUnitsPerPixel,
+		maxUnitsPerPixel
+	);
+
+	Vec2 afterZoom = screenToWorld(focusScreen);
+
+	center.z += beforeZoom.z - afterZoom.z;
+	center.r += beforeZoom.r - afterZoom.r;
+}
+
+void Camera2D::home() {
+	initPosition();
 }

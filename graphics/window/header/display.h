@@ -1,7 +1,7 @@
 #pragma once
 #include <glad/glad.h>
 
-class Camera;
+class Camera3D;
 struct GLFWwindow;
 
 // resize window callback function

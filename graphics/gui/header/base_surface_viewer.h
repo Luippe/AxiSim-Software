@@ -6,7 +6,8 @@
 #include <algorithm>
 
 #include "graphics_struct.h"
-#include "boundary_struct.h"
+#include "core_struct.h"
+
 #include "shader.h"
 #include "printer.h"
 
@@ -370,6 +371,7 @@ protected:
 	std::vector<SurfacePoint> points;
 
 	// rectangle selection
+	bool toggleDrawLine = false;
 	bool toggleDrawCircle = false;
 	bool toggleDrawRect = false;
 	bool toggleRemoveCell = false;
@@ -425,13 +427,20 @@ protected:
 	Rect makePaddedRect(
 		const ImVec2& pos,
 		const ImVec2& size,
-		float left,
-		float right,
-		float top,
-		float bottom
+		float left = 0.0,
+		float right = 0.0,
+		float top = 0.0,
+		float bottom = 0.0
 	);
 
+	Rect fitRectToAspect(
+		const Rect& rect,
+		double aspect
+	) const;
+
 	std::optional<ImVec2> mouseToGridPoint(int nrBase, int nzBase);
+
+	void addToolbarSeparator(float height = 24.0f);
 
 	// update initLeftMouse when the user clicks. relative to the last drawn ImGui item
 	void updateInitialLeftClick(ImGuiIO& io);
@@ -449,7 +458,7 @@ protected:
 	void highlightCellsInRect(std::unordered_set<int>& indices, ImVec2 cellA, ImVec2 cellB, int nzBase, int nrBase);
 
 	// get physical z and r coordinates at mouse position
-	Vec2 getMousePhysicalCoord(const ImVec2& mousePos, double R, double L);
+	Vec2 screenToPhysical(const ImVec2& mousePos, double R, double L);
 
 	// get physical z and r coordinates at mouse position, snap to closest vertex (i think)
 	Vec2 getMousePhysicalClosestCoord(ImVec2& mousePos, const std::vector<double>& rFace, const std::vector<double>& zFace);
@@ -459,6 +468,8 @@ protected:
 	ImVec2 uvToScreen(const ImVec2& uv);
 
 	ImVec2 physicalToScreen(Vec2 p,	double L, double R) const;
+
+	float physicalLengthToScreenLength(double length, double L, double R) const;
 
 	ImVec2 gridFaceToScreen(int jFace, int iFace, const std::vector<double>& zFace, const std::vector<double>& rFace);
 
@@ -499,7 +510,9 @@ protected:
 	void drawCanvas(
 		ImDrawList* drawList,
 		const Rect& rect,
-		const float rounding
+		const float rounding,
+		ImColor fillColor = IM_COL32(19, 27, 37, 255),
+		ImColor outlineColor = IM_COL32(76, 105, 140, 200)
 	);
 
 	void drawHorizontalSeparator(

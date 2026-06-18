@@ -3,7 +3,7 @@
 #include <string>
 #include <unordered_map>
 
-class Camera;
+class Camera3D;
 
 // shader class to make it easier to manage shaders
 class Shader {
