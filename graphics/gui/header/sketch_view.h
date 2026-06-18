@@ -194,6 +194,7 @@ private:
 	bool isDrawingEntity = false;
 	bool isSelecting = false;
 	std::vector<TrimPreviewResult> selectedTrimSegments;
+	SketchNamedSelection pendingNamedSelection;
 
 	void drawToolBar();
 	void clearToolToggles();
@@ -204,7 +205,10 @@ private:
 	void handleDimensionTool();
 	void handleTrimTool();
 	void handleErase();
+	void handleOpenPopup();
 
+	void drawPopup(ImDrawList* drawList);
+	void drawNamedSelectionPopup();
 	void drawAxes(ImDrawList* drawList);
 	void drawSketchEntities(ImDrawList* drawList);
 	void drawTrimPreview(ImDrawList* drawList);
@@ -238,10 +242,13 @@ private:
 	std::vector<TrimPreviewResult> findTrimPreviewsInRegion(SketchBound region);
 	std::string getDimensionLabel(const SketchDimension& dimension) const;
 	void openDimensionEditor(int dimensionID);
+	void prepareNamedSelectionPopup();
+	bool savePendingNamedSelection();
 	bool trimLineAtMouse(ImVec2 mouse);
 	bool trimRectangleAtMouse(ImVec2 mouse);
 	bool trimCircleAtMouse(ImVec2 mouse, int circleID);
 	bool trimArcAtMouse(ImVec2 mouse, int arcID);
 	bool trimSketchAtMouse(ImVec2 mouse);
+	bool eraseEntityAtMouse(ImVec2 mouse);
 	bool deleteSelectedTrimSegments();
 };

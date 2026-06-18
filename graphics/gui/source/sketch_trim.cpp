@@ -1096,7 +1096,7 @@ std::optional<TrimPreviewResult> SketchView::findTrimPreview(ImVec2 mouse) {
 			return std::nullopt;
 		}
 
-		double span = arc->endAngle - arc->startAngle;
+		double span = positiveArcSpan(*arc);
 		return arcPreview(
 			arc->center,
 			arc->radius,
@@ -1223,7 +1223,7 @@ std::vector<TrimPreviewResult> SketchView::findTrimPreviewsInRegion(
 	for (const SketchArc& arc : geometry.sketch.arcs) {
 		std::vector<double> splitParameters =
 			collectArcSplitParameters(geometry.sketch, arc, arc.id);
-		double span = arc.endAngle - arc.startAngle;
+		double span = positiveArcSpan(arc);
 
 		for (int i = 0; i < (int)(splitParameters.size()) - 1; i++) {
 			double startAngle = arc.startAngle + splitParameters[i] * span;
@@ -1651,7 +1651,7 @@ bool SketchView::trimArcAtMouse(ImVec2 mouse, int arcID) {
 
 	eraseByID(geometry.sketch.arcs, arcID);
 
-	double span = arc.endAngle - arc.startAngle;
+	double span = positiveArcSpan(arc);
 	for (int i = 0; i < (int)(splitParameters.size()) - 1; i++) {
 		if (i == *interval) {
 			continue;
@@ -1684,6 +1684,50 @@ bool SketchView::trimSketchAtMouse(ImVec2 mouse) {
 		return trimCircleAtMouse(mouse, target->entityID);
 	case SketchEntityType::Arc:
 		return trimArcAtMouse(mouse, target->entityID);
+	default:
+		return false;
+	}
+}
+
+bool SketchView::eraseEntityAtMouse(ImVec2 mouse) {
+	std::optional<SketchTrimTarget> target = findTrimTarget(mouse);
+	if (!target) {
+		return false;
+	}
+
+	switch (target->type) {
+	case SketchEntityType::Line:
+		eraseByID(geometry.sketch.lines, target->entityID);
+		eraseDimensionsForEntity(
+			geometry.sketch,
+			SketchDimensionType::LineLength,
+			target->entityID
+		);
+		return true;
+	case SketchEntityType::Rectangle:
+		eraseByID(geometry.sketch.rectangles, target->entityID);
+		eraseDimensionsForEntity(
+			geometry.sketch,
+			SketchDimensionType::RectangleWidth,
+			target->entityID
+		);
+		eraseDimensionsForEntity(
+			geometry.sketch,
+			SketchDimensionType::RectangleHeight,
+			target->entityID
+		);
+		return true;
+	case SketchEntityType::Circle:
+		eraseByID(geometry.sketch.circles, target->entityID);
+		eraseDimensionsForEntity(
+			geometry.sketch,
+			SketchDimensionType::CircleRadius,
+			target->entityID
+		);
+		return true;
+	case SketchEntityType::Arc:
+		eraseByID(geometry.sketch.arcs, target->entityID);
+		return true;
 	default:
 		return false;
 	}

@@ -513,6 +513,24 @@ void SketchView::handleTrimTool() {
 	}
 }
 
+void SketchView::handleErase() {
+	if (geometry.sketch.activeTool != SketchTool::Erase) {
+		return;
+	}
+
+	if (!ImGui::IsItemHovered()) {
+		return;
+	}
+
+	// Erase on the initial press and continuously while dragging, so sweeping
+	// the cursor across the sketch removes every entity it passes over, like a
+	// real eraser.
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
+		ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+		eraseEntityAtMouse(currentMousePos);
+	}
+}
+
 void SketchView::handleMouseAndKey() {
 	ImGuiIO& io = ImGui::GetIO();
 	bool usesDragDrawing =
@@ -557,6 +575,10 @@ void SketchView::handleMouseAndKey() {
 	handleDimensionTool();
 
 	handleTrimTool();
+
+	handleErase();
+
+	handleOpenPopup();
 
 	if (!isDrawingEntity) {
 		return;
@@ -686,6 +708,20 @@ void SketchView::drawSketchEntities(ImDrawList* drawList) {
 		findTrimPreview(currentMousePos) :
 		std::nullopt;
 
+	// In erase mode the whole entity under the cursor is highlighted, so the
+	// user can see what a click (or drag) will remove.
+	std::optional<SketchTrimTarget> eraseHover =
+		geometry.sketch.activeTool == SketchTool::Erase &&
+		ImGui::IsItemHovered() ?
+		findTrimTarget(currentMousePos) :
+		std::nullopt;
+
+	auto isEraseHovered = [&](SketchEntityType type, int entityID) {
+		return eraseHover &&
+			eraseHover->type == type &&
+			eraseHover->entityID == entityID;
+	};
+
 	const ImU32 sketchLineColor = IM_COL32(65, 150, 255, 255);
 	const ImU32 hoverLineColor = IM_COL32(255, 225, 80, 255);
 	const float sketchLineThickness = 2.0f;
@@ -749,40 +785,55 @@ void SketchView::drawSketchEntities(ImDrawList* drawList) {
 
 		const SketchPoint& p0 = geometry.sketch.points[line.p0];
 		const SketchPoint& p1 = geometry.sketch.points[line.p1];
+		bool highlight =
+			line.selected || isEraseHovered(SketchEntityType::Line, line.id);
 
 		drawList->AddLine(
 			camera.worldToScreen(p0.pos),
 			camera.worldToScreen(p1.pos),
-			line.selected ? hoverLineColor : sketchLineColor,
-			line.selected ? hoverLineThickness : sketchLineThickness
+			highlight ? hoverLineColor : sketchLineColor,
+			highlight ? hoverLineThickness : sketchLineThickness
 		);
 	}
 
 	for (const SketchRectangle& rect : geometry.sketch.rectangles) {
+		bool highlight =
+			rect.selected || isEraseHovered(SketchEntityType::Rectangle, rect.id);
+
 		drawList->AddRect(
 			camera.worldToScreen(rect.min),
 			camera.worldToScreen(rect.max),
-			rect.selected ? hoverLineColor : sketchLineColor,
+			highlight ? hoverLineColor : sketchLineColor,
 			0.0f,
 			0,
-			rect.selected ? hoverLineThickness : sketchLineThickness
+			highlight ? hoverLineThickness : sketchLineThickness
 		);
 	}
 
 	for (const SketchCircle& circle : geometry.sketch.circles) {
+		bool highlight =
+			circle.selected || isEraseHovered(SketchEntityType::Circle, circle.id);
+
 		drawList->AddCircle(
 			camera.worldToScreen(circle.center),
 			camera.worldLengthToScreen(circle.radius),
-			circle.selected ? hoverLineColor : sketchLineColor,
+			highlight ? hoverLineColor : sketchLineColor,
 			80,
-			circle.selected ? hoverLineThickness : sketchLineThickness
+			highlight ? hoverLineThickness : sketchLineThickness
 		);
 	}
 
 	for (const SketchArc& arc : geometry.sketch.arcs) {
-		double span = arc.endAngle - arc.startAngle;
+		double endAngle = arc.endAngle;
+		while (endAngle < arc.startAngle) {
+			endAngle += twoPi;
+		}
+
+		double span = endAngle - arc.startAngle;
 		int segments = std::max(8, (int)(std::abs(span) / twoPi * 80.0));
 		Vec2 prev = pointOnCircle(arc.center, arc.radius, arc.startAngle);
+		bool highlight =
+			arc.selected || isEraseHovered(SketchEntityType::Arc, arc.id);
 
 		for (int i = 1; i <= segments; i++) {
 			double t = (double)(i) / (double)(segments);
@@ -795,8 +846,8 @@ void SketchView::drawSketchEntities(ImDrawList* drawList) {
 			drawList->AddLine(
 				camera.worldToScreen(prev),
 				camera.worldToScreen(next),
-				arc.selected ? hoverLineColor : sketchLineColor,
-				arc.selected ? hoverLineThickness : sketchLineThickness
+				highlight ? hoverLineColor : sketchLineColor,
+				highlight ? hoverLineThickness : sketchLineThickness
 			);
 
 			prev = next;
@@ -925,6 +976,160 @@ void SketchView::drawDimensionEditor() {
 	}
 }
 
+void SketchView::prepareNamedSelectionPopup() {
+	pendingNamedSelection = {};
+	pendingNamedSelection.id = geometry.sketch.nextNamedSelectionID;
+	pendingNamedSelection.name =
+		"Selection " + std::to_string(pendingNamedSelection.id + 1);
+
+	std::snprintf(
+		pendingNamedSelection.nameBuffer,
+		sizeof(pendingNamedSelection.nameBuffer),
+		"%s",
+		pendingNamedSelection.name.c_str()
+	);
+
+	for (const TrimPreviewResult& segment : selectedTrimSegments) {
+		if (segment.entityID < 0) {
+			continue;
+		}
+
+		SketchNamedSegment namedSegment{
+			segment.sourceType,
+			segment.entityID,
+			segment.edgeIndex,
+			segment.startT,
+			segment.endT
+		};
+
+		bool alreadyAdded = std::any_of(
+			pendingNamedSelection.segments.begin(),
+			pendingNamedSelection.segments.end(),
+			[&](const SketchNamedSegment& existing) {
+				return existing == namedSegment;
+			}
+		);
+
+		if (!alreadyAdded) {
+			pendingNamedSelection.segments.push_back(namedSegment);
+		}
+	}
+}
+
+bool SketchView::savePendingNamedSelection() {
+	std::string newName = pendingNamedSelection.nameBuffer;
+	bool emptyName = newName.find_first_not_of(" \t\r\n") == std::string::npos;
+	bool duplicateName = std::any_of(
+		geometry.sketch.namedSelections.begin(),
+		geometry.sketch.namedSelections.end(),
+		[&](const SketchNamedSelection& selection) {
+			return selection.name == newName;
+		}
+	);
+
+	if (emptyName || duplicateName || pendingNamedSelection.segments.empty()) {
+		return false;
+	}
+
+	pendingNamedSelection.name = newName;
+	geometry.sketch.namedSelections.push_back(pendingNamedSelection);
+	geometry.sketch.nextNamedSelectionID = std::max(
+		geometry.sketch.nextNamedSelectionID,
+		pendingNamedSelection.id + 1
+	);
+
+	return true;
+}
+
+void SketchView::drawNamedSelectionPopup() {
+	if (!ImGui::BeginPopupModal(
+		"Name Selected Segments",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove
+	)) {
+		return;
+	}
+
+	bool justOpened = ImGui::IsWindowAppearing();
+	if (justOpened) {
+		ImGui::SetKeyboardFocusHere();
+	}
+
+	ImGui::SetNextItemWidth(250.0f);
+	bool enterPressed = ImGui::InputText(
+		"##NameInput",
+		pendingNamedSelection.nameBuffer,
+		sizeof(pendingNamedSelection.nameBuffer),
+		ImGuiInputTextFlags_EnterReturnsTrue |
+		ImGuiInputTextFlags_AutoSelectAll
+	);
+
+	std::string newName = pendingNamedSelection.nameBuffer;
+	bool emptyName = newName.find_first_not_of(" \t\r\n") == std::string::npos;
+	bool duplicateName = std::any_of(
+		geometry.sketch.namedSelections.begin(),
+		geometry.sketch.namedSelections.end(),
+		[&](const SketchNamedSelection& selection) {
+			return selection.name == newName;
+		}
+	);
+	bool noSegments = pendingNamedSelection.segments.empty();
+	bool invalidName = emptyName || duplicateName || noSegments;
+
+	ImGui::Spacing();
+	ImGui::Text("%d segment%s", 
+		(int)pendingNamedSelection.segments.size(),
+		pendingNamedSelection.segments.size() == 1 ? "" : "s"
+	);
+
+	if (emptyName) {
+		ImGui::TextColored(
+			ImVec4(1.0f, 0.2f, 0.2f, 1.0f),
+			"Name cannot be empty"
+		);
+	}
+	else if (duplicateName) {
+		ImGui::TextColored(
+			ImVec4(1.0f, 0.2f, 0.2f, 1.0f),
+			"Name already exists"
+		);
+	}
+	else if (noSegments) {
+		ImGui::TextColored(
+			ImVec4(1.0f, 0.2f, 0.2f, 1.0f),
+			"No segments selected"
+		);
+	}
+
+	ImGui::Spacing();
+
+	if (invalidName) {
+		ImGui::BeginDisabled();
+	}
+
+	bool savePressed = ImGui::Button("Save");
+
+	if (invalidName) {
+		ImGui::EndDisabled();
+	}
+
+	ImGui::SameLine();
+	bool cancelPressed = ImGui::Button("Cancel");
+	bool escapePressed = ImGui::IsKeyPressed(ImGuiKey_Escape);
+
+	if ((savePressed || enterPressed) && !invalidName) {
+		if (savePendingNamedSelection()) {
+			ImGui::CloseCurrentPopup();
+		}
+	}
+
+	if (cancelPressed || escapePressed) {
+		ImGui::CloseCurrentPopup();
+	}
+
+	ImGui::EndPopup();
+}
+
 void SketchView::drawTemporarySketch(ImDrawList* drawList) {
 
 	SketchTool tool = geometry.sketch.activeTool;
@@ -950,6 +1155,78 @@ void SketchView::drawTemporarySketch(ImDrawList* drawList) {
 		drawList->AddRectFilled(rectMin, rectMax, previewFillColor);
 		drawList->AddRect(rectMin, rectMax, previewLineColor, 0.0f, 0, 2.0f);
 	}
+}
+
+void SketchView::handleOpenPopup() {
+
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+
+		openPopUp = true;
+
+	}
+
+}
+
+void SketchView::drawPopup(ImDrawList* drawList) {
+	if (openPopUp) {
+		ImGui::OpenPopup("Sketch Popup");
+		openPopUp = false;
+	}
+
+
+	bool openNamingPopup = false;
+
+	if (ImGui::BeginPopup("Sketch Popup")) {
+
+		//addMenuItem
+		addMenuItemCopyToClipboard("Copy to clipboard");
+
+		if (ImGui::MenuItem("Reset View")) {
+			camera.home();
+		}
+
+		bool hasSelectedSegments = !selectedTrimSegments.empty();
+		if (!hasSelectedSegments) {
+			ImGui::BeginDisabled();
+		}
+
+		if (ImGui::MenuItem("Name Segments")) {
+			prepareNamedSelectionPopup();
+			openNamingPopup = true;
+		}
+
+		if (!hasSelectedSegments) {
+			ImGui::EndDisabled();
+		}
+
+		if (ImGui::BeginMenu("Named Selections")) {
+			if (geometry.sketch.namedSelections.empty()) {
+				ImGui::TextDisabled("None");
+			}
+
+			for (const SketchNamedSelection& selection :
+				geometry.sketch.namedSelections) {
+				ImGui::Text(
+					"%s (%d)",
+					selection.name.c_str(),
+					(int)selection.segments.size()
+				);
+			}
+
+			ImGui::EndMenu();
+		}
+
+		ImGui::EndPopup();
+	}
+
+
+	// open naming popup
+	if (openNamingPopup) {
+		ImGui::OpenPopup("Name Selected Segments");
+	}
+
+	drawNamedSelectionPopup();
+
 }
 
 void SketchView::drawPendingSketchEntity(ImDrawList* drawList) {
@@ -1080,7 +1357,7 @@ void SketchView::render() {
 	// handle mouse and keyboard presses
 	handleMouseAndKey();
 
-
+	drawPopup(drawList);
 	drawAxes(drawList);
 	drawSketchEntities(drawList);
 	drawTrimPreview(drawList);

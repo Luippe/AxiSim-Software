@@ -9,6 +9,7 @@
 class Project;
 class Solution;
 class SceneView;
+class Geometry;
 class Mesh;
 class Solver;
 class Results;
@@ -34,6 +35,14 @@ void saveLaunchProject(Project& project);
 // load project from explorer
 void loadFromExplorerProject(Project& project);
 
+// ======================================================================
+// -----------------------GEOMETRY---------------------------------------
+// ======================================================================
+void saveFromExplorerGeometry(Geometry& geometry);
+
+void saveFromPathGeometry(std::ofstream& out, Geometry& geometry);
+
+void loadFromPathGeometry(std::ifstream& in, Geometry& geometry);
 
 // ======================================================================
 // -----------------------MESH-------------------------------------------

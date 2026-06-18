@@ -78,12 +78,132 @@ void readBoundaryGroups(std::ifstream& in, std::vector<BoundarySegmentGroup>& gr
 
 }
 
+void writeString(std::ofstream& out, const std::string& value) {
+	size_t size = value.size();
+	out.write((const char*)(&size), sizeof(size));
+	out.write(value.data(), size);
+}
+
+bool readString(std::ifstream& in, std::string& value) {
+	size_t size = 0;
+	if (!in.read((char*)(&size), sizeof(size))) {
+		return false;
+	}
+
+	value.resize(size);
+	if (size == 0) {
+		return true;
+	}
+
+	return (bool)in.read(value.data(), size);
+}
+
+void writeSketchNamedSegment(
+	std::ofstream& out,
+	const SketchNamedSegment& segment
+) {
+	writeAll(
+		out,
+		segment.sourceType,
+		segment.entityID,
+		segment.edgeIndex,
+		segment.startT,
+		segment.endT
+	);
+}
+
+bool readSketchNamedSegment(
+	std::ifstream& in,
+	SketchNamedSegment& segment
+) {
+	return readAll(
+		in,
+		segment.sourceType,
+		segment.entityID,
+		segment.edgeIndex,
+		segment.startT,
+		segment.endT
+	);
+}
+
+void writeSketchNamedSelection(
+	std::ofstream& out,
+	const SketchNamedSelection& selection
+) {
+	writeAll(out, selection.id);
+	writeString(out, selection.name);
+	writeAll(out, selection.nameBuffer);
+
+	size_t size = selection.segments.size();
+	out.write((const char*)(&size), sizeof(size));
+	for (const SketchNamedSegment& segment : selection.segments) {
+		writeSketchNamedSegment(out, segment);
+	}
+}
+
+bool readSketchNamedSelection(
+	std::ifstream& in,
+	SketchNamedSelection& selection
+) {
+	if (!readAll(in, selection.id) ||
+		!readString(in, selection.name) ||
+		!readAll(in, selection.nameBuffer)) {
+		return false;
+	}
+
+	size_t size = 0;
+	if (!in.read((char*)(&size), sizeof(size))) {
+		return false;
+	}
+
+	selection.segments.resize(size);
+	for (SketchNamedSegment& segment : selection.segments) {
+		if (!readSketchNamedSegment(in, segment)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void writeSketchNamedSelections(
+	std::ofstream& out,
+	const std::vector<SketchNamedSelection>& selections
+) {
+	size_t size = selections.size();
+	out.write((const char*)(&size), sizeof(size));
+
+	for (const SketchNamedSelection& selection : selections) {
+		writeSketchNamedSelection(out, selection);
+	}
+}
+
+bool readSketchNamedSelections(
+	std::ifstream& in,
+	std::vector<SketchNamedSelection>& selections
+) {
+	size_t size = 0;
+	if (!in.read((char*)(&size), sizeof(size))) {
+		return false;
+	}
+
+	selections.resize(size);
+	for (SketchNamedSelection& selection : selections) {
+		if (!readSketchNamedSelection(in, selection)) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 // ====================================================
 // -------------------PROJECT--------------------------
 // ====================================================
 void saveFromPathProject(const char* path, Project& project) {
 
 	std::ofstream out(path, std::ios::binary);
+	saveFromPathGeometry(out, project.geometry);
 	saveFromPathMesh(out, project.mesh);
 	saveFromPathSolver(out, project.solver);
 	saveFromPathResults(out, project.results);
@@ -125,6 +245,7 @@ void loadFromExplorerProject(Project& project) {
 	if (!path) return;
 
 	std::ifstream in(path, std::ios::binary);
+	loadFromPathGeometry(in, project.geometry);
 	loadFromPathMesh(in, project.mesh);
 	loadFromPathSolver(in, project.solver);
 
@@ -133,7 +254,77 @@ void loadFromExplorerProject(Project& project) {
 // ====================================================
 // -------------------GEOMETRY-------------------------
 // ====================================================
+void saveFromExplorerGeometry(Geometry& geometry) {
+	const char* path = tinyfd_saveFileDialog(
+		"Save Geometry",          // dialog title
+		"geometry.bin",           // default filename
+		0,                    // number of filters
+		nullptr,              // filter patterns
+		nullptr               // filter description
+	);
 
+	if (!path) return;
+
+	std::ofstream out(path, std::ios::binary);
+	saveFromPathGeometry(out, geometry);
+}
+
+void saveFromPathGeometry(std::ofstream& out, Geometry& geometry) {
+
+	const SketchModel& sketch = geometry.sketch;
+
+	writeAll(
+		out,
+		sketch.points,
+		sketch.lines,
+		sketch.circles,
+		sketch.arcs,
+		sketch.rectangles,
+		sketch.dimensions
+	);
+
+	writeSketchNamedSelections(out, sketch.namedSelections);
+
+	writeAll(
+		out,
+		sketch.nextPointID,
+		sketch.nextLineID,
+		sketch.nextCircleID,
+		sketch.nextArcID,
+		sketch.nextRectangleID,
+		sketch.nextDimensionID,
+		sketch.nextNamedSelectionID
+	);
+}
+
+void loadFromPathGeometry(std::ifstream& in, Geometry& geometry) {
+
+	SketchModel& sketch = geometry.sketch;
+
+	// load geometry
+	readAll(
+		in,
+		sketch.points,
+		sketch.lines,
+		sketch.circles,
+		sketch.arcs,
+		sketch.rectangles,
+		sketch.dimensions
+	);
+
+	readSketchNamedSelections(in, sketch.namedSelections);
+
+	readAll(
+		in,
+		sketch.nextPointID,
+		sketch.nextLineID,
+		sketch.nextCircleID,
+		sketch.nextArcID,
+		sketch.nextRectangleID,
+		sketch.nextDimensionID,
+		sketch.nextNamedSelectionID
+	);
+}
 
 
 // ====================================================
