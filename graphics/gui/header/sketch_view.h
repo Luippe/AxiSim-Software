@@ -193,7 +193,10 @@ private:
 	Camera2D camera;
 	bool isDrawingEntity = false;
 	bool isSelecting = false;
+	bool isMovingSelection = false;
+	Vec2 moveStartWorld{};
 	std::vector<TrimPreviewResult> selectedTrimSegments;
+	std::vector<TrimPreviewResult> movingTrimSegments;
 	SketchNamedSelection pendingNamedSelection;
 
 	void drawToolBar();
@@ -240,6 +243,7 @@ private:
 	std::optional<SketchTrimTarget> findTrimTarget(ImVec2 mouse);
 	std::optional<TrimPreviewResult> findTrimPreview(ImVec2 mouse);
 	std::vector<TrimPreviewResult> findTrimPreviewsInRegion(SketchBound region);
+	bool hoveredSelectedTrimSegment(ImVec2 mouse);
 	std::string getDimensionLabel(const SketchDimension& dimension) const;
 	void openDimensionEditor(int dimensionID);
 	void prepareNamedSelectionPopup();
@@ -251,4 +255,5 @@ private:
 	bool trimSketchAtMouse(ImVec2 mouse);
 	bool eraseEntityAtMouse(ImVec2 mouse);
 	bool deleteSelectedTrimSegments();
+	bool moveSelectedTrimSegments(Vec2 delta);
 };

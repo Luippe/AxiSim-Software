@@ -97,6 +97,7 @@ void initAssetBuffers(AppAssets& assets) {
 	assets.drawLineIcon.createBuffer("assets/icons/draw-line.png");
 	assets.selectIcon.createBuffer("assets/icons/select.png");
 	assets.trimIcon.createBuffer("assets/icons/trim.png");
+	assets.crossArrowIcon.createBuffer("assets/icons/cross-arrow.png");
 
 }
 

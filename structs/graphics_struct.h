@@ -20,6 +20,7 @@ struct AppAssets {
 	TextureBuffer drawLineIcon;
 	TextureBuffer selectIcon;
 	TextureBuffer trimIcon;
+	TextureBuffer crossArrowIcon;
 };
 
 struct AppFonts {

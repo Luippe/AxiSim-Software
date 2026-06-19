@@ -585,6 +585,10 @@ namespace {
 		}
 	}
 
+	Vec2 translatePoint(Vec2 point, Vec2 delta) {
+		return Vec2{ point.z + delta.z, point.r + delta.r };
+	}
+
 	TrimPreviewResult linePreview(
 		Vec2 a,
 		Vec2 b,
@@ -840,6 +844,34 @@ namespace {
 	) {
 		return a.sourceType == b.sourceType &&
 			a.entityID == b.entityID;
+	}
+
+	bool sameTrimSegment(
+		const TrimPreviewResult& a,
+		const TrimPreviewResult& b
+	) {
+		return sameSource(a, b) &&
+			a.edgeIndex == b.edgeIndex &&
+			std::abs(a.startT - b.startT) <= 1e-7 &&
+			std::abs(a.endT - b.endT) <= 1e-7;
+	}
+
+	bool trimSourceExists(
+		const SketchModel& sketch,
+		const TrimPreviewResult& segment
+	) {
+		switch (segment.sourceType) {
+		case SketchEntityType::Line:
+			return sketch.findLine(segment.entityID) != nullptr;
+		case SketchEntityType::Rectangle:
+			return sketch.findRectangle(segment.entityID) != nullptr;
+		case SketchEntityType::Circle:
+			return sketch.findCircle(segment.entityID) != nullptr;
+		case SketchEntityType::Arc:
+			return sketch.findArc(segment.entityID) != nullptr;
+		default:
+			return false;
+		}
 	}
 
 	double positiveArcSpan(const SketchArc& arc) {
@@ -1459,6 +1491,127 @@ bool SketchView::deleteSelectedTrimSegments() {
 	}
 
 	return changed;
+}
+
+bool SketchView::moveSelectedTrimSegments(Vec2 delta) {
+	if (selectedTrimSegments.empty()) {
+		return false;
+	}
+
+	if (std::abs(delta.z) <= 1e-12 && std::abs(delta.r) <= 1e-12) {
+		return false;
+	}
+
+	std::vector<TrimPreviewResult> originalSelection = selectedTrimSegments;
+	std::vector<TrimPreviewResult> selectedSegments;
+	for (const TrimPreviewResult& segment : selectedTrimSegments) {
+		if (!trimSourceExists(geometry.sketch, segment)) {
+			continue;
+		}
+
+		bool duplicate = std::any_of(
+			selectedSegments.begin(),
+			selectedSegments.end(),
+			[&](const TrimPreviewResult& existing) {
+				return sameTrimSegment(existing, segment);
+			}
+		);
+
+		if (!duplicate) {
+			selectedSegments.push_back(segment);
+		}
+	}
+
+	if (selectedSegments.empty()) {
+		return false;
+	}
+
+	selectedTrimSegments = selectedSegments;
+	if (!deleteSelectedTrimSegments()) {
+		selectedTrimSegments = originalSelection;
+		return false;
+	}
+
+	std::vector<TrimPreviewResult> movedSegments;
+	for (const TrimPreviewResult& segment : selectedSegments) {
+		switch (segment.geometry) {
+		case TrimPreviewGeometry::Line: {
+			Vec2 a = translatePoint(segment.a, delta);
+			Vec2 b = translatePoint(segment.b, delta);
+			if (distance(a, b) <= 1e-9) {
+				break;
+			}
+
+			int lineID = geometry.sketch.addLine(a, b);
+			movedSegments.push_back(
+				linePreview(
+					a,
+					b,
+					SketchEntityType::Line,
+					lineID,
+					-1,
+					0.0,
+					1.0
+				)
+			);
+			break;
+		}
+		case TrimPreviewGeometry::Circle: {
+			if (segment.radius <= 1e-9) {
+				break;
+			}
+
+			Vec2 center = translatePoint(segment.center, delta);
+			int circleID = geometry.sketch.addCircle(center, segment.radius);
+			movedSegments.push_back(
+				circlePreview(center, segment.radius, circleID)
+			);
+			break;
+		}
+		case TrimPreviewGeometry::Arc: {
+			if (segment.radius <= 1e-9) {
+				break;
+			}
+
+			double startAngle = normalizeAngle(segment.startAngle);
+			double endAngle = segment.endAngle;
+			while (endAngle < startAngle) {
+				endAngle += twoPi;
+			}
+
+			if ((endAngle - startAngle) * segment.radius <= 1e-9) {
+				break;
+			}
+
+			Vec2 center = translatePoint(segment.center, delta);
+			int arcID = geometry.sketch.addArc(
+				center,
+				segment.radius,
+				startAngle,
+				endAngle
+			);
+			movedSegments.push_back(
+				arcPreview(
+					center,
+					segment.radius,
+					startAngle,
+					endAngle,
+					SketchEntityType::Arc,
+					arcID,
+					-1,
+					0.0,
+					1.0
+				)
+			);
+			break;
+		}
+		default:
+			break;
+		}
+	}
+
+	selectedTrimSegments = movedSegments;
+	return !movedSegments.empty();
 }
 
 bool SketchView::trimLineAtMouse(ImVec2 mouse) {

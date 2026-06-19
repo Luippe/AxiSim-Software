@@ -12,6 +12,22 @@
 
 using namespace sketchmath;
 
+namespace {
+	Vec2 translatePoint(Vec2 point, Vec2 delta) {
+		return Vec2{ point.z + delta.z, point.r + delta.r };
+	}
+
+	TrimPreviewResult translatedPreview(
+		TrimPreviewResult preview,
+		Vec2 delta
+	) {
+		preview.a = translatePoint(preview.a, delta);
+		preview.b = translatePoint(preview.b, delta);
+		preview.center = translatePoint(preview.center, delta);
+		return preview;
+	}
+}
+
 SketchView::SketchView(Project& project, GUI& gui) :
 	geometry(project.geometry),
 	gui(gui),
@@ -21,6 +37,7 @@ SketchView::SketchView(Project& project, GUI& gui) :
 }
 
 void SketchView::clearToolToggles() {
+	toggleEraser = false;
 	toggleRuler = false;
 	toggleRemoveCell = false;
 	toggleTrim = false;
@@ -28,6 +45,9 @@ void SketchView::clearToolToggles() {
 	toggleDrawRect = false;
 	toggleDrawCircle = false;
 	isDrawingEntity = false;
+	isSelecting = false;
+	isMovingSelection = false;
+	movingTrimSegments.clear();
 }
 
 void SketchView::setActiveSketchTool(SketchTool tool) {
@@ -35,6 +55,9 @@ void SketchView::setActiveSketchTool(SketchTool tool) {
 	geometry.sketch.activeTool = tool;
 
 	switch (tool) {
+	case SketchTool::Erase:
+		toggleEraser = true;
+		break;
 	case SketchTool::Dimension:
 		toggleRuler = true;
 		break;
@@ -422,6 +445,56 @@ void SketchView::setInitLeftMouse() {
 	initLeftMouse = camera.worldToScreen(pendingStartWorld);
 }
 
+bool SketchView::hoveredSelectedTrimSegment(ImVec2 mouse) {
+	constexpr float movePickRadiusPx = 8.0f;
+	Vec2 mouseWorld = camera.screenToWorld(mouse);
+
+	for (const TrimPreviewResult& segment : selectedTrimSegments) {
+		switch (segment.geometry) {
+		case TrimPreviewGeometry::Line: {
+			Vec2 closest = closestPointOnSegment(mouseWorld, segment.a, segment.b);
+			if (pixelDistance(camera.worldToScreen(closest), mouse) <=
+				movePickRadiusPx) {
+				return true;
+			}
+			break;
+		}
+		case TrimPreviewGeometry::Circle: {
+			double radialDistance =
+				std::abs(distance(mouseWorld, segment.center) - segment.radius);
+			if (camera.worldLengthToScreen(radialDistance) <= movePickRadiusPx) {
+				return true;
+			}
+			break;
+		}
+		case TrimPreviewGeometry::Arc: {
+			SketchArc arc{
+				-1,
+				segment.center,
+				segment.radius,
+				segment.startAngle,
+				segment.endAngle
+			};
+			double angle = angleOfPoint(segment.center, mouseWorld);
+			if (!angleOnArc(angle, arc)) {
+				break;
+			}
+
+			double radialDistance =
+				std::abs(distance(mouseWorld, segment.center) - segment.radius);
+			if (camera.worldLengthToScreen(radialDistance) <= movePickRadiusPx) {
+				return true;
+			}
+			break;
+		}
+		default:
+			break;
+		}
+	}
+
+	return false;
+}
+
 void SketchView::handleSelect() {
 
 	if (!(geometry.sketch.activeTool == SketchTool::Select)) return;
@@ -455,13 +528,31 @@ void SketchView::handleSelect() {
 		}
 	}
 
-	if (ImGui::IsItemHovered()) {
-		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-			isSelecting = true;
+	if (isMovingSelection) {
+		if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+			Vec2 delta = subtract(pendingCurrentWorld, moveStartWorld);
+			moveSelectedTrimSegments(delta);
+			isMovingSelection = false;
+			movingTrimSegments.clear();
 		}
 
+		return;
+	}
+
+	if (ImGui::IsItemHovered()) {
 		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 			setInitLeftMouse();
+			if (hoveredSelectedTrimSegment(currentMousePos)) {
+				isMovingSelection = true;
+				isSelecting = false;
+				moveStartWorld = pendingStartWorld;
+				movingTrimSegments = selectedTrimSegments;
+				return;
+			}
+		}
+
+		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+			isSelecting = true;
 		}
 	}
 
@@ -550,6 +641,8 @@ void SketchView::handleMouseAndKey() {
 		ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
 		deletePressed) {
 		isSelecting = false;
+		isMovingSelection = false;
+		movingTrimSegments.clear();
 		isDrawingEntity = false;
 		deleteSelectedTrimSegments();
 		return;
@@ -854,11 +947,18 @@ void SketchView::drawSketchEntities(ImDrawList* drawList) {
 		}
 	}
 
-	for (const TrimPreviewResult& segment : selectedTrimSegments) {
-		drawSegment(segment);
+	Vec2 selectionDelta{};
+	const std::vector<TrimPreviewResult>& visibleSelectedSegments =
+		isMovingSelection ? movingTrimSegments : selectedTrimSegments;
+	if (isMovingSelection) {
+		selectionDelta = subtract(pendingCurrentWorld, moveStartWorld);
 	}
 
-	if (hoveredSegment) {
+	for (const TrimPreviewResult& segment : visibleSelectedSegments) {
+		drawSegment(translatedPreview(segment, selectionDelta));
+	}
+
+	if (hoveredSegment && !isMovingSelection) {
 		drawSegment(*hoveredSegment);
 	}
 
@@ -962,7 +1062,6 @@ void SketchView::drawDimensionEditor() {
 				editingDimensionID,
 				dimensionEditValue
 			);
-			print(dimensionEditValue);
 			editingDimensionID = -1;
 			ImGui::CloseCurrentPopup();
 		}
