@@ -233,6 +233,7 @@ set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/flag_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/font_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/gpu_utils.h"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/keyboard_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/math_func.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/memory_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/pch.h"

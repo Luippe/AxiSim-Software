@@ -9,8 +9,10 @@
 
 #include "geometry.h"
 #include "math_func.h"
+#include "keyboard_manager.h"
 
 using namespace sketchmath;
+using namespace Shortcuts;
 
 namespace {
 	Vec2 translatePoint(Vec2 point, Vec2 delta) {
@@ -26,6 +28,10 @@ namespace {
 		preview.center = translatePoint(preview.center, delta);
 		return preview;
 	}
+
+	std::string shortcutText(const char* label, ImGuiKeyChord shortcut) {
+		return std::string(label) + " (" + ImGui::GetKeyChordName(shortcut) + ")";
+	}
 }
 
 SketchView::SketchView(Project& project, GUI& gui) :
@@ -34,6 +40,74 @@ SketchView::SketchView(Project& project, GUI& gui) :
 	assets(gui.appConfig.assets),
 	BaseSurfaceViewer("graphics/shaders/sketch.vert", "graphics/shaders/sketch.frag") {
 	frameBuffer.create2DBuffer(500, 500, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
+}
+
+void SketchView::recordSketchUndoState(const SketchModel& beforeChange) {
+	constexpr int maxUndoStates = 100;
+
+	undoSketchStates.push_back(beforeChange);
+	if ((int)undoSketchStates.size() > maxUndoStates) {
+		undoSketchStates.erase(undoSketchStates.begin());
+	}
+
+	redoSketchStates.clear();
+}
+
+void SketchView::restoreSketchState(const SketchModel& state) {
+	SketchTool activeTool = geometry.sketch.activeTool;
+	geometry.sketch = state;
+	geometry.sketch.activeTool = activeTool;
+
+	for (SketchPoint& point : geometry.sketch.points) {
+		point.selected = false;
+	}
+	for (SketchLine& line : geometry.sketch.lines) {
+		line.selected = false;
+	}
+	for (SketchCircle& circle : geometry.sketch.circles) {
+		circle.selected = false;
+	}
+	for (SketchArc& arc : geometry.sketch.arcs) {
+		arc.selected = false;
+	}
+	for (SketchRectangle& rect : geometry.sketch.rectangles) {
+		rect.selected = false;
+	}
+	for (SketchDimension& dimension : geometry.sketch.dimensions) {
+		dimension.selected = false;
+	}
+
+	selectedTrimSegments.clear();
+	movingTrimSegments.clear();
+	isSelecting = false;
+	isMovingSelection = false;
+	isDrawingEntity = false;
+	editingDimensionID = -1;
+	pendingNamedSelection = {};
+}
+
+bool SketchView::undoSketchEdit() {
+	if (undoSketchStates.empty()) {
+		return false;
+	}
+
+	redoSketchStates.push_back(geometry.sketch);
+	SketchModel previous = undoSketchStates.back();
+	undoSketchStates.pop_back();
+	restoreSketchState(previous);
+	return true;
+}
+
+bool SketchView::redoSketchEdit() {
+	if (redoSketchStates.empty()) {
+		return false;
+	}
+
+	undoSketchStates.push_back(geometry.sketch);
+	SketchModel next = redoSketchStates.back();
+	redoSketchStates.pop_back();
+	restoreSketchState(next);
+	return true;
 }
 
 void SketchView::clearToolToggles() {
@@ -373,7 +447,8 @@ void SketchView::drawToolBar() {
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
-	if (addImageButton("Reset", "Reset View", assets.houseIcon, buttonSize)) {
+	std::string resetViewText = shortcutText("Reset View", resetViewShortcut);
+	if (addImageButton("Reset", resetViewText.c_str(), assets.houseIcon, buttonSize)) {
 		resetView();
 		camera.home();
 	}
@@ -381,17 +456,20 @@ void SketchView::drawToolBar() {
 
 	addToolbarSeparator(toolbarHeight);
 
-	if (addImageButtonToggle("Ruler", "Ruler", assets.rulerIcon, buttonSize, toggleRuler)) {
+	std::string rulerText = shortcutText("Ruler", rulerToolShortcut);
+	if (addImageButtonToggle("Ruler", rulerText.c_str(), assets.rulerIcon, buttonSize, toggleRuler)) {
 		setActiveSketchTool(toggleRuler ? SketchTool::Dimension : SketchTool::Select);
 	}
 	ImGui::SameLine();
 
-	if (addImageButtonToggle("Trim", "Trim", assets.trimIcon, buttonSize, toggleTrim)) {
+	std::string trimText = shortcutText("Trim", trimToolShortcut);
+	if (addImageButtonToggle("Trim", trimText.c_str(), assets.trimIcon, buttonSize, toggleTrim)) {
 		setActiveSketchTool(toggleTrim ? SketchTool::Trim : SketchTool::Select);
 	}
 	ImGui::SameLine();
 
-	if (addImageButtonToggle("Erase", "Erase", assets.eraseIcon, buttonSize, toggleEraser)) {
+	std::string eraseText = shortcutText("Erase", eraseToolShortcut);
+	if (addImageButtonToggle("Erase", eraseText.c_str(), assets.eraseIcon, buttonSize, toggleEraser)) {
 		setActiveSketchTool(toggleEraser ? SketchTool::Erase : SketchTool::Select);
 	}
 	ImGui::SameLine();
@@ -399,17 +477,20 @@ void SketchView::drawToolBar() {
 	 
 	addToolbarSeparator(toolbarHeight);
 
-	if (addImageButtonToggle("DrawLine", "Draw Straight Line", assets.drawLineIcon, buttonSize, toggleDrawLine)) {
+	std::string lineText = shortcutText("Draw Straight Line", lineToolShortcut);
+	if (addImageButtonToggle("DrawLine", lineText.c_str(), assets.drawLineIcon, buttonSize, toggleDrawLine)) {
 		setActiveSketchTool(toggleDrawLine ? SketchTool::Line : SketchTool::Select);
 	}
 	ImGui::SameLine();
 
-	if (addImageButtonToggle("DrawRect", "Draw Rectangle", assets.selectRegionIcon, buttonSize, toggleDrawRect)) {
+	std::string rectangleText = shortcutText("Draw Rectangle", rectangleToolShortcut);
+	if (addImageButtonToggle("DrawRect", rectangleText.c_str(), assets.selectRegionIcon, buttonSize, toggleDrawRect)) {
 		setActiveSketchTool(toggleDrawRect ? SketchTool::Rectangle : SketchTool::Select);
 	}
 	ImGui::SameLine();
 
-	if (addImageButtonToggle("DrawCircle", "Draw Circle", assets.drawCircleIcon, buttonSize, toggleDrawCircle)) {
+	std::string circleText = shortcutText("Draw Circle", circleToolShortcut);
+	if (addImageButtonToggle("DrawCircle", circleText.c_str(), assets.drawCircleIcon, buttonSize, toggleDrawCircle)) {
 		setActiveSketchTool(toggleDrawCircle ? SketchTool::Circle : SketchTool::Select);
 	}
 	ImGui::SameLine();
@@ -531,7 +612,10 @@ void SketchView::handleSelect() {
 	if (isMovingSelection) {
 		if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
 			Vec2 delta = subtract(pendingCurrentWorld, moveStartWorld);
-			moveSelectedTrimSegments(delta);
+			SketchModel beforeMove = geometry.sketch;
+			if (moveSelectedTrimSegments(delta)) {
+				recordSketchUndoState(beforeMove);
+			}
 			isMovingSelection = false;
 			movingTrimSegments.clear();
 		}
@@ -600,7 +684,10 @@ void SketchView::handleTrimTool() {
 	}
 
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-		trimSketchAtMouse(currentMousePos);
+		SketchModel beforeTrim = geometry.sketch;
+		if (trimSketchAtMouse(currentMousePos)) {
+			recordSketchUndoState(beforeTrim);
+		}
 	}
 }
 
@@ -618,8 +705,102 @@ void SketchView::handleErase() {
 	// real eraser.
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
 		ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-		eraseEntityAtMouse(currentMousePos);
+		SketchModel beforeErase = geometry.sketch;
+		if (eraseEntityAtMouse(currentMousePos)) {
+			recordSketchUndoState(beforeErase);
+		}
 	}
+}
+
+bool SketchView::handleShortcuts(ImGuiIO& io) {
+
+	bool canUseShortcuts =
+		!io.WantTextInput &&
+		ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+	if (!canUseShortcuts) {
+		return false;
+	}
+
+	auto clearInteraction = [&]() {
+		isSelecting = false;
+		isMovingSelection = false;
+		movingTrimSegments.clear();
+		isDrawingEntity = false;
+	};
+
+	if (ImGui::Shortcut(undoShortcut)) {
+		clearInteraction();
+		undoSketchEdit();
+		return true;
+	}
+
+	if (ImGui::Shortcut(redoShortcut)) {
+		clearInteraction();
+		redoSketchEdit();
+		return true;
+	}
+
+	if (ImGui::Shortcut(resetViewShortcut)) {
+		clearInteraction();
+		resetView();
+		camera.home();
+		return true;
+	}
+
+	if (ImGui::Shortcut(selectToolShortcut)) {
+		setActiveSketchTool(SketchTool::Select);
+		return true;
+	}
+
+	if (ImGui::Shortcut(rulerToolShortcut)) {
+		setActiveSketchTool(SketchTool::Dimension);
+		return true;
+	}
+
+	if (ImGui::Shortcut(trimToolShortcut)) {
+		setActiveSketchTool(SketchTool::Trim);
+		return true;
+	}
+
+	if (ImGui::Shortcut(eraseToolShortcut)) {
+		setActiveSketchTool(SketchTool::Erase);
+		return true;
+	}
+
+	if (ImGui::Shortcut(lineToolShortcut)) {
+		setActiveSketchTool(SketchTool::Line);
+		return true;
+	}
+
+	if (ImGui::Shortcut(rectangleToolShortcut)) {
+		setActiveSketchTool(SketchTool::Rectangle);
+		return true;
+	}
+
+	if (ImGui::Shortcut(circleToolShortcut)) {
+		setActiveSketchTool(SketchTool::Circle);
+		return true;
+	}
+
+	bool deletePressed =
+		ImGui::IsKeyPressed(ImGuiKey_Delete, false) ||
+		ImGui::IsKeyPressed(ImGuiKey_Backspace, false);
+	if (geometry.sketch.activeTool == SketchTool::Select &&
+		!selectedTrimSegments.empty() &&
+		editingDimensionID < 0 &&
+		!io.WantTextInput &&
+		ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+		deletePressed) {
+		clearInteraction();
+		SketchModel beforeDelete = geometry.sketch;
+		if (deleteSelectedTrimSegments()) {
+			recordSketchUndoState(beforeDelete);
+		}
+		return true;
+	}
+
+	return false;
 }
 
 void SketchView::handleMouseAndKey() {
@@ -631,20 +812,7 @@ void SketchView::handleMouseAndKey() {
 
 	toggleSnapping = io.KeyCtrl;
 
-	bool deletePressed =
-		ImGui::IsKeyPressed(ImGuiKey_Delete, false) ||
-		ImGui::IsKeyPressed(ImGuiKey_Backspace, false);
-	if (geometry.sketch.activeTool == SketchTool::Select &&
-		!selectedTrimSegments.empty() &&
-		editingDimensionID < 0 &&
-		!io.WantTextInput &&
-		ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-		deletePressed) {
-		isSelecting = false;
-		isMovingSelection = false;
-		movingTrimSegments.clear();
-		isDrawingEntity = false;
-		deleteSelectedTrimSegments();
+	if (handleShortcuts(io)) {
 		return;
 	}
 
@@ -686,7 +854,9 @@ void SketchView::handleMouseAndKey() {
 		double length = distance(start, end);
 
 		if (length > 1e-12) {
+			SketchModel beforeLine = geometry.sketch;
 			geometry.sketch.addLine(start, end);
+			recordSketchUndoState(beforeLine);
 		}
 
 		isDrawingEntity = false;
@@ -699,7 +869,9 @@ void SketchView::handleMouseAndKey() {
 		double radius = distance(center, edge);
 
 		if (radius > 1e-12) {
+			SketchModel beforeCircle = geometry.sketch;
 			geometry.sketch.addCircle(center, radius);
+			recordSketchUndoState(beforeCircle);
 		}
 
 		isDrawingEntity = false;
@@ -711,7 +883,9 @@ void SketchView::handleMouseAndKey() {
 		Vec2 cornerB = pendingCurrentWorld;
 
 		if (distance(cornerA, cornerB) > 1e-12) {
+			SketchModel beforeRectangle = geometry.sketch;
 			geometry.sketch.addRectangle(cornerA, cornerB);
+			recordSketchUndoState(beforeRectangle);
 		}
 
 		isDrawingEntity = false;
@@ -741,11 +915,13 @@ void SketchView::handleDimensionTool() {
 	}
 
 	if (auto target = findDimensionTarget(currentMousePos)) {
+		SketchModel beforeDimension = geometry.sketch;
 		int dimensionID = geometry.sketch.addDimension(
 			target->type,
 			target->entityID,
 			target->labelPos
 		);
+		recordSketchUndoState(beforeDimension);
 
 		openDimensionEditor(dimensionID);
 	}
@@ -1058,10 +1234,14 @@ void SketchView::drawDimensionEditor() {
 		bool cancelPressed = ImGui::Button("Cancel");
 
 		if (enterPressed || applyPressed) {
-			geometry.sketch.setDimensionValue(
+			SketchModel beforeDimensionEdit = geometry.sketch;
+			bool changed = geometry.sketch.setDimensionValue(
 				editingDimensionID,
 				dimensionEditValue
 			);
+			if (changed) {
+				recordSketchUndoState(beforeDimensionEdit);
+			}
 			editingDimensionID = -1;
 			ImGui::CloseCurrentPopup();
 		}
@@ -1130,12 +1310,14 @@ bool SketchView::savePendingNamedSelection() {
 		return false;
 	}
 
+	SketchModel beforeNamedSelection = geometry.sketch;
 	pendingNamedSelection.name = newName;
 	geometry.sketch.namedSelections.push_back(pendingNamedSelection);
 	geometry.sketch.nextNamedSelectionID = std::max(
 		geometry.sketch.nextNamedSelectionID,
 		pendingNamedSelection.id + 1
 	);
+	recordSketchUndoState(beforeNamedSelection);
 
 	return true;
 }
@@ -1280,8 +1462,33 @@ void SketchView::drawPopup(ImDrawList* drawList) {
 		//addMenuItem
 		addMenuItemCopyToClipboard("Copy to clipboard");
 
-		if (ImGui::MenuItem("Reset View")) {
+		if (ImGui::MenuItem("Reset View", ImGui::GetKeyChordName(resetViewShortcut))) {
+			resetView();
 			camera.home();
+		}
+
+		if (undoSketchStates.empty()) {
+			ImGui::BeginDisabled();
+		}
+
+		if (ImGui::MenuItem("Undo", ImGui::GetKeyChordName(undoShortcut))) {
+			undoSketchEdit();
+		}
+
+		if (undoSketchStates.empty()) {
+			ImGui::EndDisabled();
+		}
+
+		if (redoSketchStates.empty()) {
+			ImGui::BeginDisabled();
+		}
+
+		if (ImGui::MenuItem("Redo", ImGui::GetKeyChordName(redoShortcut))) {
+			redoSketchEdit();
+		}
+
+		if (redoSketchStates.empty()) {
+			ImGui::EndDisabled();
 		}
 
 		bool hasSelectedSegments = !selectedTrimSegments.empty();

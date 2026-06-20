@@ -7,9 +7,11 @@
 #include "solver_struct.h"
 #include "boundary_struct.h"
 
+#include "keyboard_manager.h"
 #include "memory_manager.h"
 #include "printer.h"
 
+using namespace Shortcuts;
 
 bool fileExists(const std::string& filename) {
 
@@ -198,6 +200,26 @@ bool readSketchNamedSelections(
 }
 
 // ====================================================
+// -------------------KEYBOARD-------------------------
+// ====================================================
+void saveKeyboardShortcuts(std::ofstream& out) {
+
+	writeAll(
+		out,
+		undoShortcut,
+		redoShortcut,
+		resetViewShortcut,
+		selectToolShortcut,
+		rulerToolShortcut,
+		trimToolShortcut,
+		eraseToolShortcut,
+		lineToolShortcut,
+		rectangleToolShortcut,
+		circleToolShortcut
+	);
+}
+
+// ====================================================
 // -------------------PROJECT--------------------------
 // ====================================================
 void saveFromPathProject(const char* path, Project& project) {
@@ -207,6 +229,7 @@ void saveFromPathProject(const char* path, Project& project) {
 	saveFromPathMesh(out, project.mesh);
 	saveFromPathSolver(out, project.solver);
 	saveFromPathResults(out, project.results);
+	saveKeyboardShortcuts(out);
 	out.close();
 }
 

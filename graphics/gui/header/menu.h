@@ -1,4 +1,7 @@
 #pragma once
+
+#include "imgui.h"
+
 class SceneView;
 class Project;
 class GUI;
@@ -11,6 +14,8 @@ public:
 
 private:
 
+	bool openShortcutModal = false;
+
 	Project& project;
 	GUI& gui;
 
@@ -22,5 +27,10 @@ private:
 	
 	// save selected object as .bin file
 	void drawSave();
+
+	void drawEditShortcut();
+
+	// open popup when edit shortcut is pressed
+	void drawShortcutModal();
 
 };

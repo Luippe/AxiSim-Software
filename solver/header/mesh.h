@@ -6,6 +6,7 @@
 #include "buffer_manager.h"
 #include "boundary_struct.h"
 #include "graphics_struct.h"
+#include "sketch_struct.h"
 
 class Console;
 class Config;
@@ -102,6 +103,8 @@ public:
 	void render();
 
 	void generate();
+
+	bool convertSketchToUnstructuredMesh(const SketchModel& sketch);
 
 	void updateAfterLoadingFile();
 

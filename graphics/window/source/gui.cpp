@@ -142,7 +142,7 @@ GUI::GUI(Project& project, GLFWwindow* window) :
 	scene(project, *this),
 	menu(project, *this),
 	inspector(project, scene, appConfig),
-	meshInspector(project.mesh, appConfig),
+	meshInspector(project, appConfig),
 	console(*this, project),
 	mesh(project.mesh),
 	solver(project.solver),

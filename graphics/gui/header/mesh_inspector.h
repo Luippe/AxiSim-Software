@@ -10,18 +10,21 @@
 #include "base_surface_viewer.h"
 
 #include "buffer_manager.h"
+#include "camera.h"
 #include "core_struct.h"
 #include "graphics_struct.h"
 #include "solver_struct.h"
 #include "boundary_struct.h"
 
 class Mesh;
+class Geometry;
+class Project;
 struct GridConfig;
 
 class MeshInspector : public BaseSurfaceViewer {
 public:
 
-	MeshInspector(Mesh& mesh, AppConfig& appConfig);
+	MeshInspector(Project& project, AppConfig& appConfig);
 	void updateGridBuffer();
 
 	VertexBuffer vertexBuffer;
@@ -47,7 +50,9 @@ public:
 private:
 
 	// ----------dependencies-----------
+	Project& project;
 	Mesh& mesh;
+	Geometry& geometry;
 	GridConfig& g;
 
 	// ----------mesh analyzer region-----------
@@ -60,6 +65,7 @@ private:
 	//-------------boundary lines--------------
 	float pickRadiusPx = 12.0f;
 	std::optional<int> hoveredId;
+	Camera2D camera;
 
 	bool isPopupOpened = false;
 	bool hoveringOverSegment = false;
@@ -77,6 +83,8 @@ private:
 
 	// -------------drawing variables--------------
 	ImColor drawingColor = IM_COL32(203, 209, 224, 255);
+	const ImU32 sketchBgColor = IM_COL32(102, 102, 102, 255);
+	const ImU32 outlineColor = IM_COL32(150, 150, 150, 255);
 
 	int cellIndex(int i, int j) const;
 	bool isInsideCellGrid(int i, int j) const;
@@ -125,6 +133,11 @@ private:
 	// draw pending objects such as circles and rectangles while they
 	void drawPendingObjects(ImDrawList* drawList);
 
+	void drawAxes(ImDrawList* drawList);
+	void drawSketchEntities(ImDrawList* drawList);
+	void drawSketchNamedSegments(ImDrawList* drawList);
+	void drawMeshLines(ImDrawList* drawList);
+	void drawHighlightedCells2D(ImDrawList* drawList);
 	void drawBoundarySegments(ImDrawList* drawList);
 
 	void fillBoundaryGroupEdges(BoundarySegmentGroup& group);

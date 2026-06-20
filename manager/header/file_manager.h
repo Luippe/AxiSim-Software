@@ -119,6 +119,7 @@ bool readVar(std::ifstream& in, std::vector<T>& vec) {
 	return (bool)in.read((char*)vec.data(), size * sizeof(T));
 }
 
+
 template<typename T,
 		typename Hash,
 		typename KeyEqual,

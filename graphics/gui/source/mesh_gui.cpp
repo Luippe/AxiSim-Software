@@ -323,32 +323,53 @@ void MeshGUI::draw() {
 		// draw generate button
 		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
 		if (ImGui::Button("Generate Mesh")) {
+			const SketchModel& sketch = project.geometry.sketch;
+			bool hasSketchGeometry =
+				!sketch.lines.empty() ||
+				!sketch.rectangles.empty() ||
+				!sketch.circles.empty() ||
+				!sketch.arcs.empty();
+
 			bool topologyChanged =
 				gridConfigEdits.nr != config.g.nr ||
 				gridConfigEdits.nz != config.g.nz ||
 				gridConfigEdits.L != config.g.L ||
 				gridConfigEdits.R != config.g.R;
-
-			if (topologyChanged) {
-
-				mesh.clearUnstructuredGeometry();
-				mesh.boundaryGroups.clear();
-				mesh.boundarySegments.clear();
-				mesh.boundaryEdges.clear();
-				mesh.boundaryVertices.clear();
-				mesh.gridLineVertices.clear();
-				mesh.selectedBoundaryIDs.clear();
-				mesh.highlightedBoundarySegmentIDs.clear();
-				mesh.selectableOuterEdges.clear();
-
-
-				selectedBoundaryGroupID = -1;
-				mesh.initializeUnstructuredDomain(5, 5);
-			}
+			bool shouldGenerate = true;
 
 			setGridConfigEdits();
-			mesh.generate();
-			gui.meshInspector.createGridBuffer();
+
+			if (mesh.currentMeshType == MeshType::Unstructured &&
+				hasSketchGeometry) {
+				if (!mesh.convertSketchToUnstructuredMesh(sketch)) {
+					shouldGenerate = false;
+				}
+				else {
+					getGridConfigEdits();
+				}
+			}
+			else {
+				if (topologyChanged) {
+
+					mesh.clearUnstructuredGeometry();
+					mesh.boundaryGroups.clear();
+					mesh.boundarySegments.clear();
+					mesh.boundaryEdges.clear();
+					mesh.boundaryVertices.clear();
+					mesh.gridLineVertices.clear();
+					mesh.selectedBoundaryIDs.clear();
+					mesh.highlightedBoundarySegmentIDs.clear();
+					mesh.selectableOuterEdges.clear();
+
+					selectedBoundaryGroupID = -1;
+					mesh.initializeUnstructuredDomain(5, 5);
+				}
+			}
+
+			if (shouldGenerate) {
+				mesh.generate();
+				gui.meshInspector.createGridBuffer();
+			}
 		}
 		changeCursorOnHover();
 		ImGui::PopStyleVar();

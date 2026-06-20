@@ -206,7 +206,6 @@
 				37,
 				40,
 				45,
-				103,
 				104,
 				105,
 				106,
@@ -214,7 +213,8 @@
 				108,
 				109,
 				110,
-				112
+				111,
+				113
 			]
 		},
 		{
@@ -426,7 +426,7 @@
 			"language" : "C",
 			"sourceIndexes" : 
 			[
-				111
+				112
 			]
 		}
 	],
@@ -621,7 +621,7 @@
 			"sourceIndexes" : 
 			[
 				62,
-				111
+				112
 			]
 		},
 		{
@@ -655,14 +655,14 @@
 				81,
 				82,
 				83,
-				84
+				84,
+				85
 			]
 		},
 		{
 			"name" : "solver\\header",
 			"sourceIndexes" : 
 			[
-				85,
 				86,
 				87,
 				88,
@@ -672,53 +672,54 @@
 				92,
 				93,
 				94,
-				95
+				95,
+				96
 			]
 		},
 		{
 			"name" : "src\\header",
 			"sourceIndexes" : 
 			[
-				96,
-				97
+				97,
+				98
 			]
 		},
 		{
 			"name" : "structs",
 			"sourceIndexes" : 
 			[
-				98,
 				99,
 				100,
 				101,
-				102
+				102,
+				103
 			]
 		},
 		{
 			"name" : "graphics\\imgui",
 			"sourceIndexes" : 
 			[
-				103,
 				104,
 				105,
 				106,
-				109,
-				110
+				107,
+				110,
+				111
 			]
 		},
 		{
 			"name" : "graphics\\imgui\\backends",
 			"sourceIndexes" : 
 			[
-				107,
-				108
+				108,
+				109
 			]
 		},
 		{
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				112
+				113
 			]
 		}
 	],
@@ -1163,6 +1164,11 @@
 		{
 			"backtrace" : 2,
 			"path" : "manager/header/gpu_utils.h",
+			"sourceGroupIndex" : 8
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/keyboard_manager.h",
 			"sourceGroupIndex" : 8
 		},
 		{

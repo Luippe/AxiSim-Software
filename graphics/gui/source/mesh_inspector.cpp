@@ -2,17 +2,57 @@
 
 #include <format>
 #include <algorithm>
+#include <cmath>
 #include <glm/glm.hpp>
 
 #include "mesh.h"
+#include "project.h"
+#include "geometry.h"
 #include "colorbar.h"
 
 #include "flag_manager.h"
 #include "printer.h"
 #include "math_func.h"
 
-MeshInspector::MeshInspector(Mesh& mesh, AppConfig& appConfig) :
-	mesh(mesh),
+namespace {
+	constexpr double meshInspectorTwoPi = 6.28318530717958647692;
+
+	double normalizeInspectorAngle(double angle) {
+		angle = std::fmod(angle, meshInspectorTwoPi);
+		if (angle < 0.0) {
+			angle += meshInspectorTwoPi;
+		}
+		return angle;
+	}
+
+	double positiveInspectorAngleSpan(double startAngle, double endAngle) {
+		double start = normalizeInspectorAngle(startAngle);
+		double end = normalizeInspectorAngle(endAngle);
+		while (end < start) {
+			end += meshInspectorTwoPi;
+		}
+		return end - start;
+	}
+
+	Vec2 inspectorPointOnCircle(Vec2 center, double radius, double angle) {
+		return Vec2{
+			center.z + radius * std::cos(angle),
+			center.r + radius * std::sin(angle)
+		};
+	}
+
+	Vec2 inspectorInterpolate(Vec2 a, Vec2 b, double t) {
+		return Vec2{
+			a.z + (b.z - a.z) * t,
+			a.r + (b.r - a.r) * t
+		};
+	}
+}
+
+MeshInspector::MeshInspector(Project& project, AppConfig& appConfig) :
+	project(project),
+	mesh(project.mesh),
+	geometry(project.geometry),
 	g(mesh.g),
 	assets(appConfig.assets),
 	BaseSurfaceViewer("graphics/shaders/mesh.vert", "graphics/shaders/mesh.frag") {
@@ -762,6 +802,21 @@ float distPointToSegment(ImVec2 p, ImVec2 a, ImVec2 b) {
 	return std::sqrt(dx * dx + dy * dy);
 }
 
+int meshInspectorCellIndexAt(const std::vector<double>& faces, double x) {
+	if (faces.size() < 2) {
+		return -1;
+	}
+
+	if (x < faces.front() || x > faces.back()) {
+		return -1;
+	}
+
+	auto it = std::upper_bound(faces.begin(), faces.end(), x);
+	int index = static_cast<int>(it - faces.begin()) - 1;
+
+	return std::clamp(index, 0, static_cast<int>(faces.size()) - 2);
+}
+
 // ======================================================================
 // -----------------------MOUSE HANDLES----------------------------------
 // ======================================================================
@@ -818,7 +873,7 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 
 	// do not run this if any of the toggled tools are active, or if a popup is opened
 	isPopupOpened = ImGui::IsPopupOpen("Mesh Inspector Popup");
-	if (toggleDrawRect ||  toggleRemoveCell || toggleRuler || isPopupOpened) return;
+	if (toggleRuler || isPopupOpened) return;
 
 	if (!hoveredId.has_value()) {
 		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -910,15 +965,13 @@ void MeshInspector::handleMouse() {
 
 	handleOpenPopup();
 
-	handleDrawCircle();
-
 	// handle zooming in/out
 	if (io.MouseWheel != 0.0f) {
-		handleZoom(io);
+		camera.calculateZoom(io.MouseWheel, currentMousePos);
 	}
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-		handlePan(io);
+		camera.calculatePan(io.MouseDelta.x, io.MouseDelta.y);
 	}
 
 	handleCursor(io);
@@ -926,13 +979,12 @@ void MeshInspector::handleMouse() {
 
 
 	if (mesh.currentMeshType == MeshType::Structured) {
-		// constantly update current mouse position and mouse index (cell centered, i think)
-		currentMouseIndex = getMouseIndex(g.rFace, g.zFace);
-		currentMousePos = gridToScreen((int)currentMouseIndex.x, (int)currentMouseIndex.y, g.rFace, g.zFace);
+		Vec2 mouseWorld = camera.screenToWorld(currentMousePos);
 
-		handleItemButtonSelect();
+		int j = meshInspectorCellIndexAt(g.zFace, mouseWorld.z);
+		int i = meshInspectorCellIndexAt(g.rFace, mouseWorld.r);
 
-		handleItemButtonRemove();
+		currentMouseIndex = ImVec2((float)j, (float)i);
 	}
 	else if (mesh.currentMeshType == MeshType::Unstructured) {
 
@@ -956,8 +1008,8 @@ std::optional<int> MeshInspector::findHoveredBoundarySegment() {
 		const Vec2& p0World = mesh.boundaryVertices[edge.v0].pos;
 		const Vec2& p1World = mesh.boundaryVertices[edge.v1].pos;
 
-		ImVec2 p0 = physicalToScreen(p0World, g.L, g.R);
-		ImVec2 p1 = physicalToScreen(p1World, g.L, g.R);
+		ImVec2 p0 = camera.worldToScreen(p0World);
+		ImVec2 p1 = camera.worldToScreen(p1World);
 
 		float d = distPointToSegment(mouse, p0, p1);
 
@@ -1001,6 +1053,146 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 // ======================================================================
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
+void MeshInspector::drawAxes(ImDrawList* drawList) {
+	ImVec2 origin = camera.worldToScreen(Vec2{ 0.0, 0.0 });
+
+	drawList->PushClipRect(imageMin, imageMax, true);
+
+	if (origin.y >= imageMin.y && origin.y <= imageMax.y) {
+		drawList->AddLine(
+			ImVec2(imageMin.x, origin.y),
+			ImVec2(imageMax.x, origin.y),
+			IM_COL32(210, 55, 55, 255),
+			1.5f
+		);
+
+		drawList->AddText(
+			ImVec2(imageMax.x - 18.0f, origin.y + 6.0f),
+			IM_COL32(230, 80, 80, 255),
+			"z"
+		);
+	}
+
+	if (origin.x >= imageMin.x && origin.x <= imageMax.x) {
+		drawList->AddLine(
+			ImVec2(origin.x, imageMin.y),
+			ImVec2(origin.x, imageMax.y),
+			IM_COL32(55, 190, 95, 255),
+			1.5f
+		);
+
+		drawList->AddText(
+			ImVec2(origin.x + 6.0f, imageMin.y + 6.0f),
+			IM_COL32(80, 220, 120, 255),
+			"r"
+		);
+	}
+
+	drawList->AddCircleFilled(origin, 3.5f, IM_COL32(235, 235, 235, 255));
+
+	drawList->PopClipRect();
+}
+
+void MeshInspector::drawMeshLines(ImDrawList* drawList) {
+	if (!mesh.meshMode) {
+		return;
+	}
+
+	drawList->PushClipRect(imageMin, imageMax, true);
+
+	const ImU32 lineColor = IM_COL32(190, 205, 225, 155);
+
+	if (mesh.currentMeshType == MeshType::Structured &&
+		!g.zFace.empty() &&
+		!g.rFace.empty()) {
+		double rMin = g.rFace.front();
+		double rMax = g.rFace.back();
+		double zMin = g.zFace.front();
+		double zMax = g.zFace.back();
+
+		for (double z : g.zFace) {
+			drawList->AddLine(
+				camera.worldToScreen(Vec2{ z, rMin }),
+				camera.worldToScreen(Vec2{ z, rMax }),
+				lineColor,
+				1.0f
+			);
+		}
+
+		for (double r : g.rFace) {
+			drawList->AddLine(
+				camera.worldToScreen(Vec2{ zMin, r }),
+				camera.worldToScreen(Vec2{ zMax, r }),
+				lineColor,
+				1.0f
+			);
+		}
+	}
+	else {
+		for (int i = 0; i + 3 < (int)mesh.gridLineVertices.size(); i += 4) {
+			Vec2 p0{
+				0.5 * (mesh.gridLineVertices[i + 0] + 1.0) * g.L,
+				0.5 * (mesh.gridLineVertices[i + 1] + 1.0) * g.R
+			};
+
+			Vec2 p1{
+				0.5 * (mesh.gridLineVertices[i + 2] + 1.0) * g.L,
+				0.5 * (mesh.gridLineVertices[i + 3] + 1.0) * g.R
+			};
+
+			drawList->AddLine(
+				camera.worldToScreen(p0),
+				camera.worldToScreen(p1),
+				lineColor,
+				1.0f
+			);
+		}
+	}
+
+	drawList->PopClipRect();
+}
+
+void MeshInspector::drawHighlightedCells2D(ImDrawList* drawList) {
+	if (g.zFace.size() < 2 || g.rFace.size() < 2) {
+		return;
+	}
+
+	int nz = (int)g.zFace.size() - 1;
+	int nr = (int)g.rFace.size() - 1;
+
+	drawList->PushClipRect(imageMin, imageMax, true);
+
+	for (int n : g.obstacleIndices) {
+		int i = n / nz;
+		int j = n % nz;
+
+		if (j < 0 || j >= nz || i < 0 || i >= nr) {
+			continue;
+		}
+
+		ImVec2 p0 = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[i] });
+		ImVec2 p1 = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i + 1] });
+
+		ImVec2 rectMin(
+			std::min(p0.x, p1.x),
+			std::min(p0.y, p1.y)
+		);
+
+		ImVec2 rectMax(
+			std::max(p0.x, p1.x),
+			std::max(p0.y, p1.y)
+		);
+
+		drawList->AddRectFilled(
+			rectMin,
+			rectMax,
+			IM_COL32(151, 151, 151, 255)
+		);
+	}
+
+	drawList->PopClipRect();
+}
+
 void MeshInspector::drawBoundarySegments(
 	ImDrawList* drawList
 ) {
@@ -1048,8 +1240,8 @@ void MeshInspector::drawBoundarySegments(
 			Vec2 p0World = mesh.boundaryVertices[edge.v0].pos;
 			Vec2 p1World = mesh.boundaryVertices[edge.v1].pos;
 
-			ImVec2 p0 = physicalToScreen(p0World, g.L, g.R);
-			ImVec2 p1 = physicalToScreen(p1World, g.L, g.R);
+			ImVec2 p0 = camera.worldToScreen(p0World);
+			ImVec2 p1 = camera.worldToScreen(p1World);
 
 			drawList->AddLine(p0, p1, color, thickness);
 		}
@@ -1061,34 +1253,18 @@ void MeshInspector::drawToolBar() {
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
-	if (addImageButtonToggle("Ruler", "Ruler", assets.rulerIcon, buttonSize, toggleRuler)) {
-		toggleDrawRect = toggleRemoveCell = false;
-	}
+	toggleDrawRect = false;
+	toggleDrawCircle = false;
+	toggleRemoveCell = false;
+	pendingCircle.pending = false;
+	pendingRect.pending = false;
+
+	addImageButtonToggle("Ruler", "Ruler", assets.rulerIcon, buttonSize, toggleRuler);
 	ImGui::SameLine();
 
 	if (addImageButton("Reset", "Reset View", assets.houseIcon, buttonSize)) {
 		resetView();
-	}
-	ImGui::SameLine();
-
-	if (addImageButton("Erase All", "Erase All", assets.clearIcon, buttonSize)) {
-		clearObstacles();
-	}
-	ImGui::SameLine();
-
-	if (addImageButtonToggle("Erase", "Erase", assets.eraseIcon, buttonSize, toggleRemoveCell)) {
-		toggleDrawRect = toggleRuler = false;
-	}
-	ImGui::SameLine();
-
-
-	if (addImageButtonToggle("DrawRect", "Draw Rectangle", assets.selectRegionIcon, buttonSize, toggleDrawRect)) {
-		toggleRemoveCell = toggleRuler = false;
-	}
-	ImGui::SameLine();
-
-	if (addImageButtonToggle("DrawCircle", "Draw Circle", assets.drawCircleIcon, buttonSize, toggleDrawCircle)) {
-		toggleRemoveCell = toggleRuler = false;
+		camera.home();
 	}
 	ImGui::SameLine();
 
@@ -1107,31 +1283,12 @@ void MeshInspector::drawToolBar() {
 
 void MeshInspector::drawTextAtSurfacePoint(ImDrawList* drawList) {
 
-	ImVec2 imageMin = ImGui::GetItemRectMin();
+	drawList->PushClipRect(imageMin, imageMax, true);
 
 	for (const SurfacePoint& point : points) {
 
-		// convert grid index to normalized texture coordinate
-		int j = static_cast<int>(point.dataPos.x);
-		int i = static_cast<int>(point.dataPos.y);
-
-		float u = static_cast<float>(g.zFace[j] / g.L);
-		float v = static_cast<float>(g.rFace[i] / g.R);
-
-		// skip points outside the current zoomed/panned view
-		if (u < u0 || u > u1 || v < v0 || v > v1) {
-			continue;
-		}
-
-		// convert normalized texture coordinate to image-local position
-		float sx = (u - u0) / (u1 - u0);
-
-		// use this if your image is drawn with ImVec2(u0, v1), ImVec2(u1, v0)
-		float sy = (v1 - v) / (v1 - v0);
-
-		ImVec2 screenPos(
-			imageMin.x + sx * imageWidth,
-			imageMin.y + sy * imageHeight
+		ImVec2 screenPos = camera.worldToScreen(
+			Vec2{ point.vecValue.x, point.vecValue.y }
 		);
 
 		std::string label = std::format(
@@ -1145,6 +1302,8 @@ void MeshInspector::drawTextAtSurfacePoint(ImDrawList* drawList) {
 		drawList->AddText(ImVec2(screenPos.x + 10.0f, screenPos.y), IM_COL32(255, 255, 255, 255), label.c_str());
 
 	}
+
+	drawList->PopClipRect();
 }
 
 
@@ -1400,11 +1559,7 @@ void MeshInspector::drawPendingObjects(ImDrawList* drawList) {
 
 	if (pendingCircle.pending) {
 
-		float radiusPx = physicalLengthToScreenLength(
-			pendingCircle.radius,
-			g.L,
-			g.R
-		);
+		float radiusPx = camera.worldLengthToScreen(pendingCircle.radius);
 
 		drawList->AddCircle(initLeftMouse, radiusPx, drawingColor, 80, 3.0f);
 
@@ -1423,7 +1578,6 @@ void MeshInspector::render() {
 	setBaseNrNz();
 
 	ImGui::Begin("Mesh Inspector");
-	updateGridBuffer();
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
@@ -1441,31 +1595,29 @@ void MeshInspector::render() {
 		0.0f
 	);
 
-	Rect surfaceBounds = makePaddedRect(
-		pos,
-		size,
-		20.0f,
-		20.0f,
-		50.0f,
-		50.0f
+	resizeImage(canvasRect.size());
+
+	ImGui::SetCursorScreenPos(canvasRect.min);
+	ImGui::InvisibleButton(
+		"##MeshInspectorCanvas",
+		canvasRect.size(),
+		ImGuiButtonFlags_MouseButtonLeft |
+		ImGuiButtonFlags_MouseButtonRight |
+		ImGuiButtonFlags_MouseButtonMiddle
 	);
 
-	double viewportAspect = 1.0;
+	imageMin = ImGui::GetItemRectMin();
+	imageMax = ImGui::GetItemRectMax();
+	imageSize = {
+		imageMax.x - imageMin.x,
+		imageMax.y - imageMin.y
+	};
 
-	if (g.R > 1e-30) {
-		viewportAspect = g.L / g.R;
-	}
-
-	Rect surfaceRect = fitRectToAspect(surfaceBounds, viewportAspect);
-
-	resizeImage(surfaceRect.size());
-
-	// draw canvas first, then the image on top
-	drawCanvas(drawList, canvasRect, 5.0f);
-
-	renderPreview();
-
-	drawSurface(surfaceRect);
+	camera.setDimensions(
+		static_cast<int>(imageSize.x),
+		static_cast<int>(imageSize.y),
+		imageMin
+	);
 
 	// Build current segments before hover/mouse logic
 	if (mesh.currentMeshType == MeshType::Structured) {
@@ -1482,23 +1634,14 @@ void MeshInspector::render() {
 	// Now handle mouse using current hoveredId/current segments
 	handleMouse();
 
-
-	// If the mouse changed obstacles, this rebuilds before drawing
-	if (mesh.currentMeshType == MeshType::Structured) {
-		buildSegments();
-	}
-
-	drawList->PushClipRect(imageMin, imageMax, true);
-
+	drawCanvas(drawList, canvasRect, 5.0f);
+	drawAxes(drawList);
+	drawHighlightedCells2D(drawList);
+	drawMeshLines(drawList);
 	drawPendingObjects(drawList);
-	drawHighlightedCells(drawList, g.obstacleIndices, g.rFace, g.zFace);
 	drawBoundarySegments(drawList);
-
 	drawTextAtSurfacePoint(drawList);
 	drawPopup();
-
-	drawList->PopClipRect();
-
 
 	ImGui::End();
 }

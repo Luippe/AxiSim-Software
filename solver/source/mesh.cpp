@@ -7,6 +7,9 @@
 #include "printer.h"
 #include <glm/trigonometric.hpp>
 #include <algorithm>
+#include <numeric>
+#include <queue>
+#include <unordered_set>
 #include <unordered_map>
 
 #include "math_func.h"
@@ -21,6 +24,322 @@ PointKey makePointKey(Vec2 p, double tol) {
 		(long long)std::llround(p.z / tol),
 		(long long)std::llround(p.r / tol)
 	};
+}
+
+namespace {
+	constexpr double sketchMeshTwoPi = 6.28318530717958647692;
+
+	struct SketchSegmentDraft {
+		std::vector<Vec2> controlPoints;
+		SketchEntityType sourceType = SketchEntityType::Line;
+		int entityID = -1;
+		int edgeIndex = -1;
+		double startT = 0.0;
+		double endT = 1.0;
+	};
+
+	struct SketchLoopDraft {
+		std::vector<int> segmentIndices;
+		std::vector<Vec2> orderedPoints;
+		double area = 0.0;
+	};
+
+	double sketchDistanceSquared(Vec2 a, Vec2 b) {
+		double dz = b.z - a.z;
+		double dr = b.r - a.r;
+		return dz * dz + dr * dr;
+	}
+
+	bool sketchPointsMatch(Vec2 a, Vec2 b, double tol) {
+		return sketchDistanceSquared(a, b) <= tol * tol;
+	}
+
+	double normalizeSketchAngle(double angle) {
+		angle = std::fmod(angle, sketchMeshTwoPi);
+		if (angle < 0.0) {
+			angle += sketchMeshTwoPi;
+		}
+		return angle;
+	}
+
+	double positiveSketchAngleSpan(double startAngle, double endAngle) {
+		double start = normalizeSketchAngle(startAngle);
+		double end = normalizeSketchAngle(endAngle);
+		while (end < start) {
+			end += sketchMeshTwoPi;
+		}
+		return end - start;
+	}
+
+	Vec2 sketchPointOnCircle(Vec2 center, double radius, double angle) {
+		return Vec2{
+			center.z + radius * std::cos(angle),
+			center.r + radius * std::sin(angle)
+		};
+	}
+
+	int curveSampleCount(double curveLength, double targetSpacing, int minimum) {
+		if (targetSpacing <= 1e-30) {
+			return minimum;
+		}
+
+		return std::max(minimum, (int)std::ceil(curveLength / targetSpacing));
+	}
+
+	std::vector<Vec2> sampleSketchCircle(
+		Vec2 center,
+		double radius,
+		int segmentCount
+	) {
+		segmentCount = std::max(segmentCount, 16);
+
+		std::vector<Vec2> points;
+		points.reserve(segmentCount + 1);
+
+		for (int i = 0; i <= segmentCount; i++) {
+			double angle =
+				sketchMeshTwoPi * (double)i / (double)segmentCount;
+			points.push_back(sketchPointOnCircle(center, radius, angle));
+		}
+
+		return points;
+	}
+
+	std::vector<Vec2> sampleSketchArc(
+		Vec2 center,
+		double radius,
+		double startAngle,
+		double endAngle,
+		int segmentCount
+	) {
+		segmentCount = std::max(segmentCount, 2);
+
+		double start = normalizeSketchAngle(startAngle);
+		double span = positiveSketchAngleSpan(startAngle, endAngle);
+
+		std::vector<Vec2> points;
+		points.reserve(segmentCount + 1);
+
+		for (int i = 0; i <= segmentCount; i++) {
+			double t = (double)i / (double)segmentCount;
+			points.push_back(
+				sketchPointOnCircle(center, radius, start + span * t)
+			);
+		}
+
+		return points;
+	}
+
+	double polygonSignedArea(const std::vector<Vec2>& points) {
+		if (points.size() < 3) {
+			return 0.0;
+		}
+
+		double area = 0.0;
+		for (std::size_t i = 0; i < points.size(); i++) {
+			const Vec2& a = points[i];
+			const Vec2& b = points[(i + 1) % points.size()];
+			area += a.z * b.r - b.z * a.r;
+		}
+
+		return 0.5 * area;
+	}
+
+	void appendDraft(
+		std::vector<SketchSegmentDraft>& drafts,
+		std::vector<Vec2> points,
+		SketchEntityType type,
+		int entityID,
+		int edgeIndex,
+		double startT = 0.0,
+		double endT = 1.0
+	) {
+		if (points.size() < 2) {
+			return;
+		}
+
+		if (pathLength(points) <= 1e-12) {
+			return;
+		}
+
+		SketchSegmentDraft draft{};
+		draft.controlPoints = std::move(points);
+		draft.sourceType = type;
+		draft.entityID = entityID;
+		draft.edgeIndex = edgeIndex;
+		draft.startT = startT;
+		draft.endT = endT;
+
+		drafts.push_back(std::move(draft));
+	}
+
+	bool reconstructSketchLoop(
+		const std::vector<SketchSegmentDraft>& drafts,
+		const std::vector<int>& component,
+		double tol,
+		std::vector<Vec2>& orderedPoints
+	) {
+		if (component.empty()) {
+			return false;
+		}
+
+		std::vector<int> remaining = component;
+		int firstIndex = remaining.back();
+		remaining.pop_back();
+
+		orderedPoints = drafts[firstIndex].controlPoints;
+
+		while (!remaining.empty()) {
+			Vec2 currentEnd = orderedPoints.back();
+
+			auto matchIt = std::find_if(
+				remaining.begin(),
+				remaining.end(),
+				[&](int draftIndex) {
+					const auto& points = drafts[draftIndex].controlPoints;
+					return sketchPointsMatch(points.front(), currentEnd, tol) ||
+						sketchPointsMatch(points.back(), currentEnd, tol);
+				}
+			);
+
+			if (matchIt == remaining.end()) {
+				return false;
+			}
+
+			std::vector<Vec2> points = drafts[*matchIt].controlPoints;
+			if (sketchPointsMatch(points.back(), currentEnd, tol)) {
+				std::reverse(points.begin(), points.end());
+			}
+
+			orderedPoints.insert(
+				orderedPoints.end(),
+				points.begin() + 1,
+				points.end()
+			);
+
+			remaining.erase(matchIt);
+		}
+
+		return sketchPointsMatch(orderedPoints.front(), orderedPoints.back(), tol);
+	}
+
+	std::vector<SketchLoopDraft> findSketchLoops(
+		const std::vector<SketchSegmentDraft>& drafts,
+		double tol
+	) {
+		std::vector<SketchLoopDraft> loops;
+		std::vector<bool> consumed(drafts.size(), false);
+
+		std::unordered_map<PointKey, std::vector<int>, PointKeyHash> endpointMap;
+
+		for (int i = 0; i < (int)drafts.size(); i++) {
+			const auto& points = drafts[i].controlPoints;
+
+			if (sketchPointsMatch(points.front(), points.back(), tol)) {
+				SketchLoopDraft loop{};
+				loop.segmentIndices.push_back(i);
+				loop.orderedPoints = points;
+				loop.area = std::abs(polygonSignedArea(loop.orderedPoints));
+
+				if (loop.area > 1e-18) {
+					loops.push_back(loop);
+					consumed[i] = true;
+				}
+
+				continue;
+			}
+
+			endpointMap[makePointKey(points.front(), tol)].push_back(i);
+			endpointMap[makePointKey(points.back(), tol)].push_back(i);
+		}
+
+		std::vector<bool> visited(drafts.size(), false);
+
+		for (int i = 0; i < (int)drafts.size(); i++) {
+			if (consumed[i] || visited[i]) {
+				continue;
+			}
+
+			std::vector<int> component;
+			std::queue<int> pending;
+			pending.push(i);
+			visited[i] = true;
+
+			while (!pending.empty()) {
+				int current = pending.front();
+				pending.pop();
+				component.push_back(current);
+
+				const auto& points = drafts[current].controlPoints;
+				PointKey endpoints[2] = {
+					makePointKey(points.front(), tol),
+					makePointKey(points.back(), tol)
+				};
+
+				for (const PointKey& endpoint : endpoints) {
+					auto it = endpointMap.find(endpoint);
+					if (it == endpointMap.end()) {
+						continue;
+					}
+
+					for (int next : it->second) {
+						if (!visited[next] && !consumed[next]) {
+							visited[next] = true;
+							pending.push(next);
+						}
+					}
+				}
+			}
+
+			std::unordered_map<PointKey, int, PointKeyHash> degree;
+			for (int draftIndex : component) {
+				const auto& points = drafts[draftIndex].controlPoints;
+				degree[makePointKey(points.front(), tol)]++;
+				degree[makePointKey(points.back(), tol)]++;
+			}
+
+			bool closed = !degree.empty();
+			for (const auto& [_, count] : degree) {
+				if (count != 2) {
+					closed = false;
+					break;
+				}
+			}
+
+			if (!closed) {
+				continue;
+			}
+
+			SketchLoopDraft loop{};
+			loop.segmentIndices = component;
+			if (!reconstructSketchLoop(drafts, component, tol, loop.orderedPoints)) {
+				continue;
+			}
+
+			loop.area = std::abs(polygonSignedArea(loop.orderedPoints));
+			if (loop.area > 1e-18) {
+				loops.push_back(std::move(loop));
+			}
+		}
+
+		return loops;
+	}
+
+	bool namedSegmentMatchesDraft(
+		const SketchNamedSegment& named,
+		const SketchSegmentDraft& draft
+	) {
+		if (named.sourceType != draft.sourceType ||
+			named.entityID != draft.entityID ||
+			named.edgeIndex != draft.edgeIndex) {
+			return false;
+		}
+
+		double start = std::max(named.startT, draft.startT);
+		double end = std::min(named.endT, draft.endT);
+
+		return start <= end + 1e-7;
+	}
 }
 
 bool Mesh::hasDomainBoundarySegments() const {
@@ -306,6 +625,258 @@ void Mesh::addCircularObstacle(
 	}
 
 	boundarySegments.push_back(segment);
+}
+
+bool Mesh::convertSketchToUnstructuredMesh(const SketchModel& sketch) {
+	std::vector<SketchSegmentDraft> drafts;
+
+	double modelScale = std::max(g.L, g.R);
+	modelScale = std::max(modelScale, 1.0);
+
+	double tol = modelScale * 1e-9;
+	double curveSpacing = std::max(modelScale / 80.0, tol * 10.0);
+
+	for (const SketchLine& line : sketch.lines) {
+		if (line.construction) {
+			continue;
+		}
+
+		const SketchPoint* p0 = sketch.findPoint(line.p0);
+		const SketchPoint* p1 = sketch.findPoint(line.p1);
+
+		if (!p0 || !p1) {
+			continue;
+		}
+
+		appendDraft(
+			drafts,
+			{ p0->pos, p1->pos },
+			SketchEntityType::Line,
+			line.id,
+			-1
+		);
+	}
+
+	for (const SketchRectangle& rect : sketch.rectangles) {
+		if (rect.construction) {
+			continue;
+		}
+
+		Vec2 corners[4] = {
+			Vec2{ rect.min.z, rect.min.r },
+			Vec2{ rect.max.z, rect.min.r },
+			Vec2{ rect.max.z, rect.max.r },
+			Vec2{ rect.min.z, rect.max.r }
+		};
+
+		for (int edge = 0; edge < 4; edge++) {
+			appendDraft(
+				drafts,
+				{ corners[edge], corners[(edge + 1) % 4] },
+				SketchEntityType::Rectangle,
+				rect.id,
+				edge
+			);
+		}
+	}
+
+	for (const SketchCircle& circle : sketch.circles) {
+		if (circle.construction || circle.radius <= tol) {
+			continue;
+		}
+
+		int segments = std::max(
+			nseg,
+			curveSampleCount(sketchMeshTwoPi * circle.radius, curveSpacing, 32)
+		);
+
+		appendDraft(
+			drafts,
+			sampleSketchCircle(circle.center, circle.radius, segments),
+			SketchEntityType::Circle,
+			circle.id,
+			-1
+		);
+	}
+
+	for (const SketchArc& arc : sketch.arcs) {
+		if (arc.construction || arc.radius <= tol) {
+			continue;
+		}
+
+		double span = positiveSketchAngleSpan(arc.startAngle, arc.endAngle);
+		if (span <= 1e-9) {
+			continue;
+		}
+
+		int segments = curveSampleCount(arc.radius * span, curveSpacing, 8);
+
+		appendDraft(
+			drafts,
+			sampleSketchArc(
+				arc.center,
+				arc.radius,
+				arc.startAngle,
+				arc.endAngle,
+				segments
+			),
+			SketchEntityType::Arc,
+			arc.id,
+			-1
+		);
+	}
+
+	std::vector<SketchLoopDraft> loops = findSketchLoops(drafts, tol);
+
+	if (loops.empty()) {
+		if (console) {
+			console->addLine(
+				"Sketch to mesh failed: no closed sketch loops were found."
+			);
+		}
+		return false;
+	}
+
+	auto domainIt = std::max_element(
+		loops.begin(),
+		loops.end(),
+		[](const SketchLoopDraft& a, const SketchLoopDraft& b) {
+			return a.area < b.area;
+		}
+	);
+
+	int domainLoopIndex = (int)std::distance(loops.begin(), domainIt);
+
+	currentMeshType = MeshType::Unstructured;
+	clearUnstructuredGeometry();
+	nextLoopID = 0;
+	nextGroupID = 0;
+
+	std::vector<int> segmentIDByDraft(drafts.size(), -1);
+
+	for (int loopIndex = 0; loopIndex < (int)loops.size(); loopIndex++) {
+		const SketchLoopDraft& loop = loops[loopIndex];
+
+		bool isDomainLoop = loopIndex == domainLoopIndex;
+		BoundarySource source =
+			isDomainLoop ? BoundarySource::Domain : BoundarySource::Obstacle;
+		int loopID = isDomainLoop ? -1 : getAvailableLoopID();
+
+		for (int draftIndex : loop.segmentIndices) {
+			const SketchSegmentDraft& draft = drafts[draftIndex];
+
+			BoundarySegment segment{};
+			segment.id = (int)boundarySegments.size();
+			segment.controlPoints = draft.controlPoints;
+			segment.groupID = -1;
+			segment.loopID = loopID;
+			segment.source = source;
+
+			segment.sizing.enabled = true;
+			segment.sizing.mode = BoundarySizingMode::EdgeCount;
+			segment.sizing.edgeCount =
+				std::max(1, (int)segment.controlPoints.size() - 1);
+			segment.sizing.bias = 1.0;
+
+			segmentIDByDraft[draftIndex] = segment.id;
+			boundarySegments.push_back(std::move(segment));
+		}
+	}
+
+	for (const SketchNamedSelection& selection : sketch.namedSelections) {
+		BoundarySegmentGroup group{};
+		group.id = getAvailableBoundaryGroupID();
+		group.name = selection.name;
+		group.type = BoundaryType::WALL;
+		group.includesOrientation = EdgeOrient::Both;
+
+		std::snprintf(
+			group.nameBuffer,
+			sizeof(group.nameBuffer),
+			"%s",
+			group.name.c_str()
+		);
+
+		std::unordered_set<int> uniqueSegmentIDs;
+
+		for (const SketchNamedSegment& named : selection.segments) {
+			for (int draftIndex = 0; draftIndex < (int)drafts.size(); draftIndex++) {
+				int segmentID = segmentIDByDraft[draftIndex];
+				if (segmentID < 0) {
+					continue;
+				}
+
+				if (namedSegmentMatchesDraft(named, drafts[draftIndex])) {
+					uniqueSegmentIDs.insert(segmentID);
+				}
+			}
+		}
+
+		if (uniqueSegmentIDs.empty()) {
+			continue;
+		}
+
+		group.segmentIDs.assign(
+			uniqueSegmentIDs.begin(),
+			uniqueSegmentIDs.end()
+		);
+
+		std::sort(group.segmentIDs.begin(), group.segmentIDs.end());
+
+		for (int segmentID : group.segmentIDs) {
+			BoundarySegment* segment = getBoundarySegmentByID(segmentID);
+			if (segment) {
+				segment->groupID = group.id;
+				group.totalLength +=
+					(float)pathLength(segment->controlPoints);
+			}
+		}
+
+		boundaryGroups.push_back(std::move(group));
+	}
+
+	if (!domainIt->orderedPoints.empty()) {
+		double maxZ = 0.0;
+		double maxR = 0.0;
+
+		for (const Vec2& p : domainIt->orderedPoints) {
+			maxZ = std::max(maxZ, p.z);
+			maxR = std::max(maxR, p.r);
+		}
+
+		if (maxZ > 1e-12) {
+			g.L = maxZ;
+		}
+
+		if (maxR > 1e-12) {
+			g.R = maxR;
+		}
+	}
+
+	rebuildBoundaryDiscretization();
+
+	for (BoundarySegmentGroup& group : boundaryGroups) {
+		group.totalLength = 0.0f;
+
+		for (int segmentID : group.segmentIDs) {
+			BoundarySegment* segment = getBoundarySegmentByID(segmentID);
+			if (!segment) {
+				continue;
+			}
+
+			group.totalLength += (float)pathLength(segment->controlPoints);
+		}
+	}
+
+	isReady = false;
+
+	if (console) {
+		console->addCompletionMessage(
+			"Converted sketch loops into mesh boundary segments"
+		);
+	}
+
+	return true;
 }
 
 void Mesh::runGmshTriangulation() {

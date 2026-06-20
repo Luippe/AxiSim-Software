@@ -180,7 +180,7 @@ add_executable(AxiSim
     ${IMGUI_SOURCES}
     ${IMPLOT_SOURCES}
     ${TINYFILEDIALOGS_SOURCES}
-  "externals/stb_image/stb_image.cpp" "manager/header/flag_manager.h"   "graphics/gui/source/mesh_inspector.cpp" "graphics/gui/header/base_surface_viewer.h" "manager/header/boundary_func.h"  "manager/header/font_manager.h" "src/source/project.cpp" "solver/source/geometry.cpp" "graphics/gui/source/geometry_gui.cpp" "graphics/gui/source/sketch_view.cpp" "structs/sketch_struct.h" "structs/core_struct.h")
+  "externals/stb_image/stb_image.cpp" "manager/header/flag_manager.h"   "graphics/gui/source/mesh_inspector.cpp" "graphics/gui/header/base_surface_viewer.h" "manager/header/boundary_func.h"  "manager/header/font_manager.h" "src/source/project.cpp" "solver/source/geometry.cpp" "graphics/gui/source/geometry_gui.cpp" "graphics/gui/source/sketch_view.cpp" "structs/sketch_struct.h" "structs/core_struct.h" )
 
 set(GMSH_DLL "${GMSH_ROOT}/lib/gmsh.dll")
 

@@ -197,11 +197,19 @@ private:
 	Vec2 moveStartWorld{};
 	std::vector<TrimPreviewResult> selectedTrimSegments;
 	std::vector<TrimPreviewResult> movingTrimSegments;
+	std::vector<SketchModel> undoSketchStates;
+	std::vector<SketchModel> redoSketchStates;
 	SketchNamedSelection pendingNamedSelection;
 
 	void drawToolBar();
 	void clearToolToggles();
 	void setActiveSketchTool(SketchTool tool);
+	void recordSketchUndoState(const SketchModel& beforeChange);
+	void restoreSketchState(const SketchModel& state);
+	bool undoSketchEdit();
+	bool redoSketchEdit();
+
+	bool handleShortcuts(ImGuiIO& io);
 
 	void handleSelect();
 	void handleMouseAndKey();
