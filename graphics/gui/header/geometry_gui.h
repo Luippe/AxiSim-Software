@@ -19,5 +19,4 @@ private:
 
 	Project& project;
 	GUI& gui;
-	int selectedNamedSelectionID = -1;
 };

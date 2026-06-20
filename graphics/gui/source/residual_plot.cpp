@@ -1,6 +1,7 @@
 #include "pch.h"
 #include <format>
 #include <algorithm>
+#include <cmath>
 
 #include "imgui_internal.h"
 
@@ -12,6 +13,18 @@
 
 #include "flag_manager.h"
 #include "printer.h"
+
+namespace {
+    constexpr double residualPlotFloor = 1.0e-30;
+
+    double residualValueForPlot(double value) {
+        if (!std::isfinite(value) || value <= residualPlotFloor) {
+            return residualPlotFloor;
+        }
+
+        return value;
+    }
+}
 
 ResidualPlot::ResidualPlot(Solver& solver, AppConfig& appConfig) :
     solver(solver),
@@ -105,7 +118,9 @@ void ResidualPlot::add(int currentIteration, const std::vector<ResidualPrintItem
     for (const ResidualPrintItem& item : residualsToPrint) {
         if (!item.enabled) continue;
 
-        tabs[activeTabID].plots[idx++].y.push_back(item.coeff->resVal);
+        tabs[activeTabID].plots[idx++].y.push_back(
+            residualValueForPlot(item.coeff->resVal)
+        );
     }
 }
 

@@ -1,5 +1,4 @@
 #pragma once
-
 #include "sketch_struct.h"
 
 struct Config;

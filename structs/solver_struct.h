@@ -103,16 +103,25 @@ struct Coefficients {
 	double* AW = nullptr;
 	double* AN = nullptr;
 	double* AS = nullptr;
+	double* AF = nullptr;
 	double* AC = nullptr;
 	double* b = nullptr;
 	double* res = nullptr;
 	double* initRes = nullptr;
 
-	int nr, nz, N;
+	int* faceStart = nullptr;
+	int* faceNeighbor = nullptr;
+
+	int nr = 0;
+	int nz = 0;
+	int N = 0;
+	int nFaceRefs = 0;
+	int useFaceCoeffs = 0;
 	double resVal = 0.0;
 
 	void free() {
-		freeAllDev(AE, AW, AN, AS, AC, b, res, initRes);
+		freeAllDev(AE, AW, AN, AS, AF, AC, b, res, initRes);
+		freeAllDev(faceStart, faceNeighbor);
 	}
 };
 
@@ -195,7 +204,7 @@ struct VariablesSimple {
 	double* mDot = nullptr;
 
 	void free() {
-		freeAllDev(DU, DV, p, pp, u, v, uTemp, vTemp, ppTemp, uOld, vOld, gradPZ, gradPR, mDot);
+		freeAllDev(DU, DV, p, pp, u, v, temp, uTemp, vTemp, ppTemp, tempTemp, uOld, vOld, tempOld, gradPZ, gradPR, mDot);
 	}
 };
 

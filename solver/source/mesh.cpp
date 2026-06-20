@@ -26,6 +26,26 @@ PointKey makePointKey(Vec2 p, double tol) {
 	};
 }
 
+// Shortest distance from point p to the segment a-b (in z-r space).
+static double distancePointToSegment(Vec2 p, Vec2 a, Vec2 b) {
+	double abz = b.z - a.z;
+	double abr = b.r - a.r;
+	double apz = p.z - a.z;
+	double apr = p.r - a.r;
+
+	double denom = abz * abz + abr * abr;
+	double t = (denom > 1e-30) ? (apz * abz + apr * abr) / denom : 0.0;
+	t = std::max(0.0, std::min(1.0, t));
+
+	double cz = a.z + t * abz;
+	double cr = a.r + t * abr;
+
+	double dz = p.z - cz;
+	double dr = p.r - cr;
+
+	return std::sqrt(dz * dz + dr * dr);
+}
+
 namespace {
 	constexpr double sketchMeshTwoPi = 6.28318530717958647692;
 
@@ -325,20 +345,62 @@ namespace {
 		return loops;
 	}
 
-	bool namedSegmentMatchesDraft(
-		const SketchNamedSegment& named,
-		const SketchSegmentDraft& draft
+	EdgeOrient inferControlPathOrientation(
+		const std::vector<Vec2>& points,
+		double tol
 	) {
-		if (named.sourceType != draft.sourceType ||
-			named.entityID != draft.entityID ||
-			named.edgeIndex != draft.edgeIndex) {
-			return false;
+		bool hasHorizontal = false;
+		bool hasVertical = false;
+		bool hasOther = false;
+
+		for (int i = 0; i < (int)points.size() - 1; i++) {
+			Vec2 a = points[i];
+			Vec2 b = points[i + 1];
+
+			double dz = b.z - a.z;
+			double dr = b.r - a.r;
+			double length2 = dz * dz + dr * dr;
+
+			if (length2 <= tol * tol) {
+				continue;
+			}
+
+			if (std::abs(dr) <= tol) {
+				hasHorizontal = true;
+			}
+			else if (std::abs(dz) <= tol) {
+				hasVertical = true;
+			}
+			else {
+				hasOther = true;
+			}
 		}
 
-		double start = std::max(named.startT, draft.startT);
-		double end = std::min(named.endT, draft.endT);
+		if (hasOther || (hasHorizontal && hasVertical)) {
+			return EdgeOrient::Both;
+		}
 
-		return start <= end + 1e-7;
+		if (hasVertical) {
+			return EdgeOrient::Vertical;
+		}
+
+		return EdgeOrient::Horizontal;
+	}
+
+	EdgeOrient orientationFromFlags(
+		bool hasHorizontal,
+		bool hasVertical,
+		bool hasOther
+	) {
+		if (hasOther || (hasHorizontal && hasVertical)) {
+			return EdgeOrient::Both;
+		}
+
+		if (hasVertical) {
+			return EdgeOrient::Vertical;
+		}
+
+		return EdgeOrient::Horizontal;
 	}
 }
 
@@ -747,6 +809,41 @@ bool Mesh::convertSketchToUnstructuredMesh(const SketchModel& sketch) {
 
 	int domainLoopIndex = (int)std::distance(loops.begin(), domainIt);
 
+	// Snapshot the existing boundary groups together with the geometry of the
+	// segments they are assigned to. Boundary naming is done in the Mesh tab,
+	// so these groups must survive re-conversion even though the segments are
+	// rebuilt (with new IDs) from the sketch.
+	struct PreservedBoundaryGroup {
+		BoundarySegmentGroup group;
+		std::vector<Vec2> segmentSamplePoints;
+	};
+
+	std::vector<PreservedBoundaryGroup> preservedGroups;
+
+	for (const BoundarySegmentGroup& existing : boundaryGroups) {
+		PreservedBoundaryGroup preserved;
+		preserved.group = existing;
+
+		for (int segmentID : existing.segmentIDs) {
+			const BoundarySegment* segment = getBoundarySegmentByID(segmentID);
+			if (segment && segment->controlPoints.size() >= 2) {
+				const std::vector<Vec2>& cp = segment->controlPoints;
+				size_t mid = (cp.size() - 1) / 2;
+
+				// Interior point of the segment (never a junction), so the
+				// match below is unambiguous.
+				Vec2 sample{
+					0.5 * (cp[mid].z + cp[mid + 1].z),
+					0.5 * (cp[mid].r + cp[mid + 1].r)
+				};
+
+				preserved.segmentSamplePoints.push_back(sample);
+			}
+		}
+
+		preservedGroups.push_back(std::move(preserved));
+	}
+
 	currentMeshType = MeshType::Unstructured;
 	clearUnstructuredGeometry();
 	nextLoopID = 0;
@@ -783,12 +880,49 @@ bool Mesh::convertSketchToUnstructuredMesh(const SketchModel& sketch) {
 		}
 	}
 
-	for (const SketchNamedSelection& selection : sketch.namedSelections) {
-		BoundarySegmentGroup group{};
-		group.id = getAvailableBoundaryGroupID();
-		group.name = selection.name;
-		group.type = BoundaryType::WALL;
-		group.includesOrientation = EdgeOrient::Both;
+	// Re-create the preserved boundary groups, re-mapping each one onto the
+	// freshly rebuilt segments by matching segment geometry. Segment IDs are
+	// not stable across re-conversion, but the geometry is.
+	double groupMatchTol = modelScale * 1e-6;
+
+	for (PreservedBoundaryGroup& preserved : preservedGroups) {
+		BoundarySegmentGroup group = preserved.group;
+		group.segmentIDs.clear();
+		group.totalLength = 0.0f;
+
+		std::unordered_set<int> matchedSegmentIDs;
+
+		for (const Vec2& samplePoint : preserved.segmentSamplePoints) {
+			int bestSegmentID = -1;
+			double bestDist = groupMatchTol;
+
+			for (const BoundarySegment& segment : boundarySegments) {
+				const std::vector<Vec2>& cp = segment.controlPoints;
+
+				for (size_t k = 0; k + 1 < cp.size(); k++) {
+					double d = distancePointToSegment(samplePoint, cp[k], cp[k + 1]);
+					if (d < bestDist) {
+						bestDist = d;
+						bestSegmentID = segment.id;
+					}
+				}
+			}
+
+			if (bestSegmentID >= 0) {
+				matchedSegmentIDs.insert(bestSegmentID);
+			}
+		}
+
+		if (matchedSegmentIDs.empty()) {
+			continue;
+		}
+
+		group.segmentIDs.assign(
+			matchedSegmentIDs.begin(),
+			matchedSegmentIDs.end()
+		);
+
+		std::sort(group.segmentIDs.begin(), group.segmentIDs.end());
 
 		std::snprintf(
 			group.nameBuffer,
@@ -797,40 +931,35 @@ bool Mesh::convertSketchToUnstructuredMesh(const SketchModel& sketch) {
 			group.name.c_str()
 		);
 
-		std::unordered_set<int> uniqueSegmentIDs;
-
-		for (const SketchNamedSegment& named : selection.segments) {
-			for (int draftIndex = 0; draftIndex < (int)drafts.size(); draftIndex++) {
-				int segmentID = segmentIDByDraft[draftIndex];
-				if (segmentID < 0) {
-					continue;
-				}
-
-				if (namedSegmentMatchesDraft(named, drafts[draftIndex])) {
-					uniqueSegmentIDs.insert(segmentID);
-				}
-			}
-		}
-
-		if (uniqueSegmentIDs.empty()) {
-			continue;
-		}
-
-		group.segmentIDs.assign(
-			uniqueSegmentIDs.begin(),
-			uniqueSegmentIDs.end()
-		);
-
-		std::sort(group.segmentIDs.begin(), group.segmentIDs.end());
+		bool hasHorizontal = false;
+		bool hasVertical = false;
+		bool hasOther = false;
+		double orientationTol = std::max(std::max(g.L, g.R), 1.0) * 1e-8;
 
 		for (int segmentID : group.segmentIDs) {
 			BoundarySegment* segment = getBoundarySegmentByID(segmentID);
-			if (segment) {
-				segment->groupID = group.id;
-				group.totalLength +=
-					(float)pathLength(segment->controlPoints);
+			if (!segment) {
+				continue;
+			}
+
+			segment->groupID = group.id;
+
+			EdgeOrient orient =
+				inferControlPathOrientation(segment->controlPoints, orientationTol);
+
+			if (orient == EdgeOrient::Horizontal) {
+				hasHorizontal = true;
+			}
+			else if (orient == EdgeOrient::Vertical) {
+				hasVertical = true;
+			}
+			else {
+				hasOther = true;
 			}
 		}
+
+		group.includesOrientation =
+			orientationFromFlags(hasHorizontal, hasVertical, hasOther);
 
 		boundaryGroups.push_back(std::move(group));
 	}
@@ -1023,19 +1152,30 @@ void Mesh::runGmshTriangulation() {
 		pointIDByNodeTag[nodeTags[n]] = pointID;
 	}
 
+	// Map each boundary vertex onto its gmsh mesh node by position.
+	//
+	// gmsh mesh-node tags are NOT guaranteed to match the geometry-point
+	// entity tags we assigned, so matching boundary vertices by tag silently
+	// fails and leaves every boundary vertex pointing at a stale node. That
+	// breaks the edge-key lookup in createUnstructuredMesh, so no boundary
+	// face receives a group ID and no inlet/wall BC is ever applied. Matching
+	// by coordinate is robust to gmsh's node numbering (the geometry-point
+	// node sits at exactly the coordinates we provided).
+	double remapScale = std::max(std::max(g.L, g.R), 1.0);
+	double remapTol = 1e-9 * remapScale;
+
+	std::unordered_map<PointKey, int, PointKeyHash> nodeByPosition;
+	nodeByPosition.reserve(unstructuredPoints.size());
+
+	for (int pid = 0; pid < static_cast<int>(unstructuredPoints.size()); pid++) {
+		nodeByPosition[makePointKey(unstructuredPoints[pid], remapTol)] = pid;
+	}
+
 	for (BoundaryVertex& vertex : boundaryVertices) {
-		auto tagIt = pointTagByBoundaryVertex.find(vertex.id);
+		auto nodeIt = nodeByPosition.find(makePointKey(vertex.pos, remapTol));
 
-		if (tagIt == pointTagByBoundaryVertex.end()) {
-			continue;
-		}
-
-		auto pointIt = pointIDByNodeTag.find(
-			static_cast<std::size_t>(tagIt->second)
-		);
-
-		if (pointIt != pointIDByNodeTag.end()) {
-			vertex.pointID = pointIt->second;
+		if (nodeIt != nodeByPosition.end()) {
+			vertex.pointID = nodeIt->second;
 		}
 	}
 
@@ -1328,7 +1468,12 @@ BoundarySizing Mesh::getSizingForSegment(const BoundarySegment& seg) const {
 	if (seg.groupID >= 0) {
 		for (const BoundarySegmentGroup& group : boundaryGroups) {
 			if (group.id == seg.groupID) {
-				return group.sizing;
+				if (group.sizing.enabled &&
+					group.sizing.mode != BoundarySizingMode::None) {
+					return group.sizing;
+				}
+
+				break;
 			}
 		}
 	}
@@ -1472,26 +1617,6 @@ FVMesh Mesh::createUnstructuredMesh(
 		cell.faceIDs.clear();
 	}
 
-	// boundary edge -> boundary group
-	std::unordered_map<EdgeKey, int, EdgeKeyHash> boundaryLookup;
-
-	for (const BoundaryEdge& edge : boundaryEdges) {
-		if (edge.groupID < 0) {
-			continue;
-		}
-
-		if (!edgeInRange(edge, boundaryVertices.size())) continue;
-
-		const BoundaryVertex& a = boundaryVertices[edge.v0];
-		const BoundaryVertex& b = boundaryVertices[edge.v1];
-
-		if (a.pointID < 0 || b.pointID < 0) {
-			continue;
-		}
-
-		boundaryLookup[EdgeKey(a.pointID, b.pointID)] = edge.groupID;
-	}
-
 	// triangle edge -> face ID
 	std::unordered_map<EdgeKey, int, EdgeKeyHash> edgeToFace;
 
@@ -1547,11 +1672,6 @@ FVMesh Mesh::createUnstructuredMesh(
 
 			face.normal = normal;
 
-			auto groupIt = boundaryLookup.find(key);
-			if (groupIt != boundaryLookup.end()) {
-				face.boundaryGroupID = groupIt->second;
-			}
-
 			int faceID = (int)(mesh.faces.size());
 			mesh.faces.push_back(face);
 
@@ -1577,6 +1697,42 @@ FVMesh Mesh::createUnstructuredMesh(
 		addTriangleEdge(c, tri.v0, tri.v1);
 		addTriangleEdge(c, tri.v1, tri.v2);
 		addTriangleEdge(c, tri.v2, tri.v0);
+	}
+
+	// -------------------------
+	// 3. Classify boundary faces into boundary groups
+	// -------------------------
+	// gmsh refines our boundary lines (it inserts nodes along each addLine),
+	// so a boundary triangle edge does not share endpoints with the coarse
+	// boundary-edge endpoints and an index-based match fails. Instead classify
+	// each boundary face by which boundary edge its midpoint lies on.
+	double matchScale = std::max(std::max(g.L, g.R), 1.0);
+	double matchTol = 1e-4 * matchScale;
+
+	for (FVFace& face : mesh.faces) {
+		if (face.neighbor >= 0) {
+			continue; // interior face
+		}
+
+		int bestGroup = -1;
+		double bestDist = matchTol;
+
+		for (const BoundaryEdge& edge : boundaryEdges) {
+			if (edge.groupID < 0) continue;
+			if (!edgeInRange(edge, boundaryVertices.size())) continue;
+
+			Vec2 a = boundaryVertices[edge.v0].pos;
+			Vec2 b = boundaryVertices[edge.v1].pos;
+
+			double d = distancePointToSegment(face.center, a, b);
+
+			if (d < bestDist) {
+				bestDist = d;
+				bestGroup = edge.groupID;
+			}
+		}
+
+		face.boundaryGroupID = bestGroup;
 	}
 
 	return mesh;
@@ -1786,6 +1942,23 @@ FVMesh Mesh::createStructuredMesh(const std::vector<uint8_t>& activeCell) const 
 }
 
 void Mesh::updateAfterLoadingFile() {
+
+	// Rebuild the render/connectivity buffers that are derived from the saved
+	// source-of-truth data, so we don't have to persist them and risk staleness.
+	if (currentMeshType == MeshType::Unstructured &&
+		!unstructuredPoints.empty() &&
+		!unstructuredTriangles.empty()) {
+
+		FVMesh fvMesh = createUnstructuredMesh(
+			unstructuredPoints,
+			unstructuredTriangles,
+			boundaryVertices,
+			boundaryEdges
+		);
+
+		createUnstructuredVertices(unstructuredPoints, unstructuredTriangles);
+		createUnstructuredLineVertices(unstructuredPoints, fvMesh);
+	}
 
 	isReady = true;
 	//console->addLine("Successfully loaded mesh");	// console does not exist at this point (i think), so uncommenting will crash

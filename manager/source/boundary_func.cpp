@@ -152,6 +152,8 @@ namespace BoundaryDefaults {
 					return { BCType::DIRICHLET, BCType::FULLY_DEVELOPED };
 				case EdgeOrient::Horizontal:
 					return { BCType::DIRICHLET };
+				case EdgeOrient::Both:
+					return { BCType::DIRICHLET };
 				default:
 					return { BCType::NONE };
 				}
@@ -161,6 +163,8 @@ namespace BoundaryDefaults {
 				case EdgeOrient::Horizontal:
 					return { BCType::DIRICHLET, BCType::FULLY_DEVELOPED };
 				case EdgeOrient::Vertical:
+					return { BCType::DIRICHLET };
+				case EdgeOrient::Both:
 					return { BCType::DIRICHLET };
 				default:
 					return { BCType::NONE };

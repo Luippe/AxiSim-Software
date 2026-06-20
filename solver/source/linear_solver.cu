@@ -12,16 +12,10 @@ void jacobi(
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= coeff.N) return;
-	if (!active[n]) {
+	if (active && !active[n]) {
 		xNew[n] = xOld[n];
 		return;
 	}
-
-	int nz = coeff.nz;
-	int nr = coeff.nr;
-
-	int j = n % nz;
-	int i = n / nz;
 
 	double AC = coeff.AC[n];
 
@@ -31,6 +25,30 @@ void jacobi(
 	}
 
 	double val = coeff.b[n];
+
+	if (coeff.useFaceCoeffs &&
+		coeff.AF &&
+		coeff.faceStart &&
+		coeff.faceNeighbor) {
+		int start = coeff.faceStart[n];
+		int end = coeff.faceStart[n + 1];
+
+		for (int k = start; k < end; k++) {
+			int nb = coeff.faceNeighbor[k];
+			if (nb >= 0) {
+				val -= coeff.AF[k] * xOld[nb];
+			}
+		}
+
+		xNew[n] = val / AC;
+		return;
+	}
+
+	int nz = coeff.nz;
+	int nr = coeff.nr;
+
+	int j = n % nz;
+	int i = n / nz;
 
 	// East neighbor
 	if (j < nz - 1) {
@@ -61,7 +79,7 @@ void gaussSeidelRB(Coefficients coeff, uint8_t* active, double* x, int color) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= coeff.N) return;
-	if (!active[n]) {
+	if (active && !active[n]) {
 		return;
 	}
 
@@ -115,8 +133,9 @@ void solveLinearSystem(
 
 	int N = coeff.N;
 	int blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
+	LinearSolverType type = coeff.useFaceCoeffs ? LINEAR_JACOBI : config.type;
 
-	switch (config.type) {
+	switch (type) {
 	case LINEAR_JACOBI:
 		for (int k = 0; k < config.maxIter; k++) {
 			jacobi << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, xTemp, active);

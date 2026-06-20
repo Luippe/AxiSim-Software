@@ -3,6 +3,7 @@
 #include "tinyfiledialogs.h"
 
 #include "project.h"
+#include "mesh.h"
 
 #include "solver_struct.h"
 #include "boundary_struct.h"
@@ -80,6 +81,57 @@ void readBoundaryGroups(std::ifstream& in, std::vector<BoundarySegmentGroup>& gr
 
 }
 
+// ----------BOUNDARY SEGMENTS--------------------
+// BoundarySegment holds nested std::vectors (controlPoints, edgeIDs), so it is
+// NOT trivially copyable and must be serialized field by field rather than with
+// the generic raw-memcpy std::vector overload.
+void writeBoundarySegment(std::ofstream& out, const BoundarySegment& seg) {
+
+	writeAll(out,
+		seg.id,
+		seg.controlPoints,
+		seg.edgeIDs,
+		seg.sizing,
+		seg.groupID,
+		seg.loopID,
+		seg.source
+	);
+}
+
+void writeBoundarySegments(std::ofstream& out, const std::vector<BoundarySegment>& segments) {
+
+	size_t size = segments.size();
+	out.write((const char*)(&size), sizeof(size));
+
+	for (const BoundarySegment& seg : segments) {
+		writeBoundarySegment(out, seg);
+	}
+}
+
+void readBoundarySegment(std::ifstream& in, BoundarySegment& seg) {
+
+	readAll(in,
+		seg.id,
+		seg.controlPoints,
+		seg.edgeIDs,
+		seg.sizing,
+		seg.groupID,
+		seg.loopID,
+		seg.source
+	);
+}
+
+void readBoundarySegments(std::ifstream& in, std::vector<BoundarySegment>& segments) {
+
+	size_t size = 0;
+	in.read((char*)(&size), sizeof(size));
+	segments.resize(size);
+
+	for (BoundarySegment& seg : segments) {
+		readBoundarySegment(in, seg);
+	}
+}
+
 void writeString(std::ofstream& out, const std::string& value) {
 	size_t size = value.size();
 	out.write((const char*)(&size), sizeof(size));
@@ -98,105 +150,6 @@ bool readString(std::ifstream& in, std::string& value) {
 	}
 
 	return (bool)in.read(value.data(), size);
-}
-
-void writeSketchNamedSegment(
-	std::ofstream& out,
-	const SketchNamedSegment& segment
-) {
-	writeAll(
-		out,
-		segment.sourceType,
-		segment.entityID,
-		segment.edgeIndex,
-		segment.startT,
-		segment.endT
-	);
-}
-
-bool readSketchNamedSegment(
-	std::ifstream& in,
-	SketchNamedSegment& segment
-) {
-	return readAll(
-		in,
-		segment.sourceType,
-		segment.entityID,
-		segment.edgeIndex,
-		segment.startT,
-		segment.endT
-	);
-}
-
-void writeSketchNamedSelection(
-	std::ofstream& out,
-	const SketchNamedSelection& selection
-) {
-	writeAll(out, selection.id);
-	writeString(out, selection.name);
-	writeAll(out, selection.nameBuffer);
-
-	size_t size = selection.segments.size();
-	out.write((const char*)(&size), sizeof(size));
-	for (const SketchNamedSegment& segment : selection.segments) {
-		writeSketchNamedSegment(out, segment);
-	}
-}
-
-bool readSketchNamedSelection(
-	std::ifstream& in,
-	SketchNamedSelection& selection
-) {
-	if (!readAll(in, selection.id) ||
-		!readString(in, selection.name) ||
-		!readAll(in, selection.nameBuffer)) {
-		return false;
-	}
-
-	size_t size = 0;
-	if (!in.read((char*)(&size), sizeof(size))) {
-		return false;
-	}
-
-	selection.segments.resize(size);
-	for (SketchNamedSegment& segment : selection.segments) {
-		if (!readSketchNamedSegment(in, segment)) {
-			return false;
-		}
-	}
-
-	return true;
-}
-
-void writeSketchNamedSelections(
-	std::ofstream& out,
-	const std::vector<SketchNamedSelection>& selections
-) {
-	size_t size = selections.size();
-	out.write((const char*)(&size), sizeof(size));
-
-	for (const SketchNamedSelection& selection : selections) {
-		writeSketchNamedSelection(out, selection);
-	}
-}
-
-bool readSketchNamedSelections(
-	std::ifstream& in,
-	std::vector<SketchNamedSelection>& selections
-) {
-	size_t size = 0;
-	if (!in.read((char*)(&size), sizeof(size))) {
-		return false;
-	}
-
-	selections.resize(size);
-	for (SketchNamedSelection& selection : selections) {
-		if (!readSketchNamedSelection(in, selection)) {
-			return false;
-		}
-	}
-
-	return true;
 }
 
 // ====================================================
@@ -228,8 +181,8 @@ void saveFromPathProject(const char* path, Project& project) {
 	saveFromPathGeometry(out, project.geometry);
 	saveFromPathMesh(out, project.mesh);
 	saveFromPathSolver(out, project.solver);
-	saveFromPathResults(out, project.results);
-	saveKeyboardShortcuts(out);
+	//saveFromPathResults(out, project.results);
+	//saveKeyboardShortcuts(out);
 	out.close();
 }
 
@@ -303,20 +256,14 @@ void saveFromPathGeometry(std::ofstream& out, Geometry& geometry) {
 		sketch.circles,
 		sketch.arcs,
 		sketch.rectangles,
-		sketch.dimensions
-	);
+		sketch.dimensions,
 
-	writeSketchNamedSelections(out, sketch.namedSelections);
-
-	writeAll(
-		out,
 		sketch.nextPointID,
 		sketch.nextLineID,
 		sketch.nextCircleID,
 		sketch.nextArcID,
 		sketch.nextRectangleID,
-		sketch.nextDimensionID,
-		sketch.nextNamedSelectionID
+		sketch.nextDimensionID
 	);
 }
 
@@ -332,20 +279,14 @@ void loadFromPathGeometry(std::ifstream& in, Geometry& geometry) {
 		sketch.circles,
 		sketch.arcs,
 		sketch.rectangles,
-		sketch.dimensions
-	);
+		sketch.dimensions,
 
-	readSketchNamedSelections(in, sketch.namedSelections);
-
-	readAll(
-		in,
 		sketch.nextPointID,
 		sketch.nextLineID,
 		sketch.nextCircleID,
 		sketch.nextArcID,
 		sketch.nextRectangleID,
-		sketch.nextDimensionID,
-		sketch.nextNamedSelectionID
+		sketch.nextDimensionID
 	);
 }
 
@@ -374,10 +315,10 @@ void saveFromPathMesh(std::ofstream& out, Mesh& mesh) {
 	writeAll(
 		out,
 		mesh.nseg,
+		mesh.currentMeshType,
 		mesh.gridVertices,
 		mesh.gridLineVertices,
 		mesh.selectableOuterEdges,
-		mesh.boundarySegments,
 		mesh.nextGroupID,
 		mesh.g.obstacleIndices,
 		mesh.g.R,
@@ -391,12 +332,18 @@ void saveFromPathMesh(std::ofstream& out, Mesh& mesh) {
 		mesh.g.r,
 		mesh.g.z,
 		mesh.g.rFace,
-		mesh.g.zFace
+		mesh.g.zFace,
+
+		// unstructured (gmsh) mesh data
+		mesh.unstructuredPoints,
+		mesh.unstructuredTriangles,
+		mesh.boundaryVertices,
+		mesh.boundaryEdges
 	);
 
+	// non-trivially-copyable collections need element-wise serialization
+	writeBoundarySegments(out, mesh.boundarySegments);
 	writeBoundaryGroups(out, mesh.boundaryGroups);
-
-
 }
 
 void loadFromExplorerMesh(Mesh& mesh) {
@@ -421,10 +368,10 @@ void loadFromPathMesh(std::ifstream& in, Mesh& mesh) {
 	// load dimensions
 	readAll(in,
 		mesh.nseg,
+		mesh.currentMeshType,
 		mesh.gridVertices,
 		mesh.gridLineVertices,
 		mesh.selectableOuterEdges,
-		mesh.boundarySegments,
 		mesh.nextGroupID,
 		mesh.g.obstacleIndices,
 		mesh.g.R,
@@ -438,10 +385,20 @@ void loadFromPathMesh(std::ifstream& in, Mesh& mesh) {
 		mesh.g.r,
 		mesh.g.z,
 		mesh.g.rFace,
-		mesh.g.zFace
+		mesh.g.zFace,
+
+		// unstructured (gmsh) mesh data
+		mesh.unstructuredPoints,
+		mesh.unstructuredTriangles,
+		mesh.boundaryVertices,
+		mesh.boundaryEdges
 	);
 
+	readBoundarySegments(in, mesh.boundarySegments);
 	readBoundaryGroups(in, mesh.boundaryGroups);
+
+	// rebuild render buffers / FV connectivity from the loaded data
+	mesh.updateAfterLoadingFile();
 }
 
 // ====================================================
@@ -528,7 +485,15 @@ void loadAtLaunch(Project& project) {
 
 	const char* projectFile = "openAtLaunchProject.bin";
 
+
 	std::ifstream in(projectFile, std::ios::binary);
+
+	{
+		if (in) {
+			loadFromPathGeometry(in, project.geometry);
+		}
+	}
+
 	{
 		if (in) {
 			loadFromPathMesh(in, project.mesh);
@@ -537,18 +502,18 @@ void loadAtLaunch(Project& project) {
 	}
 
 	// load solver file if it exists
-	{
-		if (in) {
-			loadFromPathSolver(in, project.solver);
-		}
-	}
+	//{
+	//	if (in) {
+	//		loadFromPathSolver(in, project.solver);
+	//	}
+	//}
 
-	// load results file if it exists
-	{
-		if (in) {
-			loadFromPathResults(in, project.results);
-		}
-	}
+	//// load results file if it exists
+	//{
+	//	if (in) {
+	//		loadFromPathResults(in, project.results);
+	//	}
+	//}
 }
 
 void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc) {

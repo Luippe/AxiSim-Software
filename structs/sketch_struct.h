@@ -85,33 +85,6 @@ struct SketchRectangle {
     bool selected = false;
 };
 
-struct SketchNamedSegment {
-    SketchEntityType sourceType = SketchEntityType::Line;
-    int entityID = -1;
-    int edgeIndex = -1;
-    double startT = 0.0;
-    double endT = 1.0;
-};
-
-inline bool operator==(
-    const SketchNamedSegment& a,
-    const SketchNamedSegment& b
-) {
-    return a.sourceType == b.sourceType &&
-        a.entityID == b.entityID &&
-        a.edgeIndex == b.edgeIndex &&
-        std::abs(a.startT - b.startT) <= 1e-7 &&
-        std::abs(a.endT - b.endT) <= 1e-7;
-}
-
-struct SketchNamedSelection {
-    int id = -1;
-    std::string name;
-    char nameBuffer[128] = {};
-    std::vector<SketchNamedSegment> segments;
-};
-
-
 inline SketchBound makeBound(Vec2 a, Vec2 b) {
     return {
         Vec2{ std::min(a.z, b.z), std::min(a.r, b.r) },
@@ -160,7 +133,6 @@ struct SketchModel {
     std::vector<SketchArc> arcs;
     std::vector<SketchRectangle> rectangles;
     std::vector<SketchDimension> dimensions;
-    std::vector<SketchNamedSelection> namedSelections;
 
     int nextPointID = 0;
     int nextLineID = 0;
@@ -168,7 +140,6 @@ struct SketchModel {
     int nextArcID = 0;
     int nextRectangleID = 0;
     int nextDimensionID = 0;
-    int nextNamedSelectionID = 0;
 
 
     int addPoint(Vec2 pos) {

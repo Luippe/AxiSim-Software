@@ -13,7 +13,7 @@ using namespace Shortcuts;
 Menu::Menu(Project& project, GUI& gui) :
 	project(project),
 	gui(gui){
-	//loadAtLaunch(project);
+	loadAtLaunch(project);
 }
 
 

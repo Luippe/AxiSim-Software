@@ -112,6 +112,7 @@ const char* bcTypeToString(BCType type) {
 	case BCType::DIRICHLET:			return "Dirichlet";
 	case BCType::NEUMANN:			return "Neumann";
 	case BCType::FULLY_DEVELOPED:	return "Fully Developed";
+	case BCType::NONE:				return "None";
 	default:						return "Unknown";
 	}
 }

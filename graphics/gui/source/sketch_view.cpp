@@ -83,7 +83,6 @@ void SketchView::restoreSketchState(const SketchModel& state) {
 	isMovingSelection = false;
 	isDrawingEntity = false;
 	editingDimensionID = -1;
-	pendingNamedSelection = {};
 }
 
 bool SketchView::undoSketchEdit() {
@@ -1255,162 +1254,6 @@ void SketchView::drawDimensionEditor() {
 	}
 }
 
-void SketchView::prepareNamedSelectionPopup() {
-	pendingNamedSelection = {};
-	pendingNamedSelection.id = geometry.sketch.nextNamedSelectionID;
-	pendingNamedSelection.name =
-		"Selection " + std::to_string(pendingNamedSelection.id + 1);
-
-	std::snprintf(
-		pendingNamedSelection.nameBuffer,
-		sizeof(pendingNamedSelection.nameBuffer),
-		"%s",
-		pendingNamedSelection.name.c_str()
-	);
-
-	for (const TrimPreviewResult& segment : selectedTrimSegments) {
-		if (segment.entityID < 0) {
-			continue;
-		}
-
-		SketchNamedSegment namedSegment{
-			segment.sourceType,
-			segment.entityID,
-			segment.edgeIndex,
-			segment.startT,
-			segment.endT
-		};
-
-		bool alreadyAdded = std::any_of(
-			pendingNamedSelection.segments.begin(),
-			pendingNamedSelection.segments.end(),
-			[&](const SketchNamedSegment& existing) {
-				return existing == namedSegment;
-			}
-		);
-
-		if (!alreadyAdded) {
-			pendingNamedSelection.segments.push_back(namedSegment);
-		}
-	}
-}
-
-bool SketchView::savePendingNamedSelection() {
-	std::string newName = pendingNamedSelection.nameBuffer;
-	bool emptyName = newName.find_first_not_of(" \t\r\n") == std::string::npos;
-	bool duplicateName = std::any_of(
-		geometry.sketch.namedSelections.begin(),
-		geometry.sketch.namedSelections.end(),
-		[&](const SketchNamedSelection& selection) {
-			return selection.name == newName;
-		}
-	);
-
-	if (emptyName || duplicateName || pendingNamedSelection.segments.empty()) {
-		return false;
-	}
-
-	SketchModel beforeNamedSelection = geometry.sketch;
-	pendingNamedSelection.name = newName;
-	geometry.sketch.namedSelections.push_back(pendingNamedSelection);
-	geometry.sketch.nextNamedSelectionID = std::max(
-		geometry.sketch.nextNamedSelectionID,
-		pendingNamedSelection.id + 1
-	);
-	recordSketchUndoState(beforeNamedSelection);
-
-	return true;
-}
-
-void SketchView::drawNamedSelectionPopup() {
-	if (!ImGui::BeginPopupModal(
-		"Name Selected Segments",
-		nullptr,
-		ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove
-	)) {
-		return;
-	}
-
-	bool justOpened = ImGui::IsWindowAppearing();
-	if (justOpened) {
-		ImGui::SetKeyboardFocusHere();
-	}
-
-	ImGui::SetNextItemWidth(250.0f);
-	bool enterPressed = ImGui::InputText(
-		"##NameInput",
-		pendingNamedSelection.nameBuffer,
-		sizeof(pendingNamedSelection.nameBuffer),
-		ImGuiInputTextFlags_EnterReturnsTrue |
-		ImGuiInputTextFlags_AutoSelectAll
-	);
-
-	std::string newName = pendingNamedSelection.nameBuffer;
-	bool emptyName = newName.find_first_not_of(" \t\r\n") == std::string::npos;
-	bool duplicateName = std::any_of(
-		geometry.sketch.namedSelections.begin(),
-		geometry.sketch.namedSelections.end(),
-		[&](const SketchNamedSelection& selection) {
-			return selection.name == newName;
-		}
-	);
-	bool noSegments = pendingNamedSelection.segments.empty();
-	bool invalidName = emptyName || duplicateName || noSegments;
-
-	ImGui::Spacing();
-	ImGui::Text("%d segment%s", 
-		(int)pendingNamedSelection.segments.size(),
-		pendingNamedSelection.segments.size() == 1 ? "" : "s"
-	);
-
-	if (emptyName) {
-		ImGui::TextColored(
-			ImVec4(1.0f, 0.2f, 0.2f, 1.0f),
-			"Name cannot be empty"
-		);
-	}
-	else if (duplicateName) {
-		ImGui::TextColored(
-			ImVec4(1.0f, 0.2f, 0.2f, 1.0f),
-			"Name already exists"
-		);
-	}
-	else if (noSegments) {
-		ImGui::TextColored(
-			ImVec4(1.0f, 0.2f, 0.2f, 1.0f),
-			"No segments selected"
-		);
-	}
-
-	ImGui::Spacing();
-
-	if (invalidName) {
-		ImGui::BeginDisabled();
-	}
-
-	bool savePressed = ImGui::Button("Save");
-
-	if (invalidName) {
-		ImGui::EndDisabled();
-	}
-
-	ImGui::SameLine();
-	bool cancelPressed = ImGui::Button("Cancel");
-	bool escapePressed = ImGui::IsKeyPressed(ImGuiKey_Escape);
-
-	if ((savePressed || enterPressed) && !invalidName) {
-		if (savePendingNamedSelection()) {
-			ImGui::CloseCurrentPopup();
-		}
-	}
-
-	if (cancelPressed || escapePressed) {
-		ImGui::CloseCurrentPopup();
-	}
-
-	ImGui::EndPopup();
-}
-
 void SketchView::drawTemporarySketch(ImDrawList* drawList) {
 
 	SketchTool tool = geometry.sketch.activeTool;
@@ -1455,8 +1298,6 @@ void SketchView::drawPopup(ImDrawList* drawList) {
 	}
 
 
-	bool openNamingPopup = false;
-
 	if (ImGui::BeginPopup("Sketch Popup")) {
 
 		//addMenuItem
@@ -1491,48 +1332,11 @@ void SketchView::drawPopup(ImDrawList* drawList) {
 			ImGui::EndDisabled();
 		}
 
-		bool hasSelectedSegments = !selectedTrimSegments.empty();
-		if (!hasSelectedSegments) {
-			ImGui::BeginDisabled();
-		}
-
-		if (ImGui::MenuItem("Name Segments")) {
-			prepareNamedSelectionPopup();
-			openNamingPopup = true;
-		}
-
-		if (!hasSelectedSegments) {
-			ImGui::EndDisabled();
-		}
-
-		if (ImGui::BeginMenu("Named Selections")) {
-			if (geometry.sketch.namedSelections.empty()) {
-				ImGui::TextDisabled("None");
-			}
-
-			for (const SketchNamedSelection& selection :
-				geometry.sketch.namedSelections) {
-				ImGui::Text(
-					"%s (%d)",
-					selection.name.c_str(),
-					(int)selection.segments.size()
-				);
-			}
-
-			ImGui::EndMenu();
-		}
+		// Segment naming lives in the Mesh tab; the Geometry/sketch view no
+		// longer creates or lists named selections.
 
 		ImGui::EndPopup();
 	}
-
-
-	// open naming popup
-	if (openNamingPopup) {
-		ImGui::OpenPopup("Name Selected Segments");
-	}
-
-	drawNamedSelectionPopup();
-
 }
 
 void SketchView::drawPendingSketchEntity(ImDrawList* drawList) {

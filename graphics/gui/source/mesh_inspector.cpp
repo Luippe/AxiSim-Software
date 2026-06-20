@@ -47,6 +47,64 @@ namespace {
 			a.r + (b.r - a.r) * t
 		};
 	}
+
+	EdgeOrient inferInspectorPathOrientation(
+		const std::vector<Vec2>& points,
+		double tol
+	) {
+		bool hasHorizontal = false;
+		bool hasVertical = false;
+		bool hasOther = false;
+
+		for (int i = 0; i < (int)points.size() - 1; i++) {
+			Vec2 a = points[i];
+			Vec2 b = points[i + 1];
+
+			double dz = b.z - a.z;
+			double dr = b.r - a.r;
+			double length2 = dz * dz + dr * dr;
+
+			if (length2 <= tol * tol) {
+				continue;
+			}
+
+			if (std::abs(dr) <= tol) {
+				hasHorizontal = true;
+			}
+			else if (std::abs(dz) <= tol) {
+				hasVertical = true;
+			}
+			else {
+				hasOther = true;
+			}
+		}
+
+		if (hasOther || (hasHorizontal && hasVertical)) {
+			return EdgeOrient::Both;
+		}
+
+		if (hasVertical) {
+			return EdgeOrient::Vertical;
+		}
+
+		return EdgeOrient::Horizontal;
+	}
+
+	EdgeOrient inspectorOrientationFromFlags(
+		bool hasHorizontal,
+		bool hasVertical,
+		bool hasOther
+	) {
+		if (hasOther || (hasHorizontal && hasVertical)) {
+			return EdgeOrient::Both;
+		}
+
+		if (hasVertical) {
+			return EdgeOrient::Vertical;
+		}
+
+		return EdgeOrient::Horizontal;
+	}
 }
 
 MeshInspector::MeshInspector(Project& project, AppConfig& appConfig) :
@@ -309,28 +367,58 @@ void MeshInspector::setGroupOrientation(BoundarySegmentGroup& group) {
 
 	bool hasVertical = false;
 	bool hasHorizontal = false;
+	bool hasOther = false;
 
-	for (const MeshEdge& edge : group.edges) {
+	if (!group.edges.empty()) {
+		for (const MeshEdge& edge : group.edges) {
 
-		if (edge.orient == EdgeOrient::Horizontal) {
-			hasHorizontal = true;
+			if (edge.orient == EdgeOrient::Horizontal) {
+				hasHorizontal = true;
+			}
+			else if (edge.orient == EdgeOrient::Vertical) {
+				hasVertical = true;
+			}
+			else {
+				hasOther = true;
+			}
+
+			if (hasOther || (hasHorizontal && hasVertical)) {
+				group.includesOrientation = EdgeOrient::Both;
+				return;
+			}
 		}
-		else if (edge.orient == EdgeOrient::Vertical) {
-			hasVertical = true;
-		}
+	}
+	else {
+		double tol = std::max(std::max(g.L, g.R), 1.0) * 1e-8;
 
-		if (hasHorizontal && hasVertical) {
-			group.includesOrientation = EdgeOrient::Both;
-			return;
+		for (int segmentID : group.segmentIDs) {
+			BoundarySegment* segment = mesh.getBoundarySegmentByID(segmentID);
+			if (!segment) {
+				continue;
+			}
+
+			EdgeOrient orient =
+				inferInspectorPathOrientation(segment->controlPoints, tol);
+
+			if (orient == EdgeOrient::Horizontal) {
+				hasHorizontal = true;
+			}
+			else if (orient == EdgeOrient::Vertical) {
+				hasVertical = true;
+			}
+			else {
+				hasOther = true;
+			}
+
+			if (hasOther || (hasHorizontal && hasVertical)) {
+				group.includesOrientation = EdgeOrient::Both;
+				return;
+			}
 		}
 	}
 
-	if (hasHorizontal) {
-		group.includesOrientation = EdgeOrient::Horizontal;
-	}
-	else if (hasVertical) {
-		group.includesOrientation = EdgeOrient::Vertical;
-	}
+	group.includesOrientation =
+		inspectorOrientationFromFlags(hasHorizontal, hasVertical, hasOther);
 }
 
 void MeshInspector::fillBoundaryGroupEdges(BoundarySegmentGroup& group) {
@@ -1362,13 +1450,12 @@ void MeshInspector::drawPopup() {
 
 			if (mesh.currentMeshType == MeshType::Structured) {
 				fillBoundaryGroupEdges(*pendingBoundaryGroup);
-				setGroupOrientation(*pendingBoundaryGroup);
 			}
 			else {
 				pendingBoundaryGroup->edges.clear();
-				pendingBoundaryGroup->includesOrientation = EdgeOrient::Both;
 			}
 
+			setGroupOrientation(*pendingBoundaryGroup);
 			setGroupTotalLength(*pendingBoundaryGroup);
 
 			printf(

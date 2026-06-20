@@ -199,7 +199,6 @@ private:
 	std::vector<TrimPreviewResult> movingTrimSegments;
 	std::vector<SketchModel> undoSketchStates;
 	std::vector<SketchModel> redoSketchStates;
-	SketchNamedSelection pendingNamedSelection;
 
 	void drawToolBar();
 	void clearToolToggles();
@@ -219,7 +218,6 @@ private:
 	void handleOpenPopup();
 
 	void drawPopup(ImDrawList* drawList);
-	void drawNamedSelectionPopup();
 	void drawAxes(ImDrawList* drawList);
 	void drawSketchEntities(ImDrawList* drawList);
 	void drawTrimPreview(ImDrawList* drawList);
@@ -254,8 +252,6 @@ private:
 	bool hoveredSelectedTrimSegment(ImVec2 mouse);
 	std::string getDimensionLabel(const SketchDimension& dimension) const;
 	void openDimensionEditor(int dimensionID);
-	void prepareNamedSelectionPopup();
-	bool savePendingNamedSelection();
 	bool trimLineAtMouse(ImVec2 mouse);
 	bool trimRectangleAtMouse(ImVec2 mouse);
 	bool trimCircleAtMouse(ImVec2 mouse, int circleID);

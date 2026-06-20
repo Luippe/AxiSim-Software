@@ -21,8 +21,6 @@ void createPPCoeff(
 
 	double* AC = coeff.AC;
 
-	int nz = mesh.nz;
-
 	int start = mesh.cells.faceStart[n];
 	int end = mesh.cells.faceStart[n + 1];
 
@@ -65,7 +63,7 @@ void createPPCoeff(
 			// Style A pressure-correction matrix assembly
 			AC[n] += K;
 
-			addStructuredNeighborCoeff(n, nb, nz, -K, coeff);
+			addNeighborCoeff(n, nb, mesh, -K, coeff);
 
 		}
 

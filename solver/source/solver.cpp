@@ -11,7 +11,7 @@
 #include "linear_solver.cuh"
 #include "console.h"
 #include "simple.cuh"
-#include "mesh.h";
+#include "mesh.h"
 #include "residuals.cuh"
 #include "solver_util.cuh"
 
@@ -274,6 +274,102 @@ void Solver::runBiCGStab() {
 
 }
 
+// TODO(diagnostic): temporary boundary-condition sanity check.
+// Reports how many boundary faces actually received a group ID and what
+// BC value each group carries. If "grouped" is 0 the gmsh boundary-node
+// remap failed and no inlet BC reaches the momentum source term.
+static void printBoundaryDiagnostics(
+    const FVMesh& fvMesh,
+    const std::vector<BoundarySegmentGroup>& boundaryGroups,
+    const std::vector<BoundaryEdge>& boundaryEdges,
+    Console* console
+) {
+    if (!console) return;
+
+    int totalFaces = static_cast<int>(fvMesh.faces.size());
+    int boundaryFaces = 0;
+    int groupedBoundaryFaces = 0;
+
+    for (const FVFace& face : fvMesh.faces) {
+        if (face.neighbor < 0) {
+            boundaryFaces++;
+            if (face.boundaryGroupID >= 0) {
+                groupedBoundaryFaces++;
+            }
+        }
+    }
+
+    int totalEdges = static_cast<int>(boundaryEdges.size());
+    int groupedEdges = 0;
+    for (const BoundaryEdge& edge : boundaryEdges) {
+        if (edge.groupID >= 0) {
+            groupedEdges++;
+        }
+    }
+
+    auto bcTypeName = [](BCType t) -> const char* {
+        switch (t) {
+        case DIRICHLET:       return "Dirichlet";
+        case NEUMANN:         return "Neumann";
+        case FULLY_DEVELOPED: return "FullyDeveloped";
+        default:              return "None";
+        }
+    };
+
+    auto boundaryTypeName = [](BoundaryType t) -> const char* {
+        switch (t) {
+        case BoundaryType::WALL:            return "Wall";
+        case BoundaryType::VELOCITY_INLET:  return "VelocityInlet";
+        case BoundaryType::PRESSURE_OUTLET: return "PressureOutlet";
+        case BoundaryType::SYMMETRY:        return "Symmetry";
+        default:                            return "Unknown";
+        }
+    };
+
+    std::ostringstream line;
+    line << "----- Boundary diagnostics -----\n";
+    line << "Faces: total=" << totalFaces
+         << " boundary=" << boundaryFaces
+         << " grouped=" << groupedBoundaryFaces << "\n";
+    line << "Boundary edges: total=" << totalEdges
+         << " withGroup=" << groupedEdges << "\n";
+
+    if (boundaryFaces > 0 && groupedBoundaryFaces == 0) {
+        line << "WARNING: no boundary face received a group ID -> "
+                "inlet BC never applied (gmsh boundary-node remap failed)\n";
+    }
+
+    for (const BoundarySegmentGroup& group : boundaryGroups) {
+        int faceCount = 0;
+        for (const FVFace& face : fvMesh.faces) {
+            if (face.neighbor < 0 && face.boundaryGroupID == group.id) {
+                faceCount++;
+            }
+        }
+
+        line << "Group " << group.id << " '" << group.name << "'"
+             << " type=" << boundaryTypeName(group.type)
+             << " faces=" << faceCount << "\n";
+
+        for (const auto& kv : group.bcs) {
+            const char* varName = "?";
+            switch (kv.first) {
+            case BoundaryVariable::UVelocity:         varName = "U"; break;
+            case BoundaryVariable::VVelocity:         varName = "V"; break;
+            case BoundaryVariable::Pressure:          varName = "P"; break;
+            case BoundaryVariable::StaticTemperature: varName = "T"; break;
+            case BoundaryVariable::Concentration:     varName = "C"; break;
+            default: break;
+            }
+            line << "    " << varName << ": " << bcTypeName(kv.second.type)
+                 << " = " << kv.second.value << "\n";
+        }
+    }
+
+    line << "--------------------------------\n";
+    console->addLine(line.str());
+}
+
 void Solver::runSimple(const Mesh& mesh) {
 
     bool solveEnergy = fieldOption.solveEnergy;
@@ -281,42 +377,95 @@ void Solver::runSimple(const Mesh& mesh) {
     // create configs for solver and residual
     ConfigSolver configSolver{ g, f, addConvectionTerm, transient, dt};
     ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
-    allocateGridConfig(configSolver.g, configSolver.f);
 
-    fvMesh = mesh.createStructuredMesh(configSolver.g.activeCell);
+    const bool isStructuredMesh = mesh.currentMeshType == MeshType::Structured;
+    const bool useFaceCoefficients = !isStructuredMesh;
+
+    std::vector<uint8_t> emptyActiveCell;
+
+    if (isStructuredMesh) {
+        allocateGridConfig(configSolver.g, configSolver.f);
+    }
+
+    fvMesh = mesh.createFVMesh(isStructuredMesh ? configSolver.g.activeCell : emptyActiveCell);
+    int N = fvMesh.numCells();
+    configSolver.g.N = N;
+
+    if (N <= 0) {
+        if (console) {
+            console->addLine("Solver needs a generated mesh before it can run.\n");
+        }
+        return;
+    }
+
 	FVMeshDevice fvMeshDevice = createFVMeshDevice(fvMesh);
 	BoundarySolverDevice bcDevice = createBoundarySolverDevice(mesh.boundaryGroups, fieldOption);
 
+	printBoundaryDiagnostics(fvMesh, mesh.boundaryGroups, mesh.boundaryEdges, console);
+
 
     // allocate memory
-    if (!isReady || !continueSolver) {
+    int expectedFaceRefs = 0;
+    for (const FVCell& cell : fvMesh.cells) {
+        expectedFaceRefs += static_cast<int>(cell.faceIDs.size());
+    }
+
+    const bool needsAllocation =
+        !isReady ||
+        !continueSolver ||
+        uCoeff.N != N ||
+        uCoeff.useFaceCoeffs != (useFaceCoefficients ? 1 : 0) ||
+        (useFaceCoefficients && uCoeff.nFaceRefs != expectedFaceRefs) ||
+        (!useFaceCoefficients && (uCoeff.nr != configSolver.g.nr || uCoeff.nz != configSolver.g.nz));
+
+    if (needsAllocation) {
 
         residualPlot->setName(residualsToPrint);
 
-        int nr = configSolver.g.nr;
-        int nz = configSolver.g.nz;
+        uCoeff.free();
+        vCoeff.free();
+        ppCoeff.free();
+        massFluxCoeff.free();
+        tempCoeff.free();
+        simple.free();
 
-        allocateCoefficients(uCoeff, nr, nz);
-        allocateCoefficients(vCoeff, nr, nz);
-        allocateCoefficients(ppCoeff, nr, nz);
-        allocateCoefficients(massFluxCoeff, nr, nz);
-        allocateCoefficients(tempCoeff, nr, nz);
+        if (useFaceCoefficients) {
+            allocateCoefficients(uCoeff, fvMesh);
+            allocateCoefficients(vCoeff, fvMesh);
+            allocateCoefficients(ppCoeff, fvMesh);
+            allocateCoefficients(massFluxCoeff, fvMesh);
+            allocateCoefficients(tempCoeff, fvMesh);
+        }
+        else {
+            int nr = configSolver.g.nr;
+            int nz = configSolver.g.nz;
+
+            allocateCoefficients(uCoeff, nr, nz);
+            allocateCoefficients(vCoeff, nr, nz);
+            allocateCoefficients(ppCoeff, nr, nz);
+            allocateCoefficients(massFluxCoeff, nr, nz);
+            allocateCoefficients(tempCoeff, nr, nz);
+        }
 
         allocateSimple(configSolver, simple, fvMesh);
 
         currentIteration = 0;
     }
 
-    int N = g.nr * g.nz;
     const int threadsPerBlock = mem.threadsPerBlock;
-    const int shmem = mem.shmem;
     const int blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
     int faceThreads = 128;
     int faceBlocks = (fvMeshDevice.faces.nFaces + faceThreads - 1) / faceThreads;
+    uint8_t* activeCells = fvMeshDevice.cells.active;
 
     // open file if transient is turned on
     std::ofstream out;
-    if (transient) {
+    const bool canSaveStructuredTransient = transient && isStructuredMesh;
+    if (transient && !isStructuredMesh && console) {
+        console->addLine("Transient binary export is only supported for structured meshes; continuing without export.\n");
+    }
+
+    if (canSaveStructuredTransient) {
 
         out.open("flow_motion.bin", std::ios::binary);
         saveBinary(out, g.nr, g.nz, g.dr, g.dz);
@@ -335,13 +484,28 @@ void Solver::runSimple(const Mesh& mesh) {
 
     int numSteps = transient ? (int)std::ceil(tEnd / dt) : 1;
 
-    GridLevel fineGrid = createFineGrid(configSolver.g);
-    std::vector<GridLevel> gridLevels = createGridHierarchy(fineGrid, 4, 4);
+    if (isStructuredMesh) {
+        GridLevel fineGrid = createFineGrid(configSolver.g);
+        std::vector<GridLevel> gridLevels = createGridHierarchy(fineGrid, 4, 4);
 
-    MultigridSolver mg;
-    mg.allocateLevels(gridLevels);
-    mg.smootherConfig = linearSolverConfig;
-    mg.smootherConfig.maxIter = 3;
+        MultigridSolver mg;
+        mg.allocateLevels(gridLevels);
+        mg.smootherConfig = linearSolverConfig;
+        mg.smootherConfig.maxIter = 3;
+    }
+
+    // Dedicated, stronger solve for the pressure-correction Poisson.
+    // Jacobi (the only smoother available on unstructured meshes here) needs
+    // far more sweeps than the momentum equations to propagate the global
+    // pressure mode across the domain. Under-solving it leaves continuity
+    // unenforced and makes the SIMPLE loop oscillate, so scale the sweep count
+    // with the cell count.
+    LinearSolverConfig pressureSolverConfig = linearSolverConfig;
+    int pressureIterations = (N < 500) ? N : 500;
+    if (pressureIterations < linearSolverConfig.maxIter) {
+        pressureIterations = linearSolverConfig.maxIter;
+    }
+    pressureSolverConfig.maxIter = pressureIterations;
 
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
@@ -395,8 +559,8 @@ void Solver::runSimple(const Mesh& mesh) {
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
             // solve velocity
-            solveLinearSystem(uCoeff, linearSolverConfig, stream, simple.u, simple.uTemp, configSolver.g.d_activeCell, threadsPerBlock);
-            solveLinearSystem(vCoeff, linearSolverConfig, stream, simple.v, simple.vTemp, configSolver.g.d_activeCell, threadsPerBlock);
+            solveLinearSystem(uCoeff, linearSolverConfig, stream, simple.u, simple.uTemp, activeCells, threadsPerBlock);
+            solveLinearSystem(vCoeff, linearSolverConfig, stream, simple.v, simple.vTemp, activeCells, threadsPerBlock);
 
             // solve pressure correction
             createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, ppCoeff, simple, bcDevice.p);
@@ -417,7 +581,7 @@ void Solver::runSimple(const Mesh& mesh) {
                 );
 
             createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppCoeff, simple);
-            solveLinearSystem(ppCoeff, linearSolverConfig, stream, simple.pp, simple.ppTemp, configSolver.g.d_activeCell, threadsPerBlock);
+            solveLinearSystem(ppCoeff, pressureSolverConfig, stream, simple.pp, simple.ppTemp, activeCells, threadsPerBlock);
 
             // update field variables
             updateVelocity << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, bcDevice.p);
@@ -434,7 +598,7 @@ void Solver::runSimple(const Mesh& mesh) {
 
                 addEnergyDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, tempCoeff, bcDevice.temp);
 
-                solveLinearSystem(tempCoeff, linearSolverConfig, stream, simple.temp, simple.tempTemp, configSolver.g.d_activeCell, threadsPerBlock);
+                solveLinearSystem(tempCoeff, linearSolverConfig, stream, simple.temp, simple.tempTemp, activeCells, threadsPerBlock);
 
             }
 
@@ -472,7 +636,7 @@ void Solver::runSimple(const Mesh& mesh) {
             currentIteration++;
         }
 
-        if (tCount % saveKeyFrameIter == 0) {
+        if (canSaveStructuredTransient && tCount % saveKeyFrameIter == 0) {
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
             saveBinary(out, (double)(tCount + 1) * dt, 
@@ -482,7 +646,7 @@ void Solver::runSimple(const Mesh& mesh) {
         }
     }
 
-    if (transient) {
+    if (canSaveStructuredTransient) {
         out.close();
 	}
 

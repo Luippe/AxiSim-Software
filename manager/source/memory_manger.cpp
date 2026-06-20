@@ -151,6 +151,8 @@ void allocateCoefficients(Coefficients& coeff, int nr, int nz) {
 	coeff.N = N;
 	coeff.nr = nr;
 	coeff.nz = nz;
+	coeff.nFaceRefs = 0;
+	coeff.useFaceCoeffs = 0;
 
 	coeff.AE = deviceAlloc<double>(N);
 	coeff.AW = deviceAlloc<double>(N);
@@ -171,6 +173,76 @@ void allocateCoefficients(Coefficients& coeff, int nr, int nz) {
 	CUDA_CHECK(cudaMemset(coeff.initRes, 0, N * sizeof(double)));
 
 
+}
+
+void allocateCoefficients(Coefficients& coeff, const FVMesh& mesh) {
+	int N = mesh.numCells();
+
+	coeff.N = N;
+	coeff.nr = mesh.nr;
+	coeff.nz = mesh.nz;
+	coeff.useFaceCoeffs = 1;
+
+	coeff.AE = deviceAlloc<double>(N);
+	coeff.AW = deviceAlloc<double>(N);
+	coeff.AN = deviceAlloc<double>(N);
+	coeff.AS = deviceAlloc<double>(N);
+	coeff.AC = deviceAlloc<double>(N);
+	coeff.b = deviceAlloc<double>(N);
+	coeff.res = deviceAlloc<double>(N);
+	coeff.initRes = deviceAlloc<double>(N);
+
+	CUDA_CHECK(cudaMemset(coeff.AE, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.AW, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.AN, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.AS, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.AC, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.b, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.res, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.initRes, 0, N * sizeof(double)));
+
+	std::vector<int> faceStart(N + 1, 0);
+	std::vector<int> faceNeighbor;
+
+	int totalFaceRefs = 0;
+	for (int c = 0; c < N; c++) {
+		faceStart[c] = totalFaceRefs;
+		totalFaceRefs += static_cast<int>(mesh.cells[c].faceIDs.size());
+	}
+
+	faceStart[N] = totalFaceRefs;
+	faceNeighbor.reserve(totalFaceRefs);
+
+	for (int c = 0; c < N; c++) {
+		for (int faceID : mesh.cells[c].faceIDs) {
+			int neighbor = -1;
+
+			if (faceID >= 0 && faceID < mesh.numFaces()) {
+				const FVFace& face = mesh.faces[faceID];
+				if (face.owner == c) {
+					neighbor = face.neighbor;
+				}
+				else if (face.neighbor == c) {
+					neighbor = face.owner;
+				}
+			}
+
+			faceNeighbor.push_back(neighbor);
+		}
+	}
+
+	coeff.nFaceRefs = static_cast<int>(faceNeighbor.size());
+
+	if (coeff.nFaceRefs > 0) {
+		coeff.AF = deviceAlloc<double>(coeff.nFaceRefs);
+		CUDA_CHECK(cudaMemset(coeff.AF, 0, coeff.nFaceRefs * sizeof(double)));
+	}
+	else {
+		coeff.AF = nullptr;
+	}
+
+	copyHostToDevice(coeff.faceStart, faceStart);
+	copyHostToDevice(coeff.faceNeighbor, faceNeighbor);
 }
 
 FVMeshHostPacked packFVMeshForDevice(const FVMesh& mesh) {
@@ -301,10 +373,8 @@ void allocateSimple(
 	FVMesh& mesh
 ) {
 
-	int nr = config.g.nr;
-	int nz = config.g.nz;
-
-	int N = nr * nz;
+	int N = mesh.numCells();
+	config.g.N = N;
 
 	vars.DU = deviceAlloc<double>(N);
 	vars.DV = deviceAlloc<double>(N);

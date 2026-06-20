@@ -119,6 +119,24 @@ bool readVar(std::ifstream& in, std::vector<T>& vec) {
 	return (bool)in.read((char*)vec.data(), size * sizeof(T));
 }
 
+// load a std::string (length-prefixed). must be declared before readAll so the
+// variadic dispatch picks this overload instead of raw-copying the string object.
+inline bool readVar(std::ifstream& in, std::string& value) {
+	size_t size = 0;
+
+	if (!in.read((char*)&size, sizeof(size))) {
+		return false;
+	}
+
+	value.resize(size);
+
+	if (size == 0) {
+		return true;
+	}
+
+	return (bool)in.read(value.data(), size);
+}
+
 
 template<typename T,
 		typename Hash,
@@ -223,6 +241,14 @@ void writeVar(std::ofstream& out, const std::vector<T>& vec) {
 	size_t size = vec.size();
 	out.write((const char*)&size, sizeof(size));
 	out.write((const char*)vec.data(), size * sizeof(T));
+}
+
+// save a std::string (length-prefixed). must be declared before writeAll so the
+// variadic dispatch picks this overload instead of raw-copying the string object.
+inline void writeVar(std::ofstream& out, const std::string& value) {
+	size_t size = value.size();
+	out.write((const char*)&size, sizeof(size));
+	out.write(value.data(), size);
 }
 
 // save std::unordered_set

@@ -12,6 +12,9 @@
 
 #include "buffer_manager.h"
 
+#include <string>
+#include <vector>
+
 class Display;
 class Project;
 class GUI;
@@ -30,6 +33,9 @@ public:
 
 	// create buffer for the cylinder and cylinder instances using the vertices and indices from results class
 	void createBuffer();
+
+	// force the unstructured 3D surface to rebuild on the next frame
+	void markUnstructuredDirty();
 
 	Camera3D camera;
 	Renderer renderer;
@@ -68,6 +74,23 @@ private:
 
 	bool compareFloat(float value, FilterValues& filterValues);
 
+	// ---------------- unstructured (revolved) result rendering ----------------
+
+	// raw per-cell values for the currently selected field (nullptr if none)
+	const std::vector<double>* currentUnstructuredField() const;
+
+	// true when the cached revolved surface no longer matches the UI state
+	bool unstructuredNeedsRebuild();
+
+	// revolve the 2D triangulation into a 3D surface colored by the field
+	void buildUnstructuredSurface();
+
+	// draw the cached revolved surface
+	void drawUnstructured3D();
+
+	// upload colormap/value-range uniforms for the unstructured shader
+	void uploadUnstructuredUniforms();
+
 	// handle mouse inputs
 	void handleMouse();
 
@@ -84,6 +107,25 @@ private:
 	VertexBuffer cvBuffer;
 	Shader shaderLine;
 	Shader shaderResults;
+
+	// unstructured revolved-surface rendering
+	Shader shaderResultsUnstructured;
+	VertexBuffer usBuffer;
+	std::vector<float> usVertexData;	// interleaved: position.xyz, value
+	int usVertexCount = 0;
+	bool usDirty = true;
+
+	// cached build signature (rebuild when any of these change)
+	std::string usFieldName;
+	int usShading = -1;
+	int usCompare = -1;
+	float usValueAt = 0.0f;
+	float usValueLower = 0.0f;
+	float usValueUpper = 0.0f;
+
+	// revolution sweep angle (270 degrees) so the cut plane stays visible
+	const float usSweep = 4.71238898038f;
+
 	Results& results;
 	Project& project;
 };

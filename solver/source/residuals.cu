@@ -12,10 +12,31 @@ void residualRaw(uint8_t* activeCell, bool sign, ResidualPairs& pairs, int n) {
 
 	if (n >= coeff.N) return;
 
-	if (!activeCell[n]) {
+	if (activeCell && !activeCell[n]) {
 		if (coeff.res) {
 			coeff.res[n] = 0.0;
 		}
+		return;
+	}
+
+	double Ax = coeff.AC[n] * x[n];
+
+	if (coeff.useFaceCoeffs &&
+		coeff.AF &&
+		coeff.faceStart &&
+		coeff.faceNeighbor) {
+		int start = coeff.faceStart[n];
+		int end = coeff.faceStart[n + 1];
+
+		for (int k = start; k < end; k++) {
+			int nb = coeff.faceNeighbor[k];
+			if (nb >= 0) {
+				Ax += coeff.AF[k] * x[nb];
+			}
+		}
+
+		double r = coeff.b[n] - Ax;
+		coeff.res[n] = sign ? r : fabs(r);
 		return;
 	}
 
@@ -24,8 +45,6 @@ void residualRaw(uint8_t* activeCell, bool sign, ResidualPairs& pairs, int n) {
 
 	int j = n % nz;
 	int i = n / nz;
-
-	double Ax = coeff.AC[n] * x[n];
 
 	if (j < nz - 1) {
 		Ax += coeff.AE[n] * x[n + 1];

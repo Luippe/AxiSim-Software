@@ -6,10 +6,10 @@
 
 // computational helper functions
 __device__
-void addStructuredNeighborCoeff(
+void addNeighborCoeff(
 	int n,
 	int nb,
-	int nz,
+	FVMeshDevice mesh,
 	double aNb,
 	Coefficients coeff
 );

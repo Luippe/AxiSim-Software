@@ -8,24 +8,49 @@
 // ==============================================================
 
 __device__
-void addStructuredNeighborCoeff(
+void addNeighborCoeff(
 	int n,
 	int nb,
-	int nz,
+	FVMeshDevice mesh,
 	double aNb,
 	Coefficients coeff
 ) {
-	if (nb == n + 1) {
-		coeff.AE[n] += aNb;
+	if (nb < 0) {
+		return;
 	}
-	else if (nb == n - 1) {
-		coeff.AW[n] += aNb;
+
+	if (coeff.useFaceCoeffs &&
+		coeff.AF &&
+		coeff.faceStart &&
+		coeff.faceNeighbor) {
+		int start = coeff.faceStart[n];
+		int end = coeff.faceStart[n + 1];
+
+		for (int k = start; k < end; k++) {
+			if (coeff.faceNeighbor[k] == nb) {
+				coeff.AF[k] += aNb;
+				return;
+			}
+		}
+
+		return;
 	}
-	else if (nb == n + nz) {
-		coeff.AN[n] += aNb;
-	}
-	else if (nb == n - nz) {
-		coeff.AS[n] += aNb;
+
+	int nz = coeff.nz;
+
+	if (nz > 0) {
+		if (nb == n + 1) {
+			coeff.AE[n] += aNb;
+		}
+		else if (nb == n - 1) {
+			coeff.AW[n] += aNb;
+		}
+		else if (nb == n + nz) {
+			coeff.AN[n] += aNb;
+		}
+		else if (nb == n - nz) {
+			coeff.AS[n] += aNb;
+		}
 	}
 }
 
@@ -328,51 +353,34 @@ void phiGradientCell(
 	gradZ = 0.0;
 	gradR = 0.0;
 
-	// East/west in z
-	int eastFace = findFaceOnSide(mesh, cellID, 1.0, 0.0);
-	int westFace = findFaceOnSide(mesh, cellID, -1.0, 0.0);
+	double volume = mesh.cells.volume[cellID];
+	if (volume <= 1.0e-30) return;
 
-	if (eastFace >= 0 && westFace >= 0) {
-		double zE = 0.0;
-		double zW = 0.0;
+	int start = mesh.cells.faceStart[cellID];
+	int end = mesh.cells.faceStart[cellID + 1];
 
-		double pE = phiAtSide(
-			cellID, eastFace, mesh, bc, phi, true, zE
+	for (int k = start; k < end; k++) {
+		int faceID = mesh.cells.faceIDs[k];
+
+		double normalZ = 0.0;
+		double normalR = 0.0;
+		getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
+
+		double phiF = interpolateFieldToFace(
+			cellID,
+			faceID,
+			mesh,
+			bc,
+			phi
 		);
 
-		double pW = phiAtSide(
-			cellID, westFace, mesh, bc, phi, true, zW
-		);
-
-		double dz = zE - zW;
-
-		if (fabs(dz) > 1.0e-30) {
-			gradZ = (pE - pW) / dz;
-		}
+		double area = mesh.faces.area[faceID];
+		gradZ += phiF * normalZ * area;
+		gradR += phiF * normalR * area;
 	}
 
-	// North/south in r
-	int northFace = findFaceOnSide(mesh, cellID, 0.0, 1.0);
-	int southFace = findFaceOnSide(mesh, cellID, 0.0, -1.0);
-
-	if (northFace >= 0 && southFace >= 0) {
-		double rN = 0.0;
-		double rS = 0.0;
-
-		double pN = phiAtSide(
-			cellID, northFace, mesh, bc, phi, false, rN
-		);
-
-		double pS = phiAtSide(
-			cellID, southFace, mesh, bc, phi, false, rS
-		);
-
-		double dr = rN - rS;
-
-		if (fabs(dr) > 1.0e-30) {
-			gradR = (pN - pS) / dr;
-		}
-	}
+	gradZ /= volume;
+	gradR /= volume;
 }
 
 __device__
@@ -588,13 +596,8 @@ void addEnergyDiffusionCoefficient(
 	double thermDiffusivity = k / (rho * cp);
 
 	double* AC = coeff.AC;
-	double* AE = coeff.AE;
-	double* AW = coeff.AW;
-	double* AN = coeff.AN;
-	double* AS = coeff.AS;
 	double* b = coeff.b;
 
-	int nz = mesh.nz;
 	int start = mesh.cells.faceStart[n];
 	int end = mesh.cells.faceStart[n + 1];
 
@@ -627,7 +630,7 @@ void addEnergyDiffusionCoefficient(
 			// Add diagonal contribution
 			AC[n] += K;
 
-			addStructuredNeighborCoeff(n, nb, nz, -K, coeff);
+			addNeighborCoeff(n, nb, mesh, -K, coeff);
 
 		}
 
@@ -685,13 +688,8 @@ void addDiffusionCoefficient(
 	double mu = f.mu;
 
 	double* AC = coeff.AC;
-	double* AE = coeff.AE;
-	double* AW = coeff.AW;
-	double* AN = coeff.AN;
-	double* AS = coeff.AS;
 	double* b = coeff.b;
 
-	int nz = mesh.nz;
 	int start = mesh.cells.faceStart[n];
 	int end = mesh.cells.faceStart[n + 1];
 
@@ -724,7 +722,7 @@ void addDiffusionCoefficient(
 			// Add diagonal contribution
 			AC[n] += K;
 
-			addStructuredNeighborCoeff(n, nb, nz, -K, coeff);
+			addNeighborCoeff(n, nb, mesh, -K, coeff);
 
 		}
 
@@ -778,7 +776,7 @@ __device__
 void addConvectionContribution(
 	int n,
 	int nb,
-	int nz,
+	FVMeshDevice mesh,
 	double F,
 	bool isBoundary,
 	int groupID,
@@ -798,10 +796,10 @@ void addConvectionContribution(
 
 		double aNb = fmin(F, 0.0);
 
-		addStructuredNeighborCoeff(
+		addNeighborCoeff(
 			n,
 			nb,
-			nz,
+			mesh,
 			aNb,
 			coeff
 		);
@@ -856,8 +854,6 @@ void addMomentumConvectionCoefficient(
 	if (n >= mesh.cells.nCells) return;
 	if (!mesh.cells.active[n]) return;
 
-	int nz = mesh.nz;
-
 	int start = mesh.cells.faceStart[n];
 	int end = mesh.cells.faceStart[n + 1];
 
@@ -897,7 +893,7 @@ void addMomentumConvectionCoefficient(
 			addConvectionContribution(
 				n,
 				nb,
-				nz,
+				mesh,
 				F,
 				false,
 				-1,
@@ -908,7 +904,7 @@ void addMomentumConvectionCoefficient(
 			addConvectionContribution(
 				n,
 				nb,
-				nz,
+				mesh,
 				F,
 				false,
 				-1,
@@ -927,7 +923,7 @@ void addMomentumConvectionCoefficient(
 			addConvectionContribution(
 				n,
 				-1,
-				nz,
+				mesh,
 				F,
 				true,
 				groupID,
@@ -938,7 +934,7 @@ void addMomentumConvectionCoefficient(
 			addConvectionContribution(
 				n,
 				-1,
-				nz,
+				mesh,
 				F,
 				true,
 				groupID,
@@ -1034,13 +1030,22 @@ void clearCoefficients(Coefficients coeff) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 	if (n >= coeff.N) return;
 
-	coeff.AE[n] = 0.0;
-	coeff.AW[n] = 0.0;
-	coeff.AN[n] = 0.0;
-	coeff.AS[n] = 0.0;
-	coeff.AC[n] = 0.0;
-	coeff.b[n] = 0.0;
-	coeff.res[n] = 0.0;
+	if (coeff.AE) coeff.AE[n] = 0.0;
+	if (coeff.AW) coeff.AW[n] = 0.0;
+	if (coeff.AN) coeff.AN[n] = 0.0;
+	if (coeff.AS) coeff.AS[n] = 0.0;
+	if (coeff.AC) coeff.AC[n] = 0.0;
+	if (coeff.b) coeff.b[n] = 0.0;
+	if (coeff.res) coeff.res[n] = 0.0;
+
+	if (coeff.AF && coeff.faceStart) {
+		int start = coeff.faceStart[n];
+		int end = coeff.faceStart[n + 1];
+
+		for (int k = start; k < end; k++) {
+			coeff.AF[k] = 0.0;
+		}
+	}
 
 
 }

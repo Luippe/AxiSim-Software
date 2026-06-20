@@ -11,6 +11,7 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f);
 
 // allocate memory for coefficient matrix
 void allocateCoefficients(Coefficients& coeff, int nr, int nz);
+void allocateCoefficients(Coefficients& coeff, const FVMesh& mesh);
 
 // allocate memory for simple algorithm
 void allocateSimple(ConfigSolver& config, VariablesSimple& vars, FVMesh& mesh);
