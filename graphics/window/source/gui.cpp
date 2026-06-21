@@ -3,6 +3,7 @@
 
 #include "implot.h"
 
+#include "display.h"
 #include "project.h"
 
 #include "mesh.h"
@@ -136,11 +137,12 @@ void GUI::newFrame() {
 // ======================================================================
 // -----------------------INITIALIZATION---------------------------------
 // ======================================================================
-GUI::GUI(Project& project, GLFWwindow* window) :
+GUI::GUI(Project& project, Display& disp) :
+
 	project(project),
 	sketch(project, *this),
 	scene(project, *this),
-	menu(project, *this),
+	menu(project),
 	inspector(project, scene, appConfig),
 	meshInspector(project, appConfig),
 	console(*this, project),
@@ -169,7 +171,7 @@ GUI::GUI(Project& project, GLFWwindow* window) :
 	IMGUI_CHECKVERSION();
 
 	// initialize context. make sure to finish by setting the current context to main context
-	initContext(mainImGuiContext, mainImPlotContext, window);
+	initContext(mainImGuiContext, mainImPlotContext, disp.window);
 	initContext(exportImGuiContext, exportImPlotContext);
 
 	setContext(mainImGuiContext, mainImPlotContext);

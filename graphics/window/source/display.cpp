@@ -1,5 +1,4 @@
 #include "display.h"
-#include "camera.h"
 #include <iostream>
 #include <GLFW/glfw3.h>
 
@@ -33,6 +32,7 @@ Display::Display() {
 	glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
 	
 	window = glfwCreateWindow(mode->width, mode->height, "AxiSim", nullptr, nullptr);
+	windowHandle = glfwGetWin32Window(window);
 
 	glfwMakeContextCurrent(window);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);

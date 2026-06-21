@@ -295,6 +295,23 @@ void SolverGUI::drawPropertiesPanel() {
 			solver.fieldOption.solveConcentration
 		);
 
+		// Drop BCs left over from a previous boundary type so a group never
+		// carries conditions that don't belong to its current type. e.g. a
+		// Symmetry boundary must not keep Dirichlet U/P inherited from when it
+		// was a Wall or Pressure Outlet.
+		for (auto it = group->bcs.begin(); it != group->bcs.end(); ) {
+			bool active = false;
+			for (BoundaryVariable v : activeLeaves) {
+				if (v == it->first) { active = true; break; }
+			}
+			if (!active) {
+				it = group->bcs.erase(it);
+			}
+			else {
+				++it;
+			}
+		}
+
 		if (ImGui::BeginTable("Boundary Variable Editor", 4)) {
 			setupTableColumns(
 				column("Variable", 100.0f),
@@ -403,9 +420,15 @@ void SolverGUI::drawPropertiesPanel() {
 
 				labelRow("Maximum Iterations");
 				ImGui::InputInt("##SimpleMaxIter", &project.solver.configSimple.maxIter, 0.0, 0.0);
+				if (project.solver.configSimple.maxIter < 1) {
+					project.solver.configSimple.maxIter = 1;
+				}
 
 				labelRow("Plot Residual Every # Iterations");
 				inputInt("##SimpleCheckConv", &project.solver.configSimple.checkConv);
+				if (project.solver.configSimple.checkConv < 1) {
+					project.solver.configSimple.checkConv = 1;
+				}
 
 				labelRow("Momentum Tolerance");
 				ImGui::InputDouble("##SimpleMomTol", &project.solver.configSimple.momTol, 0.0, 0.0, "%.3e");
@@ -415,6 +438,23 @@ void SolverGUI::drawPropertiesPanel() {
 
 				labelRow("Linear Solver Max Iteration");
 				ImGui::InputInt("##LinearSolverIteration", &project.solver.linearSolverConfig.maxIter, 0.0, 0.0);
+				if (project.solver.linearSolverConfig.maxIter < 1) {
+					project.solver.linearSolverConfig.maxIter = 1;
+				}
+
+				labelRow("Non-Orthogonal Correctors");
+				ImGui::InputInt("##NonOrthCorrectors", &project.solver.configSimple.nNonOrthCorrectors, 0.0, 0.0);
+				if (project.solver.configSimple.nNonOrthCorrectors < 0) {
+					project.solver.configSimple.nNonOrthCorrectors = 0;
+				}
+
+				labelRow("Pressure Gradient");
+				createSimpleCombo(
+					"##GradientScheme",
+					project.solver.gradientSchemeType,
+					(int&)project.solver.gradientScheme,
+					IM_ARRAYSIZE(project.solver.gradientSchemeType)
+				);
 
 			}
 			ImGui::EndTable();

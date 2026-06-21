@@ -64,6 +64,7 @@ public:
 	int getAvailableLoopID();
 
 	void runGmshTriangulation();
+	void applyRegionOfInfluenceFields(double defaultMeshSize);
 
 	int nseg = 64;	// number of vertices on the circle
 	bool meshMode = false;
@@ -90,8 +91,10 @@ public:
 	std::vector<Triangle> unstructuredTriangles;
 	std::vector<BoundaryVertex> boundaryVertices;
 	std::vector<BoundarySegment> boundarySegments;
+	std::vector<MeshRegionOfInfluence> regionsOfInfluence;
 
 	int nextGroupID = 0;
+	int nextRegionOfInfluenceID = 0;
 
 	Mesh(Config& config);
 

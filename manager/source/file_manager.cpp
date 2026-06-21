@@ -1,6 +1,21 @@
 ﻿#include "file_manager.h"
 
-#include "tinyfiledialogs.h"
+#ifndef GLFW_INCLUDE_NONE
+#define GLFW_INCLUDE_NONE
+#endif
+
+#ifndef GLFW_EXPOSE_NATIVE_WIN32
+#define GLFW_EXPOSE_NATIVE_WIN32
+#endif
+
+#include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
+
+#include <windows.h>
+#include <commdlg.h>
+#include <string>
+#include <cmath>
+#include <cstdint>
 
 #include "project.h"
 #include "mesh.h"
@@ -14,6 +29,260 @@
 
 using namespace Shortcuts;
 
+namespace {
+	constexpr std::uint32_t solverFileMagic = 0x53585641u; // "AXVS" little-endian
+	constexpr std::uint32_t solverFileVersion = 1u;
+
+	struct LegacyConfigSimple {
+		int maxIter = 50;
+		int checkConv = 1;
+		double momTol = 1e-8;
+		double ppTol = 1e-5;
+	};
+
+	std::streamoff remainingBytes(std::ifstream& in) {
+		std::streampos pos = in.tellg();
+		if (pos == std::streampos(-1)) {
+			return 0;
+		}
+
+		in.seekg(0, std::ios::end);
+		std::streampos end = in.tellg();
+		in.seekg(pos);
+
+		if (end == std::streampos(-1) || end < pos) {
+			return 0;
+		}
+
+		return end - pos;
+	}
+
+	std::streamoff legacySolverPayloadSize() {
+		return
+			sizeof(VariableUnits) +
+			sizeof(SolverFieldOption) +
+			sizeof(EnabledResiduals) +
+			sizeof(LinearSolverConfig) +
+			sizeof(VelocitySolverType) +
+			sizeof(ResidualType) +
+			sizeof(ResidualNormType) +
+			sizeof(ResidualScalingType) +
+			sizeof(bool) +
+			sizeof(bool) +
+			sizeof(double) +
+			sizeof(double) +
+			sizeof(int) +
+			sizeof(LegacyConfigSimple);
+	}
+
+	std::streamoff currentSolverPayloadSize() {
+		return
+			sizeof(VariableUnits) +
+			sizeof(SolverFieldOption) +
+			sizeof(EnabledResiduals) +
+			sizeof(LinearSolverConfig) +
+			sizeof(VelocitySolverType) +
+			sizeof(ResidualType) +
+			sizeof(ResidualNormType) +
+			sizeof(ResidualScalingType) +
+			sizeof(ConvectionScheme) +
+			sizeof(bool) +
+			sizeof(bool) +
+			sizeof(double) +
+			sizeof(double) +
+			sizeof(int) +
+			sizeof(FluidPropertyConfig) +
+			sizeof(ConfigSimple);
+	}
+
+	void sanitizeSolverConfig(Solver& solver) {
+		if (solver.linearSolverConfig.maxIter < 1) {
+			solver.linearSolverConfig.maxIter = 20;
+		}
+
+		if (solver.configSimple.maxIter < 1) {
+			solver.configSimple.maxIter = 50;
+		}
+
+		if (solver.configSimple.checkConv < 1) {
+			solver.configSimple.checkConv = 1;
+		}
+
+		if (solver.configSimple.nNonOrthCorrectors < 0) {
+			solver.configSimple.nNonOrthCorrectors = 0;
+		}
+		else if (solver.configSimple.nNonOrthCorrectors > 4) {
+			solver.configSimple.nNonOrthCorrectors = 4;
+		}
+
+		if (!std::isfinite(solver.configSimple.momTol) ||
+			solver.configSimple.momTol <= 0.0) {
+			solver.configSimple.momTol = 1e-8;
+		}
+
+		if (!std::isfinite(solver.configSimple.ppTol) ||
+			solver.configSimple.ppTol <= 0.0) {
+			solver.configSimple.ppTol = 1e-5;
+		}
+
+		if ((int)solver.linearSolverConfig.type < 0 ||
+			(int)solver.linearSolverConfig.type > (int)LINEAR_GS_RB) {
+			solver.linearSolverConfig.type = LINEAR_JACOBI;
+		}
+
+		if ((int)solver.currentVelocitySolver < 0 ||
+			(int)solver.currentVelocitySolver > (int)SOLVER_SIMPLE) {
+			solver.currentVelocitySolver = SOLVER_SIMPLE;
+		}
+
+		if ((int)solver.currentResidual < (int)RESIDUAL_RAW ||
+			(int)solver.currentResidual > (int)RESIDUAL_RMS) {
+			solver.currentResidual = RESIDUAL_RAW;
+		}
+
+		if ((int)solver.currentResidualNorm < (int)RESIDUAL_L1 ||
+			(int)solver.currentResidualNorm > (int)RESIDUAL_LINF) {
+			solver.currentResidualNorm = RESIDUAL_LINF;
+		}
+
+		if ((int)solver.currentResidualScaling < (int)RESIDUAL_SCALING_NONE ||
+			(int)solver.currentResidualScaling > (int)RESIDUAL_SCALING_SQRT_N) {
+			solver.currentResidualScaling = RESIDUAL_SCALING_NONE;
+		}
+
+		if ((int)solver.convectionScheme < (int)CONV_UPWIND ||
+			(int)solver.convectionScheme > (int)CONV_SECOND_ORDER_UPWIND) {
+			solver.convectionScheme = CONV_UPWIND;
+		}
+
+		FluidPropertyConfig defaults;
+		bool resetFluid =
+			!std::isfinite(solver.f.rho) || solver.f.rho < 1.0e-12 ||
+			!std::isfinite(solver.f.mu) || solver.f.mu < 1.0e-12 ||
+			!std::isfinite(solver.f.cp) || solver.f.cp <= 0.0 ||
+			!std::isfinite(solver.f.k) || solver.f.k < 0.0 ||
+			!std::isfinite(solver.f.D) || solver.f.D < 0.0;
+
+		if (resetFluid) {
+			solver.f = defaults;
+		}
+	}
+
+	bool readCurrentSolverPayload(std::ifstream& in, Solver& solver) {
+		return readAll(
+			in,
+			solver.varUnits,
+			solver.fieldOption,
+			solver.enabledResiduals,
+			solver.linearSolverConfig,
+			solver.currentVelocitySolver,
+			solver.currentResidual,
+			solver.currentResidualNorm,
+			solver.currentResidualScaling,
+			solver.convectionScheme,
+			solver.addConvectionTerm,
+			solver.transient,
+			solver.dt,
+			solver.tEnd,
+			solver.saveKeyFrameIter,
+			solver.f,
+			solver.configSimple
+		);
+	}
+
+	bool readLegacySolverPayload(std::ifstream& in, Solver& solver) {
+		LegacyConfigSimple legacySimple;
+
+		bool ok = readAll(
+			in,
+			solver.varUnits,
+			solver.fieldOption,
+			solver.enabledResiduals,
+			solver.linearSolverConfig,
+			solver.currentVelocitySolver,
+			solver.currentResidual,
+			solver.currentResidualNorm,
+			solver.currentResidualScaling,
+			solver.addConvectionTerm,
+			solver.transient,
+			solver.dt,
+			solver.tEnd,
+			solver.saveKeyFrameIter,
+			legacySimple
+		);
+
+		if (!ok) {
+			return false;
+		}
+
+		solver.convectionScheme = CONV_UPWIND;
+		solver.configSimple.maxIter = legacySimple.maxIter;
+		solver.configSimple.checkConv = legacySimple.checkConv;
+		solver.configSimple.momTol = legacySimple.momTol;
+		solver.configSimple.ppTol = legacySimple.ppTol;
+		solver.configSimple.nNonOrthCorrectors = 0;
+
+		return true;
+	}
+}
+
+// ====================================================
+// ----------FILE DIALOG-------------------------------
+// ====================================================
+std::wstring saveFileDialog() {
+	wchar_t filePath[MAX_PATH] = L"";
+
+	OPENFILENAMEW ofn{};
+	GLFWwindow* window = glfwGetCurrentContext();
+
+	ofn.lStructSize = sizeof(ofn);
+	ofn.hwndOwner = window ? glfwGetWin32Window(window) : nullptr;
+	ofn.lpstrFile = filePath;
+	ofn.nMaxFile = MAX_PATH;
+
+	ofn.lpstrFilter =
+		L"Binary Files\0*.bin\0"
+		L"All Files\0*.*\0";
+
+	ofn.nFilterIndex = 1;
+	ofn.lpstrDefExt = L"bin";
+	ofn.Flags = OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR;
+
+	if (GetSaveFileNameW(&ofn)) {
+		return filePath;
+	}
+
+	return L"";
+}
+
+std::wstring loadFileDialog() {
+	wchar_t filePath[MAX_PATH] = L"";
+
+	OPENFILENAMEW ofn{};
+	GLFWwindow* window = glfwGetCurrentContext();
+
+	ofn.lStructSize = sizeof(ofn);
+	ofn.hwndOwner = window ? glfwGetWin32Window(window) : nullptr;
+	ofn.lpstrFile = filePath;
+	ofn.nMaxFile = MAX_PATH;
+
+	ofn.lpstrFilter =
+		L"Binary Files\0*.bin\0"
+		L"All Files\0*.*\0";
+
+	ofn.nFilterIndex = 1;
+	ofn.Flags =
+		OFN_PATHMUSTEXIST |
+		OFN_FILEMUSTEXIST |
+		OFN_NOCHANGEDIR;
+
+	if (GetOpenFileNameW(&ofn)) {
+		return filePath;
+	}
+
+	return L"";
+}
+
 bool fileExists(const std::string& filename) {
 
 	std::ifstream file(filename);
@@ -26,7 +295,7 @@ bool fileExists(const std::string& filename) {
 
 void writeBoundaryGroup(std::ofstream& out, const BoundarySegmentGroup& group) {
 
-	writeAll(out, 
+	writeAll(out,
 		group.id,
 		group.name,
 		group.nameBuffer,
@@ -35,6 +304,7 @@ void writeBoundaryGroup(std::ofstream& out, const BoundarySegmentGroup& group) {
 		group.edges,
 		group.includesOrientation,
 		group.totalLength,
+		group.sizing,
 		group.bcs
 	);
 
@@ -63,6 +333,7 @@ void readBoundaryGroup(std::ifstream& in, BoundarySegmentGroup& group) {
 		group.edges,
 		group.includesOrientation,
 		group.totalLength,
+		group.sizing,
 		group.bcs
 	);
 
@@ -175,9 +446,9 @@ void saveKeyboardShortcuts(std::ofstream& out) {
 // ====================================================
 // -------------------PROJECT--------------------------
 // ====================================================
-void saveFromPathProject(const char* path, Project& project) {
+void saveFromPathProject(const std::wstring& path, Project& project) {
 
-	std::ofstream out(path, std::ios::binary);
+	std::ofstream out(std::filesystem::path(path), std::ios::binary);
 	saveFromPathGeometry(out, project.geometry);
 	saveFromPathMesh(out, project.mesh);
 	saveFromPathSolver(out, project.solver);
@@ -187,40 +458,25 @@ void saveFromPathProject(const char* path, Project& project) {
 }
 
 void saveLaunchProject(Project& project) {
-	const char* path = "openAtLaunchProject.bin";
+
+	std::wstring path = L"openAtLaunchProject.bin";
 	saveFromPathProject(path, project);
 }
 
 void saveFromExplorerProject(Project& project) {
-	const char* path = tinyfd_saveFileDialog(
-		"Save Project",          // dialog title
-		"project.bin",           // default filename
-		0,                    // number of filters
-		nullptr,              // filter patterns
-		nullptr               // filter description
-	);
 
-	if (!path) return;
+	std::wstring path = saveFileDialog();
+	if (path.empty()) return;
 
 	saveFromPathProject(path, project);
 }
 
 void loadFromExplorerProject(Project& project) {
 
-	const char* filters[] = { "*.bin" };
+	std::wstring path = loadFileDialog();
+	if (path.empty()) return;
 
-	const char* path = tinyfd_openFileDialog(
-		"Load Project",
-		"",
-		1,
-		filters,
-		"Binary Project Files",
-		0 // 0 = single file, 1 = multiple files
-	);
-
-	if (!path) return;
-
-	std::ifstream in(path, std::ios::binary);
+	std::ifstream in(std::filesystem::path(path), std::ios::binary);
 	loadFromPathGeometry(in, project.geometry);
 	loadFromPathMesh(in, project.mesh);
 	loadFromPathSolver(in, project.solver);
@@ -231,17 +487,11 @@ void loadFromExplorerProject(Project& project) {
 // -------------------GEOMETRY-------------------------
 // ====================================================
 void saveFromExplorerGeometry(Geometry& geometry) {
-	const char* path = tinyfd_saveFileDialog(
-		"Save Geometry",          // dialog title
-		"geometry.bin",           // default filename
-		0,                    // number of filters
-		nullptr,              // filter patterns
-		nullptr               // filter description
-	);
 
-	if (!path) return;
+	std::wstring path = saveFileDialog();
+	if (path.empty()) return;
 
-	std::ofstream out(path, std::ios::binary);
+	std::ofstream out(std::filesystem::path(path), std::ios::binary);
 	saveFromPathGeometry(out, geometry);
 }
 
@@ -295,17 +545,11 @@ void loadFromPathGeometry(std::ifstream& in, Geometry& geometry) {
 // -------------------MESH-----------------------------
 // ====================================================
 void saveFromExplorerMesh(Mesh& mesh) {
-	const char* path = tinyfd_saveFileDialog(
-		"Save Mesh",          // dialog title
-		"mesh.bin",           // default filename
-		0,                    // number of filters
-		nullptr,              // filter patterns
-		nullptr               // filter description
-	);
 
-	if (!path) return;
+	std::wstring path = saveFileDialog();
+	if (path.empty()) return;
 
-	std::ofstream out(path, std::ios::binary);
+	std::ofstream out(std::filesystem::path(path), std::ios::binary);
 	saveFromPathMesh(out, mesh);
 }
 
@@ -344,22 +588,16 @@ void saveFromPathMesh(std::ofstream& out, Mesh& mesh) {
 	// non-trivially-copyable collections need element-wise serialization
 	writeBoundarySegments(out, mesh.boundarySegments);
 	writeBoundaryGroups(out, mesh.boundaryGroups);
+
+	writeAll(out, mesh.nextRegionOfInfluenceID, mesh.regionsOfInfluence);
 }
 
 void loadFromExplorerMesh(Mesh& mesh) {
-	const char* filters[] = { "*.bin" };
 
-	const char* path = tinyfd_openFileDialog(
-		"Load Mesh",
-		"",
-		1,
-		filters,
-		"Binary Mesh Files",
-		0 // 0 = single file, 1 = multiple files
-	);
+	std::wstring path = loadFileDialog();
+	if (path.empty()) return;
 
-	if (!path) return;
-	std::ifstream in(path, std::ios::binary);
+	std::ifstream in(std::filesystem::path(path), std::ios::binary);
 	loadFromPathMesh(in, mesh);
 }
 
@@ -397,6 +635,15 @@ void loadFromPathMesh(std::ifstream& in, Mesh& mesh) {
 	readBoundarySegments(in, mesh.boundarySegments);
 	readBoundaryGroups(in, mesh.boundaryGroups);
 
+	if (remainingBytes(in) >=
+		static_cast<std::streamoff>(sizeof(mesh.nextRegionOfInfluenceID) + sizeof(size_t))) {
+		readAll(in, mesh.nextRegionOfInfluenceID, mesh.regionsOfInfluence);
+	}
+	else {
+		mesh.nextRegionOfInfluenceID = 0;
+		mesh.regionsOfInfluence.clear();
+	}
+
 	// rebuild render buffers / FV connectivity from the loaded data
 	mesh.updateAfterLoadingFile();
 }
@@ -406,63 +653,95 @@ void loadFromPathMesh(std::ifstream& in, Mesh& mesh) {
 // ====================================================
 void saveFromPathSolver(std::ofstream& out, Solver& solver) {
 
-	saveBinary(out, solver.varUnits, solver.fieldOption, solver.enabledResiduals);
-	saveBinary(out, 
-		solver.linearSolverConfig, 
+	sanitizeSolverConfig(solver);
+
+	writeAll(out, solverFileMagic, solverFileVersion);
+	writeAll(
+		out,
+		solver.varUnits,
+		solver.fieldOption,
+		solver.enabledResiduals,
+		solver.linearSolverConfig,
 		solver.currentVelocitySolver,
 		solver.currentResidual,
 		solver.currentResidualNorm,
-		solver.currentResidualScaling);
-	saveBinary(out, solver.addConvectionTerm, solver.transient);
-	saveBinary(out, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
-	writeAll(out, solver.configSimple);
+		solver.currentResidualScaling,
+		solver.convectionScheme,
+		solver.addConvectionTerm,
+		solver.transient,
+		solver.dt,
+		solver.tEnd,
+		solver.saveKeyFrameIter,
+		solver.f,
+		solver.configSimple
+	);
 
 }
 
 void saveFromExplorerSolver(Solver& solver) {
-	const char* path = tinyfd_saveFileDialog(
-		"Save Solver",          // dialog title
-		"solver.bin",           // default filename
-		0,                    // number of filters
-		nullptr,              // filter patterns
-		nullptr               // filter description
-	);
 
-	if (!path) return;
-	std::ofstream out(path, std::ios::binary);
+	std::wstring path = saveFileDialog();
+	if (path.empty()) return;
+
+	std::ofstream out(std::filesystem::path(path), std::ios::binary);
 	saveFromPathSolver(out, solver);
 }
 
 void loadFromPathSolver(std::ifstream& in, Solver& solver) {
 
-	readBinary(in, solver.varUnits, solver.fieldOption, solver.enabledResiduals);
-	readBinary(in,
-		solver.linearSolverConfig,
-		solver.currentVelocitySolver,
-		solver.currentResidual,
-		solver.currentResidualNorm,
-		solver.currentResidualScaling);
-	readBinary(in, solver.addConvectionTerm, solver.transient);
-	readBinary(in, solver.dt, solver.tEnd, solver.saveKeyFrameIter);
-	readVar(in, solver.configSimple);
+	if (!in) {
+		return;
+	}
+
+	std::streampos start = in.tellg();
+	if (start == std::streampos(-1) || remainingBytes(in) <= 0) {
+		return;
+	}
+
+	std::uint32_t magic = 0;
+	if (!readVar(in, magic)) {
+		in.clear();
+		in.seekg(start);
+		return;
+	}
+
+	bool ok = false;
+
+	if (magic == solverFileMagic) {
+		std::uint32_t version = 0;
+		if (readVar(in, version) && version == solverFileVersion) {
+			ok = readCurrentSolverPayload(in, solver);
+		}
+	}
+	else {
+		in.clear();
+		in.seekg(start);
+
+		const std::streamoff bytesLeft = remainingBytes(in);
+
+		if (bytesLeft == currentSolverPayloadSize()) {
+			ok = readCurrentSolverPayload(in, solver);
+		}
+		else if (bytesLeft >= legacySolverPayloadSize()) {
+			ok = readLegacySolverPayload(in, solver);
+		}
+	}
+
+	if (!ok) {
+		in.clear();
+		in.seekg(start);
+		return;
+	}
+
+	sanitizeSolverConfig(solver);
 }
 
 void loadFromExplorerSolver(Solver& solver) {
 
-	const char* filters[] = { "*.bin" };
+	std::wstring path = loadFileDialog();
+	if (path.empty()) return;
 
-	const char* path = tinyfd_openFileDialog(
-		"Load Solver",
-		"",
-		1,
-		filters,
-		"Binary Solver Files",
-		0 // 0 = single file, 1 = multiple files
-	);
-
-	if (!path) return;
-
-	std::ifstream in(path, std::ios::binary);
+	std::ifstream in(std::filesystem::path(path), std::ios::binary);
 	loadFromPathSolver(in, solver);
 }
 
@@ -502,11 +781,11 @@ void loadAtLaunch(Project& project) {
 	}
 
 	// load solver file if it exists
-	//{
-	//	if (in) {
-	//		loadFromPathSolver(in, project.solver);
-	//	}
-	//}
+	{
+		if (in) {
+			loadFromPathSolver(in, project.solver);
+		}
+	}
 
 	//// load results file if it exists
 	//{

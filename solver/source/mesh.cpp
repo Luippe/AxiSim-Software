@@ -1032,40 +1032,33 @@ void Mesh::runGmshTriangulation() {
 		defaultMeshSize
 	);
 
-	// for each segment, get the sizing
-	for (const BoundarySegment& segment : boundarySegments) {
-		BoundarySizing sizing = getSizingForSegment(segment);
-
-		if (!sizing.enabled ||
-			sizing.mode != BoundarySizingMode::TargetSpacing ||
-			sizing.targetSpacing <= 1e-30) {
+	// Seed each boundary vertex's target mesh size from the length of the
+	// boundary edges the discretization actually produced. This makes the
+	// interior grade to whatever the user prescribed on each boundary (edge
+	// count OR target spacing), rather than only honoring target spacing.
+	for (const BoundaryEdge& edge : boundaryEdges) {
+		if (edge.v0 < 0 || edge.v1 < 0) {
 			continue;
 		}
 
-		for (int edgeID : segment.edgeIDs) {
-			if (edgeID < 0 ||
-				edgeID >= static_cast<int>(boundaryEdges.size())) {
-				continue;
-			}
-
-			const BoundaryEdge& edge = boundaryEdges[edgeID];
-
-			if (edge.v0 >= 0 &&
-				edge.v0 < static_cast<int>(boundaryVertexSize.size())) {
-				boundaryVertexSize[edge.v0] = std::min(
-					boundaryVertexSize[edge.v0],
-					sizing.targetSpacing
-				);
-			}
-
-			if (edge.v1 >= 0 &&
-				edge.v1 < static_cast<int>(boundaryVertexSize.size())) {
-				boundaryVertexSize[edge.v1] = std::min(
-					boundaryVertexSize[edge.v1],
-					sizing.targetSpacing
-				);
-			}
+		if (edge.v0 >= static_cast<int>(boundaryVertexSize.size()) ||
+			edge.v1 >= static_cast<int>(boundaryVertexSize.size())) {
+			continue;
 		}
+
+		const Vec2& p0 = boundaryVertices[edge.v0].pos;
+		const Vec2& p1 = boundaryVertices[edge.v1].pos;
+
+		double dz = p1.z - p0.z;
+		double dr = p1.r - p0.r;
+		double len = std::sqrt(dz * dz + dr * dr);
+
+		if (len <= 1e-30) {
+			continue;
+		}
+
+		boundaryVertexSize[edge.v0] = std::min(boundaryVertexSize[edge.v0], len);
+		boundaryVertexSize[edge.v1] = std::min(boundaryVertexSize[edge.v1], len);
 	}
 
 	for (const BoundaryVertex& v : boundaryVertices) {
@@ -1097,6 +1090,12 @@ void Mesh::runGmshTriangulation() {
 
 		gmsh::model::geo::addLine(p0, p1, lineTag);
 
+		// Keep exactly the boundary discretization we prescribed: one mesh
+		// element per boundary edge. Without this gmsh re-subdivides each line
+		// to the background mesh size, so a wall set to 20 edges comes back
+		// with 60+ boundary faces.
+		gmsh::model::geo::mesh::setTransfiniteCurve(lineTag, 2);
+
 		if (edge.source == BoundarySource::Domain) {
 			outerLines.push_back(lineTag);
 		}
@@ -1127,7 +1126,7 @@ void Mesh::runGmshTriangulation() {
 	gmsh::model::geo::synchronize();
 
 	gmsh::option::setNumber("Mesh.Algorithm", 6); // Frontal-Delaunay
-
+	applyRegionOfInfluenceFields(defaultMeshSize);
 
 	gmsh::model::mesh::generate(2);
 
@@ -1194,6 +1193,85 @@ void Mesh::runGmshTriangulation() {
 	}
 
 	gmsh::finalize();
+}
+
+void Mesh::applyRegionOfInfluenceFields(double defaultMeshSize) {
+	std::vector<double> fieldTags;
+
+	for (const MeshRegionOfInfluence& region : regionsOfInfluence) {
+		if (!region.enabled ||
+			region.targetSpacing <= 1e-30) {
+			continue;
+		}
+
+		int fieldTag = -1;
+
+		if (region.shape == MeshRegionShape::Rectangle) {
+			double zMin = std::min(region.min.z, region.max.z);
+			double zMax = std::max(region.min.z, region.max.z);
+			double rMin = std::min(region.min.r, region.max.r);
+			double rMax = std::max(region.min.r, region.max.r);
+
+			if (zMax - zMin <= 1e-30 || rMax - rMin <= 1e-30) {
+				continue;
+			}
+
+			fieldTag = gmsh::model::mesh::field::add("Box");
+			gmsh::model::mesh::field::setNumber(fieldTag, "XMin", zMin);
+			gmsh::model::mesh::field::setNumber(fieldTag, "XMax", zMax);
+			gmsh::model::mesh::field::setNumber(fieldTag, "YMin", rMin);
+			gmsh::model::mesh::field::setNumber(fieldTag, "YMax", rMax);
+			gmsh::model::mesh::field::setNumber(fieldTag, "ZMin", -1.0);
+			gmsh::model::mesh::field::setNumber(fieldTag, "ZMax", 1.0);
+		}
+		else {
+			if (region.radius <= 1e-30) {
+				continue;
+			}
+
+			fieldTag = gmsh::model::mesh::field::add("Ball");
+			gmsh::model::mesh::field::setNumber(fieldTag, "XCenter", region.center.z);
+			gmsh::model::mesh::field::setNumber(fieldTag, "YCenter", region.center.r);
+			gmsh::model::mesh::field::setNumber(fieldTag, "ZCenter", 0.0);
+			gmsh::model::mesh::field::setNumber(fieldTag, "Radius", region.radius);
+		}
+
+		gmsh::model::mesh::field::setNumber(fieldTag, "VIn", region.targetSpacing);
+
+		double outsideSpacing = region.outsideSpacing;
+		if (outsideSpacing <= 1e-30) {
+			outsideSpacing = defaultMeshSize;
+		}
+
+		gmsh::model::mesh::field::setNumber(fieldTag, "VOut", outsideSpacing);
+
+		if (region.transitionThickness > 1e-30) {
+			gmsh::model::mesh::field::setNumber(
+				fieldTag,
+				"Thickness",
+				region.transitionThickness
+			);
+		}
+
+		fieldTags.push_back(static_cast<double>(fieldTag));
+	}
+
+	if (fieldTags.empty()) {
+		return;
+	}
+
+	int backgroundFieldTag = static_cast<int>(fieldTags.front());
+
+	if (fieldTags.size() > 1) {
+		backgroundFieldTag = gmsh::model::mesh::field::add("Min");
+		gmsh::model::mesh::field::setNumbers(
+			backgroundFieldTag,
+			"FieldsList",
+			fieldTags
+		);
+	}
+
+	gmsh::model::mesh::field::setAsBackgroundMesh(backgroundFieldTag);
 }
 
 float Mesh::displayZ(double z) const {

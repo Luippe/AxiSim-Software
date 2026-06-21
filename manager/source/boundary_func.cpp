@@ -219,6 +219,7 @@ namespace BoundaryDefaults {
 				case EdgeOrient::Both:
 					return { BCType::NONE };
 				default:
+					check();
 					return { BCType::NONE };
 				}
 

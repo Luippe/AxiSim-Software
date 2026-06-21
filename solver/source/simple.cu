@@ -88,7 +88,6 @@ void createPPCoeff(
 				//
 				// This adds K * pP' to the equation.
 				double K = rho * area * Df / dPF;
-
 				AC[n] += K;
 
 				// No b contribution because p'_boundary = 0.
@@ -127,10 +126,84 @@ void computePressureGradient(
 		gradPZ[n],
 		gradPR[n]
 	);
+
+}
+
+__global__
+void computePressureGradientLSQ(
+	FVMeshDevice mesh,
+	BoundaryFieldDevice pBC,
+	const double* p,
+	double* gradZ,
+	double* gradR
+) {
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (n >= mesh.cells.nCells) return;
+
+	gradZ[n] = 0.0;
+	gradR[n] = 0.0;
+
+	if (!mesh.cells.active[n]) return;
+
+	double zP = mesh.cells.centerZ[n];
+	double rP = mesh.cells.centerR[n];
+	double phiP = p[n];
+
+	// weighted least-squares normal equations:  M * grad = rhs
+	double Szz = 0.0, Szr = 0.0, Srr = 0.0;
+	double bz = 0.0, br = 0.0;
+
+	int start = mesh.cells.faceStart[n];
+	int end = mesh.cells.faceStart[n + 1];
+
+	for (int k = start; k < end; k++) {
+		int faceID = mesh.cells.faceIDs[k];
+
+		int owner = mesh.faces.owner[faceID];
+		int neighbor = mesh.faces.neighbor[faceID];
+
+		double dz, dr, dphi;
+
+		if (neighbor >= 0) {
+			int nb = (owner == n) ? neighbor : owner;
+			dz = mesh.cells.centerZ[nb] - zP;
+			dr = mesh.cells.centerR[nb] - rP;
+			dphi = p[nb] - phiP;
+		}
+		else {
+			// boundary face: sample the BC value at the face center. For a
+			// zero-gradient (e.g. symmetry) pressure face this gives dphi = 0
+			// along the face direction, so LSQ respects symmetry directly.
+			double phiF = interpolateFieldToFace(n, faceID, mesh, pBC, p);
+			dz = mesh.faces.centerZ[faceID] - zP;
+			dr = mesh.faces.centerR[faceID] - rP;
+			dphi = phiF - phiP;
+		}
+
+		double d2 = dz * dz + dr * dr;
+		if (d2 <= 1.0e-30) continue;
+
+		double w = 1.0 / d2; // inverse-distance-squared weighting
+
+		Szz += w * dz * dz;
+		Szr += w * dz * dr;
+		Srr += w * dr * dr;
+		bz += w * dz * dphi;
+		br += w * dr * dphi;
+	}
+
+	double det = Szz * Srr - Szr * Szr;
+
+	if (fabs(det) <= 1.0e-30) return;
+
+	gradZ[n] = (Srr * bz - Szr * br) / det;
+	gradR[n] = (-Szr * bz + Szz * br) / det;
 }
 
 __global__
 void createPPRhs(
+	ConfigSolver config,
 	FVMeshDevice mesh,
 	Coefficients ppCoeff,
 	VariablesSimple simple
@@ -140,15 +213,20 @@ void createPPRhs(
 	if (n >= mesh.cells.nCells) return;
 
 	ppCoeff.b[n] = 0.0;
-	simple.pp[n] = 0.0;
-	simple.ppTemp[n] = 0.0;
+
+	// NOTE: pp / ppTemp are NOT reset here. They are zeroed once before the
+	// non-orthogonal corrector loop so that later passes can warm-start from,
+	// and take the gradient of, the previous pass's p'.
 
 	if (!mesh.cells.active[n]) return;
+
+	double rho = config.f.rho;
 
 	int start = mesh.cells.faceStart[n];
 	int end = mesh.cells.faceStart[n + 1];
 
 	double imbalance = 0.0;
+	double crossSum = 0.0;
 
 	for (int k = start; k < end; k++) {
 		int f = mesh.cells.faceIDs[k];
@@ -164,9 +242,21 @@ void createPPRhs(
 		else if (neighbor == n) {
 			imbalance -= mDotOwner;
 		}
+
+		// Deferred non-orthogonal correction (explicit). grad(p') is held in
+		// simple.gradPZ/gradPR; it is zero on the first corrector pass.
+		crossSum += nonOrthoPressureCorrFlux(
+			n,
+			f,
+			mesh,
+			simple,
+			simple.gradPZ,
+			simple.gradPR,
+			rho
+		);
 	}
 
-	ppCoeff.b[n] = -imbalance;
+	ppCoeff.b[n] = -imbalance + crossSum;
 }
 
 __global__
@@ -174,30 +264,20 @@ void createMomentumPressureRhs(
 	FVMeshDevice mesh,
 	Coefficients uCoeff,
 	Coefficients vCoeff,
-	VariablesSimple simple,
-	BoundaryFieldDevice pBC
+	VariablesSimple simple
 ) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
 	if (!mesh.cells.active[n]) return;
 
-	double gradPZ = 0.0;
-	double gradPR = 0.0;
-
-	phiGradientCell(
-		n,
-		mesh,
-		pBC,
-		simple.p,
-		gradPZ,
-		gradPR
-	);
-
+	// grad(p) has been precomputed into simple.gradPZ/gradPR (LSQ), so the
+	// momentum body force uses the same gradient as Rhie-Chow instead of an
+	// independent Green-Gauss gradient (which is spurious on near-axis cells).
 	double volume = mesh.cells.volume[n];
 
-	uCoeff.b[n] += -volume * gradPZ;
-	vCoeff.b[n] += -volume * gradPR;
+	uCoeff.b[n] += -volume * simple.gradPZ[n];
+	vCoeff.b[n] += -volume * simple.gradPR[n];
 
 }
 
@@ -212,30 +292,12 @@ void updateVelocity(
 	if (n >= mesh.cells.nCells) return;
 	if (!mesh.cells.active[n]) return;
 
-	double* u = simple.u;
-	double* v = simple.v;
-	double* pp = simple.pp;
-
-	double* DU = simple.DU;
-	double* DV = simple.DV;
-
-	double gradPP_Z = 0.0;
-	double gradPP_R = 0.0;
-
-	phiGradientCell(
-		n,
-		mesh,
-		pBC,
-		pp,
-		gradPP_Z,
-		gradPP_R
-	);
-	
-	u[n] -= DU[n] * gradPP_Z;
-	v[n] -= DV[n] * gradPP_R;
-	//if (n == 0) {
-	//	printf("%f\n", u[0]);
-	//}
+	// grad(p') has already been computed into simple.gradPZ/gradPR using the
+	// pressure-correction boundary conditions (fixed-pressure faces -> p'=0), so
+	// we reuse it here. This also avoids the old phiGradientCell(pp, pBC) call,
+	// which incorrectly fed the *pressure* Dirichlet value into grad(p').
+	simple.u[n] -= simple.DU[n] * simple.gradPZ[n];
+	simple.v[n] -= simple.DV[n] * simple.gradPR[n];
 }
 
 
@@ -263,7 +325,8 @@ void updateMassFlux(
 	ConfigSolver config,
 	FVMeshDevice mesh,
 	VariablesSimple simple,
-	BoundaryFieldDevice pBC
+	BoundaryFieldDevice pBC,
+	int applyNonOrtho
 ) {
 	int f = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -302,7 +365,23 @@ void updateMassFlux(
 		double ppP = simple.pp[owner];
 		double ppN = simple.pp[neighbor];
 
+		// Orthogonal correction (implicit part of the p' equation).
 		simple.mDot[f] -= rho * area * Df * (ppN - ppP) / dPN;
+
+		// Deferred non-orthogonal correction. Only applied when the p' equation
+		// was solved with the matching cross term (i.e. correctors were run),
+		// otherwise it would inject a divergence the solve never accounted for.
+		if (applyNonOrtho) {
+			simple.mDot[f] -= nonOrthoPressureCorrFlux(
+				owner,
+				f,
+				mesh,
+				simple,
+				simple.gradPZ,
+				simple.gradPR,
+				rho
+			);
+		}
 		return;
 	}
 

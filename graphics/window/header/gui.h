@@ -18,6 +18,7 @@ class Solver;
 class Results;
 class Project;
 struct Config;
+class Display;
 
 enum class ViewTab;
 
@@ -38,7 +39,6 @@ public:
 	Mesh& mesh;
 	Solver& solver;
 	Results& results;
-	GLFWwindow* window;
 	GeometryGUI geometryGUI;
 	MeshGUI meshGUI;
 	SolverGUI solverGUI;
@@ -46,7 +46,7 @@ public:
 	AnimationGUI animationGUI;
 	Config& config;
 
-	GUI(Project& project, GLFWwindow* window);
+	GUI(Project& project, Display& disp);
 
 	void newFrame();
 

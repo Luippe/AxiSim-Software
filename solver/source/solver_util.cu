@@ -94,7 +94,19 @@ double normalR
 	double zN = mesh.cells.centerZ[neighbor];
 	double rN = mesh.cells.centerR[neighbor];
 
-	return fabs((zN - zP) * normalZ + (rN - rP) * normalR);		// distance from cell to cell dotted with normal vector
+	double dz = zN - zP;
+	double dr = rN - rP;
+
+	double proj = fabs(dz * normalZ + dr * normalR); // over-relaxed projected distance
+	double full = sqrt(dz * dz + dr * dr);           // true centroid separation
+
+	// Clamp the projection so a highly non-orthogonal / near-axis cell can't
+	// collapse n.d toward zero and blow up coefficients of the form A/(n.d)
+	// (Rhie-Chow face gradient, p' Laplacian, momentum diffusion). On well
+	// shaped cells proj ~ full, so this leaves them untouched.
+	double minProj = 0.3 * full;
+
+	return fmax(proj, minProj);
 }
 
 
@@ -314,6 +326,111 @@ double interpolateNormalCorrectionCoeffToFace(
 	return (dNF * DP + dPF * DN) / denom;
 }
 
+
+__device__
+double nonOrthoPressureCorrFlux(
+	int cellID,
+	int faceID,
+	FVMeshDevice mesh,
+	VariablesSimple simple,
+	const double* gradPPZ,
+	const double* gradPPR,
+	double rho
+) {
+	int owner = mesh.faces.owner[faceID];
+	int neighbor = mesh.faces.neighbor[faceID];
+
+	// Non-orthogonal correction is only defined on interior faces.
+	if (neighbor < 0) {
+		return 0.0;
+	}
+
+	int nb = (owner == cellID) ? neighbor : owner;
+
+	double normalZ, normalR;
+	getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
+
+	double area = mesh.faces.area[faceID];
+
+	// d = c_neighbor - c_cell
+	double dz = mesh.cells.centerZ[nb] - mesh.cells.centerZ[cellID];
+	double dr = mesh.cells.centerR[nb] - mesh.cells.centerR[cellID];
+
+	double nd = normalZ * dz + normalR * dr; // n . d, signed
+
+	double dOrth = getDistanceCellToCell(mesh, cellID, nb, normalZ, normalR);
+	if (dOrth <= 1.0e-30) {
+		return 0.0;
+	}
+
+	double Df = interpolateNormalCorrectionCoeffToFace(cellID, faceID, mesh, simple);
+
+	// Over-relaxed decomposition: S = A*n, E = (A/(n.d)) d (parallel to d),
+	// T = S - E is the tangential (non-orthogonal) part. Use the same
+	// projected distance as the implicit orthogonal coefficient, preserving the
+	// sign of n.d, so the explicit and implicit pieces stay consistent.
+	double signedDOrth = (nd < 0.0) ? -dOrth : dOrth;
+	double aOverNd = area / signedDOrth;
+	double Tz = area * normalZ - aOverNd * dz;
+	double Tr = area * normalR - aOverNd * dr;
+
+	// Face gradient of p' (simple average of the two cell gradients).
+	double gz = 0.5 * (gradPPZ[cellID] + gradPPZ[nb]);
+	double gr = 0.5 * (gradPPR[cellID] + gradPPR[nb]);
+
+	return rho * Df * (Tz * gz + Tr * gr);
+}
+
+__device__
+double nonOrthoScalarDiffusionFlux(
+	int cellID,
+	int faceID,
+	FVMeshDevice mesh,
+	BoundaryFieldDevice bc,
+	const double* phi,
+	double gamma
+) {
+	int owner = mesh.faces.owner[faceID];
+	int neighbor = mesh.faces.neighbor[faceID];
+
+	if (neighbor < 0 || !phi) {
+		return 0.0;
+	}
+
+	int nb = (owner == cellID) ? neighbor : owner;
+
+	double normalZ, normalR;
+	getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
+
+	double area = mesh.faces.area[faceID];
+
+	double dz = mesh.cells.centerZ[nb] - mesh.cells.centerZ[cellID];
+	double dr = mesh.cells.centerR[nb] - mesh.cells.centerR[cellID];
+	double nd = normalZ * dz + normalR * dr;
+
+	double dOrth = getDistanceCellToCell(mesh, cellID, nb, normalZ, normalR);
+	if (dOrth <= 1.0e-30) {
+		return 0.0;
+	}
+
+	double signedDOrth = (nd < 0.0) ? -dOrth : dOrth;
+	double aOverNd = area / signedDOrth;
+	double Tz = area * normalZ - aOverNd * dz;
+	double Tr = area * normalR - aOverNd * dr;
+
+	double gradPZ = 0.0;
+	double gradPR = 0.0;
+	double gradNZ = 0.0;
+	double gradNR = 0.0;
+
+	phiGradientCell(cellID, mesh, bc, phi, gradPZ, gradPR);
+	phiGradientCell(nb, mesh, bc, phi, gradNZ, gradNR);
+
+	double gradFaceZ = 0.5 * (gradPZ + gradNZ);
+	double gradFaceR = 0.5 * (gradPR + gradNR);
+
+	return gamma * (Tz * gradFaceZ + Tr * gradFaceR);
+}
 
 __device__
 int findFaceOnSide(
@@ -676,7 +793,11 @@ void addDiffusionCoefficient(
 	ConfigSolver config,
 	FVMeshDevice mesh,
 	Coefficients coeff,
-	BoundaryFieldDevice bc
+	BoundaryFieldDevice bc,
+	const double* phi,
+	const double* coupledPhi,
+	int component,
+	int applyNonOrtho
 ) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -724,6 +845,21 @@ void addDiffusionCoefficient(
 
 			addNeighborCoeff(n, nb, mesh, -K, coeff);
 
+			// Deferred non-orthogonal correction. The orthogonal part above is
+			// implicit in the matrix; this explicit cross-diffusion flux is added
+			// to the RHS using the current velocity field. Gated by the same flag
+			// as the pressure non-orthogonal correction so it can be disabled
+			// (the Green-Gauss gradients it uses are noisy on near-axis cells).
+			if (applyNonOrtho) {
+				b[n] += nonOrthoScalarDiffusionFlux(
+					n,
+					faceID,
+					mesh,
+					bc,
+					phi,
+					mu
+				);
+			}
 		}
 
 		// ------------------------------------------------------------
@@ -743,10 +879,33 @@ void addDiffusionCoefficient(
 			uint8_t bcType = bc.typeByGroup[groupID];
 			double bcValue = bc.valueByGroup[groupID];
 			double totalLength = bc.lengthByGroup[groupID];
+			uint8_t boundaryType = bc.boundaryTypeByGroup
+				? bc.boundaryTypeByGroup[groupID]
+				: (uint8_t)(BoundaryType::WALL);
 
 			double dPF = getDistanceCellToFace(mesh, n, faceID, normalZ, normalR);
 
 			if (dPF <= 0.0) continue;
+
+			if (boundaryType == (uint8_t)(BoundaryType::SYMMETRY) &&
+				coupledPhi &&
+				(component == 0 || component == 1)) {
+				double Ksym = 2.0 * mu * area / dPF;
+
+				if (component == 0) {
+					// Axial momentum: enforce (U*nz + V*nr) = 0 while leaving
+					// tangential velocity zero-gradient.
+					AC[n] += Ksym * normalZ * normalZ;
+					b[n] += -Ksym * coupledPhi[n] * normalR * normalZ;
+				}
+				else {
+					// Radial momentum counterpart of the same vector symmetry BC.
+					AC[n] += Ksym * normalR * normalR;
+					b[n] += -Ksym * coupledPhi[n] * normalZ * normalR;
+				}
+
+				continue;
+			}
 
 			double K = mu * area / dPF;
 
@@ -757,7 +916,6 @@ void addDiffusionCoefficient(
 			else if (isNeumannType(bcType)) {
 				// For zero-gradient Neumann, bcValue = 0, so this adds nothing.
 				// If bcValue = du/dn, then this adds prescribed diffusive flux.
-
 				b[n] += mu * area * bcValue;
 			}
 			else if (isFullyDevelopedType(bcType)) {
@@ -767,6 +925,31 @@ void addDiffusionCoefficient(
 			}
 		}
 	}
+}
+
+__global__
+void addRadialMomentumCylindricalSource(
+	ConfigSolver config,
+	FVMeshDevice mesh,
+	Coefficients vCoeff
+) {
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (n >= mesh.cells.nCells) return;
+	if (!mesh.cells.active[n]) return;
+
+	double r = mesh.cells.centerR[n];
+	double volume = mesh.cells.volume[n];
+	double mu = config.f.mu;
+
+	double r2 = r * r;
+	if (r2 <= 1.0e-30 || volume <= 0.0) return;
+
+	// Cylindrical radial momentum uses the vector Laplacian:
+	// mu * (laplacian(V) - V / r^2). The scalar Laplacian part is assembled
+	// by addDiffusionCoefficient; moving diffusion to the matrix leaves this
+	// extra term as a positive implicit diagonal contribution.
+	vCoeff.AC[n] += mu * volume / r2;
 }
 
 // ==============================================================

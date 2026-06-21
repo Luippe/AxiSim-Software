@@ -36,6 +36,8 @@ private:
 	// draw each boundary groups
 	void drawBoundaryGroupGUI();
 
+	void drawRegionOfInfluenceGUI();
+
 	int selectedBoundaryGroupID = -1;
 
 	GridConfigEdits gridConfigEdits;

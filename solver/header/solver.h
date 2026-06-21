@@ -27,6 +27,7 @@ public:
 	const char* bcTypeNames[2] = {"Constant", "Flux"};
 	const char* bcInletTypeNames[3]{ "Constant", "Flux", "Fully Developed" };
 	const char* convectionDiscretizationType[3] = { "First Order Upwind", "Central Difference", "Second Order Upwind"};
+	const char* gradientSchemeType[2] = { "Green-Gauss", "Least Squares" };
 	const char* residualPlotType[6] = { "U", "V", "P", "Continuity", "Temperature", "Concentration" };
 	std::vector<std::string> fieldType = {
 		"Axial Velocity",
@@ -39,6 +40,7 @@ public:
 	ResidualNormType currentResidualNorm = RESIDUAL_LINF;
 	ResidualScalingType currentResidualScaling = RESIDUAL_SCALING_NONE;
 	ConvectionScheme convectionScheme = CONV_UPWIND;
+	GradientScheme gradientScheme = GRAD_LSQ;
 
 	bool addConvectionTerm = false;
 	bool transient = false;
@@ -83,6 +85,19 @@ public:
 
 	// fvMesh
 	FVMesh fvMesh;
+
+	// host copy of the per-face mass flux (indexed like fvMesh.faces), filled
+	// after a solve so the inspector can report face fluxes and per-cell
+	// continuity imbalance.
+	std::vector<double> mDotHost;
+
+	// host copies of the cell pressure gradient (indexed like fvMesh.cells),
+	// computed two ways after a solve so the inspector can compare them:
+	// Green-Gauss (what the solver uses) vs least-squares.
+	std::vector<double> gradPZHost;
+	std::vector<double> gradPRHost;
+	std::vector<double> gradPZLsqHost;
+	std::vector<double> gradPRLsqHost;
 
 	// which variables will the residual plot show?
 	EnabledResiduals enabledResiduals;

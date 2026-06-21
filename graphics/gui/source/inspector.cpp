@@ -34,6 +34,9 @@ Inspector::Inspector(Project& project, SceneView& scene, AppConfig& appConfig) :
 void Inspector::generate() {
 	// fit the view to the freshly generated mesh on the next render
 	pendingFrame = true;
+
+	// a freshly generated mesh re-indexes the cells, so drop any pinned cell
+	selectedCell = -1;
 }
 
 const SolutionField* Inspector::getCurrentSolution() const {
@@ -189,6 +192,27 @@ void Inspector::handleMouse() {
 		 ImGui::IsMouseDragging(ImGuiMouseButton_Middle))) {
 		camera.calculatePan(io.MouseDelta.x, io.MouseDelta.y);
 	}
+}
+
+void Inspector::handleSelection() {
+
+	if (!ImGui::IsItemHovered()) {
+		return;
+	}
+
+	// only treat a left release as a click (pin a cell) when the mouse hasn't
+	// been dragged - dragging is a pan and must not move the selection.
+	if (!ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+		return;
+	}
+
+	ImVec2 drag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
+	if (drag.x * drag.x + drag.y * drag.y > 9.0f) {
+		return;
+	}
+
+	Vec2 world = camera.screenToWorld(ImGui::GetMousePos());
+	selectedCell = pickCell(world); // -1 if the click missed the mesh (deselect)
 }
 
 // ======================================================================
@@ -409,6 +433,166 @@ void Inspector::drawValueProbe(ImDrawList* drawList) {
 	);
 }
 
+static const char* shortFieldName(const std::string& name) {
+	if (name == "Axial Velocity")  return "U  (axial)";
+	if (name == "Radial Velocity") return "V  (radial)";
+	if (name == "Pressure")        return "P";
+	if (name == "Temperature")     return "T";
+	if (name == "Concentration")   return "C";
+	return name.c_str();
+}
+
+void Inspector::drawCellInfo(ImDrawList* drawList) {
+
+	if (selectedCell < 0) {
+		return;
+	}
+
+	const std::vector<Vec2>& pts = mesh.unstructuredPoints;
+	const std::vector<Triangle>& tris = mesh.unstructuredTriangles;
+
+	if (selectedCell >= (int)tris.size()) {
+		// stale selection (mesh changed) - clear it
+		selectedCell = -1;
+		return;
+	}
+
+	const Triangle& t = tris[selectedCell];
+	if (t.v0 < 0 || t.v1 < 0 || t.v2 < 0 ||
+		t.v0 >= (int)pts.size() ||
+		t.v1 >= (int)pts.size() ||
+		t.v2 >= (int)pts.size()) {
+		return;
+	}
+
+	// --- highlight the pinned cell ---
+	ImVec2 a = camera.worldToScreen(pts[t.v0]);
+	ImVec2 b = camera.worldToScreen(pts[t.v1]);
+	ImVec2 d = camera.worldToScreen(pts[t.v2]);
+
+	drawList->PushClipRect(imageMin, imageMax, true);
+	drawList->AddTriangleFilled(a, b, d, IM_COL32(255, 235, 60, 70));
+	drawList->AddTriangle(a, b, d, IM_COL32(255, 235, 60, 255), 2.0f);
+	drawList->PopClipRect();
+
+	// --- build the info text ---
+	std::string info;
+	char line[160];
+
+	std::snprintf(line, sizeof(line), "Cell #%d", selectedCell);
+	info += line;
+
+	const FVMesh& fv = project.solver.fvMesh;
+	if (selectedCell < (int)fv.cells.size()) {
+		const FVCell& cell = fv.cells[selectedCell];
+
+		std::snprintf(line, sizeof(line), "\ncenter:  z %.6g   r %.6g", cell.center.z, cell.center.r);
+		info += line;
+		std::snprintf(line, sizeof(line), "\narea2D:  %.6g", cell.area2D);
+		info += line;
+		std::snprintf(line, sizeof(line), "\nvolume:  %.6g", cell.volume);
+		info += line;
+		std::snprintf(line, sizeof(line), "\nfaces:   %d", (int)cell.faceIDs.size());
+		info += line;
+		std::snprintf(line, sizeof(line), "\nactive:  %s%s",
+			cell.active ? "yes" : "no",
+			cell.solid ? "   (solid)" : "");
+		info += line;
+	}
+
+	// per-field values at this cell
+	bool wroteHeader = false;
+	for (const std::string& name : results.fieldType) {
+		auto it = results.solutions.find(name);
+		if (it == results.solutions.end()) {
+			continue;
+		}
+		if (selectedCell >= (int)it->second.field.size()) {
+			continue;
+		}
+
+		if (!wroteHeader) {
+			info += "\n----------------";
+			wroteHeader = true;
+		}
+
+		std::snprintf(line, sizeof(line), "\n%-12s %.6g",
+			shortFieldName(name), it->second.field[selectedCell]);
+		info += line;
+	}
+
+	// pressure gradient at this cell, Green-Gauss vs least-squares
+	const std::vector<double>& gz = project.solver.gradPZHost;
+	const std::vector<double>& gr = project.solver.gradPRHost;
+	const std::vector<double>& gzL = project.solver.gradPZLsqHost;
+	const std::vector<double>& grL = project.solver.gradPRLsqHost;
+
+	if (selectedCell < (int)gz.size() && selectedCell < (int)gr.size()) {
+		info += "\n----------------";
+		std::snprintf(line, sizeof(line), "\ngrad p (GG):  dp/dz %.6g  dp/dr %.6g",
+			gz[selectedCell], gr[selectedCell]);
+		info += line;
+
+		if (selectedCell < (int)gzL.size() && selectedCell < (int)grL.size()) {
+			std::snprintf(line, sizeof(line), "\ngrad p (LSQ): dp/dz %.6g  dp/dr %.6g",
+				gzL[selectedCell], grL[selectedCell]);
+			info += line;
+		}
+	}
+
+	// per-cell continuity (net outward mass flux) and the individual face fluxes
+	const std::vector<double>& mDot = project.solver.mDotHost;
+	if (selectedCell < (int)fv.cells.size() && !mDot.empty()) {
+		const FVCell& cell = fv.cells[selectedCell];
+
+		double continuity = 0.0;
+		for (int fid : cell.faceIDs) {
+			if (fid < 0 || fid >= (int)mDot.size() || fid >= (int)fv.faces.size()) {
+				continue;
+			}
+			double out = (fv.faces[fid].owner == selectedCell) ? mDot[fid] : -mDot[fid];
+			continuity += out;
+		}
+
+		info += "\n----------------";
+		std::snprintf(line, sizeof(line), "\ncontinuity (net): %.6g", continuity);
+		info += line;
+
+		info += "\nface mass flux (outward):";
+		for (int fid : cell.faceIDs) {
+			if (fid < 0 || fid >= (int)mDot.size() || fid >= (int)fv.faces.size()) {
+				continue;
+			}
+
+			const FVFace& face = fv.faces[fid];
+			double out = (face.owner == selectedCell) ? mDot[fid] : -mDot[fid];
+
+			if (face.neighbor < 0) {
+				std::snprintf(line, sizeof(line), "\n  f%-5d bdry     %.6g", fid, out);
+			}
+			else {
+				int nb = (face.owner == selectedCell) ? face.neighbor : face.owner;
+				std::snprintf(line, sizeof(line), "\n  f%-5d nb %-5d %.6g", fid, nb, out);
+			}
+			info += line;
+		}
+	}
+
+	// --- draw the panel (top-left of the canvas) ---
+	const ImVec2 pad(8.0f, 6.0f);
+	ImVec2 origin(imageMin.x + 10.0f, imageMin.y + 10.0f);
+
+	ImVec2 ts = ImGui::CalcTextSize(info.c_str());
+
+	ImVec2 rmin = origin;
+	ImVec2 rmax(origin.x + ts.x + pad.x * 2.0f, origin.y + ts.y + pad.y * 2.0f);
+
+	drawList->AddRectFilled(rmin, rmax, IM_COL32(15, 20, 28, 235), 4.0f);
+	drawList->AddRect(rmin, rmax, IM_COL32(90, 120, 150, 200), 4.0f, 0, 1.0f);
+	drawList->AddText(ImVec2(origin.x + pad.x, origin.y + pad.y),
+		IM_COL32(230, 235, 245, 255), info.c_str());
+}
+
 void Inspector::drawEmptyMessage(ImDrawList* drawList) {
 
 	if (!mesh.unstructuredTriangles.empty() && getCurrentSolution()) {
@@ -527,11 +711,13 @@ void Inspector::render() {
 	}
 
 	handleMouse();
+	handleSelection();
 
 	drawCanvas(drawList, surfaceRect, 5.0f);
 	drawField(drawList);
 	drawMeshOverlay(drawList);
 	drawAxes(drawList);
+	drawCellInfo(drawList);
 	drawValueProbe(drawList);
 	drawEmptyMessage(drawList);
 

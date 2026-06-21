@@ -53,6 +53,12 @@ enum ConvectionScheme {
 	CONV_QUICK
 };
 
+// Cell gradient scheme used for the pressure / pressure-correction gradients.
+enum GradientScheme {
+	GRAD_GREEN_GAUSS = 0,
+	GRAD_LSQ = 1
+};
+
 struct EnabledResiduals {
 	bool plotU = true;
 	bool plotV = true;
@@ -153,6 +159,12 @@ struct ConfigSimple {
 	int checkConv = 1;
 	double momTol = 1e-8;
 	double ppTol = 1e-5;
+
+	// Number of deferred non-orthogonal corrector passes for the pressure
+	// correction. 0 = orthogonal only (stable default). The deferred cross term
+	// can destabilize on skewed/axis cells, so it is opt-in; raise to 1-2 once
+	// a limiter is in place.
+	int nNonOrthCorrectors = 0;
 };
 
 
@@ -197,6 +209,8 @@ struct VariablesSimple {
 	double* gradPZ = nullptr;
 	double* gradPR = nullptr;
 
+	// SIMPLE requires under-relaxation to be stable. 1.0/1.0 (no relaxation)
+	// diverges; the standard pairing is momentum ~0.7 with pressure ~0.3.
 	double momentumRelaxation = 0.7;
 	double correctionRelaxation = 1.0;
 	double pressureRelaxation = 0.3;
@@ -372,6 +386,7 @@ struct FVMeshHostPacked {
 
 struct BoundaryFieldDevice {
 	uint8_t* typeByGroup = nullptr;
+	uint8_t* boundaryTypeByGroup = nullptr;
 	double* lengthByGroup = nullptr;
 	double* valueByGroup = nullptr;
 	int nGroups = 0;
@@ -387,6 +402,7 @@ struct BoundarySolverDevice {
 
 struct BoundaryFieldHost {
 	std::vector<uint8_t> typeByGroup;
+	std::vector<uint8_t> boundaryTypeByGroup;
 	std::vector<double> valueByGroup;
 	std::vector<double> lengthByGroup;
 };

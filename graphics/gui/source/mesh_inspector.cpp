@@ -16,6 +16,7 @@
 
 namespace {
 	constexpr double meshInspectorTwoPi = 6.28318530717958647692;
+	constexpr double meshInspectorEpsilon = 1e-9;
 
 	double normalizeInspectorAngle(double angle) {
 		angle = std::fmod(angle, meshInspectorTwoPi);
@@ -46,6 +47,55 @@ namespace {
 			a.z + (b.z - a.z) * t,
 			a.r + (b.r - a.r) * t
 		};
+	}
+
+	float inspectorPixelDistance(ImVec2 a, ImVec2 b) {
+		float dx = a.x - b.x;
+		float dy = a.y - b.y;
+		return std::sqrt(dx * dx + dy * dy);
+	}
+
+	double inspectorDot(Vec2 a, Vec2 b) {
+		return a.z * b.z + a.r * b.r;
+	}
+
+	Vec2 inspectorSubtract(Vec2 a, Vec2 b) {
+		return Vec2{ a.z - b.z, a.r - b.r };
+	}
+
+	Vec2 inspectorClosestPointOnSegment(Vec2 p, Vec2 a, Vec2 b) {
+		Vec2 ab = inspectorSubtract(b, a);
+		double len2 = inspectorDot(ab, ab);
+
+		if (len2 <= meshInspectorEpsilon) {
+			return a;
+		}
+
+		double t = inspectorDot(inspectorSubtract(p, a), ab) / len2;
+		t = std::clamp(t, 0.0, 1.0);
+
+		return inspectorInterpolate(a, b, t);
+	}
+
+	double inspectorAngleOfPoint(Vec2 center, Vec2 point) {
+		return normalizeInspectorAngle(
+			std::atan2(point.r - center.r, point.z - center.z)
+		);
+	}
+
+	bool inspectorAngleOnArc(double angle, const SketchArc& arc) {
+		double start = normalizeInspectorAngle(arc.startAngle);
+		double end = arc.endAngle;
+		while (end < start) {
+			end += meshInspectorTwoPi;
+		}
+
+		angle = normalizeInspectorAngle(angle);
+		if (angle < start) {
+			angle += meshInspectorTwoPi;
+		}
+
+		return angle >= start - 1e-7 && angle <= end + 1e-7;
 	}
 
 	EdgeOrient inferInspectorPathOrientation(
@@ -961,7 +1011,7 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 
 	// do not run this if any of the toggled tools are active, or if a popup is opened
 	isPopupOpened = ImGui::IsPopupOpen("Mesh Inspector Popup");
-	if (toggleRuler || isPopupOpened) return;
+	if (toggleDrawCircle || toggleDrawRect || toggleRuler || isPopupOpened) return;
 
 	if (!hoveredId.has_value()) {
 		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -1003,8 +1053,267 @@ void MeshInspector::handleDrawCircle() {
 	}
 }
 
+std::optional<MeshSnapResult> MeshInspector::findSnap(ImVec2 mouse) {
+	constexpr float snapRadiusPx = 10.0f;
+
+	Vec2 mouseWorld = camera.screenToWorld(mouse);
+	std::optional<MeshSnapResult> best;
+
+	auto tryCandidate = [&](MeshSnapType type, Vec2 world, int entityID) {
+		ImVec2 screen = camera.worldToScreen(world);
+		float distPx = inspectorPixelDistance(screen, mouse);
+
+		if (distPx > snapRadiusPx) {
+			return;
+		}
+
+		if (!best || distPx < best->distancePx) {
+			best = MeshSnapResult{
+				type,
+				world,
+				screen,
+				distPx,
+				entityID
+			};
+		}
+	};
+
+	{
+		Vec2 origin{ 0.0, 0.0 };
+		ImVec2 originScreen = camera.worldToScreen(origin);
+		float originDistancePx = inspectorPixelDistance(originScreen, mouse);
+
+		if (originDistancePx <= snapRadiusPx) {
+			return MeshSnapResult{
+				MeshSnapType::Vertex,
+				origin,
+				originScreen,
+				originDistancePx,
+				-102
+			};
+		}
+	}
+
+	tryCandidate(MeshSnapType::Line, Vec2{ mouseWorld.z, 0.0 }, -100);
+	tryCandidate(MeshSnapType::Line, Vec2{ 0.0, mouseWorld.r }, -101);
+
+	const SketchModel& sketch = geometry.sketch;
+
+	for (const SketchPoint& point : sketch.points) {
+		tryCandidate(MeshSnapType::Vertex, point.pos, point.id);
+	}
+
+	for (const SketchLine& line : sketch.lines) {
+		const SketchPoint* p0 = sketch.findPoint(line.p0);
+		const SketchPoint* p1 = sketch.findPoint(line.p1);
+
+		if (!p0 || !p1) {
+			continue;
+		}
+
+		Vec2 closest = inspectorClosestPointOnSegment(mouseWorld, p0->pos, p1->pos);
+		tryCandidate(MeshSnapType::Line, closest, line.id);
+	}
+
+	for (const SketchRectangle& rect : sketch.rectangles) {
+		Vec2 corners[4] = {
+			Vec2{ rect.min.z, rect.min.r },
+			Vec2{ rect.max.z, rect.min.r },
+			Vec2{ rect.max.z, rect.max.r },
+			Vec2{ rect.min.z, rect.max.r }
+		};
+
+		for (int edge = 0; edge < 4; edge++) {
+			Vec2 a = corners[edge];
+			Vec2 b = corners[(edge + 1) % 4];
+
+			tryCandidate(MeshSnapType::Vertex, a, rect.id);
+			tryCandidate(
+				MeshSnapType::Line,
+				inspectorClosestPointOnSegment(mouseWorld, a, b),
+				rect.id
+			);
+		}
+
+		tryCandidate(
+			MeshSnapType::Vertex,
+			Vec2{
+				0.5 * (rect.min.z + rect.max.z),
+				0.5 * (rect.min.r + rect.max.r)
+			},
+			rect.id
+		);
+	}
+
+	for (const SketchCircle& circle : sketch.circles) {
+		double dz = mouseWorld.z - circle.center.z;
+		double dr = mouseWorld.r - circle.center.r;
+		double len = std::sqrt(dz * dz + dr * dr);
+
+		if (len > 1e-30) {
+			tryCandidate(
+				MeshSnapType::Circle,
+				Vec2{
+					circle.center.z + circle.radius * dz / len,
+					circle.center.r + circle.radius * dr / len
+				},
+				circle.id
+			);
+		}
+
+		tryCandidate(MeshSnapType::Vertex, circle.center, circle.id);
+	}
+
+	for (const SketchArc& arc : sketch.arcs) {
+		double angle = inspectorAngleOfPoint(arc.center, mouseWorld);
+
+		if (inspectorAngleOnArc(angle, arc)) {
+			tryCandidate(
+				MeshSnapType::Circle,
+				inspectorPointOnCircle(arc.center, arc.radius, angle),
+				arc.id
+			);
+		}
+
+		tryCandidate(
+			MeshSnapType::Vertex,
+			inspectorPointOnCircle(arc.center, arc.radius, arc.startAngle),
+			arc.id
+		);
+		tryCandidate(
+			MeshSnapType::Vertex,
+			inspectorPointOnCircle(arc.center, arc.radius, arc.endAngle),
+			arc.id
+		);
+		tryCandidate(MeshSnapType::Vertex, arc.center, arc.id);
+	}
+
+	for (const BoundaryVertex& vertex : mesh.boundaryVertices) {
+		tryCandidate(MeshSnapType::Vertex, vertex.pos, vertex.id);
+	}
+
+	for (const BoundaryEdge& edge : mesh.boundaryEdges) {
+		if (!edgeInRange(edge, mesh.boundaryVertices.size())) {
+			continue;
+		}
+
+		Vec2 a = mesh.boundaryVertices[edge.v0].pos;
+		Vec2 b = mesh.boundaryVertices[edge.v1].pos;
+		tryCandidate(
+			MeshSnapType::Line,
+			inspectorClosestPointOnSegment(mouseWorld, a, b),
+			edge.id
+		);
+	}
+
+	return best;
+}
+
+Vec2 MeshInspector::getSnappedWorld(ImVec2 mouse) {
+	if (!toggleSnapping) {
+		return camera.screenToWorld(mouse);
+	}
+
+	if (auto snap = findSnap(mouse)) {
+		return snap->world;
+	}
+
+	return camera.screenToWorld(mouse);
+}
+
 void MeshInspector::handleDrawRectangle() {
 
+}
+
+void MeshInspector::handleDrawRegionOfInfluence() {
+	if (mesh.currentMeshType == MeshType::Structured) {
+		return;
+	}
+
+	bool drawingCircle = toggleDrawCircle;
+	bool drawingRect = toggleDrawRect;
+
+	if (!drawingCircle && !drawingRect) {
+		return;
+	}
+
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+		roiStartWorld = getSnappedWorld(currentMousePos);
+		roiCurrentWorld = roiStartWorld;
+		initLeftMouse = camera.worldToScreen(roiStartWorld);
+	}
+
+	roiCurrentWorld = getSnappedWorld(currentMousePos);
+
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+		if (drawingCircle) {
+			pendingCircle.pending = true;
+			pendingCircle.radius = distance(roiStartWorld, roiCurrentWorld);
+		}
+		else {
+			pendingRect.pending = true;
+			pendingRect.p0 = roiStartWorld;
+			pendingRect.p1 = roiCurrentWorld;
+		}
+	}
+
+	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+		double defaultSpacing = std::max(std::min(mesh.g.L, mesh.g.R) / 10.0, 1e-6);
+		double targetSpacing = std::max(std::min(mesh.g.L, mesh.g.R) / 80.0, 1e-6);
+
+		MeshRegionOfInfluence region{};
+		region.id = mesh.nextRegionOfInfluenceID++;
+		region.enabled = true;
+		region.targetSpacing = targetSpacing;
+		region.outsideSpacing = defaultSpacing;
+
+		if (drawingCircle) {
+			double radius = distance(roiStartWorld, roiCurrentWorld);
+
+			if (radius <= 1e-12) {
+				pendingCircle.pending = false;
+				return;
+			}
+
+			region.shape = MeshRegionShape::Circle;
+			region.center = roiStartWorld;
+			region.radius = radius;
+			region.transitionThickness = radius * 0.5;
+			region.min = Vec2{
+				roiStartWorld.z - radius,
+				roiStartWorld.r - radius
+			};
+			region.max = Vec2{
+				roiStartWorld.z + radius,
+				roiStartWorld.r + radius
+			};
+		}
+		else {
+			double zMin = std::min(roiStartWorld.z, roiCurrentWorld.z);
+			double zMax = std::max(roiStartWorld.z, roiCurrentWorld.z);
+			double rMin = std::min(roiStartWorld.r, roiCurrentWorld.r);
+			double rMax = std::max(roiStartWorld.r, roiCurrentWorld.r);
+
+			if (zMax - zMin <= 1e-12 || rMax - rMin <= 1e-12) {
+				pendingRect.pending = false;
+				return;
+			}
+
+			region.shape = MeshRegionShape::Rectangle;
+			region.min = Vec2{ zMin, rMin };
+			region.max = Vec2{ zMax, rMax };
+			region.center = Vec2{
+				0.5 * (zMin + zMax),
+				0.5 * (rMin + rMax)
+			};
+			region.radius = 0.5 * std::min(zMax - zMin, rMax - rMin);
+			region.transitionThickness = 0.5 * std::min(zMax - zMin, rMax - rMin);
+		}
+
+		mesh.regionsOfInfluence.push_back(region);
+		pendingCircle.pending = false;
+		pendingRect.pending = false;
+	}
 }
 
 bool isMouseNearImage(ImGuiIO& io) {
@@ -1050,6 +1359,7 @@ void MeshInspector::handleMouse() {
 	
 	// update the initial mouse position where left click was pressed
 	updateInitialLeftClick(io);
+	toggleSnapping = io.KeyCtrl;
 
 	handleOpenPopup();
 
@@ -1063,6 +1373,7 @@ void MeshInspector::handleMouse() {
 	}
 
 	handleCursor(io);
+	handleDrawRegionOfInfluence();
 
 
 
@@ -1341,12 +1652,6 @@ void MeshInspector::drawToolBar() {
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
-	toggleDrawRect = false;
-	toggleDrawCircle = false;
-	toggleRemoveCell = false;
-	pendingCircle.pending = false;
-	pendingRect.pending = false;
-
 	addImageButtonToggle("Ruler", "Ruler", assets.rulerIcon, buttonSize, toggleRuler);
 	ImGui::SameLine();
 
@@ -1365,6 +1670,28 @@ void MeshInspector::drawToolBar() {
 	ImGui::SameLine();
 
 	ImGui::Checkbox("Mesh", &mesh.meshMode);
+	ImGui::SameLine();
+
+	if (addImageButtonToggle(
+		"ROICircle",
+		"Draw circular region of influence",
+		assets.drawCircleIcon,
+		buttonSize,
+		toggleDrawCircle
+	)) {
+		toggleDrawRect = false;
+	}
+	ImGui::SameLine();
+
+	if (addImageButtonToggle(
+		"ROIRect",
+		"Draw rectangular region of influence",
+		assets.selectRegionIcon,
+		buttonSize,
+		toggleDrawRect
+	)) {
+		toggleDrawCircle = false;
+	}
 
 	ImGui::EndChild();
 }
@@ -1643,6 +1970,7 @@ bool MeshInspector::deleteBoundaryGroupByID(int groupID) {
 }
 
 void MeshInspector::drawPendingObjects(ImDrawList* drawList) {
+	drawList->PushClipRect(imageMin, imageMax, true);
 
 	if (pendingCircle.pending) {
 
@@ -1651,6 +1979,91 @@ void MeshInspector::drawPendingObjects(ImDrawList* drawList) {
 		drawList->AddCircle(initLeftMouse, radiusPx, drawingColor, 80, 3.0f);
 
 	}
+
+	if (pendingRect.pending) {
+		ImVec2 p0 = camera.worldToScreen(pendingRect.p0);
+		ImVec2 p1 = camera.worldToScreen(pendingRect.p1);
+
+		ImVec2 rectMin(
+			std::min(p0.x, p1.x),
+			std::min(p0.y, p1.y)
+		);
+
+		ImVec2 rectMax(
+			std::max(p0.x, p1.x),
+			std::max(p0.y, p1.y)
+		);
+
+		drawList->AddRect(rectMin, rectMax, drawingColor, 0.0f, 0, 3.0f);
+	}
+
+	drawList->PopClipRect();
+}
+
+void MeshInspector::drawSnapping(ImDrawList* drawList) {
+	if (!toggleSnapping || (!toggleDrawCircle && !toggleDrawRect)) {
+		return;
+	}
+
+	drawList->PushClipRect(imageMin, imageMax, true);
+
+	if (pendingCircle.pending || pendingRect.pending) {
+		drawList->AddCircleFilled(
+			camera.worldToScreen(roiStartWorld),
+			3.0f,
+			IM_COL32(255, 230, 80, 255)
+		);
+	}
+
+	if (auto snap = findSnap(currentMousePos)) {
+		drawList->AddCircleFilled(
+			snap->screen,
+			4.0f,
+			IM_COL32(255, 230, 80, 255)
+		);
+	}
+
+	drawList->PopClipRect();
+}
+
+void MeshInspector::drawRegionsOfInfluence(ImDrawList* drawList) {
+	drawList->PushClipRect(imageMin, imageMax, true);
+
+	const ImU32 strokeColor = IM_COL32(83, 188, 255, 230);
+	const ImU32 fillColor = IM_COL32(83, 188, 255, 35);
+
+	for (const MeshRegionOfInfluence& region : mesh.regionsOfInfluence) {
+		if (!region.enabled) {
+			continue;
+		}
+
+		if (region.shape == MeshRegionShape::Rectangle) {
+			ImVec2 p0 = camera.worldToScreen(region.min);
+			ImVec2 p1 = camera.worldToScreen(region.max);
+
+			ImVec2 rectMin(
+				std::min(p0.x, p1.x),
+				std::min(p0.y, p1.y)
+			);
+
+			ImVec2 rectMax(
+				std::max(p0.x, p1.x),
+				std::max(p0.y, p1.y)
+			);
+
+			drawList->AddRectFilled(rectMin, rectMax, fillColor);
+			drawList->AddRect(rectMin, rectMax, strokeColor, 0.0f, 0, 2.0f);
+		}
+		else {
+			float radiusPx = camera.worldLengthToScreen(region.radius);
+			ImVec2 center = camera.worldToScreen(region.center);
+
+			drawList->AddCircleFilled(center, radiusPx, fillColor, 80);
+			drawList->AddCircle(center, radiusPx, strokeColor, 80, 2.0f);
+		}
+	}
+
+	drawList->PopClipRect();
 }
 
 void MeshInspector::drawStatusBar() {
@@ -1725,7 +2138,9 @@ void MeshInspector::render() {
 	drawAxes(drawList);
 	drawHighlightedCells2D(drawList);
 	drawMeshLines(drawList);
+	drawRegionsOfInfluence(drawList);
 	drawPendingObjects(drawList);
+	drawSnapping(drawList);
 	drawBoundarySegments(drawList);
 	drawTextAtSurfacePoint(drawList);
 	drawPopup();

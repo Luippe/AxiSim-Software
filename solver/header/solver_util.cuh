@@ -25,6 +25,15 @@ void phiGradientCell(
 );
 
 __device__
+double interpolateFieldToFace(
+	int cellID,
+	int faceID,
+	FVMeshDevice mesh,
+	BoundaryFieldDevice fieldBC,
+	const double* phi
+);
+
+__device__
 void getOutwardNormalForCell(
 	FVMeshDevice mesh,
 	int cellID,
@@ -39,6 +48,25 @@ double interpolateNormalCorrectionCoeffToFace(
 	int faceID,
 	FVMeshDevice mesh,
 	VariablesSimple simple
+);
+
+// Deferred (explicit) non-orthogonal correction flux of the pressure-correction
+// p' through an interior face, seen as outward from cellID:
+//
+//     rho * Df * (T . grad(p')_face),   T = A*n - (A/(n.d)) d
+//
+// where n is the outward face normal, d = c_neighbor - c_cell, and A the face
+// area. The orthogonal part (n.d direction) is handled implicitly by the matrix;
+// this returns only the cross/tangential part. Returns 0 on boundary faces.
+__device__
+double nonOrthoPressureCorrFlux(
+	int cellID,
+	int faceID,
+	FVMeshDevice mesh,
+	VariablesSimple simple,
+	const double* gradPPZ,
+	const double* gradPPR,
+	double rho
 );
 
 __device__
@@ -89,7 +117,18 @@ void addDiffusionCoefficient(
 	ConfigSolver config,
 	FVMeshDevice mesh,
 	Coefficients coeff,
-	BoundaryFieldDevice bc
+	BoundaryFieldDevice bc,
+	const double* phi,
+	const double* coupledPhi,
+	int component,
+	int applyNonOrtho
+);
+
+__global__
+void addRadialMomentumCylindricalSource(
+	ConfigSolver config,
+	FVMeshDevice mesh,
+	Coefficients vCoeff
 );
 
 __global__

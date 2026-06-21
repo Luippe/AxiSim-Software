@@ -1,20 +1,20 @@
 #include "menu.h"
 
+#include <string>
+
+#include "imgui_internal.h"
+
 #include "project.h"
-#include "gui.h"
 
 #include "file_manager.h"
 #include "keyboard_manager.h"
 
-#include <string>
-
 using namespace Shortcuts;
 
-Menu::Menu(Project& project, GUI& gui) :
-	project(project),
-	gui(gui){
+Menu::Menu(Project& project) :
+	project(project) {
 	loadAtLaunch(project);
-}
+};
 
 
 void Menu::drawOpen() {

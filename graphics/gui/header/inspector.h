@@ -56,6 +56,8 @@ private:
 	bool pendingFrame = true;	// re-fit the view to the mesh on the next render
 	bool showMesh = false;		// overlay the mesh wireframe
 
+	int selectedCell = -1;		// cell pinned by a left click (-1 = none)
+
 	// scratch buffers reused across frames for smooth (vertex) shading
 	std::vector<float> vertexValues;
 	std::vector<int> vertexCounts;
@@ -80,12 +82,19 @@ private:
 	// ----------input-----------
 	void handleMouse();
 
+	// pin/unpin a cell on left click (separate from hover probe)
+	void handleSelection();
+
 	// ----------draw calls-----------
 	void drawToolBar();
 	void drawField(ImDrawList* drawList);
 	void drawMeshOverlay(ImDrawList* drawList);
 	void drawAxes(ImDrawList* drawList);
 	void drawValueProbe(ImDrawList* drawList);
+
+	// highlight the pinned cell and draw a panel with its full data
+	void drawCellInfo(ImDrawList* drawList);
+
 	void drawEmptyMessage(ImDrawList* drawList);
 
 };

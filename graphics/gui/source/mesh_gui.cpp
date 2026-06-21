@@ -14,6 +14,8 @@
 
 #include "printer.h"
 
+#include <algorithm>
+
 using namespace BoundaryGet;
 
 MeshGUI::MeshGUI(Project& project, GUI& gui) :
@@ -155,6 +157,175 @@ void MeshGUI::drawBoundaryGroupGUI() {
 	}
 }
 
+void MeshGUI::drawRegionOfInfluenceGUI() {
+	ImGui::SeparatorText("Region of Influence");
+
+	if (ImGui::Button("Add Region")) {
+		MeshRegionOfInfluence region{};
+		region.id = mesh.nextRegionOfInfluenceID++;
+		region.shape = MeshRegionShape::Circle;
+		region.center = Vec2{ config.g.L * 0.5, config.g.R * 0.5 };
+		region.radius = std::max(std::min(config.g.L, config.g.R) * 0.1, 1e-6);
+		region.min = Vec2{
+			region.center.z - region.radius,
+			region.center.r - region.radius
+		};
+		region.max = Vec2{
+			region.center.z + region.radius,
+			region.center.r + region.radius
+		};
+		region.targetSpacing = std::max(std::min(config.g.L, config.g.R) / 80.0, 1e-6);
+		region.outsideSpacing = std::max(std::min(config.g.L, config.g.R) / 10.0, 1e-6);
+		region.transitionThickness = region.radius * 0.5;
+		mesh.regionsOfInfluence.push_back(region);
+		hasChanged = true;
+	}
+
+	ImGui::Spacing();
+
+	int deleteID = -1;
+
+	for (MeshRegionOfInfluence& region : mesh.regionsOfInfluence) {
+		ImGui::PushID(region.id);
+
+		std::string label = "Region " + std::to_string(region.id);
+		if (ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) {
+			if (ImGui::Checkbox("Enabled", &region.enabled)) {
+				hasChanged = true;
+			}
+
+			if (ImGui::BeginTable("RegionFields", 2)) {
+				setupTableColumns(
+					column("Label", 150.0f),
+					column("Input", 120.0f, ImGuiTableColumnFlags_WidthStretch)
+				);
+
+				const char* shapeItems[] = { "Circle", "Rectangle" };
+				int shapeIndex = static_cast<int>(region.shape);
+
+				labelRow("Shape");
+				if (createSimpleCombo("##Shape", shapeItems, shapeIndex, IM_ARRAYSIZE(shapeItems))) {
+					region.shape = static_cast<MeshRegionShape>(shapeIndex);
+					hasChanged = true;
+				}
+
+				if (region.shape == MeshRegionShape::Circle) {
+					labelRow("Center Z");
+					if (inputDouble("##CenterZ", &region.center.z, "%.6g")) {
+						hasChanged = true;
+					}
+
+					labelRow("Center R");
+					if (inputDouble("##CenterR", &region.center.r, "%.6g")) {
+						hasChanged = true;
+					}
+
+					labelRow("Radius");
+					if (inputDouble("##Radius", &region.radius, "%.6g")) {
+						hasChanged = true;
+					}
+				}
+				else {
+					labelRow("Z Min");
+					if (inputDouble("##ZMin", &region.min.z, "%.6g")) {
+						hasChanged = true;
+					}
+
+					labelRow("Z Max");
+					if (inputDouble("##ZMax", &region.max.z, "%.6g")) {
+						hasChanged = true;
+					}
+
+					labelRow("R Min");
+					if (inputDouble("##RMin", &region.min.r, "%.6g")) {
+						hasChanged = true;
+					}
+
+					labelRow("R Max");
+					if (inputDouble("##RMax", &region.max.r, "%.6g")) {
+						hasChanged = true;
+					}
+				}
+
+				labelRow("Target Spacing");
+				if (inputDouble("##TargetSpacing", &region.targetSpacing, "%.6g")) {
+					hasChanged = true;
+				}
+
+				labelRow("Outside Spacing");
+				if (inputDouble("##OutsideSpacing", &region.outsideSpacing, "%.6g")) {
+					hasChanged = true;
+				}
+
+				labelRow("Transition");
+				if (inputDouble("##Transition", &region.transitionThickness, "%.6g")) {
+					hasChanged = true;
+				}
+
+				ImGui::EndTable();
+			}
+
+			region.center.z = std::max(0.0, std::min(region.center.z, config.g.L));
+			region.center.r = std::max(0.0, std::min(region.center.r, config.g.R));
+			region.radius = std::max(region.radius, 1e-12);
+			region.min.z = std::max(0.0, std::min(region.min.z, config.g.L));
+			region.max.z = std::max(0.0, std::min(region.max.z, config.g.L));
+			region.min.r = std::max(0.0, std::min(region.min.r, config.g.R));
+			region.max.r = std::max(0.0, std::min(region.max.r, config.g.R));
+			region.targetSpacing = std::max(region.targetSpacing, 1e-12);
+			region.outsideSpacing = std::max(region.outsideSpacing, 0.0);
+			region.transitionThickness = std::max(region.transitionThickness, 0.0);
+
+			if (region.shape == MeshRegionShape::Circle) {
+				region.min = Vec2{
+					region.center.z - region.radius,
+					region.center.r - region.radius
+				};
+				region.max = Vec2{
+					region.center.z + region.radius,
+					region.center.r + region.radius
+				};
+			}
+			else {
+				double zMin = std::min(region.min.z, region.max.z);
+				double zMax = std::max(region.min.z, region.max.z);
+				double rMin = std::min(region.min.r, region.max.r);
+				double rMax = std::max(region.min.r, region.max.r);
+
+				region.min = Vec2{ zMin, rMin };
+				region.max = Vec2{ zMax, rMax };
+				region.center = Vec2{
+					0.5 * (zMin + zMax),
+					0.5 * (rMin + rMax)
+				};
+				region.radius = 0.5 * std::min(zMax - zMin, rMax - rMin);
+			}
+
+			if (ImGui::Button("Delete Region")) {
+				deleteID = region.id;
+				hasChanged = true;
+			}
+
+			ImGui::TreePop();
+		}
+
+		ImGui::PopID();
+	}
+
+	if (deleteID >= 0) {
+		mesh.regionsOfInfluence.erase(
+			std::remove_if(
+				mesh.regionsOfInfluence.begin(),
+				mesh.regionsOfInfluence.end(),
+				[deleteID](const MeshRegionOfInfluence& region) {
+					return region.id == deleteID;
+				}
+			),
+			mesh.regionsOfInfluence.end()
+		);
+	}
+}
+
 void MeshGUI::drawOverview() {
 	ImGui::Begin("Overview");
 	if (selectedItem == "General") {
@@ -178,7 +349,7 @@ void MeshGUI::drawOverview() {
 			ImGui::EndTable();
 		}
 	}
-	else if (selectedItem == "Edit") {
+	else if (selectedItem == "Option") {
 
 		ImGui::TextUnformatted("Geometry");
 		ImGui::BeginChild("Geometry", ImVec2(0.0f, 80.0f), true);	// total width = sum of table width + 10 * num of columns to account for padding
@@ -258,6 +429,14 @@ void MeshGUI::drawOverview() {
 			ImGui::EndTable();
 		}
 	}
+	else if (selectedItem == "Edit") {
+
+
+
+	}
+	else if (selectedItem == "Region of Influence") {
+		drawRegionOfInfluenceGUI();
+	}
 
 	drawBoundaryGroupGUI();
 
@@ -282,14 +461,33 @@ void MeshGUI::draw() {
 		}
 
 		if (generalOpen) {
-			if (drawLeaf("Edit")) {
+			if (drawLeaf("Option")) {
 				selectedBoundaryGroupID = -1;
 				mesh.highlightedBoundarySegmentIDs.clear();
 			}
-
 			ImGui::TreePop();
 		}
 		changeCursorOnHover();
+
+		// draw boundary tree node
+		bool editOpen = ImGui::TreeNodeEx("Edit", UIFlagsTree::BranchOpenedFlags);
+
+		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+
+			selectedBoundaryGroupID = -1;
+			mesh.highlightedBoundarySegmentIDs.clear();
+			selectedItem = "Edit";
+
+		}
+
+		if (editOpen) {
+			if (drawLeaf("Region of Influence")) {
+				selectedItem = "Region of Influence";
+			}
+			ImGui::TreePop();
+		}
+		changeCursorOnHover();
+
 
 		// draw boundary tree node
 		bool boundariesOpen = ImGui::TreeNodeEx("Boundary", UIFlagsTree::BranchOpenedFlags);
@@ -316,6 +514,7 @@ void MeshGUI::draw() {
 
 			ImGui::TreePop();
 		}
+		changeCursorOnHover();
 		changeCursorOnHover();
 
 		ImGui::EndChild();

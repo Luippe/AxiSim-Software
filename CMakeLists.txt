@@ -130,16 +130,6 @@ if(NOT EXISTS "${GMSH_LIB}")
 endif()
 
 # ------------------------------------------------------------
-# tinyfiledialogs
-# ------------------------------------------------------------
-
-set(TINYFILEDIALOGS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/graphics/tinyfiledialogs")
-
-set(TINYFILEDIALOGS_SOURCES
-    "${TINYFILEDIALOGS_DIR}/tinyfiledialogs.c"
-)
-
-# ------------------------------------------------------------
 # Automatically add all folders that contain your headers
 # ------------------------------------------------------------
 
@@ -179,8 +169,8 @@ add_executable(AxiSim
     ${PROJECT_HEADERS}
     ${IMGUI_SOURCES}
     ${IMPLOT_SOURCES}
-    ${TINYFILEDIALOGS_SOURCES}
-  "externals/stb_image/stb_image.cpp" "manager/header/flag_manager.h"   "graphics/gui/source/mesh_inspector.cpp" "graphics/gui/header/base_surface_viewer.h" "manager/header/boundary_func.h"  "manager/header/font_manager.h" "src/source/project.cpp" "solver/source/geometry.cpp" "graphics/gui/source/geometry_gui.cpp" "graphics/gui/source/sketch_view.cpp" "structs/sketch_struct.h" "structs/core_struct.h" )
+    "${CMAKE_CURRENT_SOURCE_DIR}/externals/stb_image/stb_image.cpp"
+)
 
 set(GMSH_DLL "${GMSH_ROOT}/lib/gmsh.dll")
 
@@ -216,7 +206,6 @@ target_include_directories(AxiSim PRIVATE
     "${GMSH_INCLUDE_DIR}"
 
     "${IMPLOT_DIR}"
-    "${TINYFILEDIALOGS_DIR}"
 
     ${CUDAToolkit_INCLUDE_DIRS}
 )
@@ -231,6 +220,17 @@ target_link_libraries(AxiSim PRIVATE
     "${GMSH_LIB}"
 )
 
+if(WIN32)
+    target_compile_definitions(AxiSim PRIVATE
+        WIN32_LEAN_AND_MEAN
+        NOMINMAX
+    )
+
+    target_link_libraries(AxiSim PRIVATE
+        Comdlg32
+    )
+endif()
+
 set_target_properties(AxiSim PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
 )
@@ -240,5 +240,4 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
     ${PROJECT_HEADERS}
     ${IMGUI_SOURCES}
     ${IMPLOT_SOURCES}
-    ${TINYFILEDIALOGS_SOURCES}
 )

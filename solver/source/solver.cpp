@@ -2,6 +2,7 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <iomanip>
 #include <sstream>
 #include "printer.h"
@@ -17,6 +18,7 @@
 
 #include "memory_manager.h"
 #include "unit_manager.h"
+#include "boundary_func.h"
 
 #define CUDA_CHECK(x) do { \
   cudaError_t err = (x); \
@@ -121,6 +123,9 @@ void Solver::createSolutions(int N) {
 
     }
 
+    // per-face mass flux for inspector probing (continuity + face fluxes)
+    mDotHost = copyDeviceToHostVector(simple.mDot, (size_t)fvMesh.numFaces());
+
 }
 
 void Solver::addFieldType() {
@@ -151,6 +156,30 @@ bool Solver::runCheck() {
     //    console->addLine("No mesh exists");
     //    return false;
     //}
+
+    if (configSimple.maxIter < 1) {
+        configSimple.maxIter = 50;
+    }
+
+    if (configSimple.checkConv < 1) {
+        configSimple.checkConv = 1;
+    }
+
+    if (linearSolverConfig.maxIter < 1) {
+        linearSolverConfig.maxIter = 20;
+    }
+
+    if (configSimple.nNonOrthCorrectors < 0) {
+        configSimple.nNonOrthCorrectors = 0;
+    }
+
+    if (!std::isfinite(f.rho) || !std::isfinite(f.mu) ||
+        f.rho <= 0.0 || f.mu <= 0.0) {
+        if (console) {
+            console->addLine("Solver needs positive density and viscosity.\n");
+        }
+        return false;
+    }
 
     return true;
 }
@@ -326,8 +355,22 @@ static void printBoundaryDiagnostics(
         }
     };
 
+    // Resolve the BC the solver actually uses for a variable, mirroring
+    // createBoundaryFieldHost: stored value only when the variable belongs to
+    // the boundary type, otherwise the type's default. (Symmetry has no stored
+    // variables, so its U/P resolve to Neumann and V to Dirichlet 0 here.)
+    auto effectiveBC = [](const BoundarySegmentGroup& group, BoundaryVariable var) -> BoundaryCondition {
+        BoundaryCondition bc = BoundaryDefaults::makeDefaultBC(group, var);
+        auto it = group.bcs.find(var);
+        if (it != group.bcs.end() &&
+            BoundaryDefaults::isVariableInBoundaryType(var, group.type)) {
+            bc = it->second;
+        }
+        return bc;
+    };
+
     std::ostringstream line;
-    line << "----- Boundary diagnostics -----\n";
+    line << "----- Boundary diagnostics (effective BCs) -----\n";
     line << "Faces: total=" << totalFaces
          << " boundary=" << boundaryFaces
          << " grouped=" << groupedBoundaryFaces << "\n";
@@ -351,18 +394,17 @@ static void printBoundaryDiagnostics(
              << " type=" << boundaryTypeName(group.type)
              << " faces=" << faceCount << "\n";
 
-        for (const auto& kv : group.bcs) {
-            const char* varName = "?";
-            switch (kv.first) {
-            case BoundaryVariable::UVelocity:         varName = "U"; break;
-            case BoundaryVariable::VVelocity:         varName = "V"; break;
-            case BoundaryVariable::Pressure:          varName = "P"; break;
-            case BoundaryVariable::StaticTemperature: varName = "T"; break;
-            case BoundaryVariable::Concentration:     varName = "C"; break;
-            default: break;
-            }
-            line << "    " << varName << ": " << bcTypeName(kv.second.type)
-                 << " = " << kv.second.value << "\n";
+        const BoundaryVariable printVars[] = {
+            BoundaryVariable::UVelocity,
+            BoundaryVariable::VVelocity,
+            BoundaryVariable::Pressure
+        };
+        const char* printNames[] = { "U", "V", "P" };
+
+        for (int vi = 0; vi < 3; vi++) {
+            BoundaryCondition bc = effectiveBC(group, printVars[vi]);
+            line << "    " << printNames[vi] << ": " << bcTypeName(bc.type)
+                 << " = " << bc.value << "\n";
         }
     }
 
@@ -400,6 +442,15 @@ void Solver::runSimple(const Mesh& mesh) {
 
 	FVMeshDevice fvMeshDevice = createFVMeshDevice(fvMesh);
 	BoundarySolverDevice bcDevice = createBoundarySolverDevice(mesh.boundaryGroups, fieldOption);
+
+	// Pressure-correction (p') boundary field: same boundary *types* as the
+	// pressure field, but with all Dirichlet values forced to 0 (a fixed
+	// pressure means a zero pressure correction). Used when taking grad(p').
+	BoundaryFieldDevice ppBC = bcDevice.p;          // shares type/length arrays
+	if (bcDevice.p.nGroups > 0) {
+		CUDA_CHECK(cudaMalloc(&ppBC.valueByGroup, bcDevice.p.nGroups * sizeof(double)));
+		CUDA_CHECK(cudaMemset(ppBC.valueByGroup, 0, bcDevice.p.nGroups * sizeof(double)));
+	}
 
 	printBoundaryDiagnostics(fvMesh, mesh.boundaryGroups, mesh.boundaryEdges, console);
 
@@ -507,6 +558,20 @@ void Solver::runSimple(const Mesh& mesh) {
     }
     pressureSolverConfig.maxIter = pressureIterations;
 
+    // Cell gradient of a field into simple.gradPZ/gradPR using the user-selected
+    // scheme. Green-Gauss is cheaper; least-squares is robust on the small,
+    // r-weighted near-axis cells where Green-Gauss produces a spurious dp/dr.
+    auto computeGradP = [&](BoundaryFieldDevice bcf, const double* src) {
+        if (gradientScheme == GRAD_GREEN_GAUSS) {
+            computePressureGradient << <blocks, threadsPerBlock, 0, stream >> > (
+                fvMeshDevice, bcf, src, simple.gradPZ, simple.gradPR);
+        }
+        else {
+            computePressureGradientLSQ << <blocks, threadsPerBlock, 0, stream >> > (
+                fvMeshDevice, bcf, src, simple.gradPZ, simple.gradPR);
+        }
+    };
+
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
         cudaMemcpyAsync(simple.uOld, simple.u, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
@@ -521,10 +586,13 @@ void Solver::runSimple(const Mesh& mesh) {
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (massFluxCoeff);
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
+            // non-orthogonal corrections (diffusion + pressure) share one switch
+            const int applyNonOrtho = (configSimple.nNonOrthCorrectors > 0) ? 1 : 0;
+
             // create coefficients for velocity and pressure correction equations
-            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, uCoeff, bcDevice.u);
-            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, vCoeff, bcDevice.v);
-            CUDA_CHECK(cudaStreamSynchronize(stream));
+            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, uCoeff, bcDevice.u, simple.u, simple.v, 0, applyNonOrtho);
+            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, vCoeff, bcDevice.v, simple.v, simple.u, 1, applyNonOrtho);
+            //addRadialMomentumCylindricalSource << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, vCoeff);
 
             if (configSolver.addConvectionTerm) {
                 addMomentumConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (
@@ -541,12 +609,16 @@ void Solver::runSimple(const Mesh& mesh) {
 				//addVTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, vCoeff, simple);
     //        }
 
+            // grad(p) for the momentum body force AND Rhie-Chow, computed once
+            // with the selected scheme. Held in gradPZ/gradPR until the p'
+            // correctors overwrite it.
+            computeGradP(bcDevice.p, simple.p);
+
             createMomentumPressureRhs << <blocks, threadsPerBlock, 0, stream >> > (
                 fvMeshDevice,
                 uCoeff,
                 vCoeff,
-                simple,
-                bcDevice.p
+                simple
                 );
 
 
@@ -564,15 +636,9 @@ void Solver::runSimple(const Mesh& mesh) {
 
             // solve pressure correction
             createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, ppCoeff, simple, bcDevice.p);
-            
-            computePressureGradient << <blocks, threadsPerBlock, 0, stream >> > (
-                fvMeshDevice,
-                bcDevice.p,
-                simple.p,
-                simple.gradPZ,
-                simple.gradPR
-                );
 
+            // grad(p) for Rhie-Chow is still in gradPZ/gradPR from the momentum
+            // step above (nothing overwrote it), so no recompute is needed here.
             computeFaceMassFluxRhieChow << <faceBlocks, faceThreads, 0, stream >> > (
                 configSolver,
                 fvMeshDevice,
@@ -580,12 +646,30 @@ void Solver::runSimple(const Mesh& mesh) {
                 bcDevice
                 );
 
-            createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppCoeff, simple);
-            solveLinearSystem(ppCoeff, pressureSolverConfig, stream, simple.pp, simple.ppTemp, activeCells, threadsPerBlock);
+            // ---- pressure correction with deferred non-orthogonal correctors ----
+            // gradPZ/gradPR are reused below to hold grad(p'); they are no longer
+            // needed for Rhie-Chow until the next outer iteration. p' starts at 0,
+            // so the first corrector pass has a zero cross term (pure orthogonal).
+            const int nNonOrth = configSimple.nNonOrthCorrectors;
+
+            cudaMemsetAsync(simple.pp, 0, N * sizeof(double), stream);
+            cudaMemsetAsync(simple.ppTemp, 0, N * sizeof(double), stream);
+
+            for (int corr = 0; corr <= nNonOrth; corr++) {
+
+                computeGradP(ppBC, simple.pp);
+
+                createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, ppCoeff, simple);
+
+                solveLinearSystem(ppCoeff, pressureSolverConfig, stream, simple.pp, simple.ppTemp, activeCells, threadsPerBlock);
+            }
+
+            // final grad(p') (with p' BCs) for the velocity and mass-flux corrections
+            computeGradP(ppBC, simple.pp);
 
             // update field variables
             updateVelocity << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, bcDevice.p);
-			updateMassFlux << <faceBlocks, faceThreads, 0, stream >> > (configSolver, fvMeshDevice, simple, bcDevice.p);
+			updateMassFlux << <faceBlocks, faceThreads, 0, stream >> > (configSolver, fvMeshDevice, simple, bcDevice.p, applyNonOrtho);
             updatePressure << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple);
             CUDA_CHECK(cudaGetLastError());
             CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -659,8 +743,24 @@ void Solver::runSimple(const Mesh& mesh) {
     // copy all necessary variables back to host
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
+    // Pressure gradient for inspector probing, computed two ways from the final
+    // pressure field. gradPZ/gradPR are free to reuse here (they held grad(p')
+    // during the solve and are no longer needed).
+    computePressureGradient << <blocks, threadsPerBlock, 0, stream >> > (
+        fvMeshDevice, bcDevice.p, simple.p, simple.gradPZ, simple.gradPR);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    gradPZHost = copyDeviceToHostVector(simple.gradPZ, (size_t)N);
+    gradPRHost = copyDeviceToHostVector(simple.gradPR, (size_t)N);
+
+    computePressureGradientLSQ << <blocks, threadsPerBlock, 0, stream >> > (
+        fvMeshDevice, bcDevice.p, simple.p, simple.gradPZ, simple.gradPR);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    gradPZLsqHost = copyDeviceToHostVector(simple.gradPZ, (size_t)N);
+    gradPRLsqHost = copyDeviceToHostVector(simple.gradPR, (size_t)N);
+
     createSolutions(N);
     uSol = SolutionField{ copyDeviceToHostVector(simple.u, N), g.dr, g.dz, BoundaryVariable::UVelocity};
+    //uSol = SolutionField{ copyDeviceToHostVector(uCoeff.AC, N), g.dr, g.dz, BoundaryVariable::UVelocity};
     vSol = SolutionField{ copyDeviceToHostVector(simple.v, N), g.dr, g.dz, BoundaryVariable::VVelocity};
     pSol = SolutionField{ copyDeviceToHostVector(simple.p, N), g.dr, g.dz, BoundaryVariable::Pressure};
     tempSol = SolutionField{ copyDeviceToHostVector(simple.temp, N), g.dr, g.dz, BoundaryVariable::StaticTemperature};

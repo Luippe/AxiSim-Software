@@ -45,6 +45,7 @@ BoundaryFieldHost createBoundaryFieldHost(
 	int nGroups = maxGroupID + 1;
 
 	h.typeByGroup.resize(nGroups, (uint8_t)(BCType::NONE));
+	h.boundaryTypeByGroup.resize(nGroups, (uint8_t)(BoundaryType::WALL));
 	h.valueByGroup.resize(nGroups, 0.0);
 	h.lengthByGroup.resize(nGroups, 0.0);
 
@@ -65,12 +66,11 @@ BoundaryFieldHost createBoundaryFieldHost(
 			bc = it->second;
 		}
 
-		if (variable == BoundaryVariable::UVelocity && group.type == BoundaryType::PRESSURE_OUTLET) {
-			printf("%f\n", bc.value);
-		}
-
 		h.typeByGroup[group.id] =
 			(uint8_t)(bc.type);
+
+		h.boundaryTypeByGroup[group.id] =
+			(uint8_t)(group.type);
 
 		h.valueByGroup[group.id] =
 			bc.value;
@@ -90,6 +90,7 @@ BoundaryFieldDevice createBoundaryFieldDevice(
 	d.nGroups = (int)(h.typeByGroup.size());
 
 	copyHostToDevice(d.typeByGroup, h.typeByGroup);
+	copyHostToDevice(d.boundaryTypeByGroup, h.boundaryTypeByGroup);
 	copyHostToDevice(d.valueByGroup, h.valueByGroup);
 	copyHostToDevice(d.lengthByGroup, h.lengthByGroup);
 

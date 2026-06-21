@@ -1,5 +1,6 @@
 #pragma once
 #include "setting.cuh"
+
 #include <string>
 #include <fstream>
 #include <filesystem>
@@ -17,11 +18,21 @@ struct Config;
 struct BoundaryCondition;
 struct BoundaryConditionConfig;
 
+// ====================================================
+// -------------------FILED DIALOG---------------------
+// ====================================================
+
 // check if file exists
 bool fileExists(const std::string& filename);
 
 // open .bin file and return stream
 std::ofstream openBinaryFile(const char* path);
+
+// open file dialog for saving
+std::wstring saveFileDialog();
+
+// open file dialog for loading
+std::wstring loadFileDialog();
 
 // ====================================================
 // -------------------PROJECT--------------------------

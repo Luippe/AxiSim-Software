@@ -21,6 +21,21 @@ class Geometry;
 class Project;
 struct GridConfig;
 
+enum class MeshSnapType {
+	None,
+	Vertex,
+	Line,
+	Circle
+};
+
+struct MeshSnapResult {
+	MeshSnapType type = MeshSnapType::None;
+	Vec2 world{};
+	ImVec2 screen{};
+	float distancePx = 0.0f;
+	int entityID = -1;
+};
+
 class MeshInspector : public BaseSurfaceViewer {
 public:
 
@@ -73,6 +88,9 @@ private:
 	std::optional<BoundarySegmentGroup> pendingBoundaryGroup;
 	std::string obstacleError;
 	std::vector<int> namedIDs;
+	bool toggleSnapping = false;
+	Vec2 roiStartWorld{};
+	Vec2 roiCurrentWorld{};
 
 	//-------------pending variables------------
 	PendingCircle pendingCircle;
@@ -112,8 +130,11 @@ private:
 	void handleItemButtonRemove();
 	void handleDrawCircle();
 	void handleDrawRectangle();
+	void handleDrawRegionOfInfluence();
 
 	void handleCursor(ImGuiIO& io);
+	std::optional<MeshSnapResult> findSnap(ImVec2 mouse);
+	Vec2 getSnappedWorld(ImVec2 mouse);
 	std::optional<int> findHoveredBoundarySegment();
 
 	std::array<MeshEdge, 4> getCellEdges(int i, int j) const;
@@ -132,6 +153,7 @@ private:
 
 	// draw pending objects such as circles and rectangles while they
 	void drawPendingObjects(ImDrawList* drawList);
+	void drawSnapping(ImDrawList* drawList);
 
 	void drawAxes(ImDrawList* drawList);
 	void drawSketchEntities(ImDrawList* drawList);
@@ -139,6 +161,7 @@ private:
 	void drawMeshLines(ImDrawList* drawList);
 	void drawHighlightedCells2D(ImDrawList* drawList);
 	void drawBoundarySegments(ImDrawList* drawList);
+	void drawRegionsOfInfluence(ImDrawList* drawList);
 
 	void fillBoundaryGroupEdges(BoundarySegmentGroup& group);
 	bool obstacleCellTouchesBoundaryGroup(int cellIndex) const;

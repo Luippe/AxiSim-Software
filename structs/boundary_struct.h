@@ -36,6 +36,8 @@ struct PendingCircle {
 struct PendingRect {
 
 	bool pending = false;
+	Vec2 p0;
+	Vec2 p1;
 	double width = 0.0;
 	double height = 0.0;
 
@@ -252,6 +254,11 @@ enum class BoundarySizingMode {
 	None
 };
 
+enum class MeshRegionShape {
+	Circle,
+	Rectangle
+};
+
 struct BoundarySizing {
 	bool enabled = false;
 
@@ -267,6 +274,21 @@ struct BoundarySizing {
 	// > 1.0 = clustered near start
 	// < 1.0 = clustered near end
 	double bias = 1.0;
+};
+
+struct MeshRegionOfInfluence {
+	int id = -1;
+	bool enabled = true;
+	MeshRegionShape shape = MeshRegionShape::Circle;
+
+	Vec2 center{ 0.0, 0.0 };
+	double radius = 0.1;
+	Vec2 min{ 0.0, 0.0 };
+	Vec2 max{ 0.0, 0.0 };
+
+	double targetSpacing = 0.01;
+	double outsideSpacing = 0.0;
+	double transitionThickness = 0.0;
 };
 
 struct BoundaryEdge {

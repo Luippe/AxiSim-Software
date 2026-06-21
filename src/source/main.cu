@@ -20,7 +20,7 @@ int main() {
 	Display disp;
 	Project project;
 
-	GUI gui(project, disp.window);
+	GUI gui(project, disp);
 	double prevTime = glfwGetTime();
 	int frameCount = 0;
 

@@ -2,13 +2,13 @@
 
 #include "imgui.h"
 
-class SceneView;
 class Project;
 class GUI;
 
+
 class Menu {
 public:
-	Menu(Project& project, GUI& gui);
+	Menu(Project& project);
 
 	void render();
 
@@ -17,7 +17,6 @@ private:
 	bool openShortcutModal = false;
 
 	Project& project;
-	GUI& gui;
 
 	// open selected file
 	void drawOpen();
