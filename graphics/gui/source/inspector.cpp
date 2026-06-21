@@ -298,7 +298,7 @@ void Inspector::drawField(ImDrawList* drawList) {
 		}
 	}
 
-	drawList->PushClipRect(imageMin, imageMax, true);
+
 
 	const ImVec2 uv = drawList->_Data->TexUvWhitePixel;
 
@@ -333,7 +333,6 @@ void Inspector::drawField(ImDrawList* drawList) {
 		}
 	}
 
-	drawList->PopClipRect();
 }
 
 void Inspector::drawMeshOverlay(ImDrawList* drawList) {
@@ -348,8 +347,6 @@ void Inspector::drawMeshOverlay(ImDrawList* drawList) {
 	if (pts.empty() || tris.empty()) {
 		return;
 	}
-
-	drawList->PushClipRect(imageMin, imageMax, true);
 
 	const ImU32 lineColor = IM_COL32(25, 35, 45, 140);
 
@@ -367,15 +364,11 @@ void Inspector::drawMeshOverlay(ImDrawList* drawList) {
 
 		drawList->AddTriangle(a, b, d, lineColor, 1.0f);
 	}
-
-	drawList->PopClipRect();
 }
 
 void Inspector::drawAxes(ImDrawList* drawList) {
 
 	ImVec2 origin = camera.worldToScreen(Vec2{ 0.0, 0.0 });
-
-	drawList->PushClipRect(imageMin, imageMax, true);
 
 	if (origin.y >= imageMin.y && origin.y <= imageMax.y) {
 		drawList->AddLine(
@@ -395,7 +388,6 @@ void Inspector::drawAxes(ImDrawList* drawList) {
 		);
 	}
 
-	drawList->PopClipRect();
 }
 
 void Inspector::drawValueProbe(ImDrawList* drawList) {
@@ -444,6 +436,10 @@ static const char* shortFieldName(const std::string& name) {
 
 void Inspector::drawCellInfo(ImDrawList* drawList) {
 
+	ImVec2 canvasMin = canvasRect.min;
+	ImVec2 canvasMax = canvasRect.max;
+
+
 	if (selectedCell < 0) {
 		return;
 	}
@@ -470,7 +466,7 @@ void Inspector::drawCellInfo(ImDrawList* drawList) {
 	ImVec2 b = camera.worldToScreen(pts[t.v1]);
 	ImVec2 d = camera.worldToScreen(pts[t.v2]);
 
-	drawList->PushClipRect(imageMin, imageMax, true);
+	drawList->PushClipRect(canvasMin, canvasMax, true);
 	drawList->AddTriangleFilled(a, b, d, IM_COL32(255, 235, 60, 70));
 	drawList->AddTriangle(a, b, d, IM_COL32(255, 235, 60, 255), 2.0f);
 	drawList->PopClipRect();
@@ -580,7 +576,7 @@ void Inspector::drawCellInfo(ImDrawList* drawList) {
 
 	// --- draw the panel (top-left of the canvas) ---
 	const ImVec2 pad(8.0f, 6.0f);
-	ImVec2 origin(imageMin.x + 10.0f, imageMin.y + 10.0f);
+	ImVec2 origin(canvasMin.x + 10.0f, canvasMin.y + 10.0f);
 
 	ImVec2 ts = ImGui::CalcTextSize(info.c_str());
 
@@ -603,8 +599,8 @@ void Inspector::drawEmptyMessage(ImDrawList* drawList) {
 	ImVec2 ts = ImGui::CalcTextSize(msg);
 
 	ImVec2 center(
-		0.5f * (imageMin.x + imageMax.x),
-		0.5f * (imageMin.y + imageMax.y)
+		0.5f * (canvasRect.min.x + canvasRect.max.x),
+		0.5f * (canvasRect.min.y + canvasRect.max.y)
 	);
 
 	drawList->AddText(
@@ -672,7 +668,7 @@ void Inspector::render() {
 	ImVec2 pos = ImGui::GetCursorScreenPos();
 	ImVec2 size = ImGui::GetContentRegionAvail();
 
-	Rect surfaceRect = makePaddedRect(
+	canvasRect = makePaddedRect(
 		pos,
 		size,
 		0.0f,
@@ -681,31 +677,15 @@ void Inspector::render() {
 		0.0f
 	);
 
-	resizeImage(surfaceRect.size());
-
-	ImGui::SetCursorScreenPos(surfaceRect.min);
-	ImGui::InvisibleButton(
-		"##InspectorCanvas",
-		surfaceRect.size(),
-		ImGuiButtonFlags_MouseButtonLeft |
-		ImGuiButtonFlags_MouseButtonRight |
-		ImGuiButtonFlags_MouseButtonMiddle
-	);
-
-	imageMin = ImGui::GetItemRectMin();
-	imageMax = ImGui::GetItemRectMax();
-	imageSize = {
-		imageMax.x - imageMin.x,
-		imageMax.y - imageMin.y
-	};
+	resizeImage();
 
 	camera.setDimensions(
-		(int)imageSize.x,
-		(int)imageSize.y,
-		imageMin
+		canvasRect.size.x,
+		canvasRect.size.y,
+		canvasRect.min
 	);
 
-	if (pendingFrame && imageSize.x > 1.0f && imageSize.y > 1.0f) {
+	if (pendingFrame && canvasRect.size.x > 1.0f && canvasRect.size.y > 1.0f) {
 		frameToMesh();
 		pendingFrame = false;
 	}
@@ -713,13 +693,19 @@ void Inspector::render() {
 	handleMouse();
 	handleSelection();
 
-	drawCanvas(drawList, surfaceRect, 5.0f);
+	drawCanvas(drawList, canvasRect, 5.0f);
+
+	ImVec2 canvasMin = canvasRect.min;
+	ImVec2 canvasMax = canvasRect.max;
+
+	drawList->PushClipRect(canvasMin, canvasMax, true);
 	drawField(drawList);
 	drawMeshOverlay(drawList);
 	drawAxes(drawList);
 	drawCellInfo(drawList);
 	drawValueProbe(drawList);
 	drawEmptyMessage(drawList);
+	drawList->PopClipRect();
 
 	ImGui::SameLine();
 	colorbar.render();

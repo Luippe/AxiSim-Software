@@ -188,6 +188,7 @@ file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/C
 set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/boundary_func.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/buffer_manager.cpp"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/clipboard.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/colormap.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/field_manager.cpp"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/file_manager.cpp"
@@ -225,6 +226,7 @@ file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/C
 set(OLD_GLOB
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/boundary_func.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/buffer_manager.h"
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/clipboard.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/colormap.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/colormap_manager.h"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/field_manager.h"

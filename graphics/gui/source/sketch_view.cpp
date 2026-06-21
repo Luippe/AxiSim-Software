@@ -1449,7 +1449,7 @@ void SketchView::render() {
 	ImVec2 size = ImGui::GetContentRegionAvail();
 	Rect viewRect = makePaddedRect(pos, size);
 
-	resizeImage(viewRect.size());
+	resizeImage();
 
 	drawSurface(viewRect);
 	drawCanvas(drawList, viewRect, 0.0f, sketchBgColor, outlineColor);

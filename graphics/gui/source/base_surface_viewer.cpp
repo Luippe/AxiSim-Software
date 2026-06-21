@@ -118,6 +118,25 @@ BaseSurfaceViewer::BaseSurfaceViewer(const char* vertexPath, const char* fragmen
 // -----------------------HELPER FUNCTION--------------------------------
 // ======================================================================
 
+bool BaseSurfaceViewer::isMouseNearImage(ImGuiIO& io) {
+
+	ImVec2 imageMin = canvasRect.min;
+	ImVec2 imageMax = canvasRect.max;
+
+	float clickPadding = 10.0f;
+
+	ImVec2 hitMin = ImVec2(imageMin.x - clickPadding, imageMin.y - clickPadding);
+	ImVec2 hitMax = ImVec2(imageMax.x + clickPadding, imageMax.y + clickPadding);
+
+	ImVec2 mouse = ImGui::GetMousePos();
+
+	bool mouseNearImage =
+		mouse.x >= hitMin.x && mouse.x <= hitMax.x &&
+		mouse.y >= hitMin.y && mouse.y <= hitMax.y;
+
+	return mouseNearImage;
+}
+
 BaseSurfaceViewer::Rect BaseSurfaceViewer::makePaddedRect(
 	const ImVec2& pos,
 	const ImVec2& size,
@@ -128,7 +147,8 @@ BaseSurfaceViewer::Rect BaseSurfaceViewer::makePaddedRect(
 ) {
 	return {
 		ImVec2(pos.x + left,           pos.y + top),
-		ImVec2(pos.x + size.x - right, pos.y + size.y - bottom)
+		ImVec2(pos.x + size.x - right, pos.y + size.y - bottom),
+		ImVec2(size.x - right - left, size.y - bottom - top)
 	};
 }
 
@@ -401,10 +421,12 @@ ImVec2 BaseSurfaceViewer::screenToUV(const ImVec2& mousePos) {
 	return ImVec2(u, v);
 }
 
-void BaseSurfaceViewer::resizeImage(const ImVec2 size) {
+void BaseSurfaceViewer::resizeImage() {
 
-	imageWidth = (int)size.x;
-	imageHeight = (int)size.y;
+	ImVec2 size = canvasRect.size;
+
+	int imageWidth = (int)size.x;
+	int imageHeight = (int)size.y;
 
 	if (imageWidth != frameBuffer.width || imageHeight != frameBuffer.height) {
 		frameBuffer.create2DBuffer(imageWidth, imageHeight, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
@@ -590,7 +612,7 @@ void BaseSurfaceViewer::addToolbarSeparator(float height) {
 
 void BaseSurfaceViewer::drawSurface(const Rect& rect) {
 	ImGui::SetCursorScreenPos(rect.min);
-	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), rect.size(), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
+	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), rect.size, ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
 	imageMin = ImGui::GetItemRectMin();
 	imageMax = ImGui::GetItemRectMax();
 	imageSize = {

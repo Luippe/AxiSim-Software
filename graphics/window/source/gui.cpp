@@ -72,6 +72,7 @@ void initContext(ImGuiContext*& imguiContext, ImPlotContext*& implotContext, GLF
 
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+	io.ConfigWindowsMoveFromTitleBarOnly = true;
 	ImGui::StyleColorsDark();
 
 	if (window) {

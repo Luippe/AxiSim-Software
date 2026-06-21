@@ -4,43 +4,8 @@
 #include <imgui_impl_opengl3.h>
 
 #include "stb_image.h"
-#include "clip.h"
+#include "clipboard.h"
 #include "printer.h"
-
-bool copyRGBAToClipboard(const unsigned char* rgbaBottomUp, int width, int height) {
-
-	// flip image
-	std::vector<unsigned char> flipped(width * height * 4);
-
-	for (int y = 0; y < height; ++y) {
-		std::memcpy(&flipped[y * width * 4], &rgbaBottomUp[(height - 1 - y) * width * 4], width * 4);
-	}
-	// force image to be opaque
-	for (int i = 0; i < width * height; ++i) {
-		flipped[i * 4 + 3] = 255;
-	}
-	// make spec
-	clip::image_spec spec;
-	spec.width = width;
-	spec.height = height;
-	spec.bits_per_pixel = 32;
-	spec.bytes_per_row = width * 4;
-
-	// data layout is RGBA: R, G, B, A
-	spec.red_mask = 0x000000ff;
-	spec.green_mask = 0x0000ff00;
-	spec.blue_mask = 0x00ff0000;
-	spec.alpha_mask = 0xff000000;
-
-	spec.red_shift = 0;
-	spec.green_shift = 8;
-	spec.blue_shift = 16;
-	spec.alpha_shift = 24;
-
-	clip::image img(flipped.data(), spec);
-	return clip::set_image(img);
-}
-
 
 // ===================================================================
 // --------------------------Frame Buffer---------------------------

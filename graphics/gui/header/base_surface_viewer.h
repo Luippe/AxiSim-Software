@@ -8,6 +8,7 @@
 #include "graphics_struct.h"
 #include "core_struct.h"
 
+#include "camera.h"
 #include "shader.h"
 #include "printer.h"
 
@@ -398,11 +399,10 @@ protected:
 	struct Rect {
 		ImVec2 min;
 		ImVec2 max;
-
-		ImVec2 size() const {
-			return ImVec2(max.x - min.x, max.y - min.y);
-		}
+		ImVec2 size;
 	};
+
+	Rect canvasRect;
 
 	// image dimensions
 	int imageWidth, imageHeight;
@@ -418,10 +418,12 @@ protected:
 	float u1 = 1.0f;
 	float v1 = 1.0f;
 
-		
+	
 	// ======================================================================
 	// -----------------------HELPER FUNCTION--------------------------------
 	// ======================================================================
+
+	bool isMouseNearImage(ImGuiIO& io);
 
 	// create rect that is padded on all sides
 	Rect makePaddedRect(
@@ -494,7 +496,7 @@ protected:
 
 	void handlePopup(const char* text);
 
-	void resizeImage(const ImVec2 size);
+	void resizeImage();
 
 	// ======================================================================
 	// -----------------------DRAW CALLS-------------------------------------
@@ -553,6 +555,7 @@ protected:
 private:
 
 	const float imageButtonRounding = 6.0f;
+
 
 	void drawFilledCells(
 		ImDrawList* drawList,

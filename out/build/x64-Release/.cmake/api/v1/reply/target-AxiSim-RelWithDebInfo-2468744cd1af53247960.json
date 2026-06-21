@@ -22,8 +22,7 @@
 		"files" : 
 		[
 			"C:/Users/luits/vcpkg/scripts/buildsystems/vcpkg.cmake",
-			"CMakeLists.txt",
-			"externals/clip-main/CMakeLists.txt"
+			"CMakeLists.txt"
 		],
 		"nodes" : 
 		[
@@ -33,7 +32,7 @@
 			{
 				"command" : 1,
 				"file" : 1,
-				"line" : 167,
+				"line" : 154,
 				"parent" : 0
 			},
 			{
@@ -45,34 +44,25 @@
 			{
 				"command" : 2,
 				"file" : 1,
-				"line" : 213,
+				"line" : 200,
 				"parent" : 0
 			},
 			{
 				"command" : 2,
 				"file" : 1,
-				"line" : 229,
+				"line" : 215,
 				"parent" : 0
-			},
-			{
-				"file" : 2
-			},
-			{
-				"command" : 2,
-				"file" : 2,
-				"line" : 54,
-				"parent" : 5
 			},
 			{
 				"command" : 3,
 				"file" : 1,
-				"line" : 224,
+				"line" : 210,
 				"parent" : 0
 			},
 			{
 				"command" : 4,
 				"file" : 1,
-				"line" : 195,
+				"line" : 182,
 				"parent" : 0
 			}
 		]
@@ -90,82 +80,74 @@
 			[
 				{
 					"backtrace" : 3,
-					"define" : "CLIP_ENABLE_IMAGE=1"
-				},
-				{
-					"backtrace" : 3,
 					"define" : "GLFW_DLL"
 				},
 				{
-					"backtrace" : 7,
+					"backtrace" : 5,
 					"define" : "NOMINMAX"
 				},
 				{
-					"backtrace" : 7,
+					"backtrace" : 5,
 					"define" : "WIN32_LEAN_AND_MEAN"
 				}
 			],
 			"includes" : 
 			[
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/header"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/stb_image"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/font_awesome"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/gmsh/include"
 				},
 				{
-					"backtrace" : 3,
-					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/clip-main"
-				},
-				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"isSystem" : true,
 					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"isSystem" : true,
 					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include/cccl"
 				},
@@ -219,19 +201,20 @@
 				30,
 				31,
 				32,
-				34,
-				37,
-				40,
-				45,
-				103,
-				104,
+				33,
+				35,
+				38,
+				41,
+				46,
 				105,
 				106,
 				107,
 				108,
 				109,
 				110,
-				111
+				111,
+				112,
+				113
 			]
 		},
 		{
@@ -245,82 +228,74 @@
 			[
 				{
 					"backtrace" : 3,
-					"define" : "CLIP_ENABLE_IMAGE=1"
-				},
-				{
-					"backtrace" : 3,
 					"define" : "GLFW_DLL"
 				},
 				{
-					"backtrace" : 7,
+					"backtrace" : 5,
 					"define" : "NOMINMAX"
 				},
 				{
-					"backtrace" : 7,
+					"backtrace" : 5,
 					"define" : "WIN32_LEAN_AND_MEAN"
 				}
 			],
 			"includes" : 
 			[
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/structs"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/gui/header"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/window/header"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/src/header"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/graphics/imgui/backends"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/stb_image"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/font_awesome"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/gmsh/include"
 				},
 				{
-					"backtrace" : 3,
-					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/clip-main"
-				},
-				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"isSystem" : true,
 					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include"
 				},
 				{
-					"backtrace" : 8,
+					"backtrace" : 6,
 					"isSystem" : true,
 					"path" : "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/include/cccl"
 				},
@@ -341,23 +316,16 @@
 			},
 			"sourceIndexes" : 
 			[
-				33,
-				35,
+				34,
 				36,
-				38,
+				37,
 				39,
-				41,
+				40,
 				42,
 				43,
-				44
+				44,
+				45
 			]
-		}
-	],
-	"dependencies" : 
-	[
-		{
-			"backtrace" : 3,
-			"id" : "clip::@bc704873fbbc61d958f5"
 		}
 	],
 	"id" : "AxiSim::@6890427a1f51a3e7e1df",
@@ -404,22 +372,12 @@
 			},
 			{
 				"backtrace" : 3,
-				"fragment" : "externals\\clip-main\\clip.lib",
-				"role" : "libraries"
-			},
-			{
-				"backtrace" : 3,
 				"fragment" : "\"C:\\Users\\luits\\source\\repos\\Concentration Solver Software\\Concentration Solver Software\\externals\\gmsh\\lib\\gmsh.dll.lib\"",
 				"role" : "libraries"
 			},
 			{
 				"backtrace" : 4,
 				"fragment" : "Comdlg32.lib",
-				"role" : "libraries"
-			},
-			{
-				"backtrace" : 6,
-				"fragment" : "shlwapi.lib",
 				"role" : "libraries"
 			},
 			{
@@ -494,14 +452,14 @@
 				29,
 				30,
 				31,
-				32
+				32,
+				33
 			]
 		},
 		{
 			"name" : "solver\\source",
 			"sourceIndexes" : 
 			[
-				33,
 				34,
 				35,
 				36,
@@ -511,22 +469,22 @@
 				40,
 				41,
 				42,
-				43
+				43,
+				44
 			]
 		},
 		{
 			"name" : "src\\source",
 			"sourceIndexes" : 
 			[
-				44,
-				45
+				45,
+				46
 			]
 		},
 		{
 			"name" : "graphics\\gui\\header",
 			"sourceIndexes" : 
 			[
-				46,
 				47,
 				48,
 				49,
@@ -541,27 +499,27 @@
 				58,
 				59,
 				60,
-				61
+				61,
+				62
 			]
 		},
 		{
 			"name" : "graphics\\window\\header",
 			"sourceIndexes" : 
 			[
-				62,
 				63,
 				64,
 				65,
 				66,
 				67,
-				68
+				68,
+				69
 			]
 		},
 		{
 			"name" : "manager\\header",
 			"sourceIndexes" : 
 			[
-				69,
 				70,
 				71,
 				72,
@@ -576,15 +534,15 @@
 				81,
 				82,
 				83,
-				84
+				84,
+				85,
+				86
 			]
 		},
 		{
 			"name" : "solver\\header",
 			"sourceIndexes" : 
 			[
-				85,
-				86,
 				87,
 				88,
 				89,
@@ -593,53 +551,55 @@
 				92,
 				93,
 				94,
-				95
+				95,
+				96,
+				97
 			]
 		},
 		{
 			"name" : "src\\header",
 			"sourceIndexes" : 
 			[
-				96,
-				97
+				98,
+				99
 			]
 		},
 		{
 			"name" : "structs",
 			"sourceIndexes" : 
 			[
-				98,
-				99,
 				100,
 				101,
-				102
+				102,
+				103,
+				104
 			]
 		},
 		{
 			"name" : "graphics\\imgui",
 			"sourceIndexes" : 
 			[
-				103,
-				104,
 				105,
 				106,
-				109,
-				110
+				107,
+				108,
+				111,
+				112
 			]
 		},
 		{
 			"name" : "graphics\\imgui\\backends",
 			"sourceIndexes" : 
 			[
-				107,
-				108
+				109,
+				110
 			]
 		},
 		{
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				111
+				113
 			]
 		}
 	],
@@ -793,6 +753,12 @@
 			"backtrace" : 2,
 			"compileGroupIndex" : 0,
 			"path" : "manager/source/buffer_manager.cpp",
+			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "manager/source/clipboard.cpp",
 			"sourceGroupIndex" : 2
 		},
 		{
@@ -1044,6 +1010,11 @@
 		{
 			"backtrace" : 2,
 			"path" : "manager/header/buffer_manager.h",
+			"sourceGroupIndex" : 7
+		},
+		{
+			"backtrace" : 2,
+			"path" : "manager/header/clipboard.h",
 			"sourceGroupIndex" : 7
 		},
 		{

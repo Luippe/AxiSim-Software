@@ -176,6 +176,7 @@
 			[
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/boundary_func.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/buffer_manager.cpp",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/clipboard.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/colormap.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/field_manager.cpp",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/source/file_manager.cpp",
@@ -203,6 +204,7 @@
 			[
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/boundary_func.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/buffer_manager.h",
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/clipboard.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/colormap.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/colormap_manager.h",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/manager/header/field_manager.h",
@@ -704,27 +706,6 @@
 			"isCMake" : true,
 			"isExternal" : true,
 			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/FindPackageMessage.cmake"
-		},
-		{
-			"path" : "externals/clip-main/CMakeLists.txt"
-		},
-		{
-			"isCMake" : true,
-			"isExternal" : true,
-			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/GNUInstallDirs.cmake"
-		},
-		{
-			"isCMake" : true,
-			"isExternal" : true,
-			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/CMakePackageConfigHelpers.cmake"
-		},
-		{
-			"isCMake" : true,
-			"isExternal" : true,
-			"path" : "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-3.31/Modules/WriteBasicConfigVersionFile.cmake"
-		},
-		{
-			"path" : "externals/clip-main/clip-config.cmake.in"
 		}
 	],
 	"kind" : "cmakeFiles",

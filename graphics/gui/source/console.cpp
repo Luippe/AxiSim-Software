@@ -4,7 +4,7 @@
 #include <iomanip>
 #include <format>
 
-#include "clip.h"
+#include "clipboard.h"
 
 #include "project.h"
 #include "gui.h"
@@ -222,7 +222,7 @@ void Console::registerCopyCommands() {
 					<< std::setw(3) << (int)cmap[i][1] << ", "
 					<< std::setw(3) << (int)cmap[i][2] << " }\n";
 			}
-			clip::set_text(ss.str());
+			copyTextToClipboard(ss.str());
 			addLine("copied RGB values to clipboard");
 		}
 		else {

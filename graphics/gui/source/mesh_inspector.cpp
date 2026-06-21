@@ -173,43 +173,6 @@ MeshInspector::MeshInspector(Project& project, AppConfig& appConfig) :
 // ======================================================================
 // -----------------------HELPER FUNCTIONS-------------------------------
 // ======================================================================
-void MeshInspector::updateGridBuffer() {
-	GLsizeiptr newBytes =
-		(GLsizeiptr)(mesh.gridLineVertices.size() * sizeof(float));
-
-	if (newBytes <= 0) {
-		return;
-	}
-
-	if (newBytes != gridLineBufferBytes) {
-		vertexBuffer.bind();
-		glBufferData(
-			GL_ARRAY_BUFFER,
-			newBytes,
-			mesh.gridLineVertices.data(),
-			GL_DYNAMIC_DRAW
-		);
-
-		vertexBuffer.enableAttribute(
-			0,
-			2,
-			GL_FLOAT,
-			2 * sizeof(float),
-			(void*)0
-		);
-
-		vertexBuffer.unbind();
-
-		gridLineBufferBytes = newBytes;
-	}
-	else {
-		vertexBuffer.bufferSubData(
-			newBytes,
-			mesh.gridLineVertices.data()
-		);
-	}
-}
-
 int addBoundaryVertexFromGrid(
 	std::vector<BoundaryVertex>& vertices,
 	GridVertex grid,
@@ -237,148 +200,6 @@ int addBoundaryVertexFromGrid(
 }
 
 
-
-void MeshInspector::clearObstacles() {
-	g.obstacleIndices.clear();
-	syncAfterObstacleEdit();
-}
-
-void MeshInspector::removeObstacleCellsInRect(
-	const ImVec2& start,
-	const ImVec2& end
-) {
-	int j0 = std::clamp((int)std::min(start.x, end.x), 0, nzBase - 1);
-	int j1 = std::clamp((int)std::max(start.x, end.x), 0, nzBase - 1);
-
-	int i0 = std::clamp((int)std::min(start.y, end.y), 0, nrBase - 1);
-	int i1 = std::clamp((int)std::max(start.y, end.y), 0, nrBase - 1);
-
-	for (int i = i0; i <= i1; i++) {
-		for (int j = j0; j <= j1; j++) {
-			int cell = i * nzBase + j;
-			removeObstacleCell(cell);
-		}
-	}
-}
-
-bool MeshInspector::removeObstacleCell(int cellIndex) {
-	return g.obstacleIndices.erase(cellIndex) > 0;
-}
-
-bool MeshInspector::removeInvalidBoundaryGroups() {
-	std::unordered_set<MeshEdge, MeshEdgeHash> validEdges =
-		buildCombinedBoundaryEdges(mesh.selectableOuterEdges, g.obstacleIndices);
-
-	std::size_t oldSize = mesh.boundaryGroups.size();
-
-	mesh.boundaryGroups.erase(
-		std::remove_if(
-			mesh.boundaryGroups.begin(),
-			mesh.boundaryGroups.end(),
-			[&](const BoundarySegmentGroup& group) {
-				return !boundaryGroupStillValid(group, validEdges);
-			}
-		),
-		mesh.boundaryGroups.end()
-	);
-
-	return mesh.boundaryGroups.size() != oldSize;
-}
-
-bool MeshInspector::boundaryGroupStillValid(
-	const BoundarySegmentGroup& group,
-	const std::unordered_set<MeshEdge, MeshEdgeHash>& validEdges
-) const {
-	if (group.edges.empty()) {
-		return false;
-	}
-
-	for (const MeshEdge& edge : group.edges) {
-		if (validEdges.find(edge) == validEdges.end()) {
-			return false;
-		}
-	}
-
-	return true;
-}
-
-void MeshInspector::syncAfterObstacleEdit() {
-	rebuildSelectableOuterEdges(g.obstacleIndices);
-
-	removeInvalidBoundaryGroups();
-
-	mesh.selectedBoundaryIDs.clear();
-	mesh.highlightedBoundarySegmentIDs.clear();
-
-	hoveredId.reset();
-	obstacleError.clear();
-}
-
-void MeshInspector::tryAddObstacleCellsInRect(
-	const ImVec2& start,
-	const ImVec2& end
-) {
-	int j0 = std::clamp((int)std::min(start.x, end.x), 0, nzBase - 1);
-	int j1 = std::clamp((int)std::max(start.x, end.x), 0, nzBase - 1);
-
-	int i0 = std::clamp((int)std::min(start.y, end.y), 0, nrBase - 1);
-	int i1 = std::clamp((int)std::max(start.y, end.y), 0, nrBase - 1);
-
-	for (int i = i0; i <= i1; i++) {
-		for (int j = j0; j <= j1; j++) {
-			int cell = i * nzBase + j;
-			tryAddObstacleCell(cell);
-		}
-	}
-}
-
-bool MeshInspector::tryAddObstacleCell(int cellIndex) {
-	if (obstacleCellTouchesBoundaryGroup(cellIndex)) {
-		obstacleError = "Obstacle cannot touch an existing boundary group.";
-		return false;
-	}
-
-	addHighlightCell(g.obstacleIndices, cellIndex);
-	obstacleError.clear();
-
-	return true;
-}
-
-bool MeshInspector::obstacleCellTouchesBoundaryGroup(int cellIndex) const {
-	int i = cellIndex / nzBase;
-	int j = cellIndex % nzBase;
-
-	if (!isInsideCellGrid(i, j)) {
-		return true;
-	}
-
-	std::array<MeshEdge, 4> cellEdges = getCellEdges(i, j);
-
-	for (const BoundarySegmentGroup& group : mesh.boundaryGroups) {
-		for (const MeshEdge& cellEdge : cellEdges) {
-			auto it = std::find(
-				group.edges.begin(),
-				group.edges.end(),
-				cellEdge
-			);
-
-			if (it != group.edges.end()) {
-				return true;
-			}
-		}
-	}
-
-	return false;
-}
-
-std::array<MeshEdge, 4> MeshInspector::getCellEdges(int i, int j) const {
-	return {
-		MeshEdge{ EdgeOrient::Horizontal, i,     j     }, // top
-		MeshEdge{ EdgeOrient::Horizontal, i + 1, j     }, // bottom
-		MeshEdge{ EdgeOrient::Vertical,   i,     j     }, // left
-		MeshEdge{ EdgeOrient::Vertical,   i,     j + 1 }  // right
-	};
-}
 
 void MeshInspector::setGroupTotalLength(BoundarySegmentGroup& group) {
 	double totalLength = 0.0;
@@ -542,57 +363,6 @@ GridVertex edgeEnd(const MeshEdge& e) {
 	}
 	else {
 		return GridVertex{ e.i + 1, e.j };
-	}
-}
-
-void MeshInspector::rebuildSelectableOuterEdges(
-	const std::unordered_set<int>& obstacleIndices
-) {
-	mesh.selectableOuterEdges.clear();
-
-	for (int n : obstacleIndices) {
-		if (n < 0 || n >= nrBase * nzBase) {
-			continue;
-		}
-
-		int i = n / nzBase;
-		int j = n % nzBase;
-
-		// Top face of solid cell
-		if (!isSolidCell(i - 1, j, obstacleIndices)) {
-			mesh.selectableOuterEdges.insert({
-				EdgeOrient::Horizontal,
-				i,
-				j
-				});
-		}
-
-		// Bottom face of solid cell
-		if (!isSolidCell(i + 1, j, obstacleIndices)) {
-			mesh.selectableOuterEdges.insert({
-				EdgeOrient::Horizontal,
-				i + 1,
-				j
-				});
-		}
-
-		// Left face of solid cell
-		if (!isSolidCell(i, j - 1, obstacleIndices)) {
-			mesh.selectableOuterEdges.insert({
-				EdgeOrient::Vertical,
-				i,
-				j
-				});
-		}
-
-		// Right face of solid cell
-		if (!isSolidCell(i, j + 1, obstacleIndices)) {
-			mesh.selectableOuterEdges.insert({
-				EdgeOrient::Vertical,
-				i,
-				j + 1
-				});
-		}
 	}
 }
 
@@ -958,55 +728,6 @@ int meshInspectorCellIndexAt(const std::vector<double>& faces, double x) {
 // ======================================================================
 // -----------------------MOUSE HANDLES----------------------------------
 // ======================================================================
-void MeshInspector::handleItemButtonSelect() {
-    if (!toggleDrawRect) return;
-
-    int cell = (int)currentMouseIndex.y * nzBase + (int)currentMouseIndex.x;
-
-    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-        tryAddObstacleCell(cell);
-        initMouseIndex = currentMouseIndex;
-    }
-
-    if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-
-        if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) {
-            tryAddObstacleCellsInRect(initMouseIndex, currentMouseIndex);
-        }
-        else {
-            tryAddObstacleCell(cell);
-        }
-    }
-
-	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-		syncAfterObstacleEdit();
-	}
-}
-
-void MeshInspector::handleItemButtonRemove() {
-	if (!toggleRemoveCell) return;
-
-	int cell = (int)currentMouseIndex.y * nzBase + (int)currentMouseIndex.x;
-
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-		initMouseIndex = currentMouseIndex;
-		removeObstacleCell(cell);
-	}
-
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-		if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) {
-			removeObstacleCellsInRect(initMouseIndex, currentMouseIndex);
-		}
-		else {
-			removeObstacleCell(cell);
-		}
-	}
-
-	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-		syncAfterObstacleEdit();
-	}
-}
-
 void MeshInspector::handleCursor(ImGuiIO& io) {
 
 	// do not run this if any of the toggled tools are active, or if a popup is opened
@@ -1031,25 +752,6 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 			if (it == sel.end()) sel.insert(*hoveredId);
 			else sel.erase(it);
 		}
-	}
-}
-
-void MeshInspector::handleDrawCircle() {
-
-	if (!toggleDrawCircle || mesh.currentMeshType == MeshType::Structured) return;
-
-
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-		Vec2 initialPhysical = screenToPhysical(initLeftMouse, mesh.g.R, mesh.g.L);
-		Vec2 currentPhysical = screenToPhysical(currentMousePos, mesh.g.R, mesh.g.L);
-		pendingCircle.pending = true;
-		pendingCircle.radius = distance(initialPhysical, currentPhysical);
-	}
-
-	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-		pendingCircle.pending = false;
-		Vec2 physical = screenToPhysical(initLeftMouse, mesh.g.R, mesh.g.L);
-		mesh.addCircularObstacle(physical, pendingCircle.radius, 80);
 	}
 }
 
@@ -1221,10 +923,6 @@ Vec2 MeshInspector::getSnappedWorld(ImVec2 mouse) {
 	return camera.screenToWorld(mouse);
 }
 
-void MeshInspector::handleDrawRectangle() {
-
-}
-
 void MeshInspector::handleDrawRegionOfInfluence() {
 	if (mesh.currentMeshType == MeshType::Structured) {
 		return;
@@ -1316,25 +1014,7 @@ void MeshInspector::handleDrawRegionOfInfluence() {
 	}
 }
 
-bool isMouseNearImage(ImGuiIO& io) {
 
-
-	ImVec2 imageMin = ImGui::GetItemRectMin();
-	ImVec2 imageMax = ImGui::GetItemRectMax();
-
-	float clickPadding = 10.0f;
-
-	ImVec2 hitMin = ImVec2(imageMin.x - clickPadding, imageMin.y - clickPadding);
-	ImVec2 hitMax = ImVec2(imageMax.x + clickPadding, imageMax.y + clickPadding);
-
-	ImVec2 mouse = ImGui::GetMousePos();
-
-	bool mouseNearImage =
-		mouse.x >= hitMin.x && mouse.x <= hitMax.x &&
-		mouse.y >= hitMin.y && mouse.y <= hitMax.y;
-
-	return mouseNearImage;
-}
 
 void MeshInspector::handleOpenPopup() {
 	// handled regardless
@@ -1356,7 +1036,7 @@ void MeshInspector::handleMouse() {
 
 	// if mouse is not near the image, then dont handle any mouse events
 	if (!isMouseNearImage(io)) return;
-	
+
 	// update the initial mouse position where left click was pressed
 	updateInitialLeftClick(io);
 	toggleSnapping = io.KeyCtrl;
@@ -1436,12 +1116,19 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
 	ImGui::Begin("##ExportWindow", nullptr, UIFlags::TemporaryWindowFlags);
 
-	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)imageWidth, (float)imageHeight), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
+	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)pendingCopyWidth, (float)pendingCopyHeight), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
 	
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-	//drawBoundarySegments(drawList, g.rFace, g.zFace);
-	drawHighlightedCells(drawList, g.obstacleIndices, g.zFace, g.rFace);
+
+	drawAxes(drawList);
+	drawHighlightedCells2D(drawList);
+	drawMeshLines(drawList);
+	drawRegionsOfInfluence(drawList);
+	drawPendingObjects(drawList);
+	drawSnapping(drawList);
+	drawBoundarySegments(drawList);
+	drawTextAtSurfacePoint(drawList);
 
 	ImGui::End();
 	ImGui::PopStyleVar();
@@ -1455,33 +1142,34 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 void MeshInspector::drawAxes(ImDrawList* drawList) {
 	ImVec2 origin = camera.worldToScreen(Vec2{ 0.0, 0.0 });
 
-	drawList->PushClipRect(imageMin, imageMax, true);
+	ImVec2 canvasMin = canvasRect.min;
+	ImVec2 canvasMax = canvasRect.max;
 
-	if (origin.y >= imageMin.y && origin.y <= imageMax.y) {
+	if (origin.y >= canvasMin.y && origin.y <= canvasMax.y) {
 		drawList->AddLine(
-			ImVec2(imageMin.x, origin.y),
-			ImVec2(imageMax.x, origin.y),
+			ImVec2(canvasMin.x, origin.y),
+			ImVec2(canvasMax.x, origin.y),
 			IM_COL32(210, 55, 55, 255),
 			1.5f
 		);
 
 		drawList->AddText(
-			ImVec2(imageMax.x - 18.0f, origin.y + 6.0f),
+			ImVec2(canvasMax.x - 18.0f, origin.y + 6.0f),
 			IM_COL32(230, 80, 80, 255),
 			"z"
 		);
 	}
 
-	if (origin.x >= imageMin.x && origin.x <= imageMax.x) {
+	if (origin.x >= canvasMin.x && origin.x <= canvasMax.x) {
 		drawList->AddLine(
-			ImVec2(origin.x, imageMin.y),
-			ImVec2(origin.x, imageMax.y),
+			ImVec2(origin.x, canvasMin.y),
+			ImVec2(origin.x, canvasMax.y),
 			IM_COL32(55, 190, 95, 255),
 			1.5f
 		);
 
 		drawList->AddText(
-			ImVec2(origin.x + 6.0f, imageMin.y + 6.0f),
+			ImVec2(origin.x + 6.0f, canvasMin.y + 6.0f),
 			IM_COL32(80, 220, 120, 255),
 			"r"
 		);
@@ -1489,15 +1177,12 @@ void MeshInspector::drawAxes(ImDrawList* drawList) {
 
 	drawList->AddCircleFilled(origin, 3.5f, IM_COL32(235, 235, 235, 255));
 
-	drawList->PopClipRect();
 }
 
 void MeshInspector::drawMeshLines(ImDrawList* drawList) {
 	if (!mesh.meshMode) {
 		return;
 	}
-
-	drawList->PushClipRect(imageMin, imageMax, true);
 
 	const ImU32 lineColor = IM_COL32(190, 205, 225, 155);
 
@@ -1547,8 +1232,6 @@ void MeshInspector::drawMeshLines(ImDrawList* drawList) {
 			);
 		}
 	}
-
-	drawList->PopClipRect();
 }
 
 void MeshInspector::drawHighlightedCells2D(ImDrawList* drawList) {
@@ -1559,7 +1242,7 @@ void MeshInspector::drawHighlightedCells2D(ImDrawList* drawList) {
 	int nz = (int)g.zFace.size() - 1;
 	int nr = (int)g.rFace.size() - 1;
 
-	drawList->PushClipRect(imageMin, imageMax, true);
+
 
 	for (int n : g.obstacleIndices) {
 		int i = n / nz;
@@ -1588,8 +1271,6 @@ void MeshInspector::drawHighlightedCells2D(ImDrawList* drawList) {
 			IM_COL32(151, 151, 151, 255)
 		);
 	}
-
-	drawList->PopClipRect();
 }
 
 void MeshInspector::drawBoundarySegments(
@@ -1698,8 +1379,6 @@ void MeshInspector::drawToolBar() {
 
 void MeshInspector::drawTextAtSurfacePoint(ImDrawList* drawList) {
 
-	drawList->PushClipRect(imageMin, imageMax, true);
-
 	for (const SurfacePoint& point : points) {
 
 		ImVec2 screenPos = camera.worldToScreen(
@@ -1718,7 +1397,6 @@ void MeshInspector::drawTextAtSurfacePoint(ImDrawList* drawList) {
 
 	}
 
-	drawList->PopClipRect();
 }
 
 
@@ -1803,43 +1481,6 @@ void MeshInspector::drawPopup() {
 			pendingBoundaryGroup.reset();
 		}
 	}
-}
-
-void MeshInspector::renderPreview() {
-
-
-	frameBuffer.bind();
-
-	glClearColor(0.4f, 0.4f, 0.4f, 1.0f);
-	glClear(GL_COLOR_BUFFER_BIT);
-
-	shader.use();
-
-	float viewX0 = 2.0f * u0 - 1.0f;
-	float viewX1 = 2.0f * u1 - 1.0f;
-
-	float viewY0 = 2.0f * v0 - 1.0f;
-	float viewY1 = 2.0f * v1 - 1.0f;
-	
-	shader.SetVec2("viewMin", viewX0, viewY0);
-	shader.SetVec2("viewMax", viewX1, viewY1);
-
-	vertexBuffer.bind();
-
-	glLineWidth(1.0f); // change this value
-
-	if (mesh.meshMode) {
-		int lineVertexCount = (int)(mesh.gridLineVertices.size() / 2);
-		glDrawArrays(GL_LINES, 0, lineVertexCount);
-
-	}
-
-	glLineWidth(1.0f); // reset after drawing
-
-	vertexBuffer.unbind();
-
-	frameBuffer.unbind();
-
 }
 
 // ======================================================================
@@ -1970,7 +1611,6 @@ bool MeshInspector::deleteBoundaryGroupByID(int groupID) {
 }
 
 void MeshInspector::drawPendingObjects(ImDrawList* drawList) {
-	drawList->PushClipRect(imageMin, imageMax, true);
 
 	if (pendingCircle.pending) {
 
@@ -1997,15 +1637,12 @@ void MeshInspector::drawPendingObjects(ImDrawList* drawList) {
 		drawList->AddRect(rectMin, rectMax, drawingColor, 0.0f, 0, 3.0f);
 	}
 
-	drawList->PopClipRect();
 }
 
 void MeshInspector::drawSnapping(ImDrawList* drawList) {
 	if (!toggleSnapping || (!toggleDrawCircle && !toggleDrawRect)) {
 		return;
 	}
-
-	drawList->PushClipRect(imageMin, imageMax, true);
 
 	if (pendingCircle.pending || pendingRect.pending) {
 		drawList->AddCircleFilled(
@@ -2023,11 +1660,9 @@ void MeshInspector::drawSnapping(ImDrawList* drawList) {
 		);
 	}
 
-	drawList->PopClipRect();
 }
 
 void MeshInspector::drawRegionsOfInfluence(ImDrawList* drawList) {
-	drawList->PushClipRect(imageMin, imageMax, true);
 
 	const ImU32 strokeColor = IM_COL32(83, 188, 255, 230);
 	const ImU32 fillColor = IM_COL32(83, 188, 255, 35);
@@ -2062,16 +1697,6 @@ void MeshInspector::drawRegionsOfInfluence(ImDrawList* drawList) {
 			drawList->AddCircle(center, radiusPx, strokeColor, 80, 2.0f);
 		}
 	}
-
-	drawList->PopClipRect();
-}
-
-void MeshInspector::drawStatusBar() {
-
-	ImGui::Text(
-		"Hello"
-	);
-
 }
 
 void MeshInspector::render() {
@@ -2085,38 +1710,14 @@ void MeshInspector::render() {
 
 	ImVec2 pos = ImGui::GetCursorScreenPos();
 	ImVec2 size = ImGui::GetContentRegionAvail();
+	canvasRect = makePaddedRect(pos, size);
 
-	Rect canvasRect = makePaddedRect(
-		pos,
-		size,
-		0.0f,
-		0.0f,
-		0.0f,
-		0.0f
-	);
-
-	resizeImage(canvasRect.size());
-
-	ImGui::SetCursorScreenPos(canvasRect.min);
-	ImGui::InvisibleButton(
-		"##MeshInspectorCanvas",
-		canvasRect.size(),
-		ImGuiButtonFlags_MouseButtonLeft |
-		ImGuiButtonFlags_MouseButtonRight |
-		ImGuiButtonFlags_MouseButtonMiddle
-	);
-
-	imageMin = ImGui::GetItemRectMin();
-	imageMax = ImGui::GetItemRectMax();
-	imageSize = {
-		imageMax.x - imageMin.x,
-		imageMax.y - imageMin.y
-	};
+	resizeImage();
 
 	camera.setDimensions(
-		static_cast<int>(imageSize.x),
-		static_cast<int>(imageSize.y),
-		imageMin
+		canvasRect.size.x,
+		canvasRect.size.y,
+		canvasRect.min
 	);
 
 	// Build current segments before hover/mouse logic
@@ -2134,7 +1735,10 @@ void MeshInspector::render() {
 	// Now handle mouse using current hoveredId/current segments
 	handleMouse();
 
+
 	drawCanvas(drawList, canvasRect, 5.0f);
+
+	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
 	drawHighlightedCells2D(drawList);
 	drawMeshLines(drawList);
@@ -2143,6 +1747,8 @@ void MeshInspector::render() {
 	drawSnapping(drawList);
 	drawBoundarySegments(drawList);
 	drawTextAtSurfacePoint(drawList);
+	drawList->PopClipRect();
+
 	drawPopup();
 
 	ImGui::End();
