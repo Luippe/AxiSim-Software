@@ -382,7 +382,6 @@ void Console::draw() {
 
 	ImGui::Begin("Console");
 
-	ImGuiIO& io = ImGui::GetIO();
 	ImFont* defaultFont = gui.appConfig.fonts.defaultFont;
 
 	if (ImGui::Button("Clear")) {

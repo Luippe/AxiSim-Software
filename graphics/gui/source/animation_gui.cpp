@@ -171,7 +171,6 @@ void AnimationGUI::render() {
 
     float plusW = ImGui::CalcTextSize("+").x + ImGui::GetStyle().FramePadding.x * 2.0f;
     float minusW = ImGui::CalcTextSize("-").x + ImGui::GetStyle().FramePadding.x * 2.0f;
-    float spacing = ImGui::GetStyle().ItemSpacing.x;
 
     float availW = ImGui::GetContentRegionAvail().x;
     float sliderW = availW - plusW - minusW;

@@ -58,7 +58,6 @@ public:
 
 	bool drawTree(const char* label, bool& isOpen, ImGuiTreeNodeFlags flags = UIFlagsTree::BranchOpenedFlags);
 
-
 	// table functions
 	
 	// draw table header. uses single column

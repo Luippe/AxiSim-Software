@@ -204,7 +204,7 @@ void FrameBuffer::endOffScreenImGuiRender(const GLint& oldFBO, const GLint(&oldV
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 	std::vector<unsigned char> pixels = readPixelsRGBA();
-	bool copied = copyRGBAToClipboard(pixels.data(), width, height);
+	copyRGBAToClipboard(pixels.data(), width, height);
 
 	ImGuiIO& io = ImGui::GetIO();
 	io.DisplaySize = oldDisplaySize;

@@ -443,9 +443,6 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 	std::vector<double> z = g.z;
 	std::unordered_set<int> obstacleIndices = g.obstacleIndices;
 	
-	double Umax = f.Umax;
-	double R = g.R;
-	double D = f.D;
 	double D_isf = f.D_isf;
 	double d = f.d;
 	
@@ -490,9 +487,6 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 	for (int i = 0; i < nr; ++i) {
 		for (int j = 0; j < nz; ++j) {
 			int n = i * nz + j;
-
-			double zc = 0.5 * (zFace[j] + zFace[j + 1]);
-			double rc = 0.5 * (rFace[i] + rFace[i + 1]);
 
 			if (obstacleIndices.contains(n)) {
 				c_cell[n] = 1;

@@ -62,7 +62,6 @@ int findClosestX(const std::vector<double>& x, double mouseX) {
 
     if (x.empty()) return -1;
 
-    int bestIndex = 0;
     auto it = std::lower_bound(x.begin(), x.end(), mouseX);
 
     if (it == x.begin()) {
