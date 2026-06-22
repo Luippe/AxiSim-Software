@@ -190,7 +190,7 @@ private:
 	Geometry& geometry;
 	AppAssets& assets;
 	GUI& gui;
-	Camera2D camera;
+
 	bool isDrawingEntity = false;
 	bool isSelecting = false;
 	bool isMovingSelection = false;
@@ -218,7 +218,6 @@ private:
 	void handleOpenPopup();
 
 	void drawPopup(ImDrawList* drawList);
-	void drawAxes(ImDrawList* drawList);
 	void drawSketchEntities(ImDrawList* drawList);
 	void drawTrimPreview(ImDrawList* drawList);
 	void drawDimensions(ImDrawList* drawList);
@@ -226,8 +225,6 @@ private:
 	void drawTemporarySketch(ImDrawList* drawList);
 	void drawPendingSketchEntity(ImDrawList* drawList);
 
-	// used for gui
-	
 	// draw a circle at the cursor's location if there is a place to snap
 	void drawSnapping(ImDrawList* drawList);
 

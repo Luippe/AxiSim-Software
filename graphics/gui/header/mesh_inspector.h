@@ -77,7 +77,6 @@ private:
 	//-------------boundary lines--------------
 	float pickRadiusPx = 12.0f;
 	std::optional<int> hoveredId;
-	Camera2D camera;
 
 	bool isPopupOpened = false;
 	bool hoveringOverSegment = false;
@@ -100,6 +99,12 @@ private:
 	ImColor drawingColor = IM_COL32(203, 209, 224, 255);
 	const ImU32 sketchBgColor = IM_COL32(102, 102, 102, 255);
 	const ImU32 outlineColor = IM_COL32(150, 150, 150, 255);
+
+	// -------------cell inspection--------------
+	bool toggleInspectCell = false;	// toolbar mode: pick cells to read mesh data
+	int selectedCell = -1;			// FV cell pinned by a left click (-1 = none)
+	FVMesh inspectFVMesh;			// snapshot rebuilt when inspect mode turns on
+	bool inspectMeshDirty = true;	// rebuild the snapshot on the next render
 
 	int cellIndex(int i, int j) const;
 	bool isInsideCellGrid(int i, int j) const;
@@ -139,11 +144,27 @@ private:
 	void drawPendingObjects(ImDrawList* drawList);
 	void drawSnapping(ImDrawList* drawList);
 
-	void drawAxes(ImDrawList* drawList);
 	void drawMeshLines(ImDrawList* drawList);
 	void drawHighlightedCells2D(ImDrawList* drawList);
 	void drawBoundarySegments(ImDrawList* drawList);
 	void drawRegionsOfInfluence(ImDrawList* drawList);
+
+	// -------------cell inspection--------------
+	// rebuild the FV mesh snapshot used for picking/reading cell data
+	void buildInspectMesh();
+
+	// pick the cell under a world-space point (-1 if none)
+	int pickCell(const Vec2& world) const;
+
+	// pin/unpin a cell on left click (only while inspect mode is on)
+	void handleCellSelection(ImGuiIO& io);
+
+	// max non-orthogonality over the cell's interior faces, in degrees
+	// (-1 if the cell has no interior faces); also reports the average
+	double cellNonOrthogonality(int cellID, double& avgDeg, int& interiorFaces) const;
+
+	// highlight the pinned cell and draw a panel with its mesh data
+	void drawCellInfo(ImDrawList* drawList);
 
 	void fillBoundaryGroupEdges(BoundarySegmentGroup& group);
 

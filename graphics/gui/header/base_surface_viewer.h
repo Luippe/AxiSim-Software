@@ -371,22 +371,13 @@ protected:
 	const float circleRadius = 3.0f;
 	std::vector<SurfacePoint> points;
 
-	// rectangle selection
+	// tool toggles
 	bool toggleDrawLine = false;
 	bool toggleDrawCircle = false;
 	bool toggleDrawRect = false;
-	bool toggleRemoveCell = false;
 	bool toggleRuler = false;
-	bool toggleFillCells = false;
-	bool toggleShowMesh = false;
-	bool isRectReady = false;
 
-
-	ImVec2 initMouseIndex = ImVec2(0.0f, 0.0f);
-	ImVec2 currentMouseIndex = ImVec2(0.0f, 0.0f);
 	ImVec2 currentMousePos = ImVec2(0.0f, 0.0f);
-	ImVec2 rectPos1 = ImVec2(0.0f, 0.0f);
-	ImVec2 rectPos2 = ImVec2(0.0f, 0.0f);
 	ImVec2 buttonSize = ImVec2(30.0f, 30.0f);
 
 	// shader
@@ -403,22 +394,14 @@ protected:
 	};
 
 	Rect canvasRect;
+	Camera2D camera;
 
 	// image dimensions
 	int imageWidth, imageHeight;
 	ImVec2 imageMin = ImVec2(0.0f, 0.0f);
 	ImVec2 imageMax = ImVec2(0.0f, 0.0f);
 	ImVec2 imageSize = ImVec2(0.0f, 0.0f);
-	ImVec2 zoomCenter = ImVec2(0.5f, 0.5f);
 
-	float zoom = 1.0f;
-
-	float u0 = 0.0f;
-	float v0 = 0.0f;
-	float u1 = 1.0f;
-	float v1 = 1.0f;
-
-	
 	// ======================================================================
 	// -----------------------HELPER FUNCTION--------------------------------
 	// ======================================================================
@@ -435,75 +418,23 @@ protected:
 		float bottom = 0.0
 	);
 
-	Rect fitRectToAspect(
-		const Rect& rect,
-		double aspect
-	) const;
-
-	std::optional<ImVec2> mouseToGridPoint(int nrBase, int nzBase);
-
 	void addToolbarSeparator(float height = 24.0f);
 
 	// update initLeftMouse when the user clicks. relative to the last drawn ImGui item
 	void updateInitialLeftClick(ImGuiIO& io);
-
-	void updateUV(float halfW, float halfH);
-
-	void clampZoomCenter(float& halfW, float& halfH);
-
-	void toggleSelectedPoint(std::vector<SurfacePoint>& points, ImVec2& dataPos, ImVec2& mousePos, float value);
-
-	void resetView();
-
-	void addHighlightCell(std::unordered_set<int>& indices, int n);
-
-	void highlightCellsInRect(std::unordered_set<int>& indices, ImVec2 cellA, ImVec2 cellB, int nzBase, int nrBase);
-
-	// get physical z and r coordinates at mouse position
-	Vec2 screenToPhysical(const ImVec2& mousePos, double R, double L);
-
-	// get physical z and r coordinates at mouse position, snap to closest vertex (i think)
-	Vec2 getMousePhysicalClosestCoord(ImVec2& mousePos, const std::vector<double>& rFace, const std::vector<double>& zFace);
-
-	ImVec2 screenToUV(const ImVec2& mousePos);
-
-	ImVec2 uvToScreen(const ImVec2& uv);
-
-	ImVec2 physicalToScreen(Vec2 p,	double L, double R) const;
-
-	float physicalLengthToScreenLength(double length, double L, double R) const;
-
-	ImVec2 gridFaceToScreen(int jFace, int iFace, const std::vector<double>& zFace, const std::vector<double>& rFace);
-
-	ImVec2 getMouseIndex(const std::vector<double>& rFace, const std::vector<double> zFace);
-
-	// turns i,j coordinates to pixel coordinates
-	ImVec2 gridToScreen(int jFace, int iFace, const std::vector<double>& rFace, const std::vector<double>& zFace);
 
 	// add tooltip to image button when hovered
 	void setToolTip(const char* text);
 
 	void updateCurrentMousePos();
 
-	// ======================================================================
-	// -----------------------HANDLE INPUT-----------------------------------
-	// ======================================================================
-	void handleZoom(ImGuiIO& io);
-
-	void handlePan(ImGuiIO& io);
-
-	void handleRectSelection(ImGuiIO& io);
-
-	void handlePopup(const char* text);
-
 	void resizeImage();
 
 	// ======================================================================
 	// -----------------------DRAW CALLS-------------------------------------
 	// ======================================================================
-	
-	// draw rectangle when mouse is dragged
-	void displayRect(int nrBase, int nzBase);
+	// draw the axes in 2d space
+	void drawAxes(ImDrawList* drawList);
 
 	// draws the main surface. also updates imageMin, imageMax, and imageSize
 	void drawSurface(const Rect& rect);
@@ -517,31 +448,10 @@ protected:
 		ImColor outlineColor = IM_COL32(76, 105, 140, 200)
 	);
 
-	void drawHorizontalSeparator(
-		ImDrawList* drawList,
-		float inset = 12.0f,
-		float spacingY = 8.0f
-	);
-
-	void drawHighlightedCells(
-		ImDrawList* drawList,
-		std::unordered_set<int>& indices,
-		const std::vector<double>& rFace,
-		const std::vector<double>& zFace
-	);
-
-
 	// ======================================================================
 	// -----------------------MENU ITEM HANDLES------------------------------
 	// ======================================================================
-	// add menu items
-	void addMenuItemResetView(const char* text);
-
-	void addMenuItemClearPoints(const char* text);
-
 	void addMenuItemCopyToClipboard(const char* text);
-
-	void addMenuItemToggleBool(const char* text, bool& toggle);
 
 	// ======================================================================
 	// -----------------------IMAGE BUTTONS----------------------------------
@@ -550,18 +460,7 @@ protected:
 
 	bool addImageButtonToggle(const char* id, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle);
 
-	void addImageButtonNewTab(TextureBuffer& icon, ImVec2 buttonSize, ImGuiID currentDockID, ImGuiID& pendingAddDockID, ImGuiID dockspaceID);
-
 private:
 
 	const float imageButtonRounding = 6.0f;
-
-
-	void drawFilledCells(
-		ImDrawList* drawList,
-		std::unordered_set<int>& indices,
-		const std::vector<double>& rFace,
-		const std::vector<double>& zFace,
-		const int nrBase,
-		const int nzBase);
 };

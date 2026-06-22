@@ -112,7 +112,6 @@ bool SketchView::redoSketchEdit() {
 void SketchView::clearToolToggles() {
 	toggleEraser = false;
 	toggleRuler = false;
-	toggleRemoveCell = false;
 	toggleTrim = false;
 	toggleDrawLine = false;
 	toggleDrawRect = false;
@@ -448,7 +447,6 @@ void SketchView::drawToolBar() {
 
 	std::string resetViewText = shortcutText("Reset View", resetViewShortcut);
 	if (addImageButton("Reset", resetViewText.c_str(), assets.houseIcon, buttonSize)) {
-		resetView();
 		camera.home();
 	}
 	ImGui::SameLine();
@@ -742,7 +740,6 @@ bool SketchView::handleShortcuts(ImGuiIO& io) {
 
 	if (ImGui::Shortcut(resetViewShortcut)) {
 		clearInteraction();
-		resetView();
 		camera.home();
 		return true;
 	}
@@ -927,48 +924,7 @@ void SketchView::handleDimensionTool() {
 }
 
 
-void SketchView::drawAxes(ImDrawList* drawList) {
-	ImVec2 origin = camera.worldToScreen(Vec2{ 0.0, 0.0 });
-
-	drawList->PushClipRect(imageMin, imageMax, true);
-
-	if (origin.y >= imageMin.y && origin.y <= imageMax.y) {
-		drawList->AddLine(
-			ImVec2(imageMin.x, origin.y),
-			ImVec2(imageMax.x, origin.y),
-			IM_COL32(210, 55, 55, 255),
-			1.5f
-		);
-
-		drawList->AddText(
-			ImVec2(imageMax.x - 18.0f, origin.y + 6.0f),
-			IM_COL32(230, 80, 80, 255),
-			"x"
-		);
-	}
-
-	if (origin.x >= imageMin.x && origin.x <= imageMax.x) {
-		drawList->AddLine(
-			ImVec2(origin.x, imageMin.y),
-			ImVec2(origin.x, imageMax.y),
-			IM_COL32(55, 190, 95, 255),
-			1.5f
-		);
-
-		drawList->AddText(
-			ImVec2(origin.x + 6.0f, imageMin.y + 6.0f),
-			IM_COL32(80, 220, 120, 255),
-			"y"
-		);
-	}
-
-	drawList->AddCircleFilled(origin, 3.5f, IM_COL32(235, 235, 235, 255));
-
-	drawList->PopClipRect();
-}
-
 void SketchView::drawSketchEntities(ImDrawList* drawList) {
-	drawList->PushClipRect(imageMin, imageMax, true);
 
 	std::optional<TrimPreviewResult> hoveredSegment =
 		geometry.sketch.activeTool == SketchTool::Select &&
@@ -1136,12 +1092,9 @@ void SketchView::drawSketchEntities(ImDrawList* drawList) {
 	if (hoveredSegment && !isMovingSelection) {
 		drawSegment(*hoveredSegment);
 	}
-
-	drawList->PopClipRect();
 }
 
 void SketchView::drawDimensions(ImDrawList* drawList) {
-	drawList->PushClipRect(imageMin, imageMax, true);
 
 	ImU32 labelTextColor = IM_COL32(255, 235, 135, 255);
 	ImU32 labelBgColor = IM_COL32(40, 43, 48, 225);
@@ -1207,8 +1160,6 @@ void SketchView::drawDimensions(ImDrawList* drawList) {
 		drawList->AddRect(rectMin, rectMax, labelBorderColor, 3.0f, 0, 1.0f);
 		drawList->AddText(labelPos, labelTextColor, label.c_str());
 	}
-
-	drawList->PopClipRect();
 }
 
 void SketchView::drawDimensionEditor() {
@@ -1303,7 +1254,6 @@ void SketchView::drawPopup(ImDrawList* drawList) {
 		addMenuItemCopyToClipboard("Copy to clipboard");
 
 		if (ImGui::MenuItem("Reset View", ImGui::GetKeyChordName(resetViewShortcut))) {
-			resetView();
 			camera.home();
 		}
 
@@ -1350,8 +1300,6 @@ void SketchView::drawPendingSketchEntity(ImDrawList* drawList) {
 
 	ImU32 previewLineColor = IM_COL32(125, 220, 255, 255);
 	ImU32 previewFillColor = IM_COL32(125, 220, 255, 35);
-
-	drawList->PushClipRect(imageMin, imageMax, true);
 
 	if (toggleSnapping) {
 		drawList->AddCircleFilled(
@@ -1412,8 +1360,6 @@ void SketchView::drawPendingSketchEntity(ImDrawList* drawList) {
 		drawList->AddLine(centerScreen, edgeScreen, IM_COL32(125, 220, 255, 150), 1.0f);
 		drawList->AddCircleFilled(centerScreen, 3.0f, previewLineColor);
 	}
-
-	drawList->PopClipRect();
 }
 
 void SketchView::updateCurrentWorld() {
@@ -1445,17 +1391,17 @@ void SketchView::render() {
 
 	ImVec2 pos = ImGui::GetCursorScreenPos();
 	ImVec2 size = ImGui::GetContentRegionAvail();
-	Rect viewRect = makePaddedRect(pos, size);
+	canvasRect = makePaddedRect(pos, size);
 
 	resizeImage();
 
-	drawSurface(viewRect);
-	drawCanvas(drawList, viewRect, 0.0f, sketchBgColor, outlineColor);
+	drawSurface(canvasRect);
+	drawCanvas(drawList, canvasRect, 0.0f, sketchBgColor, outlineColor);
 
 	camera.setDimensions(
-		static_cast<int>(imageSize.x),
-		static_cast<int>(imageSize.y),
-		imageMin
+		static_cast<int>(canvasRect.size.x),
+		static_cast<int>(canvasRect.size.y),
+		canvasRect.min
 	);
 
 	// update current global mouse pos
@@ -1464,8 +1410,9 @@ void SketchView::render() {
 
 	// handle mouse and keyboard presses
 	handleMouseAndKey();
-
 	drawPopup(drawList);
+
+	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
 	drawSketchEntities(drawList);
 	drawTrimPreview(drawList);
@@ -1474,6 +1421,7 @@ void SketchView::render() {
 	drawTemporarySketch(drawList);
 	drawSnapping(drawList);
 	drawDimensionEditor();
+	drawList->PopClipRect();
 
 	ImGui::End();
 }

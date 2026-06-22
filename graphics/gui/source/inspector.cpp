@@ -365,46 +365,6 @@ void Inspector::drawMeshOverlay(ImDrawList* drawList) {
 	}
 }
 
-void Inspector::drawAxes(ImDrawList* drawList) {
-	ImVec2 origin = camera.worldToScreen(Vec2{ 0.0, 0.0 });
-
-	ImVec2 canvasMin = canvasRect.min;
-	ImVec2 canvasMax = canvasRect.max;
-
-	if (origin.y >= canvasMin.y && origin.y <= canvasMax.y) {
-		drawList->AddLine(
-			ImVec2(canvasMin.x, origin.y),
-			ImVec2(canvasMax.x, origin.y),
-			IM_COL32(210, 55, 55, 255),
-			1.5f
-		);
-
-		drawList->AddText(
-			ImVec2(canvasMax.x - 18.0f, origin.y + 6.0f),
-			IM_COL32(230, 80, 80, 255),
-			"z"
-		);
-	}
-
-	if (origin.x >= canvasMin.x && origin.x <= canvasMax.x) {
-		drawList->AddLine(
-			ImVec2(origin.x, canvasMin.y),
-			ImVec2(origin.x, canvasMax.y),
-			IM_COL32(55, 190, 95, 255),
-			1.5f
-		);
-
-		drawList->AddText(
-			ImVec2(origin.x + 6.0f, canvasMin.y + 6.0f),
-			IM_COL32(80, 220, 120, 255),
-			"r"
-		);
-	}
-
-	drawList->AddCircleFilled(origin, 3.5f, IM_COL32(235, 235, 235, 255));
-
-}
-
 void Inspector::drawValueProbe(ImDrawList* drawList) {
 
 	ImGuiIO& io = ImGui::GetIO();

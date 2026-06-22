@@ -3,6 +3,8 @@
 #include <format>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <string>
 #include <glm/glm.hpp>
 
 #include "mesh.h"
@@ -726,6 +728,175 @@ int meshInspectorCellIndexAt(const std::vector<double>& faces, double x) {
 }
 
 // ======================================================================
+// -----------------------CELL INSPECTION--------------------------------
+// ======================================================================
+static double cellPickSign(const Vec2& p, const Vec2& a, const Vec2& b) {
+	return (p.z - b.z) * (a.r - b.r) - (a.z - b.z) * (p.r - b.r);
+}
+
+void MeshInspector::buildInspectMesh() {
+	if (mesh.currentMeshType == MeshType::Structured) {
+		int nCells = std::max(g.nr * g.nz, 0);
+
+		// createStructuredMesh indexes activeCell[n] directly, so make sure it
+		// is sized. Fall back to an all-fluid grid if the sketch hasn't been
+		// rasterized yet.
+		if ((int)g.activeCell.size() == nCells && nCells > 0) {
+			inspectFVMesh = mesh.createFVMesh(g.activeCell);
+		}
+		else {
+			std::vector<uint8_t> allFluid(nCells, 1);
+			inspectFVMesh = mesh.createFVMesh(allFluid);
+		}
+	}
+	else {
+		// unstructured ignores the activeCell argument
+		inspectFVMesh = mesh.createFVMesh({});
+	}
+
+	inspectMeshDirty = false;
+}
+
+int MeshInspector::pickCell(const Vec2& world) const {
+	if (mesh.currentMeshType == MeshType::Structured) {
+		if (g.zFace.size() < 2 || g.rFace.size() < 2) {
+			return -1;
+		}
+
+		int j = meshInspectorCellIndexAt(g.zFace, world.z);
+		int i = meshInspectorCellIndexAt(g.rFace, world.r);
+
+		if (i < 0 || j < 0) {
+			return -1;
+		}
+
+		int n = i * g.nz + j;
+
+		if (n < 0 || n >= (int)inspectFVMesh.cells.size()) {
+			return -1;
+		}
+
+		return n;
+	}
+
+	// unstructured: FV cells map 1:1 to triangles, so a point-in-triangle test
+	// gives the cell index directly.
+	const std::vector<Vec2>& pts = mesh.unstructuredPoints;
+	const std::vector<Triangle>& tris = mesh.unstructuredTriangles;
+
+	for (int c = 0; c < (int)tris.size(); c++) {
+		const Triangle& t = tris[c];
+
+		if (t.v0 < 0 || t.v1 < 0 || t.v2 < 0) continue;
+		if (t.v0 >= (int)pts.size() ||
+			t.v1 >= (int)pts.size() ||
+			t.v2 >= (int)pts.size()) {
+			continue;
+		}
+
+		double d1 = cellPickSign(world, pts[t.v0], pts[t.v1]);
+		double d2 = cellPickSign(world, pts[t.v1], pts[t.v2]);
+		double d3 = cellPickSign(world, pts[t.v2], pts[t.v0]);
+
+		bool hasNeg = (d1 < 0.0) || (d2 < 0.0) || (d3 < 0.0);
+		bool hasPos = (d1 > 0.0) || (d2 > 0.0) || (d3 > 0.0);
+
+		if (!(hasNeg && hasPos)) {
+			return c;
+		}
+	}
+
+	return -1;
+}
+
+double MeshInspector::cellNonOrthogonality(
+	int cellID,
+	double& avgDeg,
+	int& interiorFaces
+) const {
+	avgDeg = 0.0;
+	interiorFaces = 0;
+
+	if (cellID < 0 || cellID >= (int)inspectFVMesh.cells.size()) {
+		return -1.0;
+	}
+
+	const FVCell& cell = inspectFVMesh.cells[cellID];
+
+	double maxDeg = 0.0;
+	double sumDeg = 0.0;
+
+	constexpr double radToDeg = 57.29577951308232;
+
+	for (int fid : cell.faceIDs) {
+		if (fid < 0 || fid >= (int)inspectFVMesh.faces.size()) {
+			continue;
+		}
+
+		const FVFace& f = inspectFVMesh.faces[fid];
+
+		if (f.neighbor < 0) {
+			continue; // boundary face: no neighbour centroid to measure against
+		}
+
+		if (f.owner < 0 || f.owner >= (int)inspectFVMesh.cells.size() ||
+			f.neighbor >= (int)inspectFVMesh.cells.size()) {
+			continue;
+		}
+
+		const FVCell& P = inspectFVMesh.cells[f.owner];
+		const FVCell& N = inspectFVMesh.cells[f.neighbor];
+
+		// d: centroid-to-centroid vector;  S (f.normal): face normal
+		double dz = N.center.z - P.center.z;
+		double dr = N.center.r - P.center.r;
+		double dLen = std::sqrt(dz * dz + dr * dr);
+		double nLen = std::sqrt(f.normal.z * f.normal.z + f.normal.r * f.normal.r);
+
+		if (dLen < 1e-30 || nLen < 1e-30) {
+			continue;
+		}
+
+		// angle between the centroid line and the face normal (0 = orthogonal)
+		double cosAng = (dz * f.normal.z + dr * f.normal.r) / (dLen * nLen);
+		cosAng = std::clamp(cosAng, -1.0, 1.0);
+
+		double ang = std::acos(std::abs(cosAng)) * radToDeg;
+
+		maxDeg = std::max(maxDeg, ang);
+		sumDeg += ang;
+		interiorFaces++;
+	}
+
+	if (interiorFaces == 0) {
+		return -1.0;
+	}
+
+	avgDeg = sumDeg / interiorFaces;
+	return maxDeg;
+}
+
+void MeshInspector::handleCellSelection(ImGuiIO& io) {
+	if (!isMouseNearImage(io)) {
+		return;
+	}
+
+	// treat a left release as a pick only when the mouse wasn't dragged
+	// (a drag is a pan/zoom gesture, not a selection)
+	if (!ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+		return;
+	}
+
+	ImVec2 drag = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left);
+	if (drag.x * drag.x + drag.y * drag.y > 9.0f) {
+		return;
+	}
+
+	Vec2 world = camera.screenToWorld(ImGui::GetMousePos());
+	selectedCell = pickCell(world); // -1 if the click missed the mesh (deselect)
+}
+
+// ======================================================================
 // -----------------------MOUSE HANDLES----------------------------------
 // ======================================================================
 void MeshInspector::handleCursor(ImGuiIO& io) {
@@ -1052,21 +1223,13 @@ void MeshInspector::handleMouse() {
 		camera.calculatePan(io.MouseDelta.x, io.MouseDelta.y);
 	}
 
-	handleCursor(io);
-	handleDrawRegionOfInfluence();
-
-
-
-	if (mesh.currentMeshType == MeshType::Structured) {
-		Vec2 mouseWorld = camera.screenToWorld(currentMousePos);
-
-		int j = meshInspectorCellIndexAt(g.zFace, mouseWorld.z);
-		int i = meshInspectorCellIndexAt(g.rFace, mouseWorld.r);
-
-		currentMouseIndex = ImVec2((float)j, (float)i);
+	if (toggleInspectCell) {
+		// inspect mode owns the left click; skip boundary selection / ROI
+		handleCellSelection(io);
 	}
-	else if (mesh.currentMeshType == MeshType::Unstructured) {
-
+	else {
+		handleCursor(io);
+		handleDrawRegionOfInfluence();
 	}
 }
 
@@ -1139,46 +1302,6 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 // ======================================================================
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
-void MeshInspector::drawAxes(ImDrawList* drawList) {
-	ImVec2 origin = camera.worldToScreen(Vec2{ 0.0, 0.0 });
-
-	ImVec2 canvasMin = canvasRect.min;
-	ImVec2 canvasMax = canvasRect.max;
-
-	if (origin.y >= canvasMin.y && origin.y <= canvasMax.y) {
-		drawList->AddLine(
-			ImVec2(canvasMin.x, origin.y),
-			ImVec2(canvasMax.x, origin.y),
-			IM_COL32(210, 55, 55, 255),
-			1.5f
-		);
-
-		drawList->AddText(
-			ImVec2(canvasMax.x - 18.0f, origin.y + 6.0f),
-			IM_COL32(230, 80, 80, 255),
-			"z"
-		);
-	}
-
-	if (origin.x >= canvasMin.x && origin.x <= canvasMax.x) {
-		drawList->AddLine(
-			ImVec2(origin.x, canvasMin.y),
-			ImVec2(origin.x, canvasMax.y),
-			IM_COL32(55, 190, 95, 255),
-			1.5f
-		);
-
-		drawList->AddText(
-			ImVec2(origin.x + 6.0f, canvasMin.y + 6.0f),
-			IM_COL32(80, 220, 120, 255),
-			"r"
-		);
-	}
-
-	drawList->AddCircleFilled(origin, 3.5f, IM_COL32(235, 235, 235, 255));
-
-}
-
 void MeshInspector::drawMeshLines(ImDrawList* drawList) {
 	if (!mesh.meshMode) {
 		return;
@@ -1337,7 +1460,6 @@ void MeshInspector::drawToolBar() {
 	ImGui::SameLine();
 
 	if (addImageButton("Reset", "Reset View", assets.houseIcon, buttonSize)) {
-		resetView();
 		camera.home();
 	}
 	ImGui::SameLine();
@@ -1361,6 +1483,7 @@ void MeshInspector::drawToolBar() {
 		toggleDrawCircle
 	)) {
 		toggleDrawRect = false;
+		toggleInspectCell = false;
 	}
 	ImGui::SameLine();
 
@@ -1372,6 +1495,22 @@ void MeshInspector::drawToolBar() {
 		toggleDrawRect
 	)) {
 		toggleDrawCircle = false;
+		toggleInspectCell = false;
+	}
+	ImGui::SameLine();
+
+	if (addImageButtonToggle(
+		"InspectCell",
+		"Inspect cell mesh data (click a cell)",
+		assets.selectIcon,
+		buttonSize,
+		toggleInspectCell
+	)) {
+		toggleDrawCircle = false;
+		toggleDrawRect = false;
+		toggleRuler = false;
+		selectedCell = -1;
+		inspectMeshDirty = true;
 	}
 
 	ImGui::EndChild();
@@ -1417,7 +1556,7 @@ void MeshInspector::drawPopup() {
 		addMenuItemCopyToClipboard("Copy to clipboard");
 
 		if (ImGui::MenuItem("Reset View")) {
-			resetView();
+			camera.home();
 		}
 		
 
@@ -1699,6 +1838,160 @@ void MeshInspector::drawRegionsOfInfluence(ImDrawList* drawList) {
 	}
 }
 
+void MeshInspector::drawCellInfo(ImDrawList* drawList) {
+	if (selectedCell < 0) {
+		return;
+	}
+
+	if (selectedCell >= (int)inspectFVMesh.cells.size()) {
+		selectedCell = -1; // stale selection (mesh changed underneath us)
+		return;
+	}
+
+	ImVec2 canvasMin = canvasRect.min;
+	ImVec2 canvasMax = canvasRect.max;
+
+	const ImU32 fillCol = IM_COL32(255, 235, 60, 70);
+	const ImU32 lineCol = IM_COL32(255, 235, 60, 255);
+
+	// --- highlight the pinned cell ---
+	drawList->PushClipRect(canvasMin, canvasMax, true);
+
+	if (mesh.currentMeshType == MeshType::Structured) {
+		int i = selectedCell / std::max(g.nz, 1);
+		int j = selectedCell % std::max(g.nz, 1);
+
+		if (i >= 0 && i + 1 < (int)g.rFace.size() &&
+			j >= 0 && j + 1 < (int)g.zFace.size()) {
+			ImVec2 p0 = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[i] });
+			ImVec2 p1 = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i + 1] });
+
+			ImVec2 rmin(std::min(p0.x, p1.x), std::min(p0.y, p1.y));
+			ImVec2 rmax(std::max(p0.x, p1.x), std::max(p0.y, p1.y));
+
+			drawList->AddRectFilled(rmin, rmax, fillCol);
+			drawList->AddRect(rmin, rmax, lineCol, 0.0f, 0, 2.0f);
+		}
+	}
+	else if (selectedCell < (int)mesh.unstructuredTriangles.size()) {
+		const std::vector<Vec2>& pts = mesh.unstructuredPoints;
+		const Triangle& t = mesh.unstructuredTriangles[selectedCell];
+
+		if (t.v0 >= 0 && t.v1 >= 0 && t.v2 >= 0 &&
+			t.v0 < (int)pts.size() &&
+			t.v1 < (int)pts.size() &&
+			t.v2 < (int)pts.size()) {
+			ImVec2 a = camera.worldToScreen(pts[t.v0]);
+			ImVec2 b = camera.worldToScreen(pts[t.v1]);
+			ImVec2 d = camera.worldToScreen(pts[t.v2]);
+
+			drawList->AddTriangleFilled(a, b, d, fillCol);
+			drawList->AddTriangle(a, b, d, lineCol, 2.0f);
+		}
+	}
+
+	drawList->PopClipRect();
+
+	// --- build the info text ---
+	const FVCell& cell = inspectFVMesh.cells[selectedCell];
+
+	std::string info;
+	char line[160];
+
+	std::snprintf(line, sizeof(line), "Cell #%d", selectedCell);
+	info += line;
+
+	std::snprintf(line, sizeof(line), "\ncenter:  z %.6g   r %.6g", cell.center.z, cell.center.r);
+	info += line;
+
+	if (cell.area2D > 0.0) {
+		std::snprintf(line, sizeof(line), "\narea2D:  %.6g", cell.area2D);
+		info += line;
+	}
+
+	std::snprintf(line, sizeof(line), "\nvolume:  %.6g", cell.volume);
+	info += line;
+
+	std::snprintf(line, sizeof(line), "\nfaces:   %d", (int)cell.faceIDs.size());
+	info += line;
+
+	std::snprintf(line, sizeof(line), "\nactive:  %s%s",
+		cell.active ? "yes" : "no",
+		cell.solid ? "   (solid)" : "");
+	info += line;
+
+	// --- non-orthogonality (the mesh-quality measure) ---
+	double avgDeg = 0.0;
+	int interiorFaces = 0;
+	double maxDeg = cellNonOrthogonality(selectedCell, avgDeg, interiorFaces);
+
+	info += "\n----------------";
+	if (maxDeg < 0.0) {
+		info += "\nnon-orthogonality: n/a (no interior faces)";
+	}
+	else {
+		std::snprintf(line, sizeof(line),
+			"\nnon-orthogonality (deg):\n  max %.3f   avg %.3f", maxDeg, avgDeg);
+		info += line;
+	}
+
+	// --- per-face geometry: neighbour, edge length, face non-orthogonality ---
+	if (!cell.faceIDs.empty()) {
+		info += "\nfaces (nb | len | non-orth):";
+
+		constexpr double radToDeg = 57.29577951308232;
+
+		for (int fid : cell.faceIDs) {
+			if (fid < 0 || fid >= (int)inspectFVMesh.faces.size()) {
+				continue;
+			}
+
+			const FVFace& f = inspectFVMesh.faces[fid];
+
+			if (f.neighbor < 0) {
+				std::snprintf(line, sizeof(line), "\n  f%-5d bdry   %.4g", fid, f.length2D);
+				info += line;
+				continue;
+			}
+
+			int nb = (f.owner == selectedCell) ? f.neighbor : f.owner;
+
+			const FVCell& P = inspectFVMesh.cells[f.owner];
+			const FVCell& N = inspectFVMesh.cells[f.neighbor];
+
+			double dz = N.center.z - P.center.z;
+			double dr = N.center.r - P.center.r;
+			double dLen = std::sqrt(dz * dz + dr * dr);
+			double nLen = std::sqrt(f.normal.z * f.normal.z + f.normal.r * f.normal.r);
+
+			double ang = 0.0;
+			if (dLen > 1e-30 && nLen > 1e-30) {
+				double cosAng = (dz * f.normal.z + dr * f.normal.r) / (dLen * nLen);
+				cosAng = std::clamp(cosAng, -1.0, 1.0);
+				ang = std::acos(std::abs(cosAng)) * radToDeg;
+			}
+
+			std::snprintf(line, sizeof(line), "\n  f%-5d nb %-5d %.4g  %.2f deg",
+				fid, nb, f.length2D, ang);
+			info += line;
+		}
+	}
+
+	// --- draw the panel (top-left of the canvas) ---
+	const ImVec2 pad(8.0f, 6.0f);
+	ImVec2 origin(canvasMin.x + 10.0f, canvasMin.y + 10.0f);
+
+	ImVec2 ts = ImGui::CalcTextSize(info.c_str());
+
+	ImVec2 rmin = origin;
+	ImVec2 rmax(origin.x + ts.x + pad.x * 2.0f, origin.y + ts.y + pad.y * 2.0f);
+
+	drawList->AddRectFilled(rmin, rmax, IM_COL32(15, 20, 28, 235), 4.0f);
+	drawList->AddRect(rmin, rmax, IM_COL32(90, 120, 150, 200), 4.0f, 0, 1.0f);
+	drawList->AddText(ImVec2(origin.x + pad.x, origin.y + pad.y),
+		IM_COL32(230, 235, 245, 255), info.c_str());
+}
+
 void MeshInspector::render() {
 	setBaseNrNz();
 
@@ -1728,9 +2021,20 @@ void MeshInspector::render() {
 	// update current global mouse pos
 	updateCurrentMousePos();
 
-	// Update hover before mouse logic
-	hoveredId = findHoveredBoundarySegment();
-	hoveringOverSegment = hoveredId.has_value();
+	// keep the inspection snapshot in sync while inspect mode is active
+	if (toggleInspectCell && inspectMeshDirty) {
+		buildInspectMesh();
+	}
+
+	// Update hover before mouse logic (suppressed while inspecting cells)
+	if (toggleInspectCell) {
+		hoveredId = std::nullopt;
+		hoveringOverSegment = false;
+	}
+	else {
+		hoveredId = findHoveredBoundarySegment();
+		hoveringOverSegment = hoveredId.has_value();
+	}
 
 	// Now handle mouse using current hoveredId/current segments
 	handleMouse();
@@ -1747,6 +2051,9 @@ void MeshInspector::render() {
 	drawSnapping(drawList);
 	drawBoundarySegments(drawList);
 	drawTextAtSurfacePoint(drawList);
+	if (toggleInspectCell) {
+		drawCellInfo(drawList);
+	}
 	drawList->PopClipRect();
 
 	drawPopup();
