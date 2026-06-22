@@ -188,8 +188,6 @@ target_include_directories(AxiSim PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/graphics/imgui"
     "${CMAKE_CURRENT_SOURCE_DIR}/graphics/imgui/backends"
     "${CMAKE_SOURCE_DIR}/externals/stb_image"
-    "${CMAKE_SOURCE_DIR}/externals/font_awesome"
-
     "${GMSH_INCLUDE_DIR}"
 
     "${IMPLOT_DIR}"
@@ -217,8 +215,15 @@ if(WIN32)
     )
 endif()
 
+# CUDA GPU targets for distribution. Native SASS (-real) for common consumer
+# cards -- Turing (RTX 20 / GTX 16), Ampere (RTX 30), Ada (RTX 40), Blackwell
+# (RTX 50) -- plus compute_75 PTX (-virtual) as a JIT fallback so any other GPU
+# with compute capability >= 7.5 still runs. CUDA 13.0 dropped Maxwell/Pascal/
+# Volta, so 7.5 is the floor. Verify supported arches with `nvcc --list-gpu-arch`;
+# trim this list (or set it to your own GPU) to shorten local build times.
 set_target_properties(AxiSim PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
+    CUDA_ARCHITECTURES "75-real;86-real;89-real;120-real;75-virtual"
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES

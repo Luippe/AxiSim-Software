@@ -254,7 +254,6 @@ void Console::registerSaveAndLoadCommands() {
 		if (object == "project") {
 			loadFromExplorerProject(project);
 			project.mesh.updateAfterLoadingFile();
-			gui.meshGUI.getGridConfigEdits();
 		}
 		else {
 			addLine("Invalid object: " + object);

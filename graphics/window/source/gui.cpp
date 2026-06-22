@@ -14,9 +14,6 @@
 #include "file_manager.h"
 #include "solver_struct.h"
 
-#include "IconsFontAwesome7.h"
-
-
 #include "flag_manager.h"
 
 

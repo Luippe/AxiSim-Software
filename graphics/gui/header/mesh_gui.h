@@ -10,23 +10,11 @@ class Colormap;
 class Mesh;
 class Config;
 
-struct GridConfigEdits {
-	int nseg;
-	double L;
-	double R;
-	int nr;
-	int nz;
-};
-
 class MeshGUI : public BaseGUI {
 public:
 	MeshGUI(Project& project, GUI& gui);
 
 	void draw();
-
-	void getGridConfigEdits();
-
-	void setGridConfigEdits();
 
 private:
 
@@ -40,7 +28,6 @@ private:
 
 	int selectedBoundaryGroupID = -1;
 
-	GridConfigEdits gridConfigEdits;
 	Project& project;
 	GUI& gui;
 

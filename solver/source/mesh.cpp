@@ -1008,6 +1008,84 @@ bool Mesh::convertSketchToUnstructuredMesh(const SketchModel& sketch) {
 	return true;
 }
 
+bool Mesh::convertSketchToStructuredMesh(const SketchModel& sketch) {
+
+	// Reuse the shared sketch -> boundary pipeline. It builds the boundary
+	// segments / vertices / edges and boundary groups (used for BCs) and sets
+	// g.L / g.R from the sketch's extent. It flips currentMeshType to
+	// Unstructured as a side effect, so restore it afterwards.
+	if (!convertSketchToUnstructuredMesh(sketch)) {
+		return false;
+	}
+
+	currentMeshType = MeshType::Structured;
+
+	// Build the rectangular grid spanning the sketch's extent.
+	createGrid();
+
+	const int nr = g.nr;
+	const int nz = g.nz;
+
+	// Rasterize: every cell whose center is outside the sketched domain (or
+	// inside an obstacle) becomes solid. The solver consumes this through
+	// obstacleIndices -> createActiveCell -> activeCell.
+	g.obstacleIndices.clear();
+	g.activeCell.assign(static_cast<size_t>(nr) * nz, 1);
+
+	for (int i = 0; i < nr; i++) {
+		for (int j = 0; j < nz; j++) {
+			Vec2 center{ g.z[j], g.r[i] };
+
+			if (!pointInsideDomain(center)) {
+				int n = i * nz + j;
+				g.activeCell[n] = 0;
+				g.obstacleIndices.insert(n);
+			}
+		}
+	}
+
+	isReady = true;
+
+	if (console) {
+		console->addCompletionMessage(
+			"Rasterized sketch onto structured grid"
+		);
+	}
+
+	return true;
+}
+
+bool Mesh::pointInsideDomain(const Vec2& p) const {
+
+	// Even-odd ray cast along +z at height p.r against the discretized boundary
+	// loops (domain outline plus obstacle loops). Holes are handled naturally:
+	// a point inside an obstacle ends up with an even crossing count.
+	bool inside = false;
+	const int nv = static_cast<int>(boundaryVertices.size());
+
+	for (const BoundaryEdge& e : boundaryEdges) {
+		if (e.v0 < 0 || e.v1 < 0 || e.v0 >= nv || e.v1 >= nv) {
+			continue;
+		}
+
+		const Vec2& a = boundaryVertices[e.v0].pos;
+		const Vec2& b = boundaryVertices[e.v1].pos;
+
+		bool straddles = (a.r > p.r) != (b.r > p.r);
+		if (!straddles) {
+			continue;
+		}
+
+		double zCross = a.z + (p.r - a.r) * (b.z - a.z) / (b.r - a.r);
+
+		if (p.z < zCross) {
+			inside = !inside;
+		}
+	}
+
+	return inside;
+}
+
 void Mesh::runGmshTriangulation() {
 	unstructuredTriangles.clear();
 

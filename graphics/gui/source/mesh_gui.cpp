@@ -24,25 +24,6 @@ MeshGUI::MeshGUI(Project& project, GUI& gui) :
 	mesh(project.mesh),
 	colormap(gui.scene.colormap),
 	config(project.config){
-
-	getGridConfigEdits();
-}
-
-void MeshGUI::getGridConfigEdits() {
-	gridConfigEdits.nseg = mesh.nseg;
-	gridConfigEdits.L = config.g.L;
-	gridConfigEdits.R = config.g.R;
-	gridConfigEdits.nr = config.g.nr;
-	gridConfigEdits.nz = config.g.nz;
-}
-
-void MeshGUI::setGridConfigEdits() {
-	mesh.nseg = gridConfigEdits.nseg;
-	config.g.L = gridConfigEdits.L;
-	config.g.R = gridConfigEdits.R;
-	config.g.nr = gridConfigEdits.nr;
-	config.g.nz = gridConfigEdits.nz;
-	config.g.N = gridConfigEdits.nr * gridConfigEdits.nz;
 }
 
 const char* edgeOrientName(EdgeOrient orient) {
@@ -349,68 +330,6 @@ void MeshGUI::drawOverview() {
 			ImGui::EndTable();
 		}
 	}
-	else if (selectedItem == "Option") {
-
-		ImGui::TextUnformatted("Geometry");
-		ImGui::BeginChild("Geometry", ImVec2(0.0f, 80.0f), true);	// total width = sum of table width + 10 * num of columns to account for padding
-		if (ImGui::BeginTable("Geometry", 3)) {
-
-			setupTableColumns(
-				column("Label", 150.0f),
-				column("Input", 100.0f),
-				column("Units", 50.0f)
-			);
-
-			labelRow("Length");
-			if (inputDouble("##Length", gridConfigEdits.L, config.varUnits.LUnit, Units::lengthUnits)) {
-				hasChanged = true;
-			}
-			comboUnit("##Length", config.varUnits.LUnit, Units::lengthUnits);
-
-			labelRow("Radius");
-			if (inputDouble("##Radius", gridConfigEdits.R, config.varUnits.RUnit, Units::lengthUnits)) {
-				hasChanged = true;
-			}
-			comboUnit("##Radius", config.varUnits.RUnit, Units::lengthUnits);
-
-			ImGui::EndTable();
-		}
-		ImGui::EndChild();
-
-		ImGui::Spacing();
-		ImGui::TextUnformatted("Mesh");
-		ImGui::BeginChild("Mesh", ImVec2(0.0f, 140.0f), true);
-		if (ImGui::BeginTable("Mesh", 2)) {
-
-			setupTableColumns(
-				column("Label", 150.0f),
-				column("Input", 100.0f)
-			);
-
-			labelRow("Axial Segments");
-			if (inputInt("##Meshnz", &gridConfigEdits.nz)) {
-				hasChanged = true;
-			}
-
-			labelRow("Radial Segments");
-			if (inputInt("##Meshnr", &gridConfigEdits.nr)) {
-				hasChanged = true;
-			}
-
-			labelRow("Axial Bias Factor");
-			if (inputDouble("##MeshAxialBias", &config.g.zBias)) {
-				hasChanged = true;
-			}
-
-			labelRow("Radial Bias Factor");
-			if (inputDouble("##MeshRadialBias", &config.g.rBias)) {
-				hasChanged = true;
-			}
-
-			ImGui::EndTable();
-		}
-		ImGui::EndChild();
-	}
 	else if (selectedItem == "Boundary") {
 
 		drawTableHeader("Statistics");
@@ -482,6 +401,8 @@ void MeshGUI::draw() {
 
 		if (editOpen) {
 			if (drawLeaf("Region of Influence")) {
+				selectedBoundaryGroupID = -1;
+				mesh.highlightedBoundarySegmentIDs.clear();
 				selectedItem = "Region of Influence";
 			}
 			ImGui::TreePop();
@@ -529,40 +450,36 @@ void MeshGUI::draw() {
 				!sketch.circles.empty() ||
 				!sketch.arcs.empty();
 
-			bool topologyChanged =
-				gridConfigEdits.nr != config.g.nr ||
-				gridConfigEdits.nz != config.g.nz ||
-				gridConfigEdits.L != config.g.L ||
-				gridConfigEdits.R != config.g.R;
 			bool shouldGenerate = true;
 
-			setGridConfigEdits();
 
 			if (mesh.currentMeshType == MeshType::Unstructured &&
 				hasSketchGeometry) {
 				if (!mesh.convertSketchToUnstructuredMesh(sketch)) {
 					shouldGenerate = false;
 				}
-				else {
-					getGridConfigEdits();
+			}
+			else if (mesh.currentMeshType == MeshType::Structured &&
+				hasSketchGeometry) {
+				if (!mesh.convertSketchToStructuredMesh(sketch)) {
+					shouldGenerate = false;
 				}
 			}
 			else {
-				if (topologyChanged) {
 
-					mesh.clearUnstructuredGeometry();
-					mesh.boundaryGroups.clear();
-					mesh.boundarySegments.clear();
-					mesh.boundaryEdges.clear();
-					mesh.boundaryVertices.clear();
-					mesh.gridLineVertices.clear();
-					mesh.selectedBoundaryIDs.clear();
-					mesh.highlightedBoundarySegmentIDs.clear();
-					mesh.selectableOuterEdges.clear();
+				mesh.clearUnstructuredGeometry();
+				mesh.boundaryGroups.clear();
+				mesh.boundarySegments.clear();
+				mesh.boundaryEdges.clear();
+				mesh.boundaryVertices.clear();
+				mesh.gridLineVertices.clear();
+				mesh.selectedBoundaryIDs.clear();
+				mesh.highlightedBoundarySegmentIDs.clear();
+				mesh.selectableOuterEdges.clear();
 
-					selectedBoundaryGroupID = -1;
-					mesh.initializeUnstructuredDomain(5, 5);
-				}
+				selectedBoundaryGroupID = -1;
+				mesh.initializeUnstructuredDomain(5, 5);
+				
 			}
 
 			if (shouldGenerate) {

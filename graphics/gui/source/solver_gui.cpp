@@ -3,8 +3,6 @@
 #include "mesh.h"
 #include "solver.h"
 
-#include "IconsFontAwesome7.h"
-
 #include "project.h"
 
 #include "graphics_struct.h"

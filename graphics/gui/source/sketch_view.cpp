@@ -1288,7 +1288,6 @@ void SketchView::handleOpenPopup() {
 		openPopUp = true;
 
 	}
-
 }
 
 void SketchView::drawPopup(ImDrawList* drawList) {
@@ -1334,7 +1333,6 @@ void SketchView::drawPopup(ImDrawList* drawList) {
 
 		// Segment naming lives in the Mesh tab; the Geometry/sketch view no
 		// longer creates or lists named selections.
-
 		ImGui::EndPopup();
 	}
 }

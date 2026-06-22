@@ -108,7 +108,7 @@ void Inspector::frameToMesh() {
 
 	const std::vector<Vec2>& pts = mesh.unstructuredPoints;
 
-	if (pts.empty() || imageSize.x <= 1.0f || imageSize.y <= 1.0f) {
+	if (pts.empty() || canvasRect.size.x <= 1.0f || canvasRect.size.y <= 1.0f) {
 		return;
 	}
 
@@ -129,8 +129,8 @@ void Inspector::frameToMesh() {
 	double w = zMax - zMin;
 	double h = rMax - rMin;
 
-	double uppZ = (w > 1.0e-12) ? w / (double)imageSize.x : camera.unitsPerPixel;
-	double uppR = (h > 1.0e-12) ? h / (double)imageSize.y : camera.unitsPerPixel;
+	double uppZ = (w > 1.0e-12) ? w / (double)canvasRect.size.x : camera.unitsPerPixel;
+	double uppR = (h > 1.0e-12) ? h / (double)canvasRect.size.y : camera.unitsPerPixel;
 
 	double upp = std::max(uppZ, uppR);
 
@@ -179,26 +179,25 @@ int Inspector::pickCell(const Vec2& world) const {
 // ======================================================================
 // -----------------------MOUSE HANDLES----------------------------------
 // ======================================================================
-void Inspector::handleMouse() {
+void Inspector::handleMouse(ImGuiIO& io) {
 
-	ImGuiIO& io = ImGui::GetIO();
+	// if mouse is not near the image, then dont handle any mouse events
+	if (!isMouseNearImage(io)) return;
 
-	if (ImGui::IsItemHovered() && io.MouseWheel != 0.0f) {
-		camera.calculateZoom(io.MouseWheel, ImGui::GetMousePos());
+	// handle zooming and panning
+	if (io.MouseWheel != 0.0f) {
+		camera.calculateZoom(io.MouseWheel, currentMousePos);
 	}
 
-	if (ImGui::IsItemActive() &&
-		(ImGui::IsMouseDragging(ImGuiMouseButton_Left) ||
-		 ImGui::IsMouseDragging(ImGuiMouseButton_Middle))) {
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
 		camera.calculatePan(io.MouseDelta.x, io.MouseDelta.y);
 	}
 }
 
-void Inspector::handleSelection() {
+void Inspector::handleSelection(ImGuiIO& io) {
 
-	if (!ImGui::IsItemHovered()) {
-		return;
-	}
+
+	if (!isMouseNearImage(io)) return;
 
 	// only treat a left release as a click (pin a cell) when the mouse hasn't
 	// been dragged - dragging is a pan and must not move the selection.
@@ -367,32 +366,50 @@ void Inspector::drawMeshOverlay(ImDrawList* drawList) {
 }
 
 void Inspector::drawAxes(ImDrawList* drawList) {
-
 	ImVec2 origin = camera.worldToScreen(Vec2{ 0.0, 0.0 });
 
-	if (origin.y >= imageMin.y && origin.y <= imageMax.y) {
+	ImVec2 canvasMin = canvasRect.min;
+	ImVec2 canvasMax = canvasRect.max;
+
+	if (origin.y >= canvasMin.y && origin.y <= canvasMax.y) {
 		drawList->AddLine(
-			ImVec2(imageMin.x, origin.y),
-			ImVec2(imageMax.x, origin.y),
-			IM_COL32(210, 55, 55, 120),
-			1.0f
+			ImVec2(canvasMin.x, origin.y),
+			ImVec2(canvasMax.x, origin.y),
+			IM_COL32(210, 55, 55, 255),
+			1.5f
+		);
+
+		drawList->AddText(
+			ImVec2(canvasMax.x - 18.0f, origin.y + 6.0f),
+			IM_COL32(230, 80, 80, 255),
+			"z"
 		);
 	}
 
-	if (origin.x >= imageMin.x && origin.x <= imageMax.x) {
+	if (origin.x >= canvasMin.x && origin.x <= canvasMax.x) {
 		drawList->AddLine(
-			ImVec2(origin.x, imageMin.y),
-			ImVec2(origin.x, imageMax.y),
-			IM_COL32(55, 190, 95, 120),
-			1.0f
+			ImVec2(origin.x, canvasMin.y),
+			ImVec2(origin.x, canvasMax.y),
+			IM_COL32(55, 190, 95, 255),
+			1.5f
+		);
+
+		drawList->AddText(
+			ImVec2(origin.x + 6.0f, canvasMin.y + 6.0f),
+			IM_COL32(80, 220, 120, 255),
+			"r"
 		);
 	}
+
+	drawList->AddCircleFilled(origin, 3.5f, IM_COL32(235, 235, 235, 255));
 
 }
 
 void Inspector::drawValueProbe(ImDrawList* drawList) {
 
-	if (!ImGui::IsItemHovered()) {
+	ImGuiIO& io = ImGui::GetIO();
+
+	if (!isMouseNearImage(io)) {
 		return;
 	}
 
@@ -406,14 +423,14 @@ void Inspector::drawValueProbe(ImDrawList* drawList) {
 		return;
 	}
 
-	Vec2 world = camera.screenToWorld(ImGui::GetMousePos());
+	Vec2 world = camera.screenToWorld(currentMousePos);
 
 	int c = pickCell(world);
 	if (c < 0 || c >= (int)sol->field.size()) {
 		return;
 	}
 
-	ImVec2 m = ImGui::GetMousePos();
+	ImVec2 m = currentMousePos;
 	drawList->AddCircleFilled(m, 3.0f, IM_COL32(255, 255, 255, 220), 12);
 	drawList->AddCircle(m, 4.0f, IM_COL32(20, 20, 20, 220), 12, 1.5f);
 
@@ -663,6 +680,7 @@ void Inspector::render() {
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
+
 	drawToolBar();
 
 	ImVec2 pos = ImGui::GetCursorScreenPos();
@@ -680,8 +698,8 @@ void Inspector::render() {
 	resizeImage();
 
 	camera.setDimensions(
-		canvasRect.size.x,
-		canvasRect.size.y,
+		(int)canvasRect.size.x,
+		(int)canvasRect.size.y,
 		canvasRect.min
 	);
 
@@ -690,8 +708,12 @@ void Inspector::render() {
 		pendingFrame = false;
 	}
 
-	handleMouse();
-	handleSelection();
+	// update current global mouse pos
+	updateCurrentMousePos();
+
+	ImGuiIO io = ImGui::GetIO();
+	handleMouse(io);
+	handleSelection(io);
 
 	drawCanvas(drawList, canvasRect, 5.0f);
 
@@ -707,7 +729,9 @@ void Inspector::render() {
 	drawEmptyMessage(drawList);
 	drawList->PopClipRect();
 
-	ImGui::SameLine();
+	// place the colorbar in the strip reserved on the right of the canvas
+	// (the field is drawn via the draw list, so there's no item for SameLine to follow)
+	ImGui::SetCursorScreenPos(ImVec2(canvasRect.max.x, canvasRect.min.y));
 	colorbar.render();
 
 	ImGui::End();

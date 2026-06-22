@@ -44,19 +44,19 @@
 			{
 				"command" : 2,
 				"file" : 1,
-				"line" : 200,
+				"line" : 198,
 				"parent" : 0
 			},
 			{
 				"command" : 2,
 				"file" : 1,
-				"line" : 215,
+				"line" : 213,
 				"parent" : 0
 			},
 			{
 				"command" : 3,
 				"file" : 1,
-				"line" : 210,
+				"line" : 208,
 				"parent" : 0
 			},
 			{
@@ -135,10 +135,6 @@
 				},
 				{
 					"backtrace" : 6,
-					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/font_awesome"
-				},
-				{
-					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/gmsh/include"
 				},
 				{
@@ -206,6 +202,7 @@
 				38,
 				41,
 				46,
+				104,
 				105,
 				106,
 				107,
@@ -213,15 +210,14 @@
 				109,
 				110,
 				111,
-				112,
-				113
+				112
 			]
 		},
 		{
 			"compileCommandFragments" : 
 			[
 				{
-					"fragment" : "-D_WINDOWS -Xcompiler=\" /EHsc\" -Xcompiler=\" -Zi -O2 -Ob1\" -DNDEBUG -std=c++17 \"--generate-code=arch=compute_75,code=[compute_75,sm_75]\" -Xcompiler=-MD"
+					"fragment" : "-D_WINDOWS -Xcompiler=\" /EHsc\" -Xcompiler=\" -Zi -O2 -Ob1\" -DNDEBUG -std=c++17 \"--generate-code=arch=compute_75,code=[sm_75]\" \"--generate-code=arch=compute_86,code=[sm_86]\" \"--generate-code=arch=compute_89,code=[sm_89]\" \"--generate-code=arch=compute_120,code=[sm_120]\" \"--generate-code=arch=compute_75,code=[compute_75]\" -Xcompiler=-MD"
 				}
 			],
 			"defines" : 
@@ -280,10 +276,6 @@
 				{
 					"backtrace" : 6,
 					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/stb_image"
-				},
-				{
-					"backtrace" : 6,
-					"path" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/externals/font_awesome"
 				},
 				{
 					"backtrace" : 6,
@@ -535,14 +527,14 @@
 				82,
 				83,
 				84,
-				85,
-				86
+				85
 			]
 		},
 		{
 			"name" : "solver\\header",
 			"sourceIndexes" : 
 			[
+				86,
 				87,
 				88,
 				89,
@@ -552,54 +544,53 @@
 				93,
 				94,
 				95,
-				96,
-				97
+				96
 			]
 		},
 		{
 			"name" : "src\\header",
 			"sourceIndexes" : 
 			[
-				98,
-				99
+				97,
+				98
 			]
 		},
 		{
 			"name" : "structs",
 			"sourceIndexes" : 
 			[
+				99,
 				100,
 				101,
 				102,
-				103,
-				104
+				103
 			]
 		},
 		{
 			"name" : "graphics\\imgui",
 			"sourceIndexes" : 
 			[
+				104,
 				105,
 				106,
 				107,
-				108,
-				111,
-				112
+				110,
+				111
 			]
 		},
 		{
 			"name" : "graphics\\imgui\\backends",
 			"sourceIndexes" : 
 			[
-				109,
-				110
+				108,
+				109
 			]
 		},
 		{
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				113
+				112
 			]
 		}
 	],
@@ -1040,11 +1031,6 @@
 		{
 			"backtrace" : 2,
 			"path" : "manager/header/flag_manager.h",
-			"sourceGroupIndex" : 7
-		},
-		{
-			"backtrace" : 2,
-			"path" : "manager/header/font_manager.h",
 			"sourceGroupIndex" : 7
 		},
 		{

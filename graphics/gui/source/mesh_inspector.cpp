@@ -1043,7 +1043,7 @@ void MeshInspector::handleMouse() {
 
 	handleOpenPopup();
 
-	// handle zooming in/out
+	// handle zooming and panning
 	if (io.MouseWheel != 0.0f) {
 		camera.calculateZoom(io.MouseWheel, currentMousePos);
 	}

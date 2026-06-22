@@ -80,10 +80,10 @@ private:
 	int pickCell(const Vec2& world) const;
 
 	// ----------input-----------
-	void handleMouse();
+	void handleMouse(ImGuiIO& io);
 
 	// pin/unpin a cell on left click (separate from hover probe)
-	void handleSelection();
+	void handleSelection(ImGuiIO& io);
 
 	// ----------draw calls-----------
 	void drawToolBar();

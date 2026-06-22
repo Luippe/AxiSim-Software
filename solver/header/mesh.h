@@ -109,6 +109,11 @@ public:
 
 	bool convertSketchToUnstructuredMesh(const SketchModel& sketch);
 
+	// rasterize the sketched geometry onto a structured grid: cells whose center
+	// falls outside the domain (or inside an obstacle) become solid. The grid
+	// extents come from the sketch, not from preset g.L / g.R defaults.
+	bool convertSketchToStructuredMesh(const SketchModel& sketch);
+
 	void updateAfterLoadingFile();
 
 	float displayZ(double z) const;
@@ -156,5 +161,8 @@ private:
 	int nextLoopID = 0;
 
 	void createCylinderVertices();
+
+	// even-odd ray cast: is a world point inside the discretized boundary loops?
+	bool pointInsideDomain(const Vec2& p) const;
 
 };
