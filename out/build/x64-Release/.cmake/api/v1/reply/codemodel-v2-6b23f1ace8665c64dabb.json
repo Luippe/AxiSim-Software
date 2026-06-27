@@ -6,7 +6,8 @@
 			[
 				{
 					"build" : ".",
-					"jsonFile" : "directory-.-RelWithDebInfo-d0094a50bb2071803777.json",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-RelWithDebInfo-88e25050d79ad466ddee.json",
 					"minimumCMakeVersion" : 
 					{
 						"string" : "3.24"
@@ -39,7 +40,7 @@
 				{
 					"directoryIndex" : 0,
 					"id" : "AxiSim::@6890427a1f51a3e7e1df",
-					"jsonFile" : "target-AxiSim-RelWithDebInfo-ab105504faaf832aebee.json",
+					"jsonFile" : "target-AxiSim-RelWithDebInfo-38f8a3f81d5da6cba05f.json",
 					"name" : "AxiSim",
 					"projectIndex" : 0
 				}

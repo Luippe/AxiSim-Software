@@ -172,6 +172,8 @@ public:
 
 	void render();
 
+	void copyActiveSurfaceToClipboard();
+
 private:
 
 	// snapping

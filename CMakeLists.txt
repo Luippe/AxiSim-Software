@@ -232,3 +232,48 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
     ${IMGUI_SOURCES}
     ${IMPLOT_SOURCES}
 )
+
+# ------------------------------------------------------------
+# Install / packaging
+#
+# Assembles a self-contained, redistributable folder:
+#
+#   <prefix>/
+#     AxiSim.exe
+#     glfw3.dll, gmsh*.dll, MSVC runtime DLLs
+#     assets/      (fonts + icons, loaded at runtime by relative path)
+#     graphics/shaders/  (GLSL, loaded at runtime by relative path)
+#
+# Build the package with package.ps1, or manually:
+#   cmake --install <build-dir> --prefix dist/AxiSim
+#
+# Note: AxiSim is CUDA software -- the target machine still needs an
+# NVIDIA GPU (compute capability >= 7.5) with a recent driver. That
+# cannot be bundled.
+# ------------------------------------------------------------
+
+install(TARGETS AxiSim RUNTIME DESTINATION .)
+
+# Runtime asset folders are loaded via paths relative to the working
+# directory (e.g. "assets/icons/house.png", "graphics/shaders/mesh.vert"),
+# so they must sit alongside the exe with the same layout.
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets"           DESTINATION .)
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/graphics/shaders" DESTINATION graphics)
+
+# gmsh ships only as a DLL (GMSH_DLL is resolved above in the build section).
+if(EXISTS "${GMSH_DLL}")
+    install(FILES "${GMSH_DLL}" DESTINATION .)
+endif()
+
+# DLLs of linked imported targets (glfw3.dll, and any others vcpkg provides).
+# gmsh is linked via a raw .lib path, not an imported target, so it is not
+# captured here -- hence the explicit install above.
+install(FILES $<TARGET_RUNTIME_DLLS:AxiSim> DESTINATION .)
+
+# Bundle the Visual C++ runtime DLLs (MSVCP140.dll, VCRUNTIME140*.dll) so
+# users do not need to install the redistributable separately.
+set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP ON)
+include(InstallRequiredSystemLibraries)
+if(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
+    install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS} DESTINATION .)
+endif()

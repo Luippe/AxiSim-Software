@@ -102,111 +102,12 @@ void createPPCoeff(
 }
 
 __global__
-void computePressureGradient(
-	FVMeshDevice mesh,
-	BoundaryFieldDevice pBC,
-	const double* p,
-	double* gradPZ,
-	double* gradPR
-) {
-	int n = blockIdx.x * blockDim.x + threadIdx.x;
-
-	if (n >= mesh.cells.nCells) return;
-
-	gradPZ[n] = 0.0;
-	gradPR[n] = 0.0;
-
-	if (!mesh.cells.active[n]) return;
-
-	phiGradientCell(
-		n,
-		mesh,
-		pBC,
-		p,
-		gradPZ[n],
-		gradPR[n]
-	);
-
-}
-
-__global__
-void computePressureGradientLSQ(
-	FVMeshDevice mesh,
-	BoundaryFieldDevice pBC,
-	const double* p,
-	double* gradZ,
-	double* gradR
-) {
-	int n = blockIdx.x * blockDim.x + threadIdx.x;
-
-	if (n >= mesh.cells.nCells) return;
-
-	gradZ[n] = 0.0;
-	gradR[n] = 0.0;
-
-	if (!mesh.cells.active[n]) return;
-
-	double zP = mesh.cells.centerZ[n];
-	double rP = mesh.cells.centerR[n];
-	double phiP = p[n];
-
-	// weighted least-squares normal equations:  M * grad = rhs
-	double Szz = 0.0, Szr = 0.0, Srr = 0.0;
-	double bz = 0.0, br = 0.0;
-
-	int start = mesh.cells.faceStart[n];
-	int end = mesh.cells.faceStart[n + 1];
-
-	for (int k = start; k < end; k++) {
-		int faceID = mesh.cells.faceIDs[k];
-
-		int owner = mesh.faces.owner[faceID];
-		int neighbor = mesh.faces.neighbor[faceID];
-
-		double dz, dr, dphi;
-
-		if (neighbor >= 0) {
-			int nb = (owner == n) ? neighbor : owner;
-			dz = mesh.cells.centerZ[nb] - zP;
-			dr = mesh.cells.centerR[nb] - rP;
-			dphi = p[nb] - phiP;
-		}
-		else {
-			// boundary face: sample the BC value at the face center. For a
-			// zero-gradient (e.g. symmetry) pressure face this gives dphi = 0
-			// along the face direction, so LSQ respects symmetry directly.
-			double phiF = interpolateFieldToFace(n, faceID, mesh, pBC, p);
-			dz = mesh.faces.centerZ[faceID] - zP;
-			dr = mesh.faces.centerR[faceID] - rP;
-			dphi = phiF - phiP;
-		}
-
-		double d2 = dz * dz + dr * dr;
-		if (d2 <= 1.0e-30) continue;
-
-		double w = 1.0 / d2; // inverse-distance-squared weighting
-
-		Szz += w * dz * dz;
-		Szr += w * dz * dr;
-		Srr += w * dr * dr;
-		bz += w * dz * dphi;
-		br += w * dr * dphi;
-	}
-
-	double det = Szz * Srr - Szr * Szr;
-
-	if (fabs(det) <= 1.0e-30) return;
-
-	gradZ[n] = (Srr * bz - Szr * br) / det;
-	gradR[n] = (-Szr * bz + Szz * br) / det;
-}
-
-__global__
 void createPPRhs(
 	ConfigSolver config,
 	FVMeshDevice mesh,
 	Coefficients ppCoeff,
-	VariablesSimple simple
+	VariablesSimple simple,
+	int applyNonOrtho
 ) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -245,15 +146,10 @@ void createPPRhs(
 
 		// Deferred non-orthogonal correction (explicit). grad(p') is held in
 		// simple.gradPZ/gradPR; it is zero on the first corrector pass.
-		crossSum += nonOrthoPressureCorrFlux(
-			n,
-			f,
-			mesh,
-			simple,
-			simple.gradPZ,
-			simple.gradPR,
-			rho
-		);
+		if (applyNonOrtho) {
+			double Df = interpolateNormalCorrectionCoeffToFace(n, f, mesh, simple);
+			crossSum += nonOrthoScalarDiffusionFlux(n, f, mesh, simple.gradPZ, simple.gradPR, rho * Df);
+		}
 	}
 
 	ppCoeff.b[n] = -imbalance + crossSum;
@@ -372,15 +268,8 @@ void updateMassFlux(
 		// was solved with the matching cross term (i.e. correctors were run),
 		// otherwise it would inject a divergence the solve never accounted for.
 		if (applyNonOrtho) {
-			simple.mDot[f] -= nonOrthoPressureCorrFlux(
-				owner,
-				f,
-				mesh,
-				simple,
-				simple.gradPZ,
-				simple.gradPR,
-				rho
-			);
+			double Df = interpolateNormalCorrectionCoeffToFace(owner, f, mesh, simple);
+			simple.mDot[f] -= nonOrthoScalarDiffusionFlux(owner, f, mesh, simple.gradPZ, simple.gradPR, rho * Df);
 		}
 		return;
 	}

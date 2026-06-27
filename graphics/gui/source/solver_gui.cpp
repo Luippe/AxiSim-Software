@@ -14,6 +14,8 @@
 #include "unit_manager.h"
 #include "printer.h"
 
+#include <string>
+
 using namespace BoundaryDefaults;
 using namespace BoundaryGet;
 
@@ -41,24 +43,7 @@ void SolverGUI::setResidualDefault() {
 	}
 }
 
-const char* boundaryTypeToString(BoundaryType type) {
-	switch (type) {
-	case BoundaryType::WALL:
-		return "Wall";
 
-	case BoundaryType::VELOCITY_INLET:
-		return "Velocity Inlet";
-
-	case BoundaryType::PRESSURE_OUTLET:
-		return "Pressure Outlet";
-
-	case BoundaryType::SYMMETRY:
-		return "Symmetry";
-
-	default:
-		return "Wall";
-	}
-}
 
 BoundaryCondition& SolverGUI::getOrCreateBC(
 	BoundarySegmentGroup& group,
@@ -82,38 +67,6 @@ void SolverGUI::drawFieldCheckbox() {
 	ImGui::Checkbox("Concentration", &solver.fieldOption.solveConcentration);
 }
 
-const char* boundaryVariableToString(BoundaryVariable var) {
-
-	switch (var) {
-	case BoundaryVariable::UVelocity:
-		return "U Velocity";
-
-	case BoundaryVariable::VVelocity:
-		return "V Velocity";
-
-	case BoundaryVariable::Pressure:
-		return "Pressure";
-
-	case BoundaryVariable::StaticTemperature:
-		return "Static Temperature";
-
-	case BoundaryVariable::Concentration:
-		return "Concentration";
-
-	default:
-		return "Unknown";
-	}
-}
-
-const char* bcTypeToString(BCType type) {
-	switch (type) {
-	case BCType::DIRICHLET:			return "Dirichlet";
-	case BCType::NEUMANN:			return "Neumann";
-	case BCType::FULLY_DEVELOPED:	return "Fully Developed";
-	case BCType::NONE:				return "None";
-	default:						return "Unknown";
-	}
-}
 
 // ======================================================================
 // -------------------BOUNDARY VARIABLE DRAW CALLS-----------------------
@@ -131,26 +84,26 @@ bool createBCTypeCombo(
 
 	bool currentAllowed = false;
 	for (BCType type : allowedBCTypes) {
-		if (bc.type == type) {
+		if (bc.type() == type) {
 			currentAllowed = true;
 			break;
 		}
 	}
 
 	if (!currentAllowed) {
-		bc.type = allowedBCTypes[0];
+		bc.setType(allowedBCTypes[0]);
 		changed = true;
 	}
 
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	if (ImGui::BeginCombo(label, bcTypeToString(bc.type))) {
+	if (ImGui::BeginCombo(label, bcTypeToString(bc.type()))) {
 
 		for (BCType type : allowedBCTypes) {
-			bool isSelected = bc.type == type;
+			bool isSelected = bc.type() == type;
 
 			if (ImGui::Selectable(bcTypeToString(type), isSelected)) {
-				if (bc.type != type) {
-					bc.type = type;
+				if (bc.type() != type) {
+					bc.setType(type);
 					changed = true;
 				}
 			}
@@ -165,42 +118,107 @@ bool createBCTypeCombo(
 	return changed;
 }
 
+// Overloaded-lambda helper for std::visit (handle each variant alternative).
+namespace {
+	template<class... Ts> struct overload : Ts... { using Ts::operator()...; };
+	template<class... Ts> overload(Ts...) -> overload<Ts...>;
+}
+
 void SolverGUI::drawRowBoundaryVariableEditor(
 	BoundarySegmentGroup& group,
 	BoundaryVariable var,
 	BoundaryCondition& bc
 ) {
 
-	const char* label = boundaryVariableToString(var);
+	const char* varLabel = boundaryVariableToString(var);
+	const std::string idBase = varLabel;
 
-	labelRow(label);
-	switch (var) {
-	case BoundaryVariable::UVelocity:
-		createBCTypeCombo("##UVelocity", var, bc, group);
-		ImGui::TableNextColumn();
-		inputDouble("U Velocity", bc.value, varUnits.axialUnit, Units::velocityUnits);
-		comboUnit("UVelocity", varUnits.axialUnit, Units::velocityUnits);
-		break;
-	case BoundaryVariable::VVelocity:
-		createBCTypeCombo("##VVelocity", var, bc, group);
-		ImGui::TableNextColumn();
-		inputDouble("V Velocity", bc.value, varUnits.radialUnit, Units::velocityUnits);
-		comboUnit("VVelocity", varUnits.radialUnit, Units::velocityUnits);
-		break;
-	case BoundaryVariable::Pressure:
-		createBCTypeCombo("##Pressure", var, bc, group);
-		ImGui::TableNextColumn();
-		inputDouble("Pressure", bc.value, varUnits.pressureUnit, Units::pressureUnits);
-		comboUnit("Pressure", varUnits.pressureUnit, Units::pressureUnits);
-		break;
-	case BoundaryVariable::StaticTemperature:
-		createBCTypeCombo("##StaticTemperature", var, bc, group);
-		ImGui::TableNextColumn();
-		inputDouble("Static Temperature", bc.value, varUnits.temperatureUnit, Units::temperatureUnits);
-		comboUnit("StaticTemperature", varUnits.temperatureUnit, Units::temperatureUnits);
+	// Value + unit in the boundary variable's own unit family (advances 2 columns).
+	auto nativeValue = [&](const std::string& id, double& v) {
+		switch (var) {
+		case BoundaryVariable::UVelocity:
+			inputDouble(id.c_str(), v, varUnits.axialUnit, Units::velocityUnits);
+			comboUnit(id.c_str(), varUnits.axialUnit, Units::velocityUnits);
+			break;
+		case BoundaryVariable::VVelocity:
+			inputDouble(id.c_str(), v, varUnits.radialUnit, Units::velocityUnits);
+			comboUnit(id.c_str(), varUnits.radialUnit, Units::velocityUnits);
+			break;
+		case BoundaryVariable::Pressure:
+			inputDouble(id.c_str(), v, varUnits.pressureUnit, Units::pressureUnits);
+			comboUnit(id.c_str(), varUnits.pressureUnit, Units::pressureUnits);
+			break;
+		case BoundaryVariable::StaticTemperature:
+			inputDouble(id.c_str(), v, varUnits.temperatureUnit, Units::temperatureUnits);
+			comboUnit(id.c_str(), varUnits.temperatureUnit, Units::temperatureUnits);
+			break;
+		case BoundaryVariable::Concentration:
+			inputDouble(id.c_str(), v, varUnits.concentrationUnit, Units::concentrationUnits);
+			comboUnit(id.c_str(), varUnits.concentrationUnit, Units::concentrationUnits);
+			break;
+		default:
+			ImGui::TableNextColumn();
+			ImGui::TableNextColumn();
+			break;
+		}
+	};
 
-		break;
-	}
+	// Value + unit in concentration units (e.g. Km, a half-saturation concentration).
+	auto concValue = [&](const std::string& id, double& v) {
+		inputDouble(id.c_str(), v, varUnits.concentrationUnit, Units::concentrationUnits);
+		comboUnit(id.c_str(), varUnits.concentrationUnit, Units::concentrationUnits);
+	};
+
+	// Raw value, no unit (Vmax, Hill exponents). Advances 2 columns.
+	auto dimlessValue = [&](const std::string& id, double& v) {
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		ImGui::AlignTextToFramePadding();
+		ImGui::PushID(id.c_str());
+		ImGui::InputDouble("##value", &v, 0.0, 0.0, "%.3g");
+		ImGui::PopID();
+		ImGui::TableNextColumn();          // -> Unit column
+		ImGui::TextUnformatted("-");
+		ImGui::TableNextColumn();          // -> next row
+	};
+
+	// Blank Value + Unit cells for types with no inline primary (advances 2 columns).
+	auto dash = [&]() {
+		ImGui::TextUnformatted("-");
+		ImGui::TableNextColumn();
+		ImGui::TextUnformatted("-");
+		ImGui::TableNextColumn();
+	};
+
+	// Start an indented parameter sub-row and move to the Value column.
+	auto subRow = [&](const char* paramLabel) {
+		labelRow(paramLabel);
+		ImGui::TableNextColumn();          // skip the Condition column
+	};
+
+	// --- main row: Variable | Condition | (primary value or dash) | unit ---
+	labelRow(varLabel);
+	const std::string condId = "##cond_" + idBase;
+	createBCTypeCombo(condId.c_str(), var, bc, group);
+	ImGui::TableNextColumn();              // -> Value column
+
+	std::visit(overload{
+		[&](DirichletParams& p)      { nativeValue(idBase + "_val", p.value); },
+		[&](NeumannParams& p)        { nativeValue(idBase + "_val", p.value); },
+		[&](FullyDevelopedParams& p) { nativeValue(idBase + "_val", p.value); },
+		[&](NoneParams&)             { dash(); },
+		[&](MichaelisMentenParams& p) {
+			dash();
+			subRow("Vmax"); dimlessValue(idBase + "_Vmax", p.Vmax);
+			subRow("Km");   concValue(idBase + "_Km", p.Km);
+		},
+		[&](HillParams& p) {
+			dash();
+			subRow("Vmax"); dimlessValue(idBase + "_Vmax", p.Vmax);
+			subRow("Km");   concValue(idBase + "_Km", p.Km);
+			subRow("n");    dimlessValue(idBase + "_n", p.n);
+			subRow("m");    dimlessValue(idBase + "_m", p.m);
+		},
+	}, bc.params);
 }
 
 void SolverGUI::drawPropertiesPanel() {
@@ -389,18 +407,28 @@ void SolverGUI::drawPropertiesPanel() {
 			ImGui::TableNextRow();
 			ImGui::TableSetColumnIndex(0);
 			ImGui::Checkbox("U", &solver.enabledResiduals.plotU);
-			ImGui::TableNextColumn();
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
 			ImGui::Checkbox("V", &solver.enabledResiduals.plotV);
-			ImGui::TableNextColumn();
-			ImGui::Checkbox("P", &solver.enabledResiduals.plotP);
 			ImGui::TableNextRow();
 			ImGui::TableSetColumnIndex(0);
 			ImGui::Checkbox("Continuity", &solver.enabledResiduals.plotCont);
-			ImGui::TableNextColumn();
-			ImGui::Checkbox("Temperature", &solver.enabledResiduals.plotTemp);
-			ImGui::TableNextColumn();
-			ImGui::Checkbox("Concentration", &solver.enabledResiduals.plotConc);
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
 
+			if (solver.fieldOption.solveEnergy) {
+				ImGui::Checkbox("Temperature", &solver.enabledResiduals.plotTemp);
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+
+			}
+
+			if (solver.fieldOption.solveConcentration) {
+				ImGui::Checkbox("Concentration", &solver.enabledResiduals.plotConc);
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+
+			}
 			ImGui::EndTable();
 		}
 

@@ -349,4 +349,15 @@ void GUI::render() {
 		setContext(mainImGuiContext, mainImPlotContext);
 
 	}
+
+	if (sketch.pendingCopy) {
+
+		setContext(exportImGuiContext, exportImPlotContext);
+
+		sketch.pendingCopy = false;
+		sketch.copyActiveSurfaceToClipboard();
+
+		setContext(mainImGuiContext, mainImPlotContext);
+
+	}
 }

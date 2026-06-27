@@ -103,24 +103,34 @@ void Solver::createResidualPrintItems() {
     }
 
     if (enabledResiduals.plotConc) {
-        residualsToPrint.push_back({ "Concentration", enabledResiduals.plotConc, nullptr});
+        residualsToPrint.push_back({ "Concentration", enabledResiduals.plotConc, &concCoeff});
     }
 }
 
 
 void Solver::createSolutions(int N) {
 
- 
     solutions["Axial Velocity"] = SolutionField{ copyDeviceToHostVector(simple.u, N), g.dr, g.dz, BoundaryVariable::UVelocity };
     solutions["Radial Velocity"] = SolutionField{ copyDeviceToHostVector(simple.v, N), g.dr, g.dz, BoundaryVariable::VVelocity };
     solutions["Pressure"] = SolutionField{ copyDeviceToHostVector(simple.p, N), g.dr, g.dz, BoundaryVariable::Pressure };
 
+    solutions["dU/dz"] = SolutionField{ copyDeviceToHostVector(simple.gradUZ, N), g.dr, g.dz, BoundaryVariable::None };
+    solutions["dU/dr"] = SolutionField{ copyDeviceToHostVector(simple.gradUR, N), g.dr, g.dz, BoundaryVariable::None };
+    solutions["dV/dz"] = SolutionField{ copyDeviceToHostVector(simple.gradVZ, N), g.dr, g.dz, BoundaryVariable::None };
+    solutions["dV/dr"] = SolutionField{ copyDeviceToHostVector(simple.gradVR, N), g.dr, g.dz, BoundaryVariable::None };
+    solutions["dP/dz"] = SolutionField{ copyDeviceToHostVector(simple.gradPZ, N), g.dr, g.dz, BoundaryVariable::None };
+    solutions["dP/dr"] = SolutionField{ copyDeviceToHostVector(simple.gradPR, N), g.dr, g.dz, BoundaryVariable::None };
+
     if (fieldOption.solveEnergy) {
-        solutions["Temperature"] = SolutionField{copyDeviceToHostVector(simple.temp, N), g.dr, g.dz, BoundaryVariable::StaticTemperature};
+        solutions["Temperature"] = SolutionField{ copyDeviceToHostVector(simple.temp, N), g.dr, g.dz, BoundaryVariable::StaticTemperature };
+        solutions["dT/dz"] = SolutionField{ copyDeviceToHostVector(simple.gradTZ, N), g.dr, g.dz, BoundaryVariable::StaticTemperature };
+        solutions["dT/dr"] = SolutionField{ copyDeviceToHostVector(simple.gradTR, N), g.dr, g.dz, BoundaryVariable::StaticTemperature };
     }
     
     if (fieldOption.solveConcentration) {
-
+        solutions["Concentration"] = SolutionField{ copyDeviceToHostVector(simple.conc, N), g.dr, g.dz, BoundaryVariable::Concentration };
+        solutions["dC/dz"] = SolutionField{ copyDeviceToHostVector(simple.gradCZ, N), g.dr, g.dz, BoundaryVariable::Concentration };
+        solutions["dC/dr"] = SolutionField{ copyDeviceToHostVector(simple.gradCR, N), g.dr, g.dz, BoundaryVariable::Concentration };
     }
 
     // per-face mass flux for inspector probing (continuity + face fluxes)
@@ -138,11 +148,22 @@ void Solver::addFieldType() {
 
     if (fieldOption.solveEnergy) {
         fieldType.push_back("Temperature");
+        fieldType.push_back("dT/dz");
+        fieldType.push_back("dT/dr");
     }
 
     if (fieldOption.solveConcentration) {
         fieldType.push_back("Concentration");
+        fieldType.push_back("dC/dz");
+        fieldType.push_back("dC/dr");
     }
+
+    fieldType.push_back("dU/dz");
+    fieldType.push_back("dU/dr");
+    fieldType.push_back("dV/dz");
+    fieldType.push_back("dV/dr");
+    fieldType.push_back("dP/dz");
+    fieldType.push_back("dP/dr");
 }
 
 bool Solver::runCheck() {
@@ -403,8 +424,8 @@ static void printBoundaryDiagnostics(
 
         for (int vi = 0; vi < 3; vi++) {
             BoundaryCondition bc = effectiveBC(group, printVars[vi]);
-            line << "    " << printNames[vi] << ": " << bcTypeName(bc.type)
-                 << " = " << bc.value << "\n";
+            line << "    " << printNames[vi] << ": " << bcTypeName(bc.type())
+                 << " = " << bc.value() << "\n";
         }
     }
 
@@ -415,6 +436,7 @@ static void printBoundaryDiagnostics(
 void Solver::runSimple(const Mesh& mesh) {
 
     bool solveEnergy = fieldOption.solveEnergy;
+    bool solveConcentration = fieldOption.solveConcentration;
 
     // create configs for solver and residual
     ConfigSolver configSolver{ g, f, addConvectionTerm, transient, dt};
@@ -478,6 +500,7 @@ void Solver::runSimple(const Mesh& mesh) {
         ppCoeff.free();
         massFluxCoeff.free();
         tempCoeff.free();
+        concCoeff.free();
         simple.free();
 
         if (useFaceCoefficients) {
@@ -486,6 +509,7 @@ void Solver::runSimple(const Mesh& mesh) {
             allocateCoefficients(ppCoeff, fvMesh);
             allocateCoefficients(massFluxCoeff, fvMesh);
             allocateCoefficients(tempCoeff, fvMesh);
+            allocateCoefficients(concCoeff, fvMesh);
         }
         else {
             int nr = configSolver.g.nr;
@@ -496,9 +520,10 @@ void Solver::runSimple(const Mesh& mesh) {
             allocateCoefficients(ppCoeff, nr, nz);
             allocateCoefficients(massFluxCoeff, nr, nz);
             allocateCoefficients(tempCoeff, nr, nz);
+            allocateCoefficients(concCoeff, nr, nz);
         }
 
-        allocateSimple(configSolver, simple, fvMesh);
+        allocateSimple(configSolver, simple, fvMesh, fieldOption);
 
         currentIteration = 0;
     }
@@ -528,7 +553,8 @@ void Solver::runSimple(const Mesh& mesh) {
         //    copyDeviceToHostVector(simple.p, N));
 
     }
-
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     // record time
     CudaTimer timer;
     timer.startTimer(stream);
@@ -536,13 +562,13 @@ void Solver::runSimple(const Mesh& mesh) {
     int numSteps = transient ? (int)std::ceil(tEnd / dt) : 1;
 
     if (isStructuredMesh) {
-        GridLevel fineGrid = createFineGrid(configSolver.g);
-        std::vector<GridLevel> gridLevels = createGridHierarchy(fineGrid, 4, 4);
+        //GridLevel fineGrid = createFineGrid(configSolver.g);
+        //std::vector<GridLevel> gridLevels = createGridHierarchy(fineGrid, 4, 4);
 
-        MultigridSolver mg;
-        mg.allocateLevels(gridLevels);
-        mg.smootherConfig = linearSolverConfig;
-        mg.smootherConfig.maxIter = 3;
+        //MultigridSolver mg;
+        //mg.allocateLevels(gridLevels);
+        //mg.smootherConfig = linearSolverConfig;
+        //mg.smootherConfig.maxIter = 3;
     }
 
     // Dedicated, stronger solve for the pressure-correction Poisson.
@@ -558,20 +584,12 @@ void Solver::runSimple(const Mesh& mesh) {
     }
     pressureSolverConfig.maxIter = pressureIterations;
 
-    // Cell gradient of a field into simple.gradPZ/gradPR using the user-selected
-    // scheme. Green-Gauss is cheaper; least-squares is robust on the small,
-    // r-weighted near-axis cells where Green-Gauss produces a spurious dp/dr.
-    auto computeGradP = [&](BoundaryFieldDevice bcf, const double* src) {
-        if (gradientScheme == GRAD_GREEN_GAUSS) {
-            computePressureGradient << <blocks, threadsPerBlock, 0, stream >> > (
-                fvMeshDevice, bcf, src, simple.gradPZ, simple.gradPR);
-        }
-        else {
-            computePressureGradientLSQ << <blocks, threadsPerBlock, 0, stream >> > (
-                fvMeshDevice, bcf, src, simple.gradPZ, simple.gradPR);
-        }
-    };
-
+    double k = f.k;
+    double cp = f.cp;
+    double rho = f.rho;
+    double thermDiffusivity = k / (rho * cp);
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
         cudaMemcpyAsync(simple.uOld, simple.u, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
@@ -583,25 +601,31 @@ void Solver::runSimple(const Mesh& mesh) {
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (vCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (tempCoeff);
+            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (concCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (massFluxCoeff);
             CUDA_CHECK(cudaStreamSynchronize(stream));
 
             // non-orthogonal corrections (diffusion + pressure) share one switch
             const int applyNonOrtho = (configSimple.nNonOrthCorrectors > 0) ? 1 : 0;
 
+            // Cell-centered velocity gradients for the momentum non-orthogonal
+            // (cross-diffusion) correction, recomputed once per iteration with the
+            // user-selected scheme so the correction uses the same gradient as the
+            // rest of the solver instead of hard-wired Green-Gauss. Same stream as
+            // the assembly below, so they are ready before it reads them.
+            if (applyNonOrtho) {
+                computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, gradientScheme);
+                computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, gradientScheme);
+            }
+
             // create coefficients for velocity and pressure correction equations
-            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, uCoeff, bcDevice.u, simple.u, simple.v, 0, applyNonOrtho);
-            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, vCoeff, bcDevice.v, simple.v, simple.u, 1, applyNonOrtho);
+            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, bcDevice.u, simple.v, simple.gradUZ, simple.gradUR, applyNonOrtho, f.mu);
+            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, bcDevice.v,  simple.u, simple.gradVZ, simple.gradVR, applyNonOrtho, f.mu);
             //addRadialMomentumCylindricalSource << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, vCoeff);
 
             if (configSolver.addConvectionTerm) {
-                addMomentumConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (
-                    fvMeshDevice,
-                    uCoeff,
-                    vCoeff,
-                    simple,
-                    bcDevice
-                    );
+                addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, uCoeff, bcDevice.u);
+                addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, vCoeff, bcDevice.v);
             }
 
     //        if (configSolver.transient) {
@@ -612,7 +636,7 @@ void Solver::runSimple(const Mesh& mesh) {
             // grad(p) for the momentum body force AND Rhie-Chow, computed once
             // with the selected scheme. Held in gradPZ/gradPR until the p'
             // correctors overwrite it.
-            computeGradP(bcDevice.p, simple.p);
+            computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.p, simple.p, simple.gradPZ, simple.gradPR, gradientScheme);
 
             createMomentumPressureRhs << <blocks, threadsPerBlock, 0, stream >> > (
                 fvMeshDevice,
@@ -620,7 +644,6 @@ void Solver::runSimple(const Mesh& mesh) {
                 vCoeff,
                 simple
                 );
-
 
             underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, simple.u, simple.momentumRelaxation);
             underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.v, simple.momentumRelaxation);
@@ -657,15 +680,15 @@ void Solver::runSimple(const Mesh& mesh) {
 
             for (int corr = 0; corr <= nNonOrth; corr++) {
 
-                computeGradP(ppBC, simple.pp);
+                computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
 
-                createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, ppCoeff, simple);
+                createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, ppCoeff, simple, applyNonOrtho);
 
                 solveLinearSystem(ppCoeff, pressureSolverConfig, stream, simple.pp, simple.ppTemp, activeCells, threadsPerBlock);
             }
 
             // final grad(p') (with p' BCs) for the velocity and mass-flux corrections
-            computeGradP(ppBC, simple.pp);
+            computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
 
             // update field variables
             updateVelocity << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, bcDevice.p);
@@ -679,15 +702,32 @@ void Solver::runSimple(const Mesh& mesh) {
             // ======================================================================
             
             if (solveEnergy) {
-
-                addEnergyDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (configSolver, fvMeshDevice, tempCoeff, bcDevice.temp);
-
+                if (applyNonOrtho) {
+                    computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, gradientScheme);
+                }
+                addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, applyNonOrtho, thermDiffusivity);
+                if (configSolver.addConvectionTerm) {
+                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, tempCoeff, bcDevice.temp);
+                }
+                underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.temp, simple.momentumRelaxation);
                 solveLinearSystem(tempCoeff, linearSolverConfig, stream, simple.temp, simple.tempTemp, activeCells, threadsPerBlock);
+            }
 
+            if (solveConcentration) {
+                if (applyNonOrtho) {
+                    computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, gradientScheme);
+                }
+                addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, applyNonOrtho, f.D);
+                if (configSolver.addConvectionTerm) {
+                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, concCoeff, bcDevice.conc);
+                }
+                underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.conc, simple.momentumRelaxation);
+                solveLinearSystem(concCoeff, linearSolverConfig, stream, simple.conc, simple.concTemp, activeCells, threadsPerBlock);
             }
 
             CUDA_CHECK(cudaGetLastError());
             CUDA_CHECK(cudaStreamSynchronize(stream));
+
             // ======================================================================
             // -----------------------RESIDUAL---------------------------------------
             // ======================================================================
@@ -699,7 +739,8 @@ void Solver::runSimple(const Mesh& mesh) {
                     false,
                     ResidualPairs{ uCoeff, simple.u },
                     ResidualPairs{ vCoeff, simple.v },
-                    ResidualPairs{ tempCoeff, simple.temp}
+                    ResidualPairs{ tempCoeff, simple.temp},
+                    ResidualPairs{ concCoeff, simple.conc}
                     );
                 
                 CUDA_CHECK(cudaGetLastError());
@@ -712,7 +753,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     );
                 
                 CUDA_CHECK(cudaStreamSynchronize(stream));
-                residualAllHost(configResidual, uCoeff, vCoeff, massFluxCoeff, tempCoeff);
+                residualAllHost(configResidual, uCoeff, vCoeff, massFluxCoeff, tempCoeff, concCoeff);
                 residualPlot->add(currentIteration, residualsToPrint);
                 printResidualConsole(currentIteration, residualsToPrint, console);
                 //if (contRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
@@ -746,24 +787,19 @@ void Solver::runSimple(const Mesh& mesh) {
     // Pressure gradient for inspector probing, computed two ways from the final
     // pressure field. gradPZ/gradPR are free to reuse here (they held grad(p')
     // during the solve and are no longer needed).
-    computePressureGradient << <blocks, threadsPerBlock, 0, stream >> > (
-        fvMeshDevice, bcDevice.p, simple.p, simple.gradPZ, simple.gradPR);
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    gradPZHost = copyDeviceToHostVector(simple.gradPZ, (size_t)N);
-    gradPRHost = copyDeviceToHostVector(simple.gradPR, (size_t)N);
+    computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, gradientScheme);
+    computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, gradientScheme);
+    computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.p, simple.p, simple.gradPZ, simple.gradPR, gradientScheme);
 
-    computePressureGradientLSQ << <blocks, threadsPerBlock, 0, stream >> > (
-        fvMeshDevice, bcDevice.p, simple.p, simple.gradPZ, simple.gradPR);
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    gradPZLsqHost = copyDeviceToHostVector(simple.gradPZ, (size_t)N);
-    gradPRLsqHost = copyDeviceToHostVector(simple.gradPR, (size_t)N);
+    if (solveEnergy) {
+        computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, gradientScheme);
+    }
+
+    if (solveConcentration) {
+        computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, gradientScheme);
+    }
 
     createSolutions(N);
-    uSol = SolutionField{ copyDeviceToHostVector(simple.u, N), g.dr, g.dz, BoundaryVariable::UVelocity};
-    //uSol = SolutionField{ copyDeviceToHostVector(uCoeff.AC, N), g.dr, g.dz, BoundaryVariable::UVelocity};
-    vSol = SolutionField{ copyDeviceToHostVector(simple.v, N), g.dr, g.dz, BoundaryVariable::VVelocity};
-    pSol = SolutionField{ copyDeviceToHostVector(simple.p, N), g.dr, g.dz, BoundaryVariable::Pressure};
-    tempSol = SolutionField{ copyDeviceToHostVector(simple.temp, N), g.dr, g.dz, BoundaryVariable::StaticTemperature};
 
     //mFlux = SolutionField{copyDevice}
     isReady = true;

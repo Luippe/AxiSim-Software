@@ -15,7 +15,7 @@ void addNeighborCoeff(
 );
 
 __device__
-void phiGradientCell(
+void phiGradientGreenGauss(
 	int cellID,
 	FVMeshDevice mesh,
 	BoundaryFieldDevice bc,
@@ -25,12 +25,33 @@ void phiGradientCell(
 );
 
 __device__
+void phiGradientLeastSquare(
+	int cellID,
+	FVMeshDevice mesh,
+	BoundaryFieldDevice bc,
+	const double* phi,
+	double& gradZ,
+	double& gradR
+);
+
+
+__device__
 double interpolateFieldToFace(
 	int cellID,
 	int faceID,
 	FVMeshDevice mesh,
 	BoundaryFieldDevice fieldBC,
 	const double* phi
+);
+
+__device__
+double nonOrthoScalarDiffusionFlux(
+	int cellID,
+	int faceID,
+	FVMeshDevice mesh,
+	const double* gradPhiZ,
+	const double* gradPhiR,
+	double gamma
 );
 
 __device__
@@ -50,23 +71,14 @@ double interpolateNormalCorrectionCoeffToFace(
 	VariablesSimple simple
 );
 
-// Deferred (explicit) non-orthogonal correction flux of the pressure-correction
-// p' through an interior face, seen as outward from cellID:
-//
-//     rho * Df * (T . grad(p')_face),   T = A*n - (A/(n.d)) d
-//
-// where n is the outward face normal, d = c_neighbor - c_cell, and A the face
-// area. The orthogonal part (n.d direction) is handled implicitly by the matrix;
-// this returns only the cross/tangential part. Returns 0 on boundary faces.
-__device__
-double nonOrthoPressureCorrFlux(
-	int cellID,
-	int faceID,
+__global__
+void computeGradient(
 	FVMeshDevice mesh,
-	VariablesSimple simple,
-	const double* gradPPZ,
-	const double* gradPPR,
-	double rho
+	BoundaryFieldDevice bc,
+	double* phi,
+	double* gradZ,
+	double* gradR,
+	GradientScheme scheme
 );
 
 __device__
@@ -98,6 +110,9 @@ bool isNeumannType(uint8_t type);
 __device__
 bool isFullyDevelopedType(uint8_t type);
 
+__device__
+bool isMichaelisMentenType(uint8_t type);
+
 __global__
 void copyVector(double* vec1, double* vec2, int N);
 
@@ -105,23 +120,15 @@ __device__
 double faceValue(double phiC, double phiF, double dFf, double dFC);
 
 __global__
-void addEnergyDiffusionCoefficient(
-	ConfigSolver config,
-	FVMeshDevice mesh,
-	Coefficients coeff,
-	BoundaryFieldDevice bc
-);
-
-__global__
 void addDiffusionCoefficient(
-	ConfigSolver config,
 	FVMeshDevice mesh,
 	Coefficients coeff,
 	BoundaryFieldDevice bc,
 	const double* phi,
-	const double* coupledPhi,
-	int component,
-	int applyNonOrtho
+	const double* gradPhiZ,
+	const double* gradPhiR,
+	int applyNonOrtho,
+	double constVar
 );
 
 __global__
@@ -138,12 +145,11 @@ __global__
 void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, VariablesSimple simple);
 
 __global__
-void addMomentumConvectionCoefficient(
+void addConvectionCoefficient(
 	FVMeshDevice mesh,
-	Coefficients uCoeff,
-	Coefficients vCoeff,
 	VariablesSimple simple,
-	BoundarySolverDevice bc
+	Coefficients coeff,
+	BoundaryFieldDevice bc
 );
 
 __global__

@@ -186,6 +186,12 @@ struct ConfigResidual {
 };
 
 
+struct GradField {
+
+
+
+};
+
 struct VariablesSimple {
 
 	double* DU = nullptr;
@@ -195,19 +201,33 @@ struct VariablesSimple {
 	double* u = nullptr;
 	double* v = nullptr;
 	double* temp = nullptr;
+	double* conc = nullptr;
 
 	double* uTemp = nullptr;
 	double* vTemp = nullptr;
 	double* ppTemp = nullptr;
 	double* tempTemp = nullptr;
+	double* concTemp = nullptr;
 
 	double* uOld = nullptr;
 	double* vOld = nullptr;
 	double* tempOld = nullptr;
-
+	double* concOld = nullptr;
 
 	double* gradPZ = nullptr;
 	double* gradPR = nullptr;
+
+	// Cell-centered velocity gradients, recomputed once per SIMPLE iteration
+	// with the user-selected scheme (Green-Gauss or LSQ) and consumed by the
+	// momentum non-orthogonal (cross-diffusion) correction.
+	double* gradUZ = nullptr;
+	double* gradUR = nullptr;
+	double* gradVZ = nullptr;
+	double* gradVR = nullptr;
+	double* gradTZ = nullptr;
+	double* gradTR = nullptr;
+	double* gradCZ = nullptr;
+	double* gradCR = nullptr;
 
 	// SIMPLE requires under-relaxation to be stable. 1.0/1.0 (no relaxation)
 	// diverges; the standard pairing is momentum ~0.7 with pressure ~0.3.
@@ -218,7 +238,7 @@ struct VariablesSimple {
 	double* mDot = nullptr;
 
 	void free() {
-		freeAllDev(DU, DV, p, pp, u, v, temp, uTemp, vTemp, ppTemp, tempTemp, uOld, vOld, tempOld, gradPZ, gradPR, mDot);
+		freeAllDev(DU, DV, p, pp, u, v, temp, uTemp, vTemp, ppTemp, tempTemp, uOld, vOld, tempOld, gradPZ, gradPR, gradUZ, gradUR, gradVZ, gradVR, gradTZ, gradTR, gradCZ, gradCR, mDot);
 	}
 };
 
@@ -389,6 +409,11 @@ struct BoundaryFieldDevice {
 	uint8_t* boundaryTypeByGroup = nullptr;
 	double* lengthByGroup = nullptr;
 	double* valueByGroup = nullptr;
+	// Kinetics (Michaelis-Menten / Hill) parameters per group.
+	double* vmaxByGroup = nullptr;
+	double* kmByGroup = nullptr;
+	double* nByGroup = nullptr;
+	double* mByGroup = nullptr;
 	int nGroups = 0;
 };
 
@@ -397,7 +422,7 @@ struct BoundarySolverDevice {
 	BoundaryFieldDevice v;
 	BoundaryFieldDevice p;
 	BoundaryFieldDevice temp;
-	BoundaryFieldDevice concentration;
+	BoundaryFieldDevice conc;
 };
 
 struct BoundaryFieldHost {
@@ -405,4 +430,8 @@ struct BoundaryFieldHost {
 	std::vector<uint8_t> boundaryTypeByGroup;
 	std::vector<double> valueByGroup;
 	std::vector<double> lengthByGroup;
+	std::vector<double> vmaxByGroup;
+	std::vector<double> kmByGroup;
+	std::vector<double> nByGroup;
+	std::vector<double> mByGroup;
 };

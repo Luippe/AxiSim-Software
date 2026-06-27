@@ -86,45 +86,8 @@ void MeshGUI::drawBoundaryGroupGUI() {
 		sizing.edgeCount = 1;
 	}
 
-
 	ImGui::Spacing();
 
-	drawTableHeader("Edges");
-
-	ImGuiTableFlags flags =
-		ImGuiTableFlags_Borders |
-		ImGuiTableFlags_RowBg |
-		ImGuiTableFlags_Resizable |
-		ImGuiTableFlags_ScrollY;
-
-	if (ImGui::BeginTable("BoundaryGroupEdges", 3, flags, ImVec2(0.0f, 220.0f))) {
-		ImGui::TableSetupColumn("Type");
-		ImGui::TableSetupColumn("i");
-		ImGui::TableSetupColumn("j");
-		ImGui::TableHeadersRow();
-
-		ImGuiListClipper clipper;
-		clipper.Begin((int)selectedGroup->edges.size());
-
-		while (clipper.Step()) {
-			for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; row++) {
-				const MeshEdge& edge = selectedGroup->edges[row];
-
-				ImGui::TableNextRow();
-
-				ImGui::TableSetColumnIndex(0);
-				ImGui::TextUnformatted(edgeOrientName(edge.orient));
-
-				ImGui::TableSetColumnIndex(1);
-				ImGui::Text("%d", edge.i);
-
-				ImGui::TableSetColumnIndex(2);
-				ImGui::Text("%d", edge.j);
-			}
-		}
-
-		ImGui::EndTable();
-	}
 
 	if (ImGui::Button("Delete Boundary Group")) {
 

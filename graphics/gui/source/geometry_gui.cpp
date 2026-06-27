@@ -88,5 +88,4 @@ void GeometryGUI::draw() {
 
 		ImGui::EndTabItem();
 	}
-
 }

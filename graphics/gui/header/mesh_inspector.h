@@ -102,6 +102,7 @@ private:
 
 	// -------------cell inspection--------------
 	bool toggleInspectCell = false;	// toolbar mode: pick cells to read mesh data
+	bool toggleMesh = false;
 	int selectedCell = -1;			// FV cell pinned by a left click (-1 = none)
 	FVMesh inspectFVMesh;			// snapshot rebuilt when inspect mode turns on
 	bool inspectMeshDirty = true;	// rebuild the snapshot on the next render

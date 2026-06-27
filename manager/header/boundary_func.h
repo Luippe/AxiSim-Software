@@ -12,6 +12,12 @@ namespace BoundaryGet {
 		const std::vector<BoundarySegmentGroup>& boundaryGroups,
 		int id
 	);
+
+	const char* boundaryTypeToString(BoundaryType type);
+
+	const char* boundaryVariableToString(BoundaryVariable var);
+
+	const char* bcTypeToString(BCType type);
 }
 
 // helper functions for boundary conditions
@@ -28,9 +34,7 @@ namespace BoundaryDefaults {
 		const BoundarySegmentGroup& group
 	);
 
-	double getDefaultBCValue(
-		BoundaryVariable var
-	);
+	double getDefaultBCValue();
 
 	BoundaryCondition makeDefaultBC(
 		const BoundarySegmentGroup& group,

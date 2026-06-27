@@ -14,5 +14,6 @@ Release/
 *.log
 *.bin
 imgui.ini
+/dist/
 /Concentration Solver Software.vcxproj
 /Concentration Solver Software.vcxproj.filters

@@ -49,6 +49,12 @@ BoundaryFieldHost createBoundaryFieldHost(
 	h.valueByGroup.resize(nGroups, 0.0);
 	h.lengthByGroup.resize(nGroups, 0.0);
 
+	// Kinetics (Michaelis-Menten / Hill) parameters; n/m default to 1.
+	h.vmaxByGroup.resize(nGroups, 0.0);
+	h.kmByGroup.resize(nGroups, 0.0);
+	h.nByGroup.resize(nGroups, 1.0);
+	h.mByGroup.resize(nGroups, 1.0);
+
 	for (const BoundarySegmentGroup& group : boundaryGroups) {
 
 		if (group.id < 0) {
@@ -67,16 +73,29 @@ BoundaryFieldHost createBoundaryFieldHost(
 		}
 
 		h.typeByGroup[group.id] =
-			(uint8_t)(bc.type);
+			(uint8_t)(bc.type());
 
 		h.boundaryTypeByGroup[group.id] =
 			(uint8_t)(group.type);
 
 		h.valueByGroup[group.id] =
-			bc.value;
+			bc.value();
 
 		h.lengthByGroup[group.id] =
 			group.totalLength;
+
+		// Kinetics params are set only for Michaelis-Menten / Hill; other types
+		// keep the defaults above (vmax = km = 0, n = m = 1).
+		if (const auto* mm = std::get_if<MichaelisMentenParams>(&bc.params)) {
+			h.vmaxByGroup[group.id] = mm->Vmax;
+			h.kmByGroup[group.id] = mm->Km;
+		}
+		else if (const auto* hill = std::get_if<HillParams>(&bc.params)) {
+			h.vmaxByGroup[group.id] = hill->Vmax;
+			h.kmByGroup[group.id] = hill->Km;
+			h.nByGroup[group.id] = hill->n;
+			h.mByGroup[group.id] = hill->m;
+		}
 	}
 
 	return h;
@@ -93,6 +112,10 @@ BoundaryFieldDevice createBoundaryFieldDevice(
 	copyHostToDevice(d.boundaryTypeByGroup, h.boundaryTypeByGroup);
 	copyHostToDevice(d.valueByGroup, h.valueByGroup);
 	copyHostToDevice(d.lengthByGroup, h.lengthByGroup);
+	copyHostToDevice(d.vmaxByGroup, h.vmaxByGroup);
+	copyHostToDevice(d.kmByGroup, h.kmByGroup);
+	copyHostToDevice(d.nByGroup, h.nByGroup);
+	copyHostToDevice(d.mByGroup, h.mByGroup);
 
 	return d;
 }
@@ -139,7 +162,7 @@ BoundarySolverDevice createBoundarySolverDevice(
 			boundaryGroups,
 			BoundaryVariable::Concentration
 		);
-		dBC.concentration = createBoundaryFieldDevice(hConcentration);
+		dBC.conc = createBoundaryFieldDevice(hConcentration);
 	}
 
 	return dBC;
@@ -371,7 +394,8 @@ FVMeshDevice createFVMeshDevice(const FVMesh& mesh) {
 void allocateSimple(
 	ConfigSolver& config,
 	VariablesSimple& vars,
-	FVMesh& mesh
+	FVMesh& mesh,
+	const SolverFieldOption& option
 ) {
 
 	int N = mesh.numCells();
@@ -381,26 +405,55 @@ void allocateSimple(
 	vars.DV = deviceAlloc<double>(N);
 	vars.gradPZ = deviceAlloc<double>(N);
 	vars.gradPR = deviceAlloc<double>(N);
+	vars.gradUZ = deviceAlloc<double>(N);
+	vars.gradUR = deviceAlloc<double>(N);
+	vars.gradVZ = deviceAlloc<double>(N);
+	vars.gradVR = deviceAlloc<double>(N);
 	vars.uTemp = deviceAlloc<double>(N);
 	vars.vTemp = deviceAlloc<double>(N);
 	vars.ppTemp = deviceAlloc<double>(N);
 	vars.tempTemp = deviceAlloc<double>(N);
+	vars.concTemp = deviceAlloc<double>(N);
 
 	CUDA_CHECK(cudaMemset(vars.DU, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(vars.DV, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(vars.gradPZ, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(vars.gradPR, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(vars.gradUZ, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(vars.gradUR, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(vars.gradVZ, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(vars.gradVR, 0, N * sizeof(double)));
+
+	// Temperature/concentration gradient buffers are only needed when those
+	// fields are being solved (e.g. to display dT/dz, dC/dr). Allocate per
+	// selection; the buffers left null are skipped by VariablesSimple::free(),
+	// which is null-safe.
+	if (option.solveEnergy) {
+		vars.gradTZ = deviceAlloc<double>(N);
+		vars.gradTR = deviceAlloc<double>(N);
+		CUDA_CHECK(cudaMemset(vars.gradTZ, 0, N * sizeof(double)));
+		CUDA_CHECK(cudaMemset(vars.gradTR, 0, N * sizeof(double)));
+	}
+
+	if (option.solveConcentration) {
+		vars.gradCZ = deviceAlloc<double>(N);
+		vars.gradCR = deviceAlloc<double>(N);
+		CUDA_CHECK(cudaMemset(vars.gradCZ, 0, N * sizeof(double)));
+		CUDA_CHECK(cudaMemset(vars.gradCR, 0, N * sizeof(double)));
+	}
 
 	std::vector<double> h_u(N, 0.0);
 	std::vector<double> h_v(N, 0.0);
 	std::vector<double> h_pp(N, 0.0);
 	std::vector<double> h_p(N, 0.0);
 	std::vector<double> h_temp(N, 0.0);
+	std::vector<double> h_conc(N, 0.0);
 	std::vector<double> h_mDot(mesh.numFaces(), 0.0);
 
 	copyHostToDevice(vars.uOld, h_u);
 	copyHostToDevice(vars.vOld, h_v);
 	copyHostToDevice(vars.tempOld, h_temp);
+	copyHostToDevice(vars.concOld, h_conc);
 	copyHostToDevice(vars.mDot, h_mDot);
 
 	copyHostToDevice(vars.u, h_u);
@@ -408,11 +461,13 @@ void allocateSimple(
 	copyHostToDevice(vars.pp, h_pp);
 	copyHostToDevice(vars.p, h_p);
 	copyHostToDevice(vars.temp, h_temp);
+	copyHostToDevice(vars.conc, h_conc);
 
 	CUDA_CHECK(cudaMemcpy(vars.uTemp, vars.u, N * sizeof(double), cudaMemcpyDeviceToDevice));
 	CUDA_CHECK(cudaMemcpy(vars.vTemp, vars.v, N * sizeof(double), cudaMemcpyDeviceToDevice));
 	CUDA_CHECK(cudaMemcpy(vars.ppTemp, vars.pp, N * sizeof(double), cudaMemcpyDeviceToDevice));
 	CUDA_CHECK(cudaMemcpy(vars.tempTemp, vars.temp, N * sizeof(double), cudaMemcpyDeviceToDevice));
+	CUDA_CHECK(cudaMemcpy(vars.concTemp, vars.conc, N * sizeof(double), cudaMemcpyDeviceToDevice));
 }
 
 

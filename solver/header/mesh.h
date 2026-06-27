@@ -67,7 +67,6 @@ public:
 	void applyRegionOfInfluenceFields(double defaultMeshSize);
 
 	int nseg = 64;	// number of vertices on the circle
-	bool meshMode = false;
 	bool showFill = true;
 	bool isReady = false;
 

@@ -5,6 +5,8 @@
 #include <functional>  // std::hash
 #include <string>	   // std::string
 #include <unordered_map>
+#include <variant>
+#include <type_traits>
 
 #include "core_struct.h"
 
@@ -46,18 +48,87 @@ struct PendingRect {
 // ======================================================================
 // -----------------------BOUNDARY CONDITIONS----------------------------
 // ======================================================================
-enum BCType {
+// make sure to update bcTypeToString, getDefaultBCType, etc if adding more to this
+enum BCType {	
 	DIRICHLET,
 	NEUMANN,
 	FULLY_DEVELOPED,
+	MICHAELIS_MENTEN,
+	HILL,
+
 	NONE
 };
 
 
+// Per-type boundary-condition parameters. The active variant alternative IS the
+// BC type; each alternative carries exactly the scalars that type needs. Every
+// alternative keeps `value` as its primary scalar so value()/valueRef() stay
+// total, while multi-parameter kinetics add their own fields (km, n).
+struct DirichletParams       { static constexpr BCType bcType = DIRICHLET;        double value = 0.0; };
+struct NeumannParams         { static constexpr BCType bcType = NEUMANN;          double value = 0.0; };
+struct FullyDevelopedParams  { static constexpr BCType bcType = FULLY_DEVELOPED;  double value = 0.0; };
+struct MichaelisMentenParams { static constexpr BCType bcType = MICHAELIS_MENTEN; double Vmax = 0.0; double Km = 0.0; };
+struct HillParams			 { static constexpr BCType bcType = HILL;             double Vmax = 0.0; double Km = 0.0; double n = 1.0; double m = 1.0; };
+struct NoneParams            { static constexpr BCType bcType = NONE;             double value = 0.0; };
+
+using BCParams = std::variant<
+	DirichletParams, NeumannParams, FullyDevelopedParams,
+	MichaelisMentenParams, HillParams, NoneParams>;
+
+// Detect whether a params alternative carries a `value` member. C++17-friendly
+// (CUDA TUs compile this header as C++17, so no requires-expression here).
+template <class T, class = void>
+struct bcHasValue : std::false_type {};
+template <class T>
+struct bcHasValue<T, std::void_t<decltype(T::value)>> : std::true_type {};
+
 struct BoundaryCondition {
-	BCType type = DIRICHLET;
-	double value = 0.0;
+	BCParams params;        // active alternative = BC type; holds that type's parameters
 	bool enabled = true;
+	double bcSink = 0.0;    // valueRef() target for params with no `value` (MM, Hill)
+
+	// --- bridge accessors so the rest of the codebase keeps a simple interface ---
+
+	// BC type, derived from the active variant alternative.
+	BCType type() const {
+		return std::visit([](const auto& p) { return p.bcType; }, params);
+	}
+
+	// Switch BC type, swapping to the matching alternative. The primary scalar is
+	// carried over so editing a value then changing type does not lose it.
+	void setType(BCType t) {
+		if (type() == t) return;
+		double v = value();
+		switch (t) {
+		case DIRICHLET:        params = DirichletParams{};       break;
+		case NEUMANN:          params = NeumannParams{};         break;
+		case FULLY_DEVELOPED:  params = FullyDevelopedParams{};  break;
+		case MICHAELIS_MENTEN: params = MichaelisMentenParams{}; break;
+		case HILL:             params = HillParams{};            break;
+		case NONE:             params = NoneParams{};            break;
+		}
+		valueRef() = v;
+	}
+
+	// Primary scalar for single-value BC types (Dirichlet target / Neumann flux).
+	// Kinetics types (Michaelis-Menten, Hill) have no single value -- they expose
+	// their own named params -- so value() reads 0 and valueRef() returns a sink.
+	// Edit those params via std::visit on `params` (see the row editor), not valueRef().
+	double value() const {
+		return std::visit([](const auto& p) -> double {
+			using T = std::decay_t<decltype(p)>;
+			if constexpr (bcHasValue<T>::value) return p.value;
+			else return 0.0;
+		}, params);
+	}
+	double& valueRef() {
+		return std::visit([this](auto& p) -> double& {
+			using T = std::decay_t<decltype(p)>;
+			if constexpr (bcHasValue<T>::value) return p.value;
+			else return bcSink;
+		}, params);
+	}
+	void setValue(double v) { valueRef() = v; }
 };
 
 
@@ -358,3 +429,4 @@ struct SolutionField {
 	std::vector<double> dr, dz;
 	BoundaryVariable boundaryVariable;
 };
+

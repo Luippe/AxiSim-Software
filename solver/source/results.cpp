@@ -13,8 +13,7 @@
 
 Results::Results(Config& config) :
 
-	config(config),
-	currentField(&uField) {
+	config(config) {
 
 	colFront = 0;
 	colBack = config.g.nz;
@@ -227,11 +226,17 @@ void Results::generate(Mesh& mesh, Solver& solver) {
 
 void Results::createFields(const Mesh& mesh, const Solver& solver) {
 
-	uField.generate(solver.uSol, solver.fvMesh, mesh.boundaryGroups);
-	vField.generate(solver.vSol, solver.fvMesh, mesh.boundaryGroups);
-	pField.generate(solver.pSol, solver.fvMesh, mesh.boundaryGroups);
-	if (solver.fieldOption.solveEnergy) {
-		tempField.generate(solver.tempSol, solver.fvMesh, mesh.boundaryGroups);
+	for (const std::string& name : fieldType) {
+
+		SolutionField& field = solutions[name];
+
+		// generate new field
+		Field newField;
+		newField.generate(solutions[name], solver.fvMesh, mesh.boundaryGroups);
+
+		// insert new field
+		fields[name] = newField;
+
 	}
 }
 
@@ -239,25 +244,7 @@ void Results::updateCurrentField() {
 
 	if (fieldType.empty()) return;
 
-	std::string currentFieldChar = fieldType[currentItem];
+	std::string name = fieldType[currentItem];
+	currentField = &fields[name];
 
-	if (currentFieldChar == "Axial Velocity") {
-		currentField = &fields[0];
-		currentField = &uField;
-	}
-	else if (currentFieldChar == "Radial Velocity") {
-		currentField = &vField;
-	}
-	else if (currentFieldChar == "Pressure") {
-		currentField = &pField;
-	}
-	else if (currentFieldChar == "Temperature") {
-		currentField = &tempField;
-	}
-	else if (currentFieldChar == "Concentration") {
-		currentField = &concField;
-	}
-	else {
-		printf("ERROR: UNIDENTIFIED FIELD");
-	}
 }

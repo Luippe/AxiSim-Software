@@ -12,6 +12,7 @@ struct VariableUnits {
     std::uint8_t radialUnit = 0;
     std::uint8_t pressureUnit = 0;
     std::uint8_t temperatureUnit = 0;
+    std::uint8_t concentrationUnit = 0;
     std::uint8_t  rhoUnit = 0;
     std::uint8_t  muUnit = 0;
     std::uint8_t  DUnit = 0;
@@ -100,6 +101,17 @@ namespace Units {
         { "mm^2/s",  1.0e-6  },
         { "cm^2/s",  1.0e-4  },
         { "um^2/s",  1.0e-12 }
+    } };
+
+    // Base unit is mol/m^3 (SI). Molar units are per-litre, so 1 mol/L = 1 mol
+    // / 1e-3 m^3 = 1e3 mol/m^3. Note mM is numerically identical to mol/m^3.
+    inline constexpr std::array<UnitOption, 6> concentrationUnits = { {
+        { "mol/m^3", 1.0    },   // base unit
+        { "M",       1.0e3  },   // mol/L  (molar)
+        { "mM",      1.0    },   // mmol/L (millimolar) == mol/m^3
+        { "uM",      1.0e-3 },   // umol/L (micromolar)
+        { "nM",      1.0e-6 },   // nmol/L (nanomolar)
+        { "nmol/mL", 1.0e-3 }    // == uM, lab-native volumetric
     } };
 
     inline constexpr std::array<UnitOption, 4> dynamicViscosityUnits = { {

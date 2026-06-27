@@ -439,6 +439,48 @@ void SketchView::openDimensionEditor(int dimensionID) {
 	ImGui::OpenPopup("Edit Dimension");
 }
 
+void SketchView::copyActiveSurfaceToClipboard() {
+	GLint oldFBO, oldViewport[4];
+	ImVec2 oldDisplaySize, oldFramebufferSize;
+	offScreenFBO.create2DBuffer(pendingCopyWidth, pendingCopyHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
+	offScreenFBO.beginOffScreenImGuiRender(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
+
+	// build imgui draw commands
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+	ImGui::Begin("##ExportWindow", nullptr, UIFlags::TemporaryWindowFlags);
+
+	ImVec2 exportSize((float)pendingCopyWidth, (float)pendingCopyHeight);
+	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), exportSize, ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
+
+	canvasRect = makePaddedRect(ImGui::GetItemRectMin(), exportSize);
+
+	camera.setDimensions(
+		canvasRect.size.x,
+		canvasRect.size.y,
+		canvasRect.min
+	);
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawSurface(canvasRect);
+	drawCanvas(drawList, canvasRect, 5.0f);
+
+	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
+	drawAxes(drawList);
+	drawSketchEntities(drawList);
+	drawTrimPreview(drawList);
+	drawDimensions(drawList);
+	drawPendingSketchEntity(drawList);
+	drawTemporarySketch(drawList);
+	drawSnapping(drawList);
+	drawDimensionEditor();
+	drawList->PopClipRect();
+
+	ImGui::End();
+	ImGui::PopStyleVar();
+
+	offScreenFBO.endOffScreenImGuiRender(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
+}
+
 void SketchView::drawToolBar() {
 
 	float toolbarHeight = 40.0f;

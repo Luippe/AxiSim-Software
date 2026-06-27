@@ -233,11 +233,11 @@ double Field::sampleBoundary(
 			return unProcessedData[c];
 		}
 
-		if (bc.type == DIRICHLET) {
-			return bc.value;
+		if (bc.type() == DIRICHLET) {
+			return bc.value();
 		}
 
-		if (bc.type == NEUMANN || bc.type == FULLY_DEVELOPED) {
+		if (bc.type() == NEUMANN || bc.type() == FULLY_DEVELOPED) {
 			double phiP = unProcessedData[c];
 
 			double dz = face.center.z - cell.center.z;
@@ -245,7 +245,7 @@ double Field::sampleBoundary(
 
 			double d = std::abs(dz * normal.z + dr * normal.r);
 
-			return phiP + bc.value * d;
+			return phiP + bc.value() * d;
 		}
 
 		return unProcessedData[c];

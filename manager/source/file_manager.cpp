@@ -289,10 +289,10 @@ bool fileExists(const std::string& filename) {
 	return file.good();
 
 }
+
 // ====================================================
 // ----------BOUNDARY GROUP AND BCS--------------------
 // ====================================================
-
 void writeBoundaryGroup(std::ofstream& out, const BoundarySegmentGroup& group) {
 
 	writeAll(out,
@@ -458,7 +458,6 @@ void saveFromPathProject(const std::wstring& path, Project& project) {
 }
 
 void saveLaunchProject(Project& project) {
-
 	std::wstring path = L"openAtLaunchProject.bin";
 	saveFromPathProject(path, project);
 }
@@ -764,7 +763,6 @@ void loadAtLaunch(Project& project) {
 
 	const char* projectFile = "openAtLaunchProject.bin";
 
-
 	std::ifstream in(projectFile, std::ios::binary);
 
 	{
@@ -796,19 +794,22 @@ void loadAtLaunch(Project& project) {
 }
 
 void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc) {
-	int type = (int)(bc.type);
+	int type = (int)(bc.type());
+	double value = bc.value();
 
 	out.write((const char*)&type, sizeof(type));
-	out.write((const char*)&bc.value, sizeof(bc.value));
+	out.write((const char*)&value, sizeof(value));
 }
 
 void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc) {
 	int type = 0;
+	double value = 0.0;
 
 	in.read((char*)&type, sizeof(type));
-	in.read((char*)&bc.value, sizeof(bc.value));
+	in.read((char*)&value, sizeof(value));
 
-	bc.type = (BCType)(type);
+	bc.setType((BCType)(type));
+	bc.setValue(value);
 }
 
 std::ofstream openBinaryFile(const char* path) {

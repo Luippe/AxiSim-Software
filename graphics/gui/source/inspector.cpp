@@ -494,25 +494,6 @@ void Inspector::drawCellInfo(ImDrawList* drawList) {
 		info += line;
 	}
 
-	// pressure gradient at this cell, Green-Gauss vs least-squares
-	const std::vector<double>& gz = project.solver.gradPZHost;
-	const std::vector<double>& gr = project.solver.gradPRHost;
-	const std::vector<double>& gzL = project.solver.gradPZLsqHost;
-	const std::vector<double>& grL = project.solver.gradPRLsqHost;
-
-	if (selectedCell < (int)gz.size() && selectedCell < (int)gr.size()) {
-		info += "\n----------------";
-		std::snprintf(line, sizeof(line), "\ngrad p (GG):  dp/dz %.6g  dp/dr %.6g",
-			gz[selectedCell], gr[selectedCell]);
-		info += line;
-
-		if (selectedCell < (int)gzL.size() && selectedCell < (int)grL.size()) {
-			std::snprintf(line, sizeof(line), "\ngrad p (LSQ): dp/dz %.6g  dp/dr %.6g",
-				gzL[selectedCell], grL[selectedCell]);
-			info += line;
-		}
-	}
-
 	// per-cell continuity (net outward mass flux) and the individual face fluxes
 	const std::vector<double>& mDot = project.solver.mDotHost;
 	if (selectedCell < (int)fv.cells.size() && !mDot.empty()) {

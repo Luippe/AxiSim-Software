@@ -1279,11 +1279,21 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
 	ImGui::Begin("##ExportWindow", nullptr, UIFlags::TemporaryWindowFlags);
 
-	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), ImVec2((float)pendingCopyWidth, (float)pendingCopyHeight), ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
+	ImVec2 exportSize((float)pendingCopyWidth, (float)pendingCopyHeight);
+	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), exportSize, ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
 	
+	canvasRect = makePaddedRect(ImGui::GetItemRectMin(), exportSize);
+
+	camera.setDimensions(
+		canvasRect.size.x,
+		canvasRect.size.y,
+		canvasRect.min
+	);
+
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawCanvas(drawList, canvasRect, 5.0f);
 
-
+	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
 	drawHighlightedCells2D(drawList);
 	drawMeshLines(drawList);
@@ -1292,6 +1302,10 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 	drawSnapping(drawList);
 	drawBoundarySegments(drawList);
 	drawTextAtSurfacePoint(drawList);
+	if (toggleInspectCell) {
+		drawCellInfo(drawList);
+	}
+	drawList->PopClipRect();
 
 	ImGui::End();
 	ImGui::PopStyleVar();
@@ -1303,7 +1317,7 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
 void MeshInspector::drawMeshLines(ImDrawList* drawList) {
-	if (!mesh.meshMode) {
+	if (!toggleMesh) {
 		return;
 	}
 
@@ -1456,23 +1470,9 @@ void MeshInspector::drawToolBar() {
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
-	addImageButtonToggle("Ruler", "Ruler", assets.rulerIcon, buttonSize, toggleRuler);
-	ImGui::SameLine();
-
 	if (addImageButton("Reset", "Reset View", assets.houseIcon, buttonSize)) {
 		camera.home();
 	}
-	ImGui::SameLine();
-
-	if (addImageButton("Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
-		pendingCopyWidth = frameBuffer.width;
-		pendingCopyHeight = frameBuffer.height;
-		pendingCopy = true;
-		consoleCopy = false;
-	}
-	ImGui::SameLine();
-
-	ImGui::Checkbox("Mesh", &mesh.meshMode);
 	ImGui::SameLine();
 
 	if (addImageButtonToggle(
@@ -1512,6 +1512,26 @@ void MeshInspector::drawToolBar() {
 		selectedCell = -1;
 		inspectMeshDirty = true;
 	}
+
+	ImGui::SameLine();
+
+	addImageButtonToggle(
+		"ToggleMesh",
+		"Toggle Mesh",
+		assets.fillCellIcon,
+		buttonSize,
+		toggleMesh
+	);
+
+	ImGui::SameLine();
+
+	if (addImageButton("Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
+		pendingCopyWidth = frameBuffer.width;
+		pendingCopyHeight = frameBuffer.height;
+		pendingCopy = true;
+		consoleCopy = false;
+	}
+
 
 	ImGui::EndChild();
 }

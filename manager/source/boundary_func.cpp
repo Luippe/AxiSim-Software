@@ -27,6 +27,61 @@ namespace BoundaryGet {
 		}
 		return nullptr;
 	}
+
+	const char* boundaryTypeToString(BoundaryType type) {
+		switch (type) {
+		case BoundaryType::WALL:
+			return "Wall";
+
+		case BoundaryType::VELOCITY_INLET:
+			return "Velocity Inlet";
+
+		case BoundaryType::PRESSURE_OUTLET:
+			return "Pressure Outlet";
+
+		case BoundaryType::SYMMETRY:
+			return "Symmetry";
+
+		default:
+			return "Wall";
+		}
+	}
+
+	const char* boundaryVariableToString(BoundaryVariable var) {
+
+		switch (var) {
+		case BoundaryVariable::UVelocity:
+			return "U Velocity";
+
+		case BoundaryVariable::VVelocity:
+			return "V Velocity";
+
+		case BoundaryVariable::Pressure:
+			return "Pressure";
+
+		case BoundaryVariable::StaticTemperature:
+			return "Static Temperature";
+
+		case BoundaryVariable::Concentration:
+			return "Concentration";
+
+		default:
+			return "Unknown";
+		}
+	}
+
+	const char* bcTypeToString(BCType type) {
+		switch (type) {
+		case BCType::DIRICHLET:			return "Dirichlet";
+		case BCType::NEUMANN:			return "Neumann";
+		case BCType::FULLY_DEVELOPED:	return "Fully Developed";
+		case BCType::MICHAELIS_MENTEN:	return "Michaelis Menten";
+		case BCType::HILL:				return "Hill";
+		case BCType::NONE:				return "None";
+		default:						return "Unknown";
+		}
+	}
+
 }
 
 namespace BoundaryDefaults {
@@ -37,8 +92,8 @@ namespace BoundaryDefaults {
 	) {
 		BoundaryCondition bc{};
 		bc.enabled = true;
-		bc.type = getDefaultBCType(group.type, var);
-		bc.value = getDefaultBCValue(var);
+		bc.setType(getDefaultBCType(group.type, var));
+		bc.setValue(getDefaultBCValue());
 
 		return bc;
 	}
@@ -115,25 +170,7 @@ namespace BoundaryDefaults {
 	}
 
 
-	double getDefaultBCValue(
-		BoundaryVariable var
-	) {
-		switch (var) {
-
-		case BoundaryVariable::UVelocity:
-		case BoundaryVariable::VVelocity:
-			return 0.0;
-
-		case BoundaryVariable::Pressure:
-			return 0.0;
-
-		case BoundaryVariable::StaticTemperature:
-			return 300.0;
-
-		case BoundaryVariable::Concentration:
-			return 0.0;
-
-		}
+	double getDefaultBCValue() {
 		return 0.0;
 	}
 
@@ -201,8 +238,9 @@ namespace BoundaryDefaults {
 			case BoundaryVariable::StaticTemperature:
 				return { BCType::DIRICHLET, BCType::NEUMANN };
 			case BoundaryVariable::Pressure:
+				return { BCType::NEUMANN };
 			case BoundaryVariable::Concentration:
-				return { BCType::NEUMANN};
+				return { BCType::DIRICHLET, BCType::NEUMANN, BCType::MICHAELIS_MENTEN, BCType::HILL };
 			default:
 				return { BCType::NONE };
 			}
@@ -219,7 +257,6 @@ namespace BoundaryDefaults {
 				case EdgeOrient::Both:
 					return { BCType::NONE };
 				default:
-					check();
 					return { BCType::NONE };
 				}
 

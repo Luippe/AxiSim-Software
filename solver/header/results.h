@@ -49,6 +49,7 @@ public:
 	ShadingType currentShadingType = ShadingType::Interp;
 	const char* compareType[5] = { "Less Than", "Equal To", "Greater Than", "Between", "Exclude"};
 	const char* shadingType[2] = { "Interp", "Flat" };
+
 	Results(Config& config);
 
 	void render();
@@ -78,6 +79,8 @@ public:
 
 	GridConfig g;
 
+	// results variables
+	std::unordered_map<std::string, Field> fields;
 	std::unordered_map<std::string, SolutionField> solutions;
 	std::vector<CylinderTemplateVertex> verticesCV;
 	std::vector<unsigned int> indicesCV;
@@ -92,13 +95,11 @@ public:
 
 private:
 
-	std::vector<Field> fields;
-
-	Field uField;
-	Field vField;
-	Field pField;
-	Field concField;
-	Field tempField;
+	//Field uField;
+	//Field vField;
+	//Field pField;
+	//Field concField;
+	//Field tempField;
 	Config& config;
 
 };
