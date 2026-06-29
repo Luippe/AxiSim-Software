@@ -62,7 +62,7 @@ namespace {
 			sizeof(VariableUnits) +
 			sizeof(SolverFieldOption) +
 			sizeof(EnabledResiduals) +
-			sizeof(LinearSolverConfig) +
+			sizeof(ConfigSolver) +
 			sizeof(VelocitySolverType) +
 			sizeof(ResidualType) +
 			sizeof(ResidualNormType) +
@@ -80,7 +80,7 @@ namespace {
 			sizeof(VariableUnits) +
 			sizeof(SolverFieldOption) +
 			sizeof(EnabledResiduals) +
-			sizeof(LinearSolverConfig) +
+			sizeof(ConfigSolver) +
 			sizeof(VelocitySolverType) +
 			sizeof(ResidualType) +
 			sizeof(ResidualNormType) +
@@ -96,8 +96,8 @@ namespace {
 	}
 
 	void sanitizeSolverConfig(Solver& solver) {
-		if (solver.linearSolverConfig.maxIter < 1) {
-			solver.linearSolverConfig.maxIter = 20;
+		if (solver.configSolver.maxIter < 1) {
+			solver.configSolver.maxIter = 20;
 		}
 
 		if (solver.configSimple.maxIter < 1) {
@@ -125,9 +125,9 @@ namespace {
 			solver.configSimple.ppTol = 1e-5;
 		}
 
-		if ((int)solver.linearSolverConfig.type < 0 ||
-			(int)solver.linearSolverConfig.type > (int)LINEAR_GS_RB) {
-			solver.linearSolverConfig.type = LINEAR_JACOBI;
+		if ((int)solver.configSolver.type < 0 ||
+			(int)solver.configSolver.type > (int)LINEAR_GS_RB) {
+			solver.configSolver.type = LINEAR_JACOBI;
 		}
 
 		if ((int)solver.currentVelocitySolver < 0 ||
@@ -174,16 +174,12 @@ namespace {
 			solver.varUnits,
 			solver.fieldOption,
 			solver.enabledResiduals,
-			solver.linearSolverConfig,
+			solver.configSolver,
 			solver.currentVelocitySolver,
 			solver.currentResidual,
 			solver.currentResidualNorm,
 			solver.currentResidualScaling,
 			solver.convectionScheme,
-			solver.addConvectionTerm,
-			solver.transient,
-			solver.dt,
-			solver.tEnd,
 			solver.saveKeyFrameIter,
 			solver.f,
 			solver.configSimple
@@ -198,15 +194,11 @@ namespace {
 			solver.varUnits,
 			solver.fieldOption,
 			solver.enabledResiduals,
-			solver.linearSolverConfig,
+			solver.configSolver,
 			solver.currentVelocitySolver,
 			solver.currentResidual,
 			solver.currentResidualNorm,
 			solver.currentResidualScaling,
-			solver.addConvectionTerm,
-			solver.transient,
-			solver.dt,
-			solver.tEnd,
 			solver.saveKeyFrameIter,
 			legacySimple
 		);
@@ -305,7 +297,8 @@ void writeBoundaryGroup(std::ofstream& out, const BoundarySegmentGroup& group) {
 		group.includesOrientation,
 		group.totalLength,
 		group.sizing,
-		group.bcs
+		group.bcs,
+		group.layers
 	);
 
 }
@@ -334,7 +327,8 @@ void readBoundaryGroup(std::ifstream& in, BoundarySegmentGroup& group) {
 		group.includesOrientation,
 		group.totalLength,
 		group.sizing,
-		group.bcs
+		group.bcs,
+		group.layers
 	);
 
 }
@@ -660,16 +654,12 @@ void saveFromPathSolver(std::ofstream& out, Solver& solver) {
 		solver.varUnits,
 		solver.fieldOption,
 		solver.enabledResiduals,
-		solver.linearSolverConfig,
+		solver.configSolver,
 		solver.currentVelocitySolver,
 		solver.currentResidual,
 		solver.currentResidualNorm,
 		solver.currentResidualScaling,
 		solver.convectionScheme,
-		solver.addConvectionTerm,
-		solver.transient,
-		solver.dt,
-		solver.tEnd,
 		solver.saveKeyFrameIter,
 		solver.f,
 		solver.configSimple
@@ -778,7 +768,6 @@ void loadAtLaunch(Project& project) {
 		}
 	}
 
-	// load solver file if it exists
 	{
 		if (in) {
 			loadFromPathSolver(in, project.solver);

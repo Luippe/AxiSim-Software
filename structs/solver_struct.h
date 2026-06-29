@@ -137,11 +137,6 @@ struct ResidualPrintItem {
 	Coefficients* coeff;
 };
 
-struct LinearSolverConfig {
-	LinearSolverType type = LINEAR_JACOBI;
-	int maxIter = 20;
-};
-
 struct IterationConfig {
 
 	double outer_tol = 1e-8;
@@ -168,28 +163,23 @@ struct ConfigSimple {
 };
 
 
+
 struct ConfigSolver {
-	GridConfig g;
-	FluidPropertyConfig f;
+
+	LinearSolverType type = LINEAR_JACOBI;
+	int maxIter = 20;
 
 	bool addConvectionTerm = false;
 	bool transient = false;
 
 	double dt = 0.1;
+	double tEnd = 2.0;
 };
-
 
 struct ConfigResidual {
 	ResidualType residualType;
 	ResidualNormType residualNormType;
 	ResidualScalingType residualScaleType;
-};
-
-
-struct GradField {
-
-
-
 };
 
 struct VariablesSimple {

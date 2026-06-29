@@ -90,7 +90,7 @@ public:
 	int postSmooth = 3;
 	int coarseIterations = 50;
 
-	LinearSolverConfig smootherConfig;
+	ConfigSolver smootherConfig;
 
 	void allocateLevels(const std::vector<GridLevel>& gridLevels);
 

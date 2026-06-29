@@ -113,6 +113,9 @@ bool isFullyDevelopedType(uint8_t type);
 __device__
 bool isMichaelisMentenType(uint8_t type);
 
+__device__
+bool isHillType(uint8_t type);
+
 __global__
 void copyVector(double* vec1, double* vec2, int N);
 
@@ -139,10 +142,10 @@ void addRadialMomentumCylindricalSource(
 );
 
 __global__
-void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, VariablesSimple simple);
+void addUTransientCoefficient(Config config, Coefficients uCoeff, VariablesSimple simple, double dt);
 
 __global__
-void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, VariablesSimple simple);
+void addVTransientCoefficient(Config config, Coefficients vCoeff, VariablesSimple simple, double dt);
 
 __global__
 void addConvectionCoefficient(

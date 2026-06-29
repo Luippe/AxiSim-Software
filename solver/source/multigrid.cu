@@ -465,7 +465,7 @@ void MultigridSolver::smooth(
     cudaStream_t stream,
     int threadsPerBlock
 ) {
-    LinearSolverConfig config = smootherConfig;
+    ConfigSolver config = smootherConfig;
     config.maxIter = iterations;
 
     solveLinearSystem(

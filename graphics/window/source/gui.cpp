@@ -306,7 +306,7 @@ void GUI::render() {
 		scene.render();
 		inspector.render();
 
-		if (project.solver.transient) {
+		if (project.solver.configSolver.transient) {
 			animationGUI.render();
 		}
 	}

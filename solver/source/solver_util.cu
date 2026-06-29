@@ -681,7 +681,7 @@ void computeGradient(
 
 __global__
 void computeFaceMassFluxRhieChow(
-	ConfigSolver config,
+	Config config,
 	FVMeshDevice mesh,
 	VariablesSimple simple,
 	BoundarySolverDevice bc
@@ -738,6 +738,11 @@ bool isFullyDevelopedType(uint8_t type) {
 __device__
 bool isMichaelisMentenType(uint8_t type) {
 	return type == (uint8_t)(MICHAELIS_MENTEN);
+}
+
+__device__
+bool isHillType(uint8_t type) {
+	return type == (uint8_t)(HILL);
 }
 
 __global__
@@ -912,13 +917,39 @@ void addDiffusionCoefficient(
 					b[n]  -= area * Vmax * c * c * inv * inv;
 				}
 			}
+			else if (isHillType(bcType)) {
+				// Hill wall consumption: J = Vmax * c^n / (Km^n + c^n), a nonlinear
+				// sink. Linearise about c* = phi[n] (deferred / Patankar):
+				//   dJ/dc = Vmax * n * Km^n * c^(n-1) / (Km^n + c^n)^2   (>= 0)
+				//   AC += area*dJ/dc ;  b += area*(dJ/dc*c - J)
+				// Uses the Hill coefficient n; m is carried on the device but is
+				// not part of this single-exponent form.
+				double Vmax = bc.vmaxByGroup ? bc.vmaxByGroup[groupID] : 0.0;
+				double Km   = bc.kmByGroup   ? bc.kmByGroup[groupID]   : 0.0;
+				double nexp = bc.nByGroup    ? bc.nByGroup[groupID]    : 1.0;
+				double c    = phi[n];
+
+				if (Vmax > 0.0 && Km > 0.0 && c > 1.0e-30) {
+					double cn  = pow(c, nexp);
+					double kn  = pow(Km, nexp);
+					double den = kn + cn;
+
+					if (den > 1.0e-30) {
+						double invDen = 1.0 / den;
+						double J      = Vmax * cn * invDen;
+						double dJdc   = Vmax * nexp * kn * pow(c, nexp - 1.0) * invDen * invDen;
+						AC[n] += area * dJdc;
+						b[n]  += area * (dJdc * c - J);
+					}
+				}
+			}
 		}
 	}
 }
 
 __global__
 void addRadialMomentumCylindricalSource(
-	ConfigSolver config,
+	Config config,
 	FVMeshDevice mesh,
 	Coefficients vCoeff
 ) {
@@ -1091,7 +1122,7 @@ void addConvectionCoefficient(
 // ==================TRANSIENT TERM==============================
 // ==============================================================
 __global__
-void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, VariablesSimple simple) {
+void addUTransientCoefficient(Config config, Coefficients uCoeff, VariablesSimple simple, double dt) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -1111,7 +1142,6 @@ void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, Variable
 	double* AC = uCoeff.AC;
 	double* b = uCoeff.b;
 	double* uOld = simple.uOld;
-	double dt = config.dt;
 
 	int j = n % nz;
 	int i = n / nz;
@@ -1130,7 +1160,7 @@ void addUTransientCoefficient(ConfigSolver config, Coefficients uCoeff, Variable
 }
 
 __global__
-void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, VariablesSimple simple) {
+void addVTransientCoefficient(Config config, Coefficients vCoeff, VariablesSimple simple, double dt) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -1162,8 +1192,8 @@ void addVTransientCoefficient(ConfigSolver config, Coefficients vCoeff, Variable
 
 	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
 
-	AC[n] += (rho * Az * dz[j]) / config.dt;
-	b[n] += (rho * Az * dz[j] * vOld[n]) / config.dt;
+	AC[n] += (rho * Az * dz[j]) / dt;
+	b[n] += (rho * Az * dz[j] * vOld[n]) / dt;
 }
 
 __global__

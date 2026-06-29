@@ -123,7 +123,7 @@ void gaussSeidelRB(Coefficients coeff, uint8_t* active, double* x, int color) {
 
 void solveLinearSystem(
 	Coefficients& coeff,
-	const LinearSolverConfig& config,
+	const ConfigSolver& config,
 	cudaStream_t stream,
 	double*& x,
 	double*& xTemp,

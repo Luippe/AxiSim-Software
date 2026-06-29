@@ -6,9 +6,28 @@
 #include <string>	   // std::string
 #include <unordered_map>
 #include <variant>
+#include <vector>
 #include <type_traits>
 
 #include "core_struct.h"
+
+// One material layer of a multi-layer wall (e.g. a membrane or coating) that a
+// solved scalar -- concentration or temperature -- must pass through. A stack of
+// layers acts as a series transfer resistance on the wall flux.
+//   D = layer diffusivity / conductivity
+//   d = layer thickness
+//   k = D / d, the layer permeance (transfer coefficient); kept in sync with
+//       D and d by the editor so the solver can read it directly.
+// NOTE: layers are edited and persisted today; the solver does not yet consume
+// them. This is the hook where wall-resistance physics would read `k`.
+struct Layer {
+
+	double k = 0.0;
+	double d = 0.0;
+	double R = 0.0;
+
+};
+
 
 enum class BoundaryVariable : uint8_t {
 	UVelocity,
@@ -422,6 +441,15 @@ struct BoundarySegmentGroup {
 		BoundaryCondition,
 		BoundaryVariableHash
 	> bcs;
+
+	// Per-variable multi-layer wall stack. Only Concentration and Static
+	// Temperature carry layers, and only while their field is being solved on a
+	// Wall boundary; orphaned entries are pruned by the editor.
+	std::unordered_map<
+		BoundaryVariable,
+		std::vector<Layer>,
+		BoundaryVariableHash
+	> layers;
 };
 
 struct SolutionField {

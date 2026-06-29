@@ -14,7 +14,7 @@ void allocateCoefficients(Coefficients& coeff, int nr, int nz);
 void allocateCoefficients(Coefficients& coeff, const FVMesh& mesh);
 
 // allocate memory for simple algorithm
-void allocateSimple(ConfigSolver& config, VariablesSimple& vars, FVMesh& mesh, const SolverFieldOption& option);
+void allocateSimple(Config& config, VariablesSimple& vars, FVMesh& mesh, const SolverFieldOption& option);
 
 // initialize and allocate cell variables
 void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& vars);

@@ -205,19 +205,19 @@
 				31,
 				32,
 				33,
-				35,
-				38,
-				41,
-				46,
-				104,
-				105,
+				36,
+				39,
+				42,
+				47,
 				106,
 				107,
 				108,
 				109,
 				110,
 				111,
-				112
+				112,
+				113,
+				114
 			]
 		},
 		{
@@ -316,14 +316,15 @@
 			"sourceIndexes" : 
 			[
 				34,
-				36,
+				35,
 				37,
-				39,
+				38,
 				40,
-				42,
+				41,
 				43,
 				44,
-				45
+				45,
+				46
 			]
 		}
 	],
@@ -483,22 +484,22 @@
 				41,
 				42,
 				43,
-				44
+				44,
+				45
 			]
 		},
 		{
 			"name" : "src\\source",
 			"sourceIndexes" : 
 			[
-				45,
-				46
+				46,
+				47
 			]
 		},
 		{
 			"name" : "graphics\\gui\\header",
 			"sourceIndexes" : 
 			[
-				47,
 				48,
 				49,
 				50,
@@ -513,27 +514,27 @@
 				59,
 				60,
 				61,
-				62
+				62,
+				63
 			]
 		},
 		{
 			"name" : "graphics\\window\\header",
 			"sourceIndexes" : 
 			[
-				63,
 				64,
 				65,
 				66,
 				67,
 				68,
-				69
+				69,
+				70
 			]
 		},
 		{
 			"name" : "manager\\header",
 			"sourceIndexes" : 
 			[
-				70,
 				71,
 				72,
 				73,
@@ -548,14 +549,14 @@
 				82,
 				83,
 				84,
-				85
+				85,
+				86
 			]
 		},
 		{
 			"name" : "solver\\header",
 			"sourceIndexes" : 
 			[
-				86,
 				87,
 				88,
 				89,
@@ -565,53 +566,55 @@
 				93,
 				94,
 				95,
-				96
+				96,
+				97,
+				98
 			]
 		},
 		{
 			"name" : "src\\header",
 			"sourceIndexes" : 
 			[
-				97,
-				98
+				99,
+				100
 			]
 		},
 		{
 			"name" : "structs",
 			"sourceIndexes" : 
 			[
-				99,
-				100,
 				101,
 				102,
-				103
+				103,
+				104,
+				105
 			]
 		},
 		{
 			"name" : "graphics\\imgui",
 			"sourceIndexes" : 
 			[
-				104,
-				105,
 				106,
 				107,
-				110,
-				111
+				108,
+				109,
+				112,
+				113
 			]
 		},
 		{
 			"name" : "graphics\\imgui\\backends",
 			"sourceIndexes" : 
 			[
-				108,
-				109
+				110,
+				111
 			]
 		},
 		{
 			"name" : "Source Files",
 			"sourceIndexes" : 
 			[
-				112
+				114
 			]
 		}
 	],
@@ -820,6 +823,12 @@
 			"compileGroupIndex" : 0,
 			"path" : "manager/source/time_manager.cpp",
 			"sourceGroupIndex" : 2
+		},
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 1,
+			"path" : "solver/source/concentration_equation.cu",
+			"sourceGroupIndex" : 3
 		},
 		{
 			"backtrace" : 2,
@@ -1093,6 +1102,11 @@
 			"backtrace" : 2,
 			"path" : "manager/header/unit_manager.h",
 			"sourceGroupIndex" : 7
+		},
+		{
+			"backtrace" : 2,
+			"path" : "solver/header/concentration_equation.cuh",
+			"sourceGroupIndex" : 8
 		},
 		{
 			"backtrace" : 2,

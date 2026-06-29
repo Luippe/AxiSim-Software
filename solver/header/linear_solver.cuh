@@ -4,7 +4,7 @@
 // solve linear system using selected linear solver
 void solveLinearSystem(
 	Coefficients& coeff,
-	const LinearSolverConfig& config,
+	const ConfigSolver& config,
 	cudaStream_t stream,
 	double*& x,
 	double*& xTemp,

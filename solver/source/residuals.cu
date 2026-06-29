@@ -70,7 +70,7 @@ void residualRaw(uint8_t* activeCell, bool sign, ResidualPairs& pairs, int n) {
 
 
 __global__
-void continuityResidual(FVMeshDevice mesh, ConfigSolver config, Coefficients coeff, VariablesSimple simple) {
+void continuityResidual(FVMeshDevice mesh, Coefficients coeff, VariablesSimple simple) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 

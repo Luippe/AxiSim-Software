@@ -582,29 +582,25 @@ void Inspector::copyActiveSurfaceToClipboard() {
 
 	ImGui::InvisibleButton("##ExportCanvas", exportSize);
 
-	// temporarily retarget the camera/canvas to the off-screen surface
-	Camera2D savedCamera = camera;
-	ImVec2 savedMin = imageMin;
-	ImVec2 savedMax = imageMax;
-	ImVec2 savedSize = imageSize;
+	canvasRect = makePaddedRect(ImGui::GetItemRectMin(), exportSize);
 
-	imageMin = ImGui::GetItemRectMin();
-	imageMax = ImGui::GetItemRectMax();
-	imageSize = exportSize;
-
-	camera.setDimensions((int)exportSize.x, (int)exportSize.y, imageMin);
+	camera.setDimensions(
+		canvasRect.size.x,
+		canvasRect.size.y,
+		canvasRect.min
+	);
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	drawCanvas(drawList, canvasRect, 5.0f);
 
-	drawList->AddRectFilled(imageMin, imageMax, IM_COL32(19, 27, 37, 255));
+	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawField(drawList);
 	drawMeshOverlay(drawList);
 	drawAxes(drawList);
-
-	camera = savedCamera;
-	imageMin = savedMin;
-	imageMax = savedMax;
-	imageSize = savedSize;
+	drawCellInfo(drawList);
+	drawValueProbe(drawList);
+	drawEmptyMessage(drawList);
+	drawList->PopClipRect();
 
 	ImGui::End();
 	ImGui::PopStyleVar();
@@ -658,10 +654,7 @@ void Inspector::render() {
 
 	drawCanvas(drawList, canvasRect, 5.0f);
 
-	ImVec2 canvasMin = canvasRect.min;
-	ImVec2 canvasMax = canvasRect.max;
-
-	drawList->PushClipRect(canvasMin, canvasMax, true);
+	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawField(drawList);
 	drawMeshOverlay(drawList);
 	drawAxes(drawList);

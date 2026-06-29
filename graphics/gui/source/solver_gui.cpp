@@ -221,6 +221,97 @@ void SolverGUI::drawRowBoundaryVariableEditor(
 	}, bc.params);
 }
 
+// ======================================================================
+// -----------------------WALL LAYER DRAW CALLS--------------------------
+// ======================================================================
+void SolverGUI::drawWallLayerSection(
+	BoundarySegmentGroup& group,
+	const std::vector<BoundaryVariable>& activeLeaves
+) {
+	// Layers add a series transfer resistance to the wall flux, so they only
+	// make sense for the scalars that pass through the wall: concentration and
+	// temperature. Draw an editor for each one that is currently being solved.
+	for (BoundaryVariable var : activeLeaves) {
+		if (var != BoundaryVariable::Concentration &&
+			var != BoundaryVariable::StaticTemperature) {
+			continue;
+		}
+		drawLayerEditor(group, var);
+	}
+}
+
+void SolverGUI::drawLayerEditor(
+	BoundarySegmentGroup& group,
+	BoundaryVariable var
+) {
+	const char* varLabel = boundaryVariableToString(var);
+	std::vector<Layer>& layers = group.layers[var];
+
+	ImGui::Dummy(ImVec2(0.0f, 10.0f));
+
+	std::string title = std::string(varLabel) + " Wall Layers";
+	ImGui::SeparatorText(title.c_str());
+
+	ImGui::PushID(varLabel);
+
+	if (ImGui::Button("Add Layer")) {
+		layers.push_back(Layer{});
+	}
+
+	if (!layers.empty() && ImGui::BeginTable("Layers", 5)) {
+		setupTableColumns(
+			column("#", 30.0f),
+			column("k", 90.0f),
+			column("d", 90.0f),
+			column("k = d/k", 90.0f),
+			column("", 30.0f)
+		);
+		ImGui::TableHeadersRow();
+
+		int removeIndex = -1;
+
+		for (int i = 0; i < (int)layers.size(); i++) {
+			Layer& layer = layers[i];
+
+			ImGui::TableNextRow();
+			ImGui::PushID(i);
+
+			ImGui::TableSetColumnIndex(0);
+			ImGui::AlignTextToFramePadding();
+			ImGui::Text("%d", i + 1);
+
+			ImGui::TableSetColumnIndex(1);
+			inputDouble("##k", &layer.k);
+
+			ImGui::TableSetColumnIndex(2);
+			inputDouble("##d", &layer.d);
+
+			// R is fully derived from D and d; recompute it so the stored value
+			// the solver will read stays in sync with the inputs.
+			layer.R = (layer.k != 0.0) ? layer.d / layer.k : 0.0;
+
+			ImGui::TableSetColumnIndex(3);
+			ImGui::AlignTextToFramePadding();
+			ImGui::Text("%.3g", layer.R);
+
+			ImGui::TableSetColumnIndex(4);
+			if (ImGui::SmallButton("x")) {
+				removeIndex = i;
+			}
+
+			ImGui::PopID();
+		}
+
+		ImGui::EndTable();
+
+		if (removeIndex >= 0) {
+			layers.erase(layers.begin() + removeIndex);
+		}
+	}
+
+	ImGui::PopID();
+}
+
 void SolverGUI::drawPropertiesPanel() {
 
 	ImGui::Begin("Overview");
@@ -250,7 +341,7 @@ void SolverGUI::drawPropertiesPanel() {
 			createSimpleCombo("##Solver", solver.velocitySolverType, (int&)solver.currentVelocitySolver, IM_ARRAYSIZE(solver.velocitySolverType));
 
 			labelRow("Linear Solver");
-			createSimpleCombo("##LinearSolverType", solver.linearSolverType, (int&)(solver.linearSolverConfig.type), IM_ARRAYSIZE(solver.linearSolverType));
+			createSimpleCombo("##LinearSolverType", solver.linearSolverType, (int&)(solver.configSolver.type), IM_ARRAYSIZE(solver.linearSolverType));
 
 			ImGui::EndTable();
 		}
@@ -270,10 +361,10 @@ void SolverGUI::drawPropertiesPanel() {
 			createSimpleCombo("##ConvectionScheme", solver.convectionDiscretizationType, (int&)(solver.convectionScheme), IM_ARRAYSIZE(solver.convectionDiscretizationType));
 
 			labelRow("Add Convection Term");
-			checkBox("##ConvectionTerm", &solver.addConvectionTerm);
+			checkBox("##ConvectionTerm", &solver.configSolver.addConvectionTerm);
 
 			labelRow("Transient");
-			checkBox("##TransientTerm", &solver.transient);
+			checkBox("##TransientTerm", &solver.configSolver.transient);
 
 			ImGui::EndTable();
 
@@ -328,6 +419,31 @@ void SolverGUI::drawPropertiesPanel() {
 			}
 		}
 
+		// Keep wall-layer stacks only for variables that still belong to this
+		// group. Layers apply to Concentration / Static Temperature on a Wall;
+		// switching boundary type or turning off a field must not leave orphans.
+		for (auto it = group->layers.begin(); it != group->layers.end(); ) {
+			bool keep =
+				group->type == BoundaryType::WALL &&
+				(it->first == BoundaryVariable::Concentration ||
+				 it->first == BoundaryVariable::StaticTemperature);
+
+			if (keep) {
+				bool active = false;
+				for (BoundaryVariable v : activeLeaves) {
+					if (v == it->first) { active = true; break; }
+				}
+				keep = active;
+			}
+
+			if (!keep) {
+				it = group->layers.erase(it);
+			}
+			else {
+				++it;
+			}
+		}
+
 		if (ImGui::BeginTable("Boundary Variable Editor", 4)) {
 			setupTableColumns(
 				column("Variable", 100.0f),
@@ -347,6 +463,13 @@ void SolverGUI::drawPropertiesPanel() {
 
 			ImGui::EndTable();
 		}
+
+		// Walls can carry a multi-layer membrane/coating stack for the scalars
+		// that diffuse through them (concentration / temperature).
+		if (group->type == BoundaryType::WALL) {
+			drawWallLayerSection(*group, activeLeaves);
+		}
+
 		ImGui::EndChild();
 		ImGui::PopStyleColor();
 		ImGui::PopStyleVar();
@@ -463,9 +586,9 @@ void SolverGUI::drawPropertiesPanel() {
 				ImGui::InputDouble("##SimpleContTol", &project.solver.configSimple.ppTol, 0.0, 0.0, "%.3e");
 
 				labelRow("Linear Solver Max Iteration");
-				ImGui::InputInt("##LinearSolverIteration", &project.solver.linearSolverConfig.maxIter, 0.0, 0.0);
-				if (project.solver.linearSolverConfig.maxIter < 1) {
-					project.solver.linearSolverConfig.maxIter = 1;
+				ImGui::InputInt("##LinearSolverIteration", &project.solver.configSolver.maxIter, 0.0, 0.0);
+				if (project.solver.configSolver.maxIter < 1) {
+					project.solver.configSolver.maxIter = 1;
 				}
 
 				labelRow("Non-Orthogonal Correctors");
@@ -521,10 +644,10 @@ void SolverGUI::drawPropertiesPanel() {
 			);
 
 			labelRow("dt");
-			ImGui::InputDouble("##timeStep", &project.solver.dt, 0.0, 0.0, "%.3f");
+			ImGui::InputDouble("##timeStep", &project.solver.configSolver.dt, 0.0, 0.0, "%.3f");
 
 			labelRow("tEnd");
-			ImGui::InputDouble("##endTime", &project.solver.tEnd, 0.0, 0.0, "%.3f");
+			ImGui::InputDouble("##endTime", &project.solver.configSolver.tEnd, 0.0, 0.0, "%.3f");
 
 			labelRow("Save keyframe every # Iterations");
 			ImGui::InputInt("##saveKeyFrameIter", &project.solver.saveKeyFrameIter, 0.0, 0.0);
@@ -622,7 +745,7 @@ void SolverGUI::draw() {
 		}
 		changeCursorOnHover();
 
-		if (solver.transient) {
+		if (solver.configSolver.transient) {
 			if (ImGui::TreeNodeEx("Transient", UIFlagsTree::BranchOpenedFlags)) {
 				drawLeaf("Transient Settings");
 				ImGui::TreePop();

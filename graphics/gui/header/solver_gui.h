@@ -28,6 +28,19 @@ private:
 		BoundaryCondition& bc
 	);
 
+	// draw the multi-layer wall editor for each layer-bearing variable
+	// (Concentration / Static Temperature) of a Wall boundary group
+	void drawWallLayerSection(
+		BoundarySegmentGroup& group,
+		const std::vector<BoundaryVariable>& activeLeaves
+	);
+
+	// draw the add/edit/remove table for one variable's wall layer stack
+	void drawLayerEditor(
+		BoundarySegmentGroup& group,
+		BoundaryVariable var
+	);
+
 	BoundaryCondition& getOrCreateBC(
 		BoundarySegmentGroup& group,
 		BoundaryVariable variable

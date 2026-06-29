@@ -16,7 +16,7 @@ void createMomentumPressureRhs(
 
 __global__
 void computeFaceMassFluxRhieChow(
-	ConfigSolver config,
+	Config config,
 	FVMeshDevice mesh,
 	VariablesSimple simple,
 	BoundarySolverDevice bc
@@ -25,7 +25,7 @@ void computeFaceMassFluxRhieChow(
 // ---------------pressure correction----------------
 __global__
 void createPPCoeff(
-	ConfigSolver config,
+	Config config,
 	FVMeshDevice mesh,
 	Coefficients coeff,
 	VariablesSimple simple,
@@ -34,7 +34,7 @@ void createPPCoeff(
 
 __global__
 void createPPRhs(
-	ConfigSolver config,
+	Config config,
 	FVMeshDevice mesh,
 	Coefficients ppCoeff,
 	VariablesSimple simple,
@@ -58,7 +58,7 @@ void updatePressure(
 
 __global__
 void updateMassFlux(
-	ConfigSolver config,
+	Config config,
 	FVMeshDevice mesh,
 	VariablesSimple simple,
 	BoundaryFieldDevice pBC,

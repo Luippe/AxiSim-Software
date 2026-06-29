@@ -39,8 +39,6 @@ public:
 	ConvectionScheme convectionScheme = CONV_UPWIND;
 	GradientScheme gradientScheme = GRAD_LSQ;
 
-	bool addConvectionTerm = false;
-	bool transient = false;
 	int saveKeyFrameIter = 2;
 
 	std::thread solverThread;
@@ -50,8 +48,6 @@ public:
 	bool continueSolver = false;
 	bool isReady = false;
 
-	double dt = 0.1;
-	double tEnd = 2.0;
 
 	void run(const Mesh& mesh);
 	void runSimple(const Mesh& mesh);
@@ -88,10 +84,11 @@ public:
 	// config for simple algorithm
 	ConfigSimple configSimple;
 
+	// config for each solver
+	ConfigSolver configSolver;
+
 	// variable configs
 	VariablesSimple simple;
-
-	LinearSolverConfig linearSolverConfig;
 
 	// set all variables to default values
 	void setDefault();

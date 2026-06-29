@@ -236,6 +236,7 @@
 			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cu",
 			"paths" : 
 			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/concentration_equation.cu",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/energy_equation.cu",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/jacobi_pcg.cu",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/linear_solver.cu",
@@ -250,6 +251,7 @@
 			"expression" : "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cuh",
 			"paths" : 
 			[
+				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/concentration_equation.cuh",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/energy_equation.cuh",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/jacobi_pcg.cuh",
 				"C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/linear_solver.cuh",

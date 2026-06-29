@@ -392,7 +392,7 @@ FVMeshDevice createFVMeshDevice(const FVMesh& mesh) {
 
 
 void allocateSimple(
-	ConfigSolver& config,
+	Config& config,
 	VariablesSimple& vars,
 	FVMesh& mesh,
 	const SolverFieldOption& option
