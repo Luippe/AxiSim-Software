@@ -397,7 +397,7 @@ protected:
 	Camera2D camera;
 
 	// image dimensions
-	int imageWidth, imageHeight;
+	int imageWidth = 0, imageHeight = 0;
 	ImVec2 imageMin = ImVec2(0.0f, 0.0f);
 	ImVec2 imageMax = ImVec2(0.0f, 0.0f);
 	ImVec2 imageSize = ImVec2(0.0f, 0.0f);

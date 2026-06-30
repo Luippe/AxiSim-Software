@@ -3,6 +3,7 @@
 #include <math_constants.h>
 #include "printer.h"
 
+#include "concentration_equation.cuh"
 // ==============================================================
 // ==================HELPER FUNCTIONS============================
 // ==============================================================
@@ -901,29 +902,29 @@ void addDiffusionCoefficient(
 				b[n] += K * bcValue * (1 - ((length * length) / (totalLength * totalLength)));
 			}
 			else if (isMichaelisMentenType(bcType)) {
-				// Michaelis-Menten wall consumption: J = Vmax * c / (Km + c), a
-				// nonlinear sink. Linearise about the current cell value c* = phi[n]
-				// (deferred / Patankar). dJ/dc > 0, so a consumption sink contributes
-				// a positive (diagonally dominant) implicit term:
-				//   AC += area*Vmax*Km/(Km+c)^2 ,  b -= area*Vmax*c^2/(Km+c)^2
-				double Vmax = bc.vmaxByGroup ? bc.vmaxByGroup[groupID] : 0.0;
-				double Km   = bc.kmByGroup   ? bc.kmByGroup[groupID]   : 0.0;
-				double c    = phi[n];
-				double denom = Km + c;
+				double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
+				double h = 1.0 / Rtot;
 
-				if (Vmax > 0.0 && denom > 1.0e-30) {
-					double inv = 1.0 / denom;
-					AC[n] += area * Vmax * Km * inv * inv;
-					b[n]  -= area * Vmax * c * c * inv * inv;
-				}
+				wallConcentration(bc, groupID, phi[n], mesh.faces.cw[faceID], h);
+
+				AC[n] += area * h;
+				b[n] += area * h * mesh.faces.cw[faceID];
 			}
 			else if (isHillType(bcType)) {
+				double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
+				double h = 1.0 / Rtot;
+
+				wallConcentration(bc, groupID, phi[n], mesh.faces.cw[faceID], h);
+
+				AC[n] += area * h;
+				b[n] += area * h * mesh.faces.cw[faceID];
 				// Hill wall consumption: J = Vmax * c^n / (Km^n + c^n), a nonlinear
 				// sink. Linearise about c* = phi[n] (deferred / Patankar):
 				//   dJ/dc = Vmax * n * Km^n * c^(n-1) / (Km^n + c^n)^2   (>= 0)
 				//   AC += area*dJ/dc ;  b += area*(dJ/dc*c - J)
 				// Uses the Hill coefficient n; m is carried on the device but is
 				// not part of this single-exponent form.
+
 				double Vmax = bc.vmaxByGroup ? bc.vmaxByGroup[groupID] : 0.0;
 				double Km   = bc.kmByGroup   ? bc.kmByGroup[groupID]   : 0.0;
 				double nexp = bc.nByGroup    ? bc.nByGroup[groupID]    : 1.0;
@@ -931,16 +932,18 @@ void addDiffusionCoefficient(
 
 				if (Vmax > 0.0 && Km > 0.0 && c > 1.0e-30) {
 					double cn  = pow(c, nexp);
-					double kn  = pow(Km, nexp);
+					double kn = bc.kmNByGroup[groupID];
 					double den = kn + cn;
 
-					if (den > 1.0e-30) {
-						double invDen = 1.0 / den;
-						double J      = Vmax * cn * invDen;
-						double dJdc   = Vmax * nexp * kn * pow(c, nexp - 1.0) * invDen * invDen;
-						AC[n] += area * dJdc;
-						b[n]  += area * (dJdc * c - J);
-					}
+					double hill = Hill(bc, groupID, c);
+					double dhill = dHill(bc, groupID, c);
+					double inhibition = Inhibition(bc, groupID, c);
+					double dinhibition = dInhibition(bc, groupID, c);
+
+					double J = hill * dhill;
+					double dJdc = dhill * inhibition + hill * dinhibition;
+
+					
 				}
 			}
 		}

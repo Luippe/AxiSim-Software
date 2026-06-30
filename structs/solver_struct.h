@@ -351,6 +351,9 @@ struct FVFaceDevice {
 	double* area = nullptr;
 
 	int* boundaryGroupID = nullptr;
+
+	// Computed wall concentration per face (solver output; 0 on interior faces).
+	double* cw = nullptr;
 };
 
 struct FVMeshDevice {
@@ -404,6 +407,18 @@ struct BoundaryFieldDevice {
 	double* kmByGroup = nullptr;
 	double* nByGroup = nullptr;
 	double* mByGroup = nullptr;
+	// Substrate-inhibition parameters per group (active only when the BC enabled
+	// inhibition; otherwise V2 = 0 leaves the inhibition factor inert).
+	double* k2ByGroup = nullptr;
+	double* v2ByGroup = nullptr;
+	// Precomputed Km^n and K2^m per group (config-only, hoisted out of the
+	// per-cell kinetics evaluation to avoid recomputing pow() every call).
+	double* kmNByGroup = nullptr;
+	double* k2MByGroup = nullptr;
+	// Total wall-layer resistance per group (sum of each layer's R = d/k), used
+	// as the series resistance in the wall flux / wall-concentration balance.
+	double* RtotByGroup = nullptr;
+
 	int nGroups = 0;
 };
 
@@ -424,4 +439,9 @@ struct BoundaryFieldHost {
 	std::vector<double> kmByGroup;
 	std::vector<double> nByGroup;
 	std::vector<double> mByGroup;
+	std::vector<double> k2ByGroup;
+	std::vector<double> v2ByGroup;
+	std::vector<double> RtotByGroup;
 };
+
+

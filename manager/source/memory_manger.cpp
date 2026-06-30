@@ -2,6 +2,7 @@
 #include "setting.cuh"
 
 #include <unordered_set>
+#include <cmath>
 
 #include "multigrid.cuh"
 
@@ -54,6 +55,11 @@ BoundaryFieldHost createBoundaryFieldHost(
 	h.kmByGroup.resize(nGroups, 0.0);
 	h.nByGroup.resize(nGroups, 1.0);
 	h.mByGroup.resize(nGroups, 1.0);
+	// Substrate-inhibition parameters; V2 = 0 disables the inhibition factor.
+	h.k2ByGroup.resize(nGroups, 0.0);
+	h.v2ByGroup.resize(nGroups, 0.0);
+	// Total wall-layer resistance per group; 0 means no layer stack.
+	h.RtotByGroup.resize(nGroups, 0.0);
 
 	for (const BoundarySegmentGroup& group : boundaryGroups) {
 
@@ -89,12 +95,35 @@ BoundaryFieldHost createBoundaryFieldHost(
 		if (const auto* mm = std::get_if<MichaelisMentenParams>(&bc.params)) {
 			h.vmaxByGroup[group.id] = mm->Vmax;
 			h.kmByGroup[group.id] = mm->Km;
+			// Inhibition params only apply when enabled; otherwise V2 stays 0.
+			if (mm->inhibition) {
+				h.mByGroup[group.id] = mm->m;
+				h.k2ByGroup[group.id] = mm->K2;
+				h.v2ByGroup[group.id] = mm->V2;
+			}
 		}
 		else if (const auto* hill = std::get_if<HillParams>(&bc.params)) {
 			h.vmaxByGroup[group.id] = hill->Vmax;
 			h.kmByGroup[group.id] = hill->Km;
 			h.nByGroup[group.id] = hill->n;
-			h.mByGroup[group.id] = hill->m;
+			// Inhibition params only apply when enabled; otherwise V2 stays 0.
+			if (hill->inhibition) {
+				h.mByGroup[group.id] = hill->m;
+				h.k2ByGroup[group.id] = hill->K2;
+				h.v2ByGroup[group.id] = hill->V2;
+			}
+		}
+
+		// Total wall-layer resistance for this variable: sum each layer's
+		// R = d/k. Only Concentration / Temperature carry layers; groups with
+		// no layer stack leave Rtot at 0.
+		auto layerIt = group.layers.find(variable);
+		if (layerIt != group.layers.end()) {
+			double Rtot = 0.0;
+			for (const Layer& layer : layerIt->second) {
+				Rtot += layer.R;
+			}
+			h.RtotByGroup[group.id] = Rtot;
 		}
 	}
 
@@ -116,6 +145,24 @@ BoundaryFieldDevice createBoundaryFieldDevice(
 	copyHostToDevice(d.kmByGroup, h.kmByGroup);
 	copyHostToDevice(d.nByGroup, h.nByGroup);
 	copyHostToDevice(d.mByGroup, h.mByGroup);
+	copyHostToDevice(d.k2ByGroup, h.k2ByGroup);
+	copyHostToDevice(d.v2ByGroup, h.v2ByGroup);
+	copyHostToDevice(d.RtotByGroup, h.RtotByGroup);
+
+	// Precompute Km^n and K2^m per group so the kinetics kernels don't have to
+	// evaluate these config-only pow() calls for every cell on every iteration.
+	const size_t nGroups = h.kmByGroup.size();
+
+	std::vector<double> kmN(nGroups, 0.0);
+	std::vector<double> k2M(nGroups, 0.0);
+
+	for (size_t g = 0; g < nGroups; ++g) {
+		kmN[g] = std::pow(h.kmByGroup[g], h.nByGroup[g]);
+		k2M[g] = std::pow(h.k2ByGroup[g], h.mByGroup[g]);
+	}
+
+	copyHostToDevice(d.kmNByGroup, kmN);
+	copyHostToDevice(d.k2MByGroup, k2M);
 
 	return d;
 }
@@ -374,6 +421,11 @@ FVMeshDevice createFVMeshDevice(const FVMesh& mesh) {
 	copyHostToDevice(d.faces.area, h.faceArea);
 
 	copyHostToDevice(d.faces.boundaryGroupID, h.faceBoundaryGroupID);
+
+	// Wall concentration is a solver output; allocate it per-face and
+	// zero-initialized (a zero-filled host copy both allocates and clears it).
+	std::vector<double> faceCw(h.nFaces, 0.0);
+	copyHostToDevice(d.faces.cw, faceCw);
 
 	// cell arrays
 	copyHostToDevice(d.cells.centerZ, h.cellCenterZ);

@@ -70,6 +70,9 @@ public:
 	// solution fields
 	std::unordered_map<std::string, SolutionField> solutions;
 
+	// scalar solution
+	SolutionScalar scalarSolutions;
+
 	// fvMesh
 	FVMesh fvMesh;
 
@@ -89,6 +92,7 @@ public:
 
 	// variable configs
 	VariablesSimple simple;
+
 
 	// set all variables to default values
 	void setDefault();

@@ -169,6 +169,12 @@ void SolverGUI::drawRowBoundaryVariableEditor(
 		comboUnit(id.c_str(), varUnits.concentrationUnit, Units::concentrationUnits);
 	};
 
+	// Value + unit in maximum-rate units (Vmax, a molar surface flux).
+	auto vmaxValue = [&](const std::string& id, double& v) {
+		inputDouble(id.c_str(), v, varUnits.VmaxUnit, Units::VmaxUnits);
+		comboUnit(id.c_str(), varUnits.VmaxUnit, Units::VmaxUnits);
+	};
+
 	// Raw value, no unit (Vmax, Hill exponents). Advances 2 columns.
 	auto dimlessValue = [&](const std::string& id, double& v) {
 		ImGui::SetNextItemWidth(-FLT_MIN);
@@ -195,6 +201,18 @@ void SolverGUI::drawRowBoundaryVariableEditor(
 		ImGui::TableNextColumn();          // skip the Condition column
 	};
 
+	// Checkbox sub-row (e.g. the inhibition toggle). Advances 2 columns like the
+	// value helpers, so callers can keep emitting rows afterwards.
+	auto checkRow = [&](const std::string& id, const char* paramLabel, bool& v) {
+		subRow(paramLabel);
+		ImGui::PushID(id.c_str());
+		ImGui::Checkbox("##chk", &v);
+		ImGui::PopID();
+		ImGui::TableNextColumn();          // -> Unit column
+		ImGui::TextUnformatted("-");
+		ImGui::TableNextColumn();          // -> next row
+	};
+
 	// --- main row: Variable | Condition | (primary value or dash) | unit ---
 	labelRow(varLabel);
 	const std::string condId = "##cond_" + idBase;
@@ -208,15 +226,26 @@ void SolverGUI::drawRowBoundaryVariableEditor(
 		[&](NoneParams&)             { dash(); },
 		[&](MichaelisMentenParams& p) {
 			dash();
-			subRow("Vmax"); dimlessValue(idBase + "_Vmax", p.Vmax);
+			subRow("Vmax"); vmaxValue(idBase + "_Vmax", p.Vmax);
 			subRow("Km");   concValue(idBase + "_Km", p.Km);
+			checkRow(idBase + "_inhib", "Inhibition", p.inhibition);
+			if (p.inhibition) {
+				subRow("m");  dimlessValue(idBase + "_m", p.m);
+				subRow("K2"); concValue(idBase + "_K2", p.K2);
+				subRow("V2"); dimlessValue(idBase + "_V2", p.V2);
+			}
 		},
 		[&](HillParams& p) {
 			dash();
-			subRow("Vmax"); dimlessValue(idBase + "_Vmax", p.Vmax);
+			subRow("Vmax"); vmaxValue(idBase + "_Vmax", p.Vmax);
 			subRow("Km");   concValue(idBase + "_Km", p.Km);
 			subRow("n");    dimlessValue(idBase + "_n", p.n);
-			subRow("m");    dimlessValue(idBase + "_m", p.m);
+			checkRow(idBase + "_inhib", "Inhibition", p.inhibition);
+			if (p.inhibition) {
+				subRow("m");  dimlessValue(idBase + "_m", p.m);
+				subRow("K2"); concValue(idBase + "_K2", p.K2);
+				subRow("V2"); dimlessValue(idBase + "_V2", p.V2);
+			}
 		},
 	}, bc.params);
 }

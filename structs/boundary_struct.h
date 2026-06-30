@@ -86,8 +86,12 @@ enum BCType {
 struct DirichletParams       { static constexpr BCType bcType = DIRICHLET;        double value = 0.0; };
 struct NeumannParams         { static constexpr BCType bcType = NEUMANN;          double value = 0.0; };
 struct FullyDevelopedParams  { static constexpr BCType bcType = FULLY_DEVELOPED;  double value = 0.0; };
-struct MichaelisMentenParams { static constexpr BCType bcType = MICHAELIS_MENTEN; double Vmax = 0.0; double Km = 0.0; };
-struct HillParams			 { static constexpr BCType bcType = HILL;             double Vmax = 0.0; double Km = 0.0; double n = 1.0; double m = 1.0; };
+// Kinetics types carry an optional substrate-inhibition factor
+// (1 - V2*c^m / (K2^m + c^m)). It is only active when `inhibition` is set, in
+// which case the user supplies the inhibition exponent m, half-inhibition
+// constant K2, and maximum inhibition fraction V2.
+struct MichaelisMentenParams { static constexpr BCType bcType = MICHAELIS_MENTEN; double Vmax = 0.0; double Km = 0.0; bool inhibition = false; double m = 1.0; double K2 = 0.0; double V2 = 0.0; };
+struct HillParams			 { static constexpr BCType bcType = HILL;             double Vmax = 0.0; double Km = 0.0; double n = 1.0; bool inhibition = false; double m = 1.0; double K2 = 0.0; double V2 = 0.0; };
 struct NoneParams            { static constexpr BCType bcType = NONE;             double value = 0.0; };
 
 using BCParams = std::variant<
@@ -456,5 +460,11 @@ struct SolutionField {
 	std::vector<double> field;
 	std::vector<double> dr, dz;
 	BoundaryVariable boundaryVariable;
+};
+
+struct SolutionScalar {
+
+	double ocr;
+
 };
 

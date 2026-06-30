@@ -229,8 +229,8 @@ void Inspector::drawToolBar() {
 	ImGui::SameLine();
 
 	if (addImageButton("Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
-		pendingCopyWidth = std::max(imageWidth, 1);
-		pendingCopyHeight = std::max(imageHeight, 1);
+		pendingCopyWidth = frameBuffer.width;
+		pendingCopyHeight = frameBuffer.height;
 		pendingCopy = true;
 		consoleCopy = false;
 	}
@@ -579,9 +579,7 @@ void Inspector::copyActiveSurfaceToClipboard() {
 	ImGui::Begin("##ExportWindow", nullptr, UIFlags::TemporaryWindowFlags);
 
 	ImVec2 exportSize((float)pendingCopyWidth, (float)pendingCopyHeight);
-
-	ImGui::InvisibleButton("##ExportCanvas", exportSize);
-
+	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), exportSize, ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
 	canvasRect = makePaddedRect(ImGui::GetItemRectMin(), exportSize);
 
 	camera.setDimensions(

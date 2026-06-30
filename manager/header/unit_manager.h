@@ -20,6 +20,8 @@ struct VariableUnits {
     std::uint8_t specificHeatUnit = 0;
     std::uint8_t heatCondUnit = 0;
 
+    std::uint8_t VmaxUnit = 0;
+
 
 };
 
@@ -112,6 +114,16 @@ namespace Units {
         { "uM",      1.0e-3 },   // umol/L (micromolar)
         { "nM",      1.0e-6 },   // nmol/L (nanomolar)
         { "nmol/mL", 1.0e-3 }    // == uM, lab-native volumetric
+    } };
+
+    // Base unit is nmol/(m^2 * s). 1 cm^2 = 1e-4 m^2, so a per-cm^2 flux is
+    // 1e4x larger numerically; molar prefixes scale the amount term.
+    inline constexpr std::array<UnitOption, 5> VmaxUnits = { {
+        { "nmol/(m^2*s)",  1.0    },   // base unit
+        { "mol/(m^2*s)",   1.0e9  },
+        { "umol/(m^2*s)",  1.0e3  },
+        { "pmol/(m^2*s)",  1.0e-3 },
+        { "nmol/(cm^2*s)", 1.0e4  }
     } };
 
     inline constexpr std::array<UnitOption, 4> dynamicViscosityUnits = { {

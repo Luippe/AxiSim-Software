@@ -436,8 +436,6 @@ static void printBoundaryDiagnostics(
 
 void Solver::runSimple(const Mesh& mesh) {
 
-    bool solveEnergy = fieldOption.solveEnergy;
-    bool solveConcentration = fieldOption.solveConcentration;
 
     // create configs for solver and residual
     Config config{ f, g, itr, varUnits };
@@ -536,6 +534,8 @@ void Solver::runSimple(const Mesh& mesh) {
     uint8_t* activeCells = fvMeshDevice.cells.active;
     bool transient = configSolver.transient;
     bool addConvectionTerm = configSolver.addConvectionTerm;
+    bool solveEnergy = fieldOption.solveEnergy;
+    bool solveConcentration = fieldOption.solveConcentration;
 
     // open file if transient is turned on
     std::ofstream out;
@@ -554,25 +554,15 @@ void Solver::runSimple(const Mesh& mesh) {
         //    copyDeviceToHostVector(simple.u, N),
         //    copyDeviceToHostVector(simple.v, N),
         //    copyDeviceToHostVector(simple.p, N));
-
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaStreamSynchronize(stream));
     }
-    CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaStreamSynchronize(stream));
+
     // record time
     CudaTimer timer;
     timer.startTimer(stream);
 
     int numSteps = transient ? (int)std::ceil(configSolver.tEnd / configSolver.dt) : 1;
-
-    if (isStructuredMesh) {
-        //GridLevel fineGrid = createFineGrid(config.g);
-        //std::vector<GridLevel> gridLevels = createGridHierarchy(fineGrid, 4, 4);
-
-        //MultigridSolver mg;
-        //mg.allocateLevels(gridLevels);
-        //mg.smootherConfig = configSolver;
-        //mg.smootherConfig.maxIter = 3;
-    }
 
     double k = f.k;
     double cp = f.cp;
@@ -784,6 +774,7 @@ void Solver::runSimple(const Mesh& mesh) {
 
     createSolutions(N);
 
+    //scalarSolutions.ocr = getOCR();
     //mFlux = SolutionField{copyDevice}
     isReady = true;
 

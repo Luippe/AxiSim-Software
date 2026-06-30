@@ -1283,7 +1283,6 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), exportSize, ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
 	
 	canvasRect = makePaddedRect(ImGui::GetItemRectMin(), exportSize);
-
 	camera.setDimensions(
 		canvasRect.size.x,
 		canvasRect.size.y,
