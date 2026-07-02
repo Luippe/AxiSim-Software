@@ -354,6 +354,9 @@ struct FVFaceDevice {
 
 	// Computed wall concentration per face (solver output; 0 on interior faces).
 	double* cw = nullptr;
+
+	// Wall oxygen-consumption rate per face (solver output; 0 on interior faces).
+	double* ocrWall = nullptr;
 };
 
 struct FVMeshDevice {

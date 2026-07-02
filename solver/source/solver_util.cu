@@ -5,9 +5,53 @@
 
 #include "concentration_equation.cuh"
 // ==============================================================
+// ==================REDUCTION KERNEL============================
+// ==============================================================
+__global__
+void sumBlock(int N, double* __restrict__ in, double* __restrict__ out) {
+	extern __shared__ double s[];
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+	int tid = threadIdx.x;		// thread id within the block
+
+	s[tid] = (n < N) ? in[n] : 0.0;
+	__syncthreads();
+
+	// if you have [0, 1, 2, 3] as your input, the next iteration will give [2, 4]
+	// the first element adds the third, and the second element adds the fourth to itself.
+	for (int stride = blockDim.x / 2; stride > 0; stride /= 2) {
+		if (tid < stride) {
+			s[tid] += s[tid + stride];
+		}
+		__syncthreads();
+	}
+
+	if (tid == 0) {// store result for each block
+		out[blockIdx.x] = s[0];
+	}
+}
+
+void reduction(int N, int threadsPerBlock, size_t shmem, cudaStream_t stream, double* tmpA, double* tmpB, double* in, double* store) {
+	int m = N;
+	double* out = tmpA;
+	double* alt = tmpB;
+
+	while (m > 1) {
+		int blocks = (m + threadsPerBlock - 1) / threadsPerBlock;
+
+		sumBlock << <blocks, threadsPerBlock, shmem, stream >> > (m, in, out);
+
+		in = out;
+		std::swap(out, alt);
+		m = blocks;
+	}
+
+	cudaMemcpyAsync(store, in, sizeof(double), cudaMemcpyDeviceToHost, stream);
+
+}
+
+// ==============================================================
 // ==================HELPER FUNCTIONS============================
 // ==============================================================
-
 __device__
 void addNeighborCoeff(
 	int n,
@@ -902,49 +946,57 @@ void addDiffusionCoefficient(
 				b[n] += K * bcValue * (1 - ((length * length) / (totalLength * totalLength)));
 			}
 			else if (isMichaelisMentenType(bcType)) {
-				double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
-				double h = 1.0 / Rtot;
+				double h = (dPF / constVar) + bc.RtotByGroup[groupID];
 
-				wallConcentration(bc, groupID, phi[n], mesh.faces.cw[faceID], h);
 
+				double cw;
+
+				wallConcentration(bc, groupID, phi[n], cw, h);
+
+				//mesh.faces.ocrWall[faceID] = area * h * (phi[n] - cw);
+				mesh.faces.ocrWall[faceID] = area * MichaelisMenten(bc, groupID, cw) * Inhibition(bc, groupID, cw);
+				mesh.faces.cw[faceID] = cw;
+				//printf("%e, %e\n", area, h);
 				AC[n] += area * h;
-				b[n] += area * h * mesh.faces.cw[faceID];
+				b[n] += area * h * cw;
+
 			}
 			else if (isHillType(bcType)) {
-				double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
-				double h = 1.0 / Rtot;
+				//double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
+				//double h = 1.0 / Rtot;
 
-				wallConcentration(bc, groupID, phi[n], mesh.faces.cw[faceID], h);
+				//wallConcentration(bc, groupID, phi[n], mesh.faces.cw[faceID], h);
 
-				AC[n] += area * h;
-				b[n] += area * h * mesh.faces.cw[faceID];
-				// Hill wall consumption: J = Vmax * c^n / (Km^n + c^n), a nonlinear
-				// sink. Linearise about c* = phi[n] (deferred / Patankar):
-				//   dJ/dc = Vmax * n * Km^n * c^(n-1) / (Km^n + c^n)^2   (>= 0)
-				//   AC += area*dJ/dc ;  b += area*(dJ/dc*c - J)
-				// Uses the Hill coefficient n; m is carried on the device but is
-				// not part of this single-exponent form.
+				//AC[n] += area * h;
+				//b[n] += area * h * mesh.faces.cw[faceID];
+				//// Hill wall consumption: J = Vmax * c^n / (Km^n + c^n), a nonlinear
+				//// sink. Linearise about c* = phi[n] (deferred / Patankar):
+				////   dJ/dc = Vmax * n * Km^n * c^(n-1) / (Km^n + c^n)^2   (>= 0)
+				////   AC += area*dJ/dc ;  b += area*(dJ/dc*c - J)
+				//// Uses the Hill coefficient n; m is carried on the device but is
+				//// not part of this single-exponent form.
 
-				double Vmax = bc.vmaxByGroup ? bc.vmaxByGroup[groupID] : 0.0;
-				double Km   = bc.kmByGroup   ? bc.kmByGroup[groupID]   : 0.0;
-				double nexp = bc.nByGroup    ? bc.nByGroup[groupID]    : 1.0;
-				double c    = phi[n];
+				//double Vmax = bc.vmaxByGroup ? bc.vmaxByGroup[groupID] : 0.0;
+				//double Km   = bc.kmByGroup   ? bc.kmByGroup[groupID]   : 0.0;
+				//double nexp = bc.nByGroup    ? bc.nByGroup[groupID]    : 1.0;
+				//double c    = phi[n];
 
-				if (Vmax > 0.0 && Km > 0.0 && c > 1.0e-30) {
-					double cn  = pow(c, nexp);
-					double kn = bc.kmNByGroup[groupID];
-					double den = kn + cn;
+				//if (Vmax > 0.0 && Km > 0.0 && c > 1.0e-30) {
 
-					double hill = Hill(bc, groupID, c);
-					double dhill = dHill(bc, groupID, c);
-					double inhibition = Inhibition(bc, groupID, c);
-					double dinhibition = dInhibition(bc, groupID, c);
+				//	double cn  = pow(c, nexp);
+				//	double kn = bc.kmNByGroup[groupID];
+				//	double den = kn + cn;
 
-					double J = hill * dhill;
-					double dJdc = dhill * inhibition + hill * dinhibition;
+				//	double hill = Hill(bc, groupID, c);
+				//	double dhill = dHill(bc, groupID, c);
+				//	double inhibition = Inhibition(bc, groupID, c);
+				//	double dinhibition = dInhibition(bc, groupID, c);
 
-					
-				}
+				//	double J = hill * dhill;
+				//	double dJdc = dhill * inhibition + hill * dinhibition;
+
+				//	
+				//}
 			}
 		}
 	}
@@ -1035,8 +1087,10 @@ void addConvectionContribution(
 		}
 	}
 	else if (isNeumannType(bcType) || isFullyDevelopedType(bcType)) {
-		// zero-gradient / fully developed:
-		// phi_f = phi_P
+		// zero-gradient / fully developed / wall-consumption types:
+		// phi_f = phi_P. MM/Hill walls are impermeable (F should be ~0 there);
+		// this just keeps any residual numerical flux consistent instead of
+		// silently dropping it, matching every other boundary type here.
 		coeff.AC[n] += F;
 	}
 }

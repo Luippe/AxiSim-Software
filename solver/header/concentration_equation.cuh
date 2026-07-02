@@ -25,3 +25,6 @@ double dHill(const BoundaryFieldDevice& bc, int groupID, double c);
 
 __device__
 void wallConcentration(const BoundaryFieldDevice& bc, int groupID, double cp, double& cw, double h);
+
+//__device__
+//void wallOCR(const BoundaryFieldDevice& bc, int groupID, double cp, double& cw, double h)

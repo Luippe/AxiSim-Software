@@ -528,6 +528,9 @@ CUDA_nvrtc_static_LIBRARY:FILEPATH=C:/Program Files/NVIDIA GPU Computing Toolkit
 //Path to a library.
 CUDA_pcsamplingutil_LIBRARY:FILEPATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/extras/CUPTI/lib64/pcsamplingutil.lib
 
+//Path to a file.
+MSVC_REDIST_DIR:PATH=C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Redist/MSVC/14.44.35112
+
 //OpenGL library for win32
 OPENGL_gl_LIBRARY:STRING=opengl32
 
@@ -953,6 +956,8 @@ FIND_PACKAGE_MESSAGE_DETAILS_CUDAToolkit:INTERNAL=[C:/Program Files/NVIDIA GPU C
 FIND_PACKAGE_MESSAGE_DETAILS_OpenGL:INTERNAL=[opengl32][c ][v()]
 //Details about finding Threads
 FIND_PACKAGE_MESSAGE_DETAILS_Threads:INTERNAL=[TRUE][v()]
+//ADVANCED property for variable: MSVC_REDIST_DIR
+MSVC_REDIST_DIR-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: OPENGL_gl_LIBRARY
 OPENGL_gl_LIBRARY-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: OPENGL_glu_LIBRARY

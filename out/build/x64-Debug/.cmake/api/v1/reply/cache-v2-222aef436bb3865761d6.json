@@ -2870,6 +2870,22 @@
 			"value" : "[TRUE][v()]"
 		},
 		{
+			"name" : "MSVC_REDIST_DIR",
+			"properties" : 
+			[
+				{
+					"name" : "ADVANCED",
+					"value" : "1"
+				},
+				{
+					"name" : "HELPSTRING",
+					"value" : "Path to a file."
+				}
+			],
+			"type" : "PATH",
+			"value" : "C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Redist/MSVC/14.44.35112"
+		},
+		{
 			"name" : "OPENGL_gl_LIBRARY",
 			"properties" : 
 			[

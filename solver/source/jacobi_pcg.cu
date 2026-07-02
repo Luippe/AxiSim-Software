@@ -603,6 +603,7 @@ void reduce_vec(VariablesBiCGStab& vars, int N, int threadsPerBlock, size_t shme
 	}
 }
 
+
 __global__
 void get_OCR(const Config config, VariablesBiCGStab vars, double oxy_in, int N) {
 

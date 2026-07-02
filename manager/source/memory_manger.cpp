@@ -155,7 +155,7 @@ BoundaryFieldDevice createBoundaryFieldDevice(
 
 	std::vector<double> kmN(nGroups, 0.0);
 	std::vector<double> k2M(nGroups, 0.0);
-
+	print(nGroups);
 	for (size_t g = 0; g < nGroups; ++g) {
 		kmN[g] = std::pow(h.kmByGroup[g], h.nByGroup[g]);
 		k2M[g] = std::pow(h.k2ByGroup[g], h.mByGroup[g]);
@@ -213,6 +213,36 @@ BoundarySolverDevice createBoundarySolverDevice(
 	}
 
 	return dBC;
+}
+
+void freeBoundaryFieldDevice(BoundaryFieldDevice& d) {
+	// freeAllDev deduces each pointer type independently, so the mixed
+	// uint8_t*/double* members can all go in one call.
+	freeAllDev(
+		d.typeByGroup,
+		d.boundaryTypeByGroup,
+		d.lengthByGroup,
+		d.valueByGroup,
+		d.vmaxByGroup,
+		d.kmByGroup,
+		d.nByGroup,
+		d.mByGroup,
+		d.k2ByGroup,
+		d.v2ByGroup,
+		d.kmNByGroup,
+		d.k2MByGroup,
+		d.RtotByGroup
+	);
+
+	d.nGroups = 0;
+}
+
+void freeBoundarySolverDevice(BoundarySolverDevice& dBC) {
+	freeBoundaryFieldDevice(dBC.u);
+	freeBoundaryFieldDevice(dBC.v);
+	freeBoundaryFieldDevice(dBC.p);
+	freeBoundaryFieldDevice(dBC.temp);
+	freeBoundaryFieldDevice(dBC.conc);
 }
 
 void allocateCoefficients(Coefficients& coeff, int nr, int nz) {
@@ -426,6 +456,10 @@ FVMeshDevice createFVMeshDevice(const FVMesh& mesh) {
 	// zero-initialized (a zero-filled host copy both allocates and clears it).
 	std::vector<double> faceCw(h.nFaces, 0.0);
 	copyHostToDevice(d.faces.cw, faceCw);
+
+	// Wall oxygen-consumption rate, same per-face output treatment as cw.
+	std::vector<double> faceOcrWall(h.nFaces, 0.0);
+	copyHostToDevice(d.faces.ocrWall, faceOcrWall);
 
 	// cell arrays
 	copyHostToDevice(d.cells.centerZ, h.cellCenterZ);

@@ -88,18 +88,29 @@ void wallConcentration(const BoundaryFieldDevice& bc, int groupID, double cp, do
 
 	cw = cp;
 
-	int n = 20;
+	int n = 100;
+	const double relTol = 1e-10;
+	const double absTol = 1e-14;
+
 	for (int i = 0; i < n; i++) {
 		double MM = MichaelisMenten(bc, groupID, cw);
 		double inhib = Inhibition(bc, groupID, cw);
+
 		double J = MM * inhib;
 		double dJ = MM * dInhibition(bc, groupID, cw) + dMichaelisMenten(bc, groupID, cw) * inhib;
 
 		double F = h * (cp - cw) - J;
 		double dF = -h - dJ;
 
-		if (fabs(F / dF) < 1e-9) break;
-		cw -= (F / dF);
+		double step = F / dF;
+		cw -= step;
 		cw = fmax(0.0, cw);
+
+		// Mixed tolerance: absTol guards convergence near cw = 0 (where a
+		// pure relative check would never be satisfied), relTol scales with
+		// cw so the check stays meaningful across concentration unit ranges.
+		if (fabs(step) < absTol + relTol * fabs(cw)) {
+			break;
+		}
 	}
 }

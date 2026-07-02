@@ -287,12 +287,14 @@ void SolverGUI::drawLayerEditor(
 		layers.push_back(Layer{});
 	}
 
-	if (!layers.empty() && ImGui::BeginTable("Layers", 5)) {
+	if (!layers.empty() && ImGui::BeginTable("Layers", 7)) {
 		setupTableColumns(
 			column("#", 30.0f),
-			column("k", 90.0f),
-			column("d", 90.0f),
-			column("k = d/k", 90.0f),
+			column("k", 70.0f),
+			column("Unit", 65.0f),
+			column("d", 70.0f),
+			column("Unit", 65.0f),
+			column("R = d/k", 110.0f),
 			column("", 30.0f)
 		);
 		ImGui::TableHeadersRow();
@@ -310,20 +312,26 @@ void SolverGUI::drawLayerEditor(
 			ImGui::Text("%d", i + 1);
 
 			ImGui::TableSetColumnIndex(1);
-			inputDouble("##k", &layer.k);
+			inputDouble("##k", layer.k, varUnits.layerKUnit, Units::diffusionUnits);
 
 			ImGui::TableSetColumnIndex(2);
-			inputDouble("##d", &layer.d);
+			comboUnit("##kUnit", varUnits.layerKUnit, Units::diffusionUnits);
+
+			ImGui::TableSetColumnIndex(3);
+			inputDouble("##d", layer.d, varUnits.layerDUnit, Units::lengthUnits);
+
+			ImGui::TableSetColumnIndex(4);
+			comboUnit("##dUnit", varUnits.layerDUnit, Units::lengthUnits);
 
 			// R is fully derived from D and d; recompute it so the stored value
 			// the solver will read stays in sync with the inputs.
 			layer.R = (layer.k != 0.0) ? layer.d / layer.k : 0.0;
 
-			ImGui::TableSetColumnIndex(3);
+			ImGui::TableSetColumnIndex(5);
 			ImGui::AlignTextToFramePadding();
-			ImGui::Text("%.3g", layer.R);
+			ImGui::Text("%.3g s/m", layer.R);
 
-			ImGui::TableSetColumnIndex(4);
+			ImGui::TableSetColumnIndex(6);
 			if (ImGui::SmallButton("x")) {
 				removeIndex = i;
 			}

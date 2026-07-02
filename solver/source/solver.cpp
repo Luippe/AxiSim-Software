@@ -436,7 +436,6 @@ static void printBoundaryDiagnostics(
 
 void Solver::runSimple(const Mesh& mesh) {
 
-
     // create configs for solver and residual
     Config config{ f, g, itr, varUnits };
     ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
@@ -452,6 +451,7 @@ void Solver::runSimple(const Mesh& mesh) {
 
     fvMesh = mesh.createFVMesh(isStructuredMesh ? config.g.activeCell : emptyActiveCell);
     int N = fvMesh.numCells();
+    int Nface = fvMesh.numFaces();
     config.g.N = N;
 
     if (N <= 0) {
@@ -527,15 +527,22 @@ void Solver::runSimple(const Mesh& mesh) {
         currentIteration = 0;
     }
 
+    // initialize threads, blocks and shared memory
+    mem.init(N, fvMeshDevice.faces.nFaces);
     const int threadsPerBlock = mem.threadsPerBlock;
-    const int blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
-    int faceThreads = 128;
-    int faceBlocks = (fvMeshDevice.faces.nFaces + faceThreads - 1) / faceThreads;
+    const int blocks = mem.blocks;
+    const int faceThreads = mem.faceThreads;
+    const int faceBlocks = mem.faceBlocks;
+    const int shmem = mem.shmem;
+    const int shmemFace = mem.shmemFace;
+
+
     uint8_t* activeCells = fvMeshDevice.cells.active;
     bool transient = configSolver.transient;
     bool addConvectionTerm = configSolver.addConvectionTerm;
     bool solveEnergy = fieldOption.solveEnergy;
     bool solveConcentration = fieldOption.solveConcentration;
+    const int applyNonOrtho = (configSimple.nNonOrthCorrectors > 0) ? 1 : 0;
 
     // open file if transient is turned on
     std::ofstream out;
@@ -554,9 +561,10 @@ void Solver::runSimple(const Mesh& mesh) {
         //    copyDeviceToHostVector(simple.u, N),
         //    copyDeviceToHostVector(simple.v, N),
         //    copyDeviceToHostVector(simple.p, N));
-        CUDA_CHECK(cudaGetLastError());
-        CUDA_CHECK(cudaStreamSynchronize(stream));
+
     }
+    CUDA_CHECK(cudaGetLastError());
+    CUDA_CHECK(cudaStreamSynchronize(stream));
 
     // record time
     CudaTimer timer;
@@ -568,8 +576,7 @@ void Solver::runSimple(const Mesh& mesh) {
     double cp = f.cp;
     double rho = f.rho;
     double thermDiffusivity = k / (rho * cp);
-    CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaStreamSynchronize(stream));
+
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
         cudaMemcpyAsync(simple.uOld, simple.u, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
@@ -583,10 +590,6 @@ void Solver::runSimple(const Mesh& mesh) {
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (tempCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (concCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (massFluxCoeff);
-            CUDA_CHECK(cudaStreamSynchronize(stream));
-
-            // non-orthogonal corrections (diffusion + pressure) share one switch
-            const int applyNonOrtho = (configSimple.nNonOrthCorrectors > 0) ? 1 : 0;
 
             // Cell-centered velocity gradients for the momentum non-orthogonal
             // (cross-diffusion) correction, recomputed once per iteration with the
@@ -627,11 +630,9 @@ void Solver::runSimple(const Mesh& mesh) {
 
             underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, simple.u, simple.momentumRelaxation);
             underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.v, simple.momentumRelaxation);
-            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             getCorrectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, simple.DU);
             getCorrectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.DV);
-            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             // solve velocity
             solveLinearSystem(uCoeff, configSolver, stream, simple.u, simple.uTemp, activeCells, threadsPerBlock);
@@ -662,13 +663,13 @@ void Solver::runSimple(const Mesh& mesh) {
             // final grad(p') (with p' BCs) for the velocity and mass-flux corrections
             computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
 
+
             // update field variables
             updateVelocity << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, bcDevice.p);
 			updateMassFlux << <faceBlocks, faceThreads, 0, stream >> > (config, fvMeshDevice, simple, bcDevice.p, applyNonOrtho);
             updatePressure << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple);
-            CUDA_CHECK(cudaGetLastError());
-            CUDA_CHECK(cudaStreamSynchronize(stream));
 
+            CUDA_CHECK(cudaStreamSynchronize(stream));
             // ======================================================================
             // -----------------------ENERGY EQUATION--------------------------------
             // ======================================================================
@@ -695,12 +696,9 @@ void Solver::runSimple(const Mesh& mesh) {
                 if (addConvectionTerm) {
                     addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, concCoeff, bcDevice.conc);
                 }
-                underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.conc, simple.momentumRelaxation);
+                underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.conc, 0.7);
                 solveLinearSystem(concCoeff, configSolver, stream, simple.conc, simple.concTemp, activeCells, threadsPerBlock);
             }
-
-            CUDA_CHECK(cudaGetLastError());
-            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             // ======================================================================
             // -----------------------RESIDUAL---------------------------------------
@@ -713,12 +711,9 @@ void Solver::runSimple(const Mesh& mesh) {
                     false,
                     ResidualPairs{ uCoeff, simple.u },
                     ResidualPairs{ vCoeff, simple.v },
-                    ResidualPairs{ tempCoeff, simple.temp},
                     ResidualPairs{ concCoeff, simple.conc}
                     );
                 
-                CUDA_CHECK(cudaGetLastError());
-                CUDA_CHECK(cudaStreamSynchronize(stream));
                 continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (
                     fvMeshDevice,
                     massFluxCoeff,
@@ -726,7 +721,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     );
                 
                 CUDA_CHECK(cudaStreamSynchronize(stream));
-                residualAllHost(configResidual, uCoeff, vCoeff, massFluxCoeff, tempCoeff, concCoeff);
+                residualAllHost(configResidual, uCoeff, vCoeff, massFluxCoeff, concCoeff);
                 residualPlot->add(currentIteration, residualsToPrint);
                 printResidualConsole(currentIteration, residualsToPrint, console);
                 //if (contRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
@@ -771,8 +766,16 @@ void Solver::runSimple(const Mesh& mesh) {
     if (solveConcentration) {
         computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, gradientScheme);
     }
-
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     createSolutions(N);
+
+    double* tmpA = deviceAlloc<double>(Nface);
+    double* tmpB = deviceAlloc<double>(Nface);
+
+    reduction(Nface, faceThreads, shmemFace, stream, tmpA, tmpB, fvMeshDevice.faces.ocrWall, &scalarSolutions.ocr);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    printf("%.12f\n",scalarSolutions.ocr);
 
     //scalarSolutions.ocr = getOCR();
     //mFlux = SolutionField{copyDevice}

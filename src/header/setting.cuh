@@ -65,8 +65,24 @@ struct GridConfig {
 };
 
 struct MemoryConfig {
+
 	int threadsPerBlock = 512;
-	int shmem = threadsPerBlock * sizeof(double);
+	int faceThreads = 128;
+
+	int shmem = 0;
+	int shmemFace = 0;
+	int blocks = 0;
+	int faceBlocks = 0;
+
+	void init(int N, int NFaces) {
+
+		shmem = threadsPerBlock * sizeof(double);
+		shmemFace = faceThreads * sizeof(double);
+
+		blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
+		faceBlocks = (NFaces + faceThreads - 1) / faceThreads;
+
+	}
 };
 
 // fluid variables

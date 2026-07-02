@@ -34,6 +34,10 @@ inline void printOne(bool value) {
     std::printf("%s", value ? "true" : "false");
 }
 
+inline void printOne(size_t value) {
+    std::printf("%zu", value);
+}
+
 template<typename... Args>
 void print(const Args&... args) {
     ((printOne(args), std::printf(" ")), ...);

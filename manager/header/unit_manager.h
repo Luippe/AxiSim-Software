@@ -22,6 +22,9 @@ struct VariableUnits {
 
     std::uint8_t VmaxUnit = 0;
 
+    // wall layers
+    std::uint8_t layerKUnit = 0;
+    std::uint8_t layerDUnit = 0;
 
 };
 
@@ -105,25 +108,29 @@ namespace Units {
         { "um^2/s",  1.0e-12 }
     } };
 
-    // Base unit is mol/m^3 (SI). Molar units are per-litre, so 1 mol/L = 1 mol
-    // / 1e-3 m^3 = 1e3 mol/m^3. Note mM is numerically identical to mol/m^3.
-    inline constexpr std::array<UnitOption, 6> concentrationUnits = { {
-        { "mol/m^3", 1.0    },   // base unit
-        { "M",       1.0e3  },   // mol/L  (molar)
-        { "mM",      1.0    },   // mmol/L (millimolar) == mol/m^3
-        { "uM",      1.0e-3 },   // umol/L (micromolar)
-        { "nM",      1.0e-6 },   // nmol/L (nanomolar)
-        { "nmol/mL", 1.0e-3 }    // == uM, lab-native volumetric
+    // Base unit is nmol/m^3. 1 mol = 1e9 nmol, so 1 mol/m^3 = 1e9 nmol/m^3.
+    // Molar units are per-litre: 1 mol/L = 1e3 mol/m^3 = 1e12 nmol/m^3.
+    inline constexpr std::array<UnitOption, 8> concentrationUnits = { {
+        { "nmol/m^3",  1.0    },   // base unit
+        { "mol/m^3",   1.0e9  },
+        { "M",         1.0e12 },   // mol/L  (molar)
+        { "mM",        1.0e9  },   // mmol/L (millimolar) == mol/m^3
+        { "uM",        1.0e6  },   // umol/L (micromolar)
+        { "nM",        1.0e3  },   // nmol/L (nanomolar)
+        { "nmol/mL",   1.0e6  },   // == uM, lab-native volumetric
+        { "nmol/mm^3", 1.0e9  }    // == mol/m^3 == mM
     } };
 
     // Base unit is nmol/(m^2 * s). 1 cm^2 = 1e-4 m^2, so a per-cm^2 flux is
-    // 1e4x larger numerically; molar prefixes scale the amount term.
-    inline constexpr std::array<UnitOption, 5> VmaxUnits = { {
+    // 1e4x larger numerically; 1 mm^2 = 1e-6 m^2 makes a per-mm^2 flux 1e6x
+    // larger; molar prefixes scale the amount term.
+    inline constexpr std::array<UnitOption, 6> VmaxUnits = { {
         { "nmol/(m^2*s)",  1.0    },   // base unit
         { "mol/(m^2*s)",   1.0e9  },
         { "umol/(m^2*s)",  1.0e3  },
         { "pmol/(m^2*s)",  1.0e-3 },
-        { "nmol/(cm^2*s)", 1.0e4  }
+        { "nmol/(cm^2*s)", 1.0e4  },
+        { "nmol/(mm^2*s)", 1.0e6  }
     } };
 
     inline constexpr std::array<UnitOption, 4> dynamicViscosityUnits = { {

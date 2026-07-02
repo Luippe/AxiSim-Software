@@ -262,6 +262,7 @@ endif()
 # PROJECT_SOURCES at CMakeLists.txt:24 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cu")
 set(OLD_GLOB
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/concentration_equation.cu"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/energy_equation.cu"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/jacobi_pcg.cu"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/source/linear_solver.cu"
@@ -278,6 +279,7 @@ endif()
 # PROJECT_HEADERS at CMakeLists.txt:41 (file)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/*.cuh")
 set(OLD_GLOB
+  "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/concentration_equation.cuh"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/energy_equation.cuh"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/jacobi_pcg.cuh"
   "C:/Users/luits/source/repos/Concentration Solver Software/Concentration Solver Software/solver/header/linear_solver.cuh"

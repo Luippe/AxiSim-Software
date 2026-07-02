@@ -3,6 +3,8 @@
 #include "solver_struct.h"
 #include "boundary_struct.h"
 
+// reduction kernel
+void reduction(int N, int threadsPerBlock, size_t shmem, cudaStream_t stream, double* tmpA, double* tmpB, double* in, double* store);
 
 // computational helper functions
 __device__

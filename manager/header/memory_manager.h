@@ -30,3 +30,7 @@ BoundarySolverDevice createBoundarySolverDevice(
 	const std::vector<BoundarySegmentGroup>& boundaryGroups,
 	const SolverFieldOption& option
 );
+
+// free device memory held by the boundary field / solver structs
+void freeBoundaryFieldDevice(BoundaryFieldDevice& d);
+void freeBoundarySolverDevice(BoundarySolverDevice& dBC);
