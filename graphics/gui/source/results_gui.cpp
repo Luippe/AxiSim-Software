@@ -59,11 +59,6 @@ void ResultsGUI::drawPropertiesPanel() {
 			labelRow("Filter");
 			createSimpleCombo("##Filter", results.compareType, (int&)results.currentCompareType, IM_ARRAYSIZE(results.compareType));
 
-			labelRow("Scale");
-			if (comboUnit("##Unit", results.sceneScale.index, Units::lengthUnits)) {
-				scene.updateSceneScale();
-			}
-
 			labelRow("Value");
 			if (results.currentCompareType == CompareType::Between || results.currentCompareType == CompareType::Exclude) {
 				ImGui::InputFloat("##LowerBound", &results.filterValues.valueLower, 0.0f, 0.0f);

@@ -834,8 +834,8 @@ double secondOrderUpwindCorrection(double F, double phiLL, double phiL, double p
 // ==============================================================
 // ==================DIFFUSION TERM==============================
 // ==============================================================
-__global__
-void addDiffusionCoefficient(
+__global__ void
+addDiffusionCoefficient(
 	FVMeshDevice mesh,
 	Coefficients coeff,
 	BoundaryFieldDevice bc,
@@ -934,6 +934,7 @@ void addDiffusionCoefficient(
 			if (isDirichletType(bcType)) {
 				AC[n] += K;
 				b[n] += K * bcValue;
+
 			}
 			else if (isNeumannType(bcType)) {
 				// For zero-gradient Neumann, bcValue = 0, so this adds nothing.
@@ -946,57 +947,32 @@ void addDiffusionCoefficient(
 				b[n] += K * bcValue * (1 - ((length * length) / (totalLength * totalLength)));
 			}
 			else if (isMichaelisMentenType(bcType)) {
-				double h = (dPF / constVar) + bc.RtotByGroup[groupID];
 
+				double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
+				double h = 1 / Rtot;
+				double& cw = mesh.faces.cw[faceID];
 
-				double cw;
-
-				wallConcentration(bc, groupID, phi[n], cw, h);
-
-				//mesh.faces.ocrWall[faceID] = area * h * (phi[n] - cw);
+				wallConcentrationMichaelisMenten(bc, groupID, phi[n], cw, h);
 				mesh.faces.ocrWall[faceID] = area * MichaelisMenten(bc, groupID, cw) * Inhibition(bc, groupID, cw);
-				mesh.faces.cw[faceID] = cw;
-				//printf("%e, %e\n", area, h);
+
+				//printf("%e, %e, %e, %e, %e, %e\n",cw, area, Rtot, dPF, constVar, bc.RtotByGroup[groupID]);
 				AC[n] += area * h;
 				b[n] += area * h * cw;
 
 			}
 			else if (isHillType(bcType)) {
-				//double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
-				//double h = 1.0 / Rtot;
 
-				//wallConcentration(bc, groupID, phi[n], mesh.faces.cw[faceID], h);
+				double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
+				double h = 1 / Rtot;
+				double cw;
 
-				//AC[n] += area * h;
-				//b[n] += area * h * mesh.faces.cw[faceID];
-				//// Hill wall consumption: J = Vmax * c^n / (Km^n + c^n), a nonlinear
-				//// sink. Linearise about c* = phi[n] (deferred / Patankar):
-				////   dJ/dc = Vmax * n * Km^n * c^(n-1) / (Km^n + c^n)^2   (>= 0)
-				////   AC += area*dJ/dc ;  b += area*(dJ/dc*c - J)
-				//// Uses the Hill coefficient n; m is carried on the device but is
-				//// not part of this single-exponent form.
+				wallConcentrationHill(bc, groupID, phi[n], cw, h);
 
-				//double Vmax = bc.vmaxByGroup ? bc.vmaxByGroup[groupID] : 0.0;
-				//double Km   = bc.kmByGroup   ? bc.kmByGroup[groupID]   : 0.0;
-				//double nexp = bc.nByGroup    ? bc.nByGroup[groupID]    : 1.0;
-				//double c    = phi[n];
+				mesh.faces.ocrWall[faceID] = area * Hill(bc, groupID, cw) * Inhibition(bc, groupID, cw);
+				mesh.faces.cw[faceID] = cw;
 
-				//if (Vmax > 0.0 && Km > 0.0 && c > 1.0e-30) {
-
-				//	double cn  = pow(c, nexp);
-				//	double kn = bc.kmNByGroup[groupID];
-				//	double den = kn + cn;
-
-				//	double hill = Hill(bc, groupID, c);
-				//	double dhill = dHill(bc, groupID, c);
-				//	double inhibition = Inhibition(bc, groupID, c);
-				//	double dinhibition = dInhibition(bc, groupID, c);
-
-				//	double J = hill * dhill;
-				//	double dJdc = dhill * inhibition + hill * dinhibition;
-
-				//	
-				//}
+				AC[n] += area * h;
+				b[n] += area * h * cw;
 			}
 		}
 	}
@@ -1087,10 +1063,8 @@ void addConvectionContribution(
 		}
 	}
 	else if (isNeumannType(bcType) || isFullyDevelopedType(bcType)) {
-		// zero-gradient / fully developed / wall-consumption types:
-		// phi_f = phi_P. MM/Hill walls are impermeable (F should be ~0 there);
-		// this just keeps any residual numerical flux consistent instead of
-		// silently dropping it, matching every other boundary type here.
+		// zero-gradient / fully developed types:
+		// phi_f = phi_P.
 		coeff.AC[n] += F;
 	}
 }
@@ -1173,6 +1147,70 @@ void addConvectionCoefficient(
 			);
 		}
 	}
+}
+
+// ==============================================================
+// ============ WALL CONSUMPTION DIAGNOSTIC =====================
+// ==============================================================
+// Run once after the solve converges. For each reactive wall face it recomputes
+// the same dPF / h the assembly used, and accumulates totals so the host can
+// answer: how much substrate the wall removes, whether it is reaction- or
+// mass-transfer-limited (OCR vs area*h*cp), and what fraction of the inlet
+// supply that represents.
+__global__
+void wallConsumptionDiagnostic(
+	FVMeshDevice mesh,
+	VariablesSimple simple,
+	BoundaryFieldDevice bc,
+	const double* phi,
+	double D,
+	double* diag
+) {
+	int f = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (f >= mesh.faces.nFaces) return;
+	if (mesh.faces.neighbor[f] >= 0) return;			// interior face
+
+	int owner = mesh.faces.owner[f];
+	if (owner < 0) return;
+	if (!mesh.cells.active[owner]) return;
+
+	int groupID = mesh.faces.boundaryGroupID[f];
+	if (groupID < 0 || groupID >= bc.nGroups) return;
+
+	uint8_t bcType = bc.typeByGroup[groupID];
+
+	// mDot is stored positive outward from the owner, so F < 0 is inflow. Count
+	// substrate carried in through Dirichlet-concentration inlet faces.
+	double F = simple.mDot[f];
+	if (isDirichletType(bcType) && F < 0.0) {
+		atomicAdd(&diag[1], -F * bc.valueByGroup[groupID]);
+	}
+
+	if (!(isMichaelisMentenType(bcType) || isHillType(bcType))) return;
+
+	double normalZ, normalR;
+	getOutwardNormalForCell(mesh, owner, f, normalZ, normalR);
+
+	double dPF = getDistanceCellToFace(mesh, owner, f, normalZ, normalR);
+	if (dPF <= 0.0) return;
+
+	double h = 1.0 / (dPF / D + bc.RtotByGroup[groupID]);
+	double area = mesh.faces.area[f];
+	double cp = phi[owner];
+	double cw = mesh.faces.cw[f];
+
+	atomicAdd(&diag[0], mesh.faces.ocrWall[f]);			// total wall OCR
+	atomicAdd(&diag[2], area * h * cp);					// mass-transfer ceiling
+	atomicAdd(&diag[3], 1.0);							// reactive face count
+	atomicAdd(&diag[4], cw);
+	atomicAdd(&diag[5], dPF);
+	atomicAdd(&diag[6], h);
+	atomicAdd(&diag[7], cp);
+	// Kinetics as the device actually sees them (base units), to catch a stale
+	// or mis-scaled Vmax / Km that wouldn't match what the GUI displays.
+	atomicAdd(&diag[8], bc.vmaxByGroup ? bc.vmaxByGroup[groupID] : 0.0);
+	atomicAdd(&diag[9], bc.kmByGroup ? bc.kmByGroup[groupID] : 0.0);
 }
 
 // ==============================================================

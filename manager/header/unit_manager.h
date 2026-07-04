@@ -1,5 +1,7 @@
 #pragma once
 #include <array>
+#include <cmath>
+#include <algorithm>
 
 struct VariableUnits {
 
@@ -152,11 +154,24 @@ namespace Units {
         { "um^2/s",  1.0e-12 }
     } };
 
-    inline constexpr std::array<UnitOption, 3> lengthUnits = { {
+    inline constexpr std::array<UnitOption, 4> lengthUnits = { {
         { "m",   1.0    },
+        { "cm",  1.0e-2 },
         { "mm",  1.0e-3 },
         { "um",  1.0e-6 }
     } };
+
+    // find the lengthUnits entry whose display scale (1/toBase) matches `scale`;
+    // falls back to `fallback` if nothing matches (e.g. scale was set manually).
+    inline uint8_t lengthUnitIndexForScale(double scale, uint8_t fallback = 0) {
+        for (size_t i = 0; i < lengthUnits.size(); i++) {
+            double candidate = 1.0 / lengthUnits[i].toBase;
+            if (std::abs(candidate - scale) <= 1e-6 * std::max(1.0, candidate)) {
+                return (uint8_t)(i);
+            }
+        }
+        return fallback;
+    }
 
     inline constexpr std::array<UnitOption, 2> timeUnits = { {
         { "s",    1.0  },

@@ -21,6 +21,7 @@ struct AppAssets {
 	TextureBuffer selectIcon;
 	TextureBuffer trimIcon;
 	TextureBuffer crossArrowIcon;
+	TextureBuffer gridIcon;
 };
 
 struct AppFonts {
@@ -46,6 +47,11 @@ enum class CompareType {
 enum class ShadingType {
 	Interp,
 	Flat
+};
+
+struct LengthScale {
+	uint8_t index = 0;
+	float value = 1.0f;
 };
 
 struct SurfacePoint {

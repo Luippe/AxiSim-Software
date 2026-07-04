@@ -739,13 +739,9 @@ void loadFromExplorerSolver(Solver& solver) {
 // ====================================================
 void saveFromPathResults(std::ofstream& out, const Results& results) {
 
-	saveBinary(out, results.sceneScale);
-
 }
 
 void loadFromPathResults(std::ifstream& in, Results& results) {
-
-	readBinary(in, results.sceneScale);
 
 }
 

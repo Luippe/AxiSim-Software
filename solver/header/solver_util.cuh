@@ -124,8 +124,8 @@ void copyVector(double* vec1, double* vec2, int N);
 __device__
 double faceValue(double phiC, double phiF, double dFf, double dFC);
 
-__global__
-void addDiffusionCoefficient(
+__global__ void
+addDiffusionCoefficient(
 	FVMeshDevice mesh,
 	Coefficients coeff,
 	BoundaryFieldDevice bc,
@@ -134,13 +134,6 @@ void addDiffusionCoefficient(
 	const double* gradPhiR,
 	int applyNonOrtho,
 	double constVar
-);
-
-__global__
-void addRadialMomentumCylindricalSource(
-	ConfigSolver config,
-	FVMeshDevice mesh,
-	Coefficients vCoeff
 );
 
 __global__
@@ -155,6 +148,22 @@ void addConvectionCoefficient(
 	VariablesSimple simple,
 	Coefficients coeff,
 	BoundaryFieldDevice bc
+);
+
+// One-shot post-solve diagnostic for reactive (Michaelis-Menten / Hill) walls.
+// Accumulates per-face contributions into diag[0..7] via atomics; the host then
+// reports wall consumption, the mass-transfer ceiling, and depletion. Layout:
+//   [0] total wall OCR      [amount/s]   [1] inlet substrate flux   [amount/s]
+//   [2] mass-transfer ceil  [amount/s]   [3] reactive face count
+//   [4] sum(cw)  [5] sum(dPF)  [6] sum(h)  [7] sum(cp)
+__global__
+void wallConsumptionDiagnostic(
+	FVMeshDevice mesh,
+	VariablesSimple simple,
+	BoundaryFieldDevice bc,
+	const double* phi,
+	double D,
+	double* diag
 );
 
 __global__

@@ -376,6 +376,7 @@ protected:
 	bool toggleDrawCircle = false;
 	bool toggleDrawRect = false;
 	bool toggleRuler = false;
+	bool toggleGrid = false;
 
 	ImVec2 currentMousePos = ImVec2(0.0f, 0.0f);
 	ImVec2 buttonSize = ImVec2(30.0f, 30.0f);
@@ -396,6 +397,13 @@ protected:
 	Rect canvasRect;
 	Camera2D camera;
 
+	// tracks the last project display scale seen by updateLengthScale(), so a
+	// change can be detected and the camera zoom rescaled accordingly. Also
+	// used to label the grid spacing in the project's chosen display unit.
+	double lastLengthScale = 1.0;
+	const char* currentUnitName = "m";
+	bool lengthScaleInitialized = false;
+
 	// image dimensions
 	int imageWidth = 0, imageHeight = 0;
 	ImVec2 imageMin = ImVec2(0.0f, 0.0f);
@@ -405,6 +413,11 @@ protected:
 	// ======================================================================
 	// -----------------------HELPER FUNCTION--------------------------------
 	// ======================================================================
+	// rescale the 2D camera's zoom to match a change in the project's display
+	// scale (Project::scale). No-op the first time it is called, since there
+	// is no previous scale to compare against yet. Also records unitName for
+	// labeling the grid spacing.
+	void updateLengthScale(double currentScale, const char* unitName);
 
 	bool isMouseNearImage(ImGuiIO& io);
 
@@ -435,6 +448,17 @@ protected:
 	// ======================================================================
 	// draw the axes in 2d space
 	void drawAxes(ImDrawList* drawList);
+
+	// draw grid lines across the visible canvas when toggleGrid is set.
+	// spacing adapts with zoom so lines stay a reasonable pixel distance apart.
+	void drawGrid(ImDrawList* drawList);
+
+	// world-space spacing between grid lines/vertices at the current zoom
+	// (a "nice" 1/2/5 x 10^n step). Shared by drawGrid() and grid snapping.
+	double gridWorldStep() const;
+
+	// round a world point to the nearest grid vertex
+	Vec2 snapToGridVertex(Vec2 world) const;
 
 	// draws the main surface. also updates imageMin, imageMax, and imageSize
 	void drawSurface(const Rect& rect);

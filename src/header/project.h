@@ -17,5 +17,6 @@ public:
 	Results results{ config };
 
 	ViewTab currentTab = ViewTab::TAB_MESH;
+	LengthScale lengthScale;
 
 };

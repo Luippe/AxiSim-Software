@@ -577,6 +577,7 @@ void Solver::runSimple(const Mesh& mesh) {
     double rho = f.rho;
     double thermDiffusivity = k / (rho * cp);
 
+    //print(Nface, N, threadsPerBlock, blocks);
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
         cudaMemcpyAsync(simple.uOld, simple.u, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
@@ -604,8 +605,8 @@ void Solver::runSimple(const Mesh& mesh) {
             // create coefficients for velocity and pressure correction equations
             addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, bcDevice.u, simple.v, simple.gradUZ, simple.gradUR, applyNonOrtho, f.mu);
             addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, bcDevice.v,  simple.u, simple.gradVZ, simple.gradVR, applyNonOrtho, f.mu);
+            
             //addRadialMomentumCylindricalSource << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, vCoeff);
-
             if (configSolver.addConvectionTerm) {
                 addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, uCoeff, bcDevice.u);
                 addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, vCoeff, bcDevice.v);
@@ -663,13 +664,12 @@ void Solver::runSimple(const Mesh& mesh) {
             // final grad(p') (with p' BCs) for the velocity and mass-flux corrections
             computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
 
-
             // update field variables
             updateVelocity << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, bcDevice.p);
 			updateMassFlux << <faceBlocks, faceThreads, 0, stream >> > (config, fvMeshDevice, simple, bcDevice.p, applyNonOrtho);
             updatePressure << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple);
 
-            CUDA_CHECK(cudaStreamSynchronize(stream));
+
             // ======================================================================
             // -----------------------ENERGY EQUATION--------------------------------
             // ======================================================================
@@ -713,13 +713,19 @@ void Solver::runSimple(const Mesh& mesh) {
                     ResidualPairs{ vCoeff, simple.v },
                     ResidualPairs{ concCoeff, simple.conc}
                     );
-                
+                if (cudaError_t errResidualAll = cudaGetLastError(); errResidualAll != cudaSuccess) {
+                    printf("residualAll launch error: %s\n", cudaGetErrorString(errResidualAll));
+                }
+
                 continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (
                     fvMeshDevice,
                     massFluxCoeff,
                     simple
                     );
-                
+                if (cudaError_t errContinuity = cudaGetLastError(); errContinuity != cudaSuccess) {
+                    printf("continuityResidual launch error: %s\n", cudaGetErrorString(errContinuity));
+                }
+                CUDA_CHECK(cudaGetLastError());
                 CUDA_CHECK(cudaStreamSynchronize(stream));
                 residualAllHost(configResidual, uCoeff, vCoeff, massFluxCoeff, concCoeff);
                 residualPlot->add(currentIteration, residualsToPrint);
@@ -775,7 +781,53 @@ void Solver::runSimple(const Mesh& mesh) {
     reduction(Nface, faceThreads, shmemFace, stream, tmpA, tmpB, fvMeshDevice.faces.ocrWall, &scalarSolutions.ocr);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    printf("%.12f\n",scalarSolutions.ocr);
+    // Reactive-wall diagnostic: reports whether the wall is reaction- or
+    // mass-transfer-limited and what fraction of the inlet supply it consumes.
+    if (solveConcentration) {
+        double* diag = deviceAlloc<double>(10);
+        CUDA_CHECK(cudaMemsetAsync(diag, 0, 10 * sizeof(double), stream));
+
+        int diagBlocks = (Nface + faceThreads - 1) / faceThreads;
+        wallConsumptionDiagnostic << <diagBlocks, faceThreads, 0, stream >> > (
+            fvMeshDevice, simple, bcDevice.conc, simple.conc, f.D, diag);
+
+        double hd[10] = {};
+        CUDA_CHECK(cudaMemcpyAsync(hd, diag, 10 * sizeof(double), cudaMemcpyDeviceToHost, stream));
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        cudaFree(diag);
+
+        double totalOCR = hd[0], inlet = hd[1], ceiling = hd[2], nWall = hd[3];
+
+        std::ostringstream d;
+        d << "\n==== Wall consumption diagnostic (concentration) ====\n";
+        if (nWall < 0.5) {
+            d << "  no reactive (Michaelis-Menten / Hill) wall faces found\n";
+        }
+        else {
+            d << std::scientific << std::setprecision(4);
+            d << "  reactive wall faces : " << (long long)nWall << "\n";
+            d << "  Vmax (solver sees)  : " << hd[8] / nWall << " (base nmol/m^2/s)\n";
+            d << "  Km   (solver sees)  : " << hd[9] / nWall << " (base nmol/m^3)\n";
+            d << "  mean dPF            : " << hd[5] / nWall << " m\n";
+            d << "  mean h (D/dPF)      : " << hd[6] / nWall << " m/s\n";
+            d << "  mean cw / cp        : " << hd[4] / nWall << " / " << hd[7] / nWall
+              << "   (cw->0 => mass-transfer limited)\n";
+            d << "  total wall OCR      : " << totalOCR << " (amount/s)\n";
+            d << "  mass-transfer ceil  : " << ceiling << " (amount/s)";
+            if (ceiling > 0.0) {
+                d << std::fixed << std::setprecision(1)
+                  << "   [OCR/ceil = " << 100.0 * totalOCR / ceiling << " %]";
+            }
+            d << "\n" << std::scientific << std::setprecision(4);
+            d << "  inlet supply        : " << inlet << " (amount/s)\n";
+            if (inlet > 0.0) {
+                d << std::fixed << std::setprecision(2)
+                  << "  >> depletion (OCR/inlet) : " << 100.0 * totalOCR / inlet << " %\n";
+            }
+        }
+        d << "=====================================================\n";
+        console->addLine(d.str());
+    }
 
     //scalarSolutions.ocr = getOCR();
     //mFlux = SolutionField{copyDevice}

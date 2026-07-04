@@ -29,8 +29,6 @@ public:
 
 	void generate();
 
-	void updateSceneScale();
-
 	// create buffer for the cylinder and cylinder instances using the vertices and indices from results class
 	void createBuffer();
 

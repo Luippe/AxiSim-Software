@@ -17,12 +17,7 @@ class Solver;
 class Results {
 public:
 
-	struct SceneScale {
-		uint8_t index = 0;
-		float value = 1.0f;
-	};
 
-	SceneScale sceneScale;
 
 	CompareType currentCompareType = CompareType::GreaterThan;
 	FilterValues filterValues;

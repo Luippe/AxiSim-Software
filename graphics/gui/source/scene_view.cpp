@@ -62,11 +62,6 @@ bool SceneView::compareFloat(float value, FilterValues& filterValues) {
 	return false;
 }
 
-void SceneView::updateSceneScale() {
-
-	results.sceneScale.value = (float)(1.0 / Units::lengthUnits[results.sceneScale.index].toBase);
-
-}
 
 void SceneView::handleMouse() {
 
@@ -600,7 +595,7 @@ void SceneView::render() {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	// load transformation matrix for solution shader
-	glm::mat4 model = scaleMat4(camera.model, results.sceneScale.value);
+	glm::mat4 model = scaleMat4(camera.model, (float)(project.lengthScale.value));
 	shaderLine.loadTransformationMatrix(model, camera.view, camera.projection);
 	shaderResults.loadTransformationMatrix(model, camera.view, camera.projection);
 	shaderResultsUnstructured.loadTransformationMatrix(model, camera.view, camera.projection);

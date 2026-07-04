@@ -60,7 +60,7 @@ BoundaryFieldHost createBoundaryFieldHost(
 	h.v2ByGroup.resize(nGroups, 0.0);
 	// Total wall-layer resistance per group; 0 means no layer stack.
 	h.RtotByGroup.resize(nGroups, 0.0);
-
+	
 	for (const BoundarySegmentGroup& group : boundaryGroups) {
 
 		if (group.id < 0) {
@@ -155,7 +155,7 @@ BoundaryFieldDevice createBoundaryFieldDevice(
 
 	std::vector<double> kmN(nGroups, 0.0);
 	std::vector<double> k2M(nGroups, 0.0);
-	print(nGroups);
+	//print(nGroups);
 	for (size_t g = 0; g < nGroups; ++g) {
 		kmN[g] = std::pow(h.kmByGroup[g], h.nByGroup[g]);
 		k2M[g] = std::pow(h.k2ByGroup[g], h.mByGroup[g]);

@@ -235,6 +235,18 @@ void Camera2D::calculateZoom(double yoffset, const ImVec2& focusScreen) {
 	center.r += beforeZoom.r - afterZoom.r;
 }
 
+void Camera2D::rescaleZoom(double ratio) {
+	if (ratio <= 0.0) {
+		return;
+	}
+
+	unitsPerPixel = std::clamp(
+		unitsPerPixel * ratio,
+		minUnitsPerPixel,
+		maxUnitsPerPixel
+	);
+}
+
 void Camera2D::home() {
 	initPosition();
 }

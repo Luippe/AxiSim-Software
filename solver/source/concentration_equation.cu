@@ -46,15 +46,19 @@ double dInhibition(const BoundaryFieldDevice& bc, int groupID, double c) {
 
 	double V2 = bc.v2ByGroup ? bc.v2ByGroup[groupID] : 0.0;
 
-	if (V2 == 0.0) return 1.0;
+	// Inhibition() is the constant 1.0 when V2 == 0, so its derivative is 0.0.
+	// Returning 1.0 here corrupts the Newton Jacobian in wallConcentration*(),
+	// stalling the solve so the wall barely consumes regardless of Vmax.
+	if (V2 == 0.0) return 0.0;
 
 	double K2 = bc.k2ByGroup ? bc.k2ByGroup[groupID] : 0.0;
 	double K2m = bc.k2MByGroup ? bc.k2MByGroup[groupID] : 0.0;
 	double m = bc.mByGroup ? bc.mByGroup[groupID] : 1.0;
 
 	double cm = pow(c, m);
+	double cm1 = pow(c, m - 1.0);
 
-	return (-(m * V2 * K2m) * (cm) / (c * (K2m + cm) * (K2m + cm)));
+	return (-(m * V2 * K2m) * (cm1) / ((K2m + cm) * (K2m + cm)));
 }
 
 __device__
@@ -78,13 +82,14 @@ double dHill(const BoundaryFieldDevice& bc, int groupID, double c) {
 	double n = bc.nByGroup ? bc.nByGroup[groupID] : 1.0;
 
 	double cn = pow(c, n);
+	double cn1 = pow(c, n - 1.0);
 
-	return ((n * Vmax * Kmn) * (cn) / (c * (Kmn + cn) * (Kmn + cn)));
+	return ((n * Vmax * Kmn) * (cn1) / ((Kmn + cn) * (Kmn + cn)));
 
 }
 
 __device__
-void wallConcentration(const BoundaryFieldDevice& bc, int groupID, double cp, double& cw, double h) {
+void wallConcentrationMichaelisMenten(const BoundaryFieldDevice& bc, int groupID, double cp, double& cw, double h) {
 
 	cw = cp;
 
@@ -92,6 +97,11 @@ void wallConcentration(const BoundaryFieldDevice& bc, int groupID, double cp, do
 	const double relTol = 1e-10;
 	const double absTol = 1e-14;
 
+	// #pragma unroll 1: this loop almost always converges (breaks) in a
+	// handful of iterations; the compiler doesn't know that statically and
+	// was fully unrolling all 100 iterations into one function, blowing up
+	// register usage enough to fail launch on some GPUs. Force a real loop.
+	#pragma unroll 1
 	for (int i = 0; i < n; i++) {
 		double MM = MichaelisMenten(bc, groupID, cw);
 		double inhib = Inhibition(bc, groupID, cw);
@@ -114,3 +124,38 @@ void wallConcentration(const BoundaryFieldDevice& bc, int groupID, double cp, do
 		}
 	}
 }
+
+__device__
+void wallConcentrationHill(const BoundaryFieldDevice& bc, int groupID, double cp, double& cw, double h) {
+
+	cw = cp;
+
+	int n = 100;
+	const double relTol = 1e-10;
+	const double absTol = 1e-14;
+
+	// #pragma unroll 1: see wallConcentrationMichaelisMenten above.
+	#pragma unroll 1
+	for (int i = 0; i < n; i++) {
+		double hill = Hill(bc, groupID, cw);
+		double inhib = Inhibition(bc, groupID, cw);
+
+		double J = hill * inhib;
+		double dJ = hill * dInhibition(bc, groupID, cw) + dHill(bc, groupID, cw) * inhib;
+
+		double F = h * (cp - cw) - J;
+		double dF = -h - dJ;
+
+		double step = F / dF;
+		cw -= step;
+		cw = fmax(0.0, cw);
+
+		// Mixed tolerance: absTol guards convergence near cw = 0 (where a
+		// pure relative check would never be satisfied), relTol scales with
+		// cw so the check stays meaningful across concentration unit ranges.
+		if (fabs(step) < absTol + relTol * fabs(cw)) {
+			break;
+		}
+	}
+}
+

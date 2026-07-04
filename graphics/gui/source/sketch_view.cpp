@@ -10,6 +10,7 @@
 #include "geometry.h"
 #include "math_func.h"
 #include "keyboard_manager.h"
+#include "unit_manager.h"
 
 using namespace sketchmath;
 using namespace Shortcuts;
@@ -389,20 +390,24 @@ std::string SketchView::getDimensionLabel(
 	const SketchDimension& dimension
 ) const {
 	double value = geometry.sketch.getDimensionValue(dimension);
+
+	const UnitOption& unit = Units::lengthUnits[gui.project.lengthScale.index];
+	double displayValue = fromBaseValue(value, unit);
+
 	char buffer[64] = {};
 
 	switch (dimension.type) {
 	case SketchDimensionType::LineLength:
-		std::snprintf(buffer, sizeof(buffer), "%.6g", value);
+		std::snprintf(buffer, sizeof(buffer), "%.6g %s", displayValue, unit.name);
 		break;
 	case SketchDimensionType::CircleRadius:
-		std::snprintf(buffer, sizeof(buffer), "R %.6g", value);
+		std::snprintf(buffer, sizeof(buffer), "R %.6g %s", displayValue, unit.name);
 		break;
 	case SketchDimensionType::RectangleWidth:
-		std::snprintf(buffer, sizeof(buffer), "W %.6g", value);
+		std::snprintf(buffer, sizeof(buffer), "W %.6g %s", displayValue, unit.name);
 		break;
 	case SketchDimensionType::RectangleHeight:
-		std::snprintf(buffer, sizeof(buffer), "H %.6g", value);
+		std::snprintf(buffer, sizeof(buffer), "H %.6g %s", displayValue, unit.name);
 		break;
 	}
 
@@ -465,6 +470,7 @@ void SketchView::copyActiveSurfaceToClipboard() {
 	drawCanvas(drawList, canvasRect, 5.0f);
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
+	drawGrid(drawList);
 	drawAxes(drawList);
 	drawSketchEntities(drawList);
 	drawTrimPreview(drawList);
@@ -536,6 +542,12 @@ void SketchView::drawToolBar() {
 
 	addToolbarSeparator(toolbarHeight);
 
+	std::string gridText = shortcutText("Display Grid", circleToolShortcut);
+	if (addImageButtonToggle("DisplayGrid", gridText.c_str(), assets.gridIcon, buttonSize, toggleGrid)) {
+
+	}
+	ImGui::SameLine();
+
 	if (addImageButton("Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
 		pendingCopyWidth = frameBuffer.width;
 		pendingCopyHeight = frameBuffer.height;
@@ -549,15 +561,21 @@ void SketchView::drawToolBar() {
 }
 
 Vec2 SketchView::getSnappedWorld(ImVec2 mouse) {
-	if (!toggleSnapping) {
-		return camera.screenToWorld(mouse);
+	if (toggleSnapping) {
+		if (auto snap = findSnap(mouse)) {
+			return snap->world;
+		}
 	}
 
-	if (auto snap = findSnap(mouse)) {
-		return snap->world;
+	Vec2 world = camera.screenToWorld(mouse);
+
+	// grid vertex snapping: falls back to this when entity snapping is off
+	// or found nothing nearby, while Control is held and the grid is shown
+	if (toggleGrid && ImGui::GetIO().KeyCtrl) {
+		world = snapToGridVertex(world);
 	}
 
-	return camera.screenToWorld(mouse);
+	return world;
 }
 
 void SketchView::setInitLeftMouse() {
@@ -1210,16 +1228,24 @@ void SketchView::drawDimensionEditor() {
 		nullptr,
 		ImGuiWindowFlags_AlwaysAutoResize
 	)) {
+		const UnitOption& unit = Units::lengthUnits[gui.project.lengthScale.index];
+		double displayValue = fromBaseValue(dimensionEditValue, unit);
+
 		ImGui::SetNextItemWidth(150.0f);
 
 		bool enterPressed = ImGui::InputDouble(
 			"##Value",
-			&dimensionEditValue,
+			&displayValue,
 			0.0,
 			0.0,
 			"%.6g",
 			ImGuiInputTextFlags_EnterReturnsTrue
 		);
+
+		ImGui::SameLine();
+		ImGui::TextDisabled("%s", unit.name);
+
+		dimensionEditValue = toBaseValue(displayValue, unit);
 
 		bool applyPressed = ImGui::Button("Apply");
 		ImGui::SameLine();
@@ -1419,11 +1445,28 @@ void SketchView::drawSnapping(ImDrawList* drawList) {
 				4.0f,
 				IM_COL32(255, 230, 80, 255)
 			);
+			return;
 		}
+	}
+
+	// holding Control previews (and snaps to) the nearest grid vertex
+	if (toggleGrid && ImGui::GetIO().KeyCtrl) {
+		Vec2 snapped = snapToGridVertex(camera.screenToWorld(currentMousePos));
+
+		drawList->AddCircleFilled(
+			camera.worldToScreen(snapped),
+			4.0f,
+			IM_COL32(255, 230, 80, 255)
+		);
 	}
 }
 
 void SketchView::render() {
+
+	updateLengthScale(
+		gui.project.lengthScale.value,
+		Units::lengthUnits[gui.project.lengthScale.index].name
+	);
 
 	ImGui::Begin("Sketch View");
 
@@ -1455,6 +1498,7 @@ void SketchView::render() {
 	drawPopup(drawList);
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
+	drawGrid(drawList);
 	drawAxes(drawList);
 	drawSketchEntities(drawList);
 	drawTrimPreview(drawList);

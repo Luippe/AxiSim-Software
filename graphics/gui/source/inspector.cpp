@@ -14,6 +14,7 @@
 
 #include "flag_manager.h"
 #include "printer.h"
+#include "unit_manager.h"
 
 Inspector::Inspector(Project& project, SceneView& scene, AppConfig& appConfig) :
 		scene(scene),
@@ -610,6 +611,11 @@ void Inspector::copyActiveSurfaceToClipboard() {
 // -----------------------MAIN RENDER LOOP-------------------------------
 // ======================================================================
 void Inspector::render() {
+
+	updateLengthScale(
+		project.lengthScale.value,
+		Units::lengthUnits[project.lengthScale.index].name
+	);
 
 	ImGui::Begin("Inspector");
 

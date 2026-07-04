@@ -85,6 +85,11 @@ public:
 
 	void calculatePan(float dx, float dy);
 	void calculateZoom(double yoffset, const ImVec2& focusScreen);
+
+	// rescale zoom around the current center (no on-screen focus point involved),
+	// e.g. when the project's display length unit changes.
+	void rescaleZoom(double ratio);
+
 	void home();
 
 	// set width, height, and top-left position of the 2D viewport

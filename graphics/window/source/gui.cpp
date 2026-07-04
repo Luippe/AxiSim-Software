@@ -97,6 +97,7 @@ void initAssetBuffers(AppAssets& assets) {
 	assets.selectIcon.createBuffer("assets/icons/select.png");
 	assets.trimIcon.createBuffer("assets/icons/trim.png");
 	assets.crossArrowIcon.createBuffer("assets/icons/cross-arrow.png");
+	assets.gridIcon.createBuffer("assets/icons/grid.png");
 
 }
 
@@ -229,16 +230,19 @@ void GUI::drawStatusBar() {
 
 	// right side info
 	const char* projectText = "Project: Untitled";
-	const char* unitsText = "Units: m";
+	const char* unitsLabel = "Units:";
 
 	ImVec2 projectSize = ImGui::CalcTextSize(projectText);
-	ImVec2 unitsSize = ImGui::CalcTextSize(unitsText);
+	ImVec2 unitsLabelSize = ImGui::CalcTextSize(unitsLabel);
 
 	float rightPad = 20.0f;
 	float gap = 24.0f;
+	float labelComboGap = 6.0f;
+	float unitsComboWidth = 52.0f;
 
-	float unitsX = winMax.x - rightPad - unitsSize.x;
-	float sepX = unitsX - gap;
+	float unitsComboX = winMax.x - rightPad - unitsComboWidth;
+	float unitsLabelX = unitsComboX - labelComboGap - unitsLabelSize.x;
+	float sepX = unitsLabelX - gap;
 	float projectX = sepX - gap - projectSize.x;
 
 	ImGui::SetCursorScreenPos(ImVec2(projectX, winMin.y + 5.0f));
@@ -251,8 +255,37 @@ void GUI::drawStatusBar() {
 		1.0f
 	);
 
-	ImGui::SetCursorScreenPos(ImVec2(unitsX, winMin.y + 5.0f));
-	ImGui::TextDisabled("%s", unitsText);
+	ImGui::SetCursorScreenPos(ImVec2(unitsLabelX, winMin.y + 5.0f));
+	ImGui::AlignTextToFramePadding();
+	ImGui::TextDisabled("%s", unitsLabel);
+
+	ImGui::SameLine(0.0f, labelComboGap);
+	ImGui::SetNextItemWidth(unitsComboWidth);
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 2.0f));
+	ImGui::PushID("StatusBarUnits");
+
+	uint8_t currentUnitIndex = Units::lengthUnitIndexForScale(project.lengthScale.value);
+	const char* unitsPreview = Units::lengthUnits[currentUnitIndex].name;
+	if (ImGui::BeginCombo("##units", unitsPreview)) {
+		for (int i = 0; i < (int)Units::lengthUnits.size(); i++) {
+			bool isSelected = currentUnitIndex == i;
+
+			if (ImGui::Selectable(Units::lengthUnits[i].name, isSelected)) {
+				if (currentUnitIndex != i) {
+					project.lengthScale.index = (uint8_t)i;
+					project.lengthScale.value = 1.0 / Units::lengthUnits[i].toBase;
+				}
+			}
+
+			if (isSelected) {
+				ImGui::SetItemDefaultFocus();
+			}
+		}
+		ImGui::EndCombo();
+	}
+
+	ImGui::PopID();
+	ImGui::PopStyleVar();
 
 	ImGui::End();
 

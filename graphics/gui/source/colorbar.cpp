@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <algorithm>
+#include <cmath>
 
 #include "colormap.h"
 #include "results.h"
@@ -12,21 +13,21 @@
 // ======================================================================
 // -----------------------HELPER FUNCTION--------------------------------
 // ======================================================================
-void Colorbar::formatTickValue(char* buf, size_t bufSize, double value) {
+void Colorbar::formatTickValue(char* buf, size_t bufSize, double value, int precision) {
 
-	currentPrecision = std::clamp(currentPrecision, 0, 12);
+	precision = std::clamp(precision, 0, 12);
 
 	switch (currentNumberFormat) {
 	case NumberFormat::Fixed:
-		snprintf(buf, bufSize, "%.*f", currentPrecision, value);
+		snprintf(buf, bufSize, "%.*f", precision, value);
 		break;
 
 	case NumberFormat::Scientific:
-		snprintf(buf, bufSize, "%.*e", currentPrecision, value);
+		snprintf(buf, bufSize, "%.*e", precision, value);
 		break;
 
 	case NumberFormat::General:
-		snprintf(buf, bufSize, "%.*g", currentPrecision, value);
+		snprintf(buf, bufSize, "%.*g", precision, value);
 		break;
 	}
 }
@@ -54,12 +55,27 @@ void Colorbar::drawTickValue() {
 
 	float dval = (results.currentField->vmax - results.currentField->vmin) / numTicks;	// maybe fix this since it calculates this every frame
 
+	// A field can sit on a large baseline with only a small fractional
+	// variation across the domain (e.g. an inlet-dominated concentration
+	// field with a thin depletion layer). At the user's chosen precision,
+	// adjacent ticks can then round to the same displayed string even
+	// though the underlying values differ. Bump precision up (never down)
+	// so ticks stay distinguishable regardless of the field's magnitude.
+	int precision = currentPrecision;
+	double refValue = std::max(std::fabs((double)(results.currentField->vmax)), std::fabs((double)(results.currentField->vmin)));
+
+	if (dval > 0.0f && refValue > 0.0) {
+		int magRef = (int)(std::floor(std::log10(refValue)));
+		int magStep = (int)(std::floor(std::log10((double)(dval))));
+		precision = std::clamp(std::max(currentPrecision, magRef - magStep + 2), 0, 12);
+	}
+
 	for (int i = 0; i < numTicks + 1; i++) {
 		float y = posMin.y + i * dy;
 		char buf[32];
 		double value = results.currentField->vmax - i * dval;
 
-		formatTickValue(buf, sizeof(buf), value);
+		formatTickValue(buf, sizeof(buf), value, precision);
 
 		ImVec2 textSize = ImGui::CalcTextSize(buf);
 		drawList->AddText(ImVec2(posMax.x + tickLen + textOffset, y - textSize.y * 0.5f), IM_COL32(255, 255, 255, 255), buf);

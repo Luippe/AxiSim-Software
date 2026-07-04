@@ -15,6 +15,7 @@
 #include "flag_manager.h"
 #include "printer.h"
 #include "math_func.h"
+#include "unit_manager.h"
 
 namespace {
 	constexpr double meshInspectorTwoPi = 6.28318530717958647692;
@@ -2013,6 +2014,11 @@ void MeshInspector::drawCellInfo(ImDrawList* drawList) {
 
 void MeshInspector::render() {
 	setBaseNrNz();
+
+	updateLengthScale(
+		project.lengthScale.value,
+		Units::lengthUnits[project.lengthScale.index].name
+	);
 
 	ImGui::Begin("Mesh Inspector");
 

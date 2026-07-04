@@ -66,7 +66,7 @@ struct GridConfig {
 
 struct MemoryConfig {
 
-	int threadsPerBlock = 512;
+	int threadsPerBlock = 256;
 	int faceThreads = 128;
 
 	int shmem = 0;

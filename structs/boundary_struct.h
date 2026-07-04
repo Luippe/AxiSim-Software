@@ -5,9 +5,9 @@
 #include <functional>  // std::hash
 #include <string>	   // std::string
 #include <unordered_map>
-#include <variant>
 #include <vector>
 #include <type_traits>
+#include <variant>
 
 #include "core_struct.h"
 

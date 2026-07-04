@@ -54,7 +54,7 @@ private:
 	void handleMouseEvent();
 
 	// change number display depending on current format
-	void formatTickValue(char* buf, size_t bufSize, double value);
+	void formatTickValue(char* buf, size_t bufSize, double value, int precision);
 
 	// draw only the colorbar
 	void drawBar();

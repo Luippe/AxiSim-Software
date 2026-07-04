@@ -15,5 +15,7 @@ Release/
 *.bin
 imgui.ini
 /dist/
+/out/
+/CMakeSettings.json.user
 /Concentration Solver Software.vcxproj
 /Concentration Solver Software.vcxproj.filters

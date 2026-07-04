@@ -215,15 +215,17 @@ if(WIN32)
     )
 endif()
 
-# CUDA GPU targets for distribution. Native SASS (-real) for common consumer
-# cards -- Turing (RTX 20 / GTX 16), Ampere (RTX 30), Ada (RTX 40), Blackwell
-# (RTX 50) -- plus compute_75 PTX (-virtual) as a JIT fallback so any other GPU
-# with compute capability >= 7.5 still runs. CUDA 13.0 dropped Maxwell/Pascal/
-# Volta, so 7.5 is the floor. Verify supported arches with `nvcc --list-gpu-arch`;
-# trim this list (or set it to your own GPU) to shorten local build times.
+# CUDA GPU target. Building native SASS (-real) for this machine's GPU only --
+# sm_86 (Ampere, RTX 30 series) -- to keep local build times short.
+#
+# For distribution across many consumer cards, use a multi-arch list instead,
+# e.g. "75-real;86-real;89-real;120-real;75-virtual" (Turing/Ampere/Ada/Blackwell
+# SASS plus compute_75 PTX as a JIT fallback for anything >= 7.5). CUDA 13.0
+# dropped Maxwell/Pascal/Volta, so 7.5 is the floor. Check arches with
+# `nvcc --list-gpu-arch`.
 set_target_properties(AxiSim PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
-    CUDA_ARCHITECTURES "75-real;86-real;89-real;120-real;75-virtual"
+    CUDA_ARCHITECTURES "86-real"
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES

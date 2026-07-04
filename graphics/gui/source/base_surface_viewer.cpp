@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <glm/glm.hpp>
 #include "imgui_internal.h"
 
@@ -87,6 +88,31 @@ BaseSurfaceViewer::BaseSurfaceViewer(const char* vertexPath, const char* fragmen
 // ======================================================================
 // -----------------------HELPER FUNCTION--------------------------------
 // ======================================================================
+void BaseSurfaceViewer::updateLengthScale(double currentScale, const char* unitName) {
+
+	currentUnitName = unitName;
+
+	if (currentScale <= 0.0) {
+		return;
+	}
+
+	if (!lengthScaleInitialized) {
+		lastLengthScale = currentScale;
+		lengthScaleInitialized = true;
+		return;
+	}
+
+	if (currentScale == lastLengthScale) {
+		return;
+	}
+
+	// scale = 1/toBase, so a smaller display unit (e.g. m -> mm) means a
+	// larger scale value. Zooming in means shrinking unitsPerPixel, so the
+	// ratio is inverted relative to the scale change.
+	camera.rescaleZoom(lastLengthScale / currentScale);
+
+	lastLengthScale = currentScale;
+}
 
 bool BaseSurfaceViewer::isMouseNearImage(ImGuiIO& io) {
 
@@ -249,6 +275,110 @@ void BaseSurfaceViewer::drawAxes(ImDrawList* drawList) {
 
 	drawList->AddCircleFilled(origin, 3.5f, IM_COL32(235, 235, 235, 255));
 
+}
+
+double BaseSurfaceViewer::gridWorldStep() const {
+
+	const double targetPixelSpacing = 60.0;
+	double targetWorldStep = camera.unitsPerPixel * targetPixelSpacing;
+
+	if (!(targetWorldStep > 0.0) || !std::isfinite(targetWorldStep)) {
+		return 0.0;
+	}
+
+	// pick the "nice" 1/2/5 x 10^n step in the CURRENT DISPLAY UNIT (not raw
+	// world meters), so the grid reads as round numbers in whatever unit is
+	// currently selected (e.g. 1/2/5 mm when on mm) instead of always
+	// rounding in meters and just relabeling.
+	double targetDisplayStep = targetWorldStep * lastLengthScale;
+
+	double magnitude = std::pow(10.0, std::floor(std::log10(targetDisplayStep)));
+	double residual = targetDisplayStep / magnitude;
+
+	double niceFactor = (residual < 2.0) ? 1.0 : (residual < 5.0) ? 2.0 : 5.0;
+
+	double niceDisplayStep = niceFactor * magnitude;
+
+	return niceDisplayStep / lastLengthScale; // back to world meters for drawing
+}
+
+Vec2 BaseSurfaceViewer::snapToGridVertex(Vec2 world) const {
+
+	double step = gridWorldStep();
+
+	if (!(step > 0.0)) {
+		return world;
+	}
+
+	return Vec2{
+		std::round(world.z / step) * step,
+		std::round(world.r / step) * step
+	};
+}
+
+void BaseSurfaceViewer::drawGrid(ImDrawList* drawList) {
+
+	if (!toggleGrid) {
+		return;
+	}
+
+	double step = gridWorldStep();
+	if (!(step > 0.0)) {
+		return;
+	}
+
+	ImVec2 canvasMin = canvasRect.min;
+	ImVec2 canvasMax = canvasRect.max;
+
+	Vec2 corner0 = camera.screenToWorld(canvasMin);
+	Vec2 corner1 = camera.screenToWorld(canvasMax);
+
+	double zMin = std::min(corner0.z, corner1.z);
+	double zMax = std::max(corner0.z, corner1.z);
+	double rMin = std::min(corner0.r, corner1.r);
+	double rMax = std::max(corner0.r, corner1.r);
+
+	const int maxLines = 500; // safety cap
+	const ImU32 gridColor = IM_COL32(255, 255, 255, 35);
+
+	drawList->PushClipRect(canvasMin, canvasMax, true);
+
+	double zStart = std::floor(zMin / step) * step;
+	int nZ = (int)((zMax - zStart) / step) + 1;
+	nZ = std::min(nZ, maxLines);
+	for (int i = 0; i <= nZ; i++) {
+		double z = zStart + i * step;
+		float x = camera.worldToScreen(Vec2{ z, rMin }).x;
+		drawList->AddLine(ImVec2(x, canvasMin.y), ImVec2(x, canvasMax.y), gridColor, 1.0f);
+	}
+
+	double rStart = std::floor(rMin / step) * step;
+	int nR = (int)((rMax - rStart) / step) + 1;
+	nR = std::min(nR, maxLines);
+	for (int i = 0; i <= nR; i++) {
+		double r = rStart + i * step;
+		float y = camera.worldToScreen(Vec2{ zMin, r }).y;
+		drawList->AddLine(ImVec2(canvasMin.x, y), ImVec2(canvasMax.x, y), gridColor, 1.0f);
+	}
+
+	drawList->PopClipRect();
+
+	// label the grid spacing in the project's current display unit, so the
+	// user knows how much world-space each grid box represents
+	char label[64];
+	std::snprintf(
+		label,
+		sizeof(label),
+		"grid: %.4g %s",
+		step * lastLengthScale,
+		currentUnitName
+	);
+
+	drawList->AddText(
+		ImVec2(canvasMin.x + 8.0f, canvasMax.y - 20.0f),
+		IM_COL32(210, 215, 225, 200),
+		label
+	);
 }
 
 // ======================================================================
