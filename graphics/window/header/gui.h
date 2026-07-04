@@ -66,6 +66,9 @@ private:
 	ImPlotContext* exportImPlotContext = nullptr;
 
 
+	// handle key inputs
+	void handleKeyInput();
+
 	// draw main ui on screen
 	void drawUI();
 

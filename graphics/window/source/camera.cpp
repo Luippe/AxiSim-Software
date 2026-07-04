@@ -247,6 +247,18 @@ void Camera2D::rescaleZoom(double ratio) {
 	);
 }
 
+void Camera2D::setZoom(double newUnitsPerPixel) {
+	if (!(newUnitsPerPixel > 0.0)) {
+		return;
+	}
+
+	unitsPerPixel = std::clamp(
+		newUnitsPerPixel,
+		minUnitsPerPixel,
+		maxUnitsPerPixel
+	);
+}
+
 void Camera2D::home() {
 	initPosition();
 }

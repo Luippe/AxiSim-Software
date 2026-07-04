@@ -15,7 +15,9 @@
 #include "solver_struct.h"
 
 #include "flag_manager.h"
+#include "keyboard_manager.h"
 
+using namespace Shortcuts;
 
 // ======================================================================
 // -----------------------HELPER FUNCTIONS-------------------------------
@@ -218,21 +220,31 @@ void GUI::drawStatusBar() {
 		winMin.y + ImGui::GetWindowHeight()
 	);
 
+	// vertical centering: text and the framed combo share one center line
+	float fontHeight = ImGui::GetFontSize();
+	float comboFramePadY = 2.0f;
+	float comboHeight = fontHeight + comboFramePadY * 2.0f;
+	float centerY = winMin.y + height * 0.5f;
+	float textY = centerY - fontHeight * 0.5f;
+	float comboY = centerY - comboHeight * 0.5f;
+
 	// green ready dot
-	ImVec2 dotCenter = ImVec2(winMin.x + 16.0f, winMin.y + height * 0.5f);
+	ImVec2 dotCenter = ImVec2(winMin.x + 16.0f, centerY);
 	drawList->AddCircleFilled(dotCenter, 5.0f, IM_COL32(50, 220, 80, 255));
 
-	ImGui::SetCursorScreenPos(ImVec2(winMin.x + 30.0f, winMin.y + 5.0f));
+	ImGui::SetCursorScreenPos(ImVec2(winMin.x + 30.0f, textY));
 	if (project.currentTab == ViewTab::TAB_MESH) {
 
 	}
 	ImGui::TextUnformatted("Ready");
 
 	// right side info
-	const char* projectText = "Project: Untitled";
-	const char* unitsLabel = "Units:";
+	const char* projectText = "Project: ";
+	const char* unitsLabel = "Units: ";
+	const char* projectName = project.name.empty() ? "Untitled" : project.name.c_str();
 
 	ImVec2 projectSize = ImGui::CalcTextSize(projectText);
+	ImVec2 projectNameSize = ImGui::CalcTextSize(projectName);
 	ImVec2 unitsLabelSize = ImGui::CalcTextSize(unitsLabel);
 
 	float rightPad = 20.0f;
@@ -243,25 +255,26 @@ void GUI::drawStatusBar() {
 	float unitsComboX = winMax.x - rightPad - unitsComboWidth;
 	float unitsLabelX = unitsComboX - labelComboGap - unitsLabelSize.x;
 	float sepX = unitsLabelX - gap;
-	float projectX = sepX - gap - projectSize.x;
+	float projectX = sepX - gap - projectSize.x - projectNameSize.x;
 
-	ImGui::SetCursorScreenPos(ImVec2(projectX, winMin.y + 5.0f));
+	ImGui::SetCursorScreenPos(ImVec2(projectX, textY));
 	ImGui::TextDisabled("%s", projectText);
+	ImGui::SameLine(0.0f, 0.0f);
+	ImGui::TextDisabled("%s", projectName);
 
 	drawList->AddLine(
-		ImVec2(sepX, winMin.y + 5.0f),
-		ImVec2(sepX, winMax.y - 5.0f),
+		ImVec2(sepX, comboY),
+		ImVec2(sepX, comboY + comboHeight),
 		IM_COL32(80, 95, 115, 180),
 		1.0f
 	);
 
-	ImGui::SetCursorScreenPos(ImVec2(unitsLabelX, winMin.y + 5.0f));
-	ImGui::AlignTextToFramePadding();
+	ImGui::SetCursorScreenPos(ImVec2(unitsLabelX, textY));
 	ImGui::TextDisabled("%s", unitsLabel);
 
-	ImGui::SameLine(0.0f, labelComboGap);
+	ImGui::SetCursorScreenPos(ImVec2(unitsComboX, comboY));
 	ImGui::SetNextItemWidth(unitsComboWidth);
-	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 2.0f));
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, comboFramePadY));
 	ImGui::PushID("StatusBarUnits");
 
 	uint8_t currentUnitIndex = Units::lengthUnitIndexForScale(project.lengthScale.value);
@@ -309,6 +322,13 @@ void GUI::drawUI() {
 	ImGui::End();
 }
 
+void GUI::handleKeyInput() {
+
+	if (ImGui::IsKeyChordPressed(saveProjectShortcut)) {
+		saveHotkeyPressed(project);
+	}
+}
+
 // ======================================================================
 // -----------------------MAIN RENDER LOOP-------------------------------
 // ======================================================================
@@ -343,6 +363,8 @@ void GUI::render() {
 			animationGUI.render();
 		}
 	}
+
+	handleKeyInput();
 
 	drawStatusBar();
 

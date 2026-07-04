@@ -1084,6 +1084,11 @@ void addConvectionCoefficient(
 	int start = mesh.cells.faceStart[n];
 	int end = mesh.cells.faceStart[n + 1];
 
+	// Net outward mass flux through this cell's faces. For a converged flow this
+	// is the discrete continuity residual (~0); before convergence it is nonzero
+	// and is what lets an unbounded upwind row overshoot its boundary values.
+	double netF = 0.0;
+
 	for (int k = start; k < end; k++) {
 
 		int faceID = mesh.cells.faceIDs[k];
@@ -1109,6 +1114,10 @@ void addConvectionCoefficient(
 		if (fabs(F) <= 1.0e-30) {
 			continue;
 		}
+
+		// Accumulate only the faces that actually contribute to the matrix, so
+		// the correction below cancels the assembled row sum exactly.
+		netF += F;
 
 		// ------------------------------------------------------------
 		// Interior face
@@ -1147,6 +1156,14 @@ void addConvectionCoefficient(
 			);
 		}
 	}
+
+	// Bounded-convection correction (OpenFOAM's -Sp(div(phi), phi)). Upwind is
+	// only bounded when the face fluxes are divergence-free (netF == 0); while
+	// the SIMPLE flow is still converging netF != 0 acts as a spurious source
+	// that lets phi over/undershoot its boundary values. Subtracting phi_P*netF
+	// forces the convection row sum to zero, restoring the M-matrix property.
+	// netF -> 0 at convergence, so the final field is unchanged.
+	coeff.AC[n] -= netF;
 }
 
 // ==============================================================

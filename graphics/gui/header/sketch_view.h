@@ -186,6 +186,12 @@ private:
 	int editingDimensionID = -1;
 	double dimensionEditValue = 0.0;
 
+	// dimension label dragging (Dimension tool)
+	int draggingDimensionID = -1;      // -1 = no label being dragged
+	Vec2 dimensionDragOffset{};        // world offset from the cursor to the label origin
+	bool dimensionDragMoved = false;   // true once the drag actually moved the label
+	SketchModel dimensionDragBefore;   // sketch snapshot taken at grab, for undo
+
 	const ImU32 sketchBgColor = IM_COL32(102, 102, 102, 255);
 	const ImU32 outlineColor = IM_COL32(150, 150, 150, 255);
 
@@ -214,6 +220,9 @@ private:
 
 	void handleSelect();
 	void handleMouseAndKey();
+
+	// drag/edit dimension labels; runs in both Select and Dimension tools
+	void handleDimensionLabels();
 	void handleDimensionTool();
 	void handleTrimTool();
 	void handleErase();
@@ -236,8 +245,13 @@ private:
 	// updates pendingCurrentWorld
 	void updateCurrentWorld();
 
-	// returns a SnapResult if a snapping location is found
+	// returns a SnapResult for the nearest sketch feature (vertex/edge)
 	std::optional<SnapResult> findSnap(ImVec2 mouse);
+
+	// full snap decision used for both getSnappedWorld() and the snap preview:
+	// findSnap(), but when the grid is shown a nearby grid vertex takes priority
+	// over sketch edges (a closer sketch vertex still wins)
+	std::optional<SnapResult> resolveSnap(ImVec2 mouse);
 
 	// returns world coordinate of snapped location IF a snapping occurs.
 	// If not, just convert the mouse coordinate to world coordinate
@@ -251,6 +265,10 @@ private:
 	bool hoveredSelectedTrimSegment(ImVec2 mouse);
 	std::string getDimensionLabel(const SketchDimension& dimension) const;
 	void openDimensionEditor(int dimensionID);
+
+	// start/continue dragging a dimension's label around (Dimension tool)
+	void beginDimensionLabelDrag(int dimensionID);
+	void updateDimensionLabelDrag();
 	bool trimLineAtMouse(ImVec2 mouse);
 	bool trimRectangleAtMouse(ImVec2 mouse);
 	bool trimCircleAtMouse(ImVec2 mouse, int circleID);

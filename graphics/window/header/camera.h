@@ -90,6 +90,10 @@ public:
 	// e.g. when the project's display length unit changes.
 	void rescaleZoom(double ratio);
 
+	// set an absolute zoom level (world units per pixel), clamped to the valid
+	// range. Used to snap to a specific zoom, e.g. a 1-unit grid spacing.
+	void setZoom(double newUnitsPerPixel);
+
 	void home();
 
 	// set width, height, and top-left position of the 2D viewport

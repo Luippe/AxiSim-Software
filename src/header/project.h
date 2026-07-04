@@ -1,4 +1,7 @@
 #pragma once
+
+#include <string>
+
 #include "geometry.h"
 #include "mesh.h"
 #include "solver.h"
@@ -18,5 +21,10 @@ public:
 
 	ViewTab currentTab = ViewTab::TAB_MESH;
 	LengthScale lengthScale;
+
+	std::wstring path;
+	std::string name;
+
+
 
 };

@@ -16,6 +16,7 @@
 #include <string>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 
 #include "project.h"
 #include "mesh.h"
@@ -28,6 +29,27 @@
 #include "printer.h"
 
 using namespace Shortcuts;
+
+std::string wStringToString(std::wstring path) {
+
+	// Calculating the length of the multibyte string
+	size_t len = wcstombs(nullptr, path.c_str(), 0) + 1;
+
+	// Creating a buffer to hold the multibyte string
+	char* buffer = new char[len];
+
+	// Converting wstring to string
+	wcstombs(buffer, path.c_str(), len);
+
+	// Creating std::string from char buffer
+	std::string str(buffer);
+
+	// Cleaning up the buffer
+	delete[] buffer;
+
+	return str;
+
+}
 
 namespace {
 	constexpr std::uint32_t solverFileMagic = 0x53585641u; // "AXVS" little-endian
@@ -433,19 +455,47 @@ void saveKeyboardShortcuts(std::ofstream& out) {
 		eraseToolShortcut,
 		lineToolShortcut,
 		rectangleToolShortcut,
-		circleToolShortcut
+		circleToolShortcut,
+		saveProjectShortcut
 	);
 }
 
 // ====================================================
 // -------------------PROJECT--------------------------
 // ====================================================
+void saveEtc(std::ofstream& out, const Project& project) {
+
+	writeAll(
+		out,
+		project.lengthScale
+	);
+}
+
+void loadEtc(std::ifstream& in, Project& project) {
+
+	readAll(
+		in,
+		project.lengthScale
+	);
+}
+
+void saveHotkeyPressed(Project& project) {
+
+	if (!project.name.empty()) {
+		saveFromPathProject(project.path, project);
+	}
+	else {
+		saveFromExplorerProject(project);
+	}
+}
+
 void saveFromPathProject(const std::wstring& path, Project& project) {
 
 	std::ofstream out(std::filesystem::path(path), std::ios::binary);
 	saveFromPathGeometry(out, project.geometry);
 	saveFromPathMesh(out, project.mesh);
 	saveFromPathSolver(out, project.solver);
+	saveEtc(out, project);
 	//saveFromPathResults(out, project.results);
 	//saveKeyboardShortcuts(out);
 	out.close();
@@ -461,6 +511,12 @@ void saveFromExplorerProject(Project& project) {
 	std::wstring path = saveFileDialog();
 	if (path.empty()) return;
 
+	project.path = path;
+
+	std::filesystem::path p(path);
+
+	project.name = p.stem().string();
+
 	saveFromPathProject(path, project);
 }
 
@@ -473,7 +529,7 @@ void loadFromExplorerProject(Project& project) {
 	loadFromPathGeometry(in, project.geometry);
 	loadFromPathMesh(in, project.mesh);
 	loadFromPathSolver(in, project.solver);
-
+	loadEtc(in, project);
 }
 
 // ====================================================
@@ -754,19 +810,10 @@ void loadAtLaunch(Project& project) {
 	{
 		if (in) {
 			loadFromPathGeometry(in, project.geometry);
-		}
-	}
-
-	{
-		if (in) {
 			loadFromPathMesh(in, project.mesh);
 			project.mesh.updateAfterLoadingFile();
-		}
-	}
-
-	{
-		if (in) {
 			loadFromPathSolver(in, project.solver);
+			loadEtc(in, project);
 		}
 	}
 

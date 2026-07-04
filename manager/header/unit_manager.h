@@ -18,7 +18,7 @@ struct VariableUnits {
     std::uint8_t  rhoUnit = 0;
     std::uint8_t  muUnit = 0;
     std::uint8_t  DUnit = 0;
-    
+
     std::uint8_t specificHeatUnit = 0;
     std::uint8_t heatCondUnit = 0;
 

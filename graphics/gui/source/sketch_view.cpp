@@ -495,7 +495,7 @@ void SketchView::drawToolBar() {
 
 	std::string resetViewText = shortcutText("Reset View", resetViewShortcut);
 	if (addImageButton("Reset", resetViewText.c_str(), assets.houseIcon, buttonSize)) {
-		camera.home();
+		resetView();
 	}
 	ImGui::SameLine();
 
@@ -560,22 +560,44 @@ void SketchView::drawToolBar() {
 	ImGui::EndChild();
 }
 
-Vec2 SketchView::getSnappedWorld(ImVec2 mouse) {
-	if (toggleSnapping) {
-		if (auto snap = findSnap(mouse)) {
-			return snap->world;
+std::optional<SnapResult> SketchView::resolveSnap(ImVec2 mouse) {
+	if (!toggleSnapping) {
+		return std::nullopt;
+	}
+
+	std::optional<SnapResult> snap = findSnap(mouse);
+
+	// when the grid is shown, prioritize grid vertices over sketch edges: a grid
+	// vertex beats any edge (Line/Circle) snap, and also beats a sketch vertex
+	// only when it is at least as close. Sketch vertices/points otherwise win.
+	if (toggleGrid && gridWorldStep() > 0.0) {
+		Vec2 gridWorld = snapToGridVertex(camera.screenToWorld(mouse));
+		ImVec2 gridScreen = camera.worldToScreen(gridWorld);
+		float gridDistPx = pixelDistance(gridScreen, mouse);
+
+		bool snapIsVertex = snap && snap->type == SnapType::Vertex;
+		bool gridWins = !snapIsVertex || gridDistPx <= snap->distancePx;
+
+		if (gridWins) {
+			snap = SnapResult{
+				SnapType::Vertex,
+				gridWorld,
+				gridScreen,
+				gridDistPx,
+				-103 // sentinel id for a grid vertex
+			};
 		}
 	}
 
-	Vec2 world = camera.screenToWorld(mouse);
+	return snap;
+}
 
-	// grid vertex snapping: falls back to this when entity snapping is off
-	// or found nothing nearby, while Control is held and the grid is shown
-	if (toggleGrid && ImGui::GetIO().KeyCtrl) {
-		world = snapToGridVertex(world);
+Vec2 SketchView::getSnappedWorld(ImVec2 mouse) {
+	if (auto snap = resolveSnap(mouse)) {
+		return snap->world;
 	}
 
-	return world;
+	return camera.screenToWorld(mouse);
 }
 
 void SketchView::setInitLeftMouse() {
@@ -637,6 +659,9 @@ void SketchView::handleSelect() {
 
 	if (!(geometry.sketch.activeTool == SketchTool::Select)) return;
 
+	// a dimension-label drag owns the left button; don't start a selection
+	if (draggingDimensionID >= 0) return;
+
 	ImGuiIO& io = ImGui::GetIO();
 
 	auto clearSelection = [&]() {
@@ -658,13 +683,6 @@ void SketchView::handleSelect() {
 			rect.selected = false;
 		}
 	};
-
-	if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-		if (auto dimensionID = findDimensionLabel(currentMousePos)) {
-			openDimensionEditor(*dimensionID);
-			return;
-		}
-	}
 
 	if (isMovingSelection) {
 		if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
@@ -700,7 +718,7 @@ void SketchView::handleSelect() {
 	if (!isSelecting) {
 		if (ImGui::IsItemHovered() &&
 			ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-			if (!io.KeyShift) {
+			if (!io.KeyCtrl) {
 				clearSelection();
 			}
 
@@ -715,7 +733,7 @@ void SketchView::handleSelect() {
 	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
 		SketchBound selection = makeBound(pendingStartWorld, pendingCurrentWorld);
 
-		if (!io.KeyShift) {
+		if (!io.KeyCtrl) {
 			clearSelection();
 		}
 
@@ -784,6 +802,7 @@ bool SketchView::handleShortcuts(ImGuiIO& io) {
 		isMovingSelection = false;
 		movingTrimSegments.clear();
 		isDrawingEntity = false;
+		draggingDimensionID = -1;
 	};
 
 	if (ImGui::Shortcut(undoShortcut)) {
@@ -800,7 +819,7 @@ bool SketchView::handleShortcuts(ImGuiIO& io) {
 
 	if (ImGui::Shortcut(resetViewShortcut)) {
 		clearInteraction();
-		camera.home();
+		resetView();
 		return true;
 	}
 
@@ -842,6 +861,27 @@ bool SketchView::handleShortcuts(ImGuiIO& io) {
 	bool deletePressed =
 		ImGui::IsKeyPressed(ImGuiKey_Delete, false) ||
 		ImGui::IsKeyPressed(ImGuiKey_Backspace, false);
+
+	// delete the dimension label under the cursor, in Select ("no tool") or
+	// Dimension mode, regardless of what else is selected
+	bool canEditLabels =
+		geometry.sketch.activeTool == SketchTool::Select ||
+		geometry.sketch.activeTool == SketchTool::Dimension;
+	if (deletePressed &&
+		canEditLabels &&
+		editingDimensionID < 0 &&
+		!io.WantTextInput &&
+		ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
+		if (auto dimensionID = findDimensionLabel(currentMousePos)) {
+			clearInteraction();
+			SketchModel beforeDelete = geometry.sketch;
+			if (geometry.sketch.removeDimension(*dimensionID)) {
+				recordSketchUndoState(beforeDelete);
+			}
+			return true;
+		}
+	}
+
 	if (geometry.sketch.activeTool == SketchTool::Select &&
 		!selectedTrimSegments.empty() &&
 		editingDimensionID < 0 &&
@@ -886,6 +926,8 @@ void SketchView::handleMouseAndKey() {
 			isDrawingEntity = true;
 		}
 	}
+
+	handleDimensionLabels();
 
 	handleSelect();
 
@@ -952,8 +994,17 @@ void SketchView::handleMouseAndKey() {
 	}
 }
 
-void SketchView::handleDimensionTool() {
-	if (geometry.sketch.activeTool != SketchTool::Dimension) {
+void SketchView::handleDimensionLabels() {
+	SketchTool tool = geometry.sketch.activeTool;
+
+	// label drag/edit is available in Select ("no tool") and Dimension modes
+	if (tool != SketchTool::Select && tool != SketchTool::Dimension) {
+		return;
+	}
+
+	// a drag keeps running until release, even if the cursor leaves the item
+	if (draggingDimensionID >= 0) {
+		updateDimensionLabelDrag();
 		return;
 	}
 
@@ -965,11 +1016,46 @@ void SketchView::handleDimensionTool() {
 		return;
 	}
 
-	if (auto dimensionID = findDimensionLabel(currentMousePos)) {
-		openDimensionEditor(*dimensionID);
+	auto dimensionID = findDimensionLabel(currentMousePos);
+	if (!dimensionID) {
 		return;
 	}
 
+	// double-click edits the value; a single press starts a drag (and, in the
+	// Dimension tool, opens the editor if the press turns out to be a click)
+	if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+		openDimensionEditor(*dimensionID);
+	}
+	else {
+		beginDimensionLabelDrag(*dimensionID);
+	}
+}
+
+void SketchView::handleDimensionTool() {
+	if (geometry.sketch.activeTool != SketchTool::Dimension) {
+		return;
+	}
+
+	// label drag/edit is handled by handleDimensionLabels(); if it grabbed a
+	// label this frame, don't also add a new dimension
+	if (draggingDimensionID >= 0) {
+		return;
+	}
+
+	if (!ImGui::IsItemHovered()) {
+		return;
+	}
+
+	if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+		return;
+	}
+
+	// a press on a label was already consumed by handleDimensionLabels()
+	if (findDimensionLabel(currentMousePos)) {
+		return;
+	}
+
+	// otherwise, clicking an entity adds a new dimension to it
 	if (auto target = findDimensionTarget(currentMousePos)) {
 		SketchModel beforeDimension = geometry.sketch;
 		int dimensionID = geometry.sketch.addDimension(
@@ -980,6 +1066,52 @@ void SketchView::handleDimensionTool() {
 		recordSketchUndoState(beforeDimension);
 
 		openDimensionEditor(dimensionID);
+	}
+}
+
+void SketchView::beginDimensionLabelDrag(int dimensionID) {
+	const SketchDimension* dimension = geometry.sketch.findDimension(dimensionID);
+	if (!dimension) {
+		return;
+	}
+
+	draggingDimensionID = dimensionID;
+	dimensionDragMoved = false;
+	dimensionDragBefore = geometry.sketch;
+
+	// remember the grab point so the label stays fixed under the cursor
+	Vec2 mouseWorld = camera.screenToWorld(currentMousePos);
+	dimensionDragOffset = subtract(dimension->labelPos, mouseWorld);
+}
+
+void SketchView::updateDimensionLabelDrag() {
+	SketchDimension* dimension = geometry.sketch.findDimension(draggingDimensionID);
+
+	// the dimension can vanish mid-drag (e.g. undo); just stop dragging
+	if (!dimension) {
+		draggingDimensionID = -1;
+		return;
+	}
+
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+		Vec2 mouseWorld = camera.screenToWorld(currentMousePos);
+		dimension->labelPos = Vec2{
+			mouseWorld.z + dimensionDragOffset.z,
+			mouseWorld.r + dimensionDragOffset.r
+		};
+		dimensionDragMoved = true;
+	}
+
+	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+		if (dimensionDragMoved) {
+			recordSketchUndoState(dimensionDragBefore);
+		}
+		else if (geometry.sketch.activeTool == SketchTool::Dimension) {
+			// a press that never moved is treated as a click: open the editor
+			openDimensionEditor(draggingDimensionID);
+		}
+
+		draggingDimensionID = -1;
 	}
 }
 
@@ -1161,6 +1293,13 @@ void SketchView::drawDimensions(ImDrawList* drawList) {
 	ImU32 labelBorderColor = IM_COL32(255, 235, 135, 190);
 	ImU32 leaderColor = IM_COL32(255, 235, 135, 130);
 
+	// highlight the label under the cursor (only in the interactive canvas, not
+	// the off-screen export; the export image is never hovered)
+	std::optional<int> hoveredLabel;
+	if (ImGui::IsItemHovered()) {
+		hoveredLabel = findDimensionLabel(currentMousePos);
+	}
+
 	for (const SketchDimension& dimension : geometry.sketch.dimensions) {
 		Vec2 anchor = dimension.labelPos;
 
@@ -1215,10 +1354,17 @@ void SketchView::drawDimensions(ImDrawList* drawList) {
 			labelPos.y + textSize.y + 3.0f
 		);
 
+		bool hovered = hoveredLabel && *hoveredLabel == dimension.id;
+
+		ImU32 bgColor = hovered ? IM_COL32(70, 78, 92, 245) : labelBgColor;
+		ImU32 borderColor = hovered ? IM_COL32(255, 250, 190, 255) : labelBorderColor;
+		ImU32 textColor = hovered ? IM_COL32(255, 250, 205, 255) : labelTextColor;
+		float borderThickness = hovered ? 2.0f : 1.0f;
+
 		drawList->AddLine(anchorPos, labelPos, leaderColor, 1.0f);
-		drawList->AddRectFilled(rectMin, rectMax, labelBgColor, 3.0f);
-		drawList->AddRect(rectMin, rectMax, labelBorderColor, 3.0f, 0, 1.0f);
-		drawList->AddText(labelPos, labelTextColor, label.c_str());
+		drawList->AddRectFilled(rectMin, rectMax, bgColor, 3.0f);
+		drawList->AddRect(rectMin, rectMax, borderColor, 3.0f, 0, borderThickness);
+		drawList->AddText(labelPos, textColor, label.c_str());
 	}
 }
 
@@ -1233,14 +1379,15 @@ void SketchView::drawDimensionEditor() {
 
 		ImGui::SetNextItemWidth(150.0f);
 
-		bool enterPressed = ImGui::InputDouble(
-			"##Value",
-			&displayValue,
-			0.0,
-			0.0,
-			"%.6g",
-			ImGuiInputTextFlags_EnterReturnsTrue
-		);
+		// NOTE: InputDouble/InputScalar does NOT support EnterReturnsTrue (it
+		// asserts). Without it the typed value is written back live, so Apply
+		// always sees the latest value; detect Enter via IsItemDeactivatedAfterEdit.
+		ImGui::InputDouble("##Value", &displayValue, 0.0, 0.0, "%.6g");
+
+		bool enterPressed =
+			ImGui::IsItemDeactivatedAfterEdit() &&
+			(ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
+				ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false));
 
 		ImGui::SameLine();
 		ImGui::TextDisabled("%s", unit.name);
@@ -1322,7 +1469,7 @@ void SketchView::drawPopup(ImDrawList* drawList) {
 		addMenuItemCopyToClipboard("Copy to clipboard");
 
 		if (ImGui::MenuItem("Reset View", ImGui::GetKeyChordName(resetViewShortcut))) {
-			camera.home();
+			resetView();
 		}
 
 		if (undoSketchStates.empty()) {
@@ -1369,21 +1516,8 @@ void SketchView::drawPendingSketchEntity(ImDrawList* drawList) {
 	ImU32 previewLineColor = IM_COL32(125, 220, 255, 255);
 	ImU32 previewFillColor = IM_COL32(125, 220, 255, 35);
 
-	if (toggleSnapping) {
-		drawList->AddCircleFilled(
-			camera.worldToScreen(pendingStartWorld),
-			3.0f,
-			IM_COL32(255, 230, 80, 255)
-		);
-
-		if (auto snap = findSnap(currentMousePos)) {
-			drawList->AddCircleFilled(
-				snap->screen,
-				4.0f,
-				IM_COL32(255, 230, 80, 255)
-			);
-		}
-	}
+	// the snap indicator is drawn once by drawSnapping() (single source of
+	// truth); don't draw a second dot here
 
 	if (tool == SketchTool::Line) {
 		drawList->AddLine(
@@ -1438,23 +1572,11 @@ void SketchView::updateCurrentWorld() {
 
 void SketchView::drawSnapping(ImDrawList* drawList) {
 
-	if (toggleSnapping) {
-		if (auto snap = findSnap(currentMousePos)) {
-			drawList->AddCircleFilled(
-				snap->screen,
-				4.0f,
-				IM_COL32(255, 230, 80, 255)
-			);
-			return;
-		}
-	}
-
-	// holding Control previews (and snaps to) the nearest grid vertex
-	if (toggleGrid && ImGui::GetIO().KeyCtrl) {
-		Vec2 snapped = snapToGridVertex(camera.screenToWorld(currentMousePos));
-
+	// preview the exact point getSnappedWorld() would snap to (grid vertices
+	// prioritized over sketch edges when the grid is shown)
+	if (auto snap = resolveSnap(currentMousePos)) {
 		drawList->AddCircleFilled(
-			camera.worldToScreen(snapped),
+			snap->screen,
 			4.0f,
 			IM_COL32(255, 230, 80, 255)
 		);

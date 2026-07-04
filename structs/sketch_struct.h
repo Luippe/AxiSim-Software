@@ -191,6 +191,23 @@ struct SketchModel {
         return id;
     }
 
+    bool removeDimension(int id) {
+        auto it = std::remove_if(
+            dimensions.begin(),
+            dimensions.end(),
+            [&](const SketchDimension& dimension) {
+                return dimension.id == id;
+            }
+        );
+
+        if (it == dimensions.end()) {
+            return false;
+        }
+
+        dimensions.erase(it, dimensions.end());
+        return true;
+    }
+
     SketchPoint* findPoint(int id) {
         for (SketchPoint& point : points) {
             if (point.id == id) {

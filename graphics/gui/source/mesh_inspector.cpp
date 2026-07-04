@@ -29,15 +29,6 @@ namespace {
 		return angle;
 	}
 
-	double positiveInspectorAngleSpan(double startAngle, double endAngle) {
-		double start = normalizeInspectorAngle(startAngle);
-		double end = normalizeInspectorAngle(endAngle);
-		while (end < start) {
-			end += meshInspectorTwoPi;
-		}
-		return end - start;
-	}
-
 	Vec2 inspectorPointOnCircle(Vec2 center, double radius, double angle) {
 		return Vec2{
 			center.z + radius * std::cos(angle),
@@ -101,6 +92,22 @@ namespace {
 		return angle >= start - 1e-7 && angle <= end + 1e-7;
 	}
 
+	EdgeOrient inspectorOrientationFromFlags(
+		bool hasHorizontal,
+		bool hasVertical,
+		bool hasOther
+	) {
+		if (hasOther || (hasHorizontal && hasVertical)) {
+			return EdgeOrient::Both;
+		}
+
+		if (hasVertical) {
+			return EdgeOrient::Vertical;
+		}
+
+		return EdgeOrient::Horizontal;
+	}
+
 	EdgeOrient inferInspectorPathOrientation(
 		const std::vector<Vec2>& points,
 		double tol
@@ -132,31 +139,7 @@ namespace {
 			}
 		}
 
-		if (hasOther || (hasHorizontal && hasVertical)) {
-			return EdgeOrient::Both;
-		}
-
-		if (hasVertical) {
-			return EdgeOrient::Vertical;
-		}
-
-		return EdgeOrient::Horizontal;
-	}
-
-	EdgeOrient inspectorOrientationFromFlags(
-		bool hasHorizontal,
-		bool hasVertical,
-		bool hasOther
-	) {
-		if (hasOther || (hasHorizontal && hasVertical)) {
-			return EdgeOrient::Both;
-		}
-
-		if (hasVertical) {
-			return EdgeOrient::Vertical;
-		}
-
-		return EdgeOrient::Horizontal;
+		return inspectorOrientationFromFlags(hasHorizontal, hasVertical, hasOther);
 	}
 }
 
@@ -669,7 +652,7 @@ void MeshInspector::setBaseNrNz() {
 }
 
 void MeshInspector::createGridBuffer() {
-	gridLineBufferBytes =
+	GLsizeiptr gridLineBufferBytes =
 		(GLsizeiptr)(mesh.gridLineVertices.size() * sizeof(float));
 
 	vertexBuffer.createBuffer(
@@ -903,7 +886,7 @@ void MeshInspector::handleCellSelection(ImGuiIO& io) {
 void MeshInspector::handleCursor(ImGuiIO& io) {
 
 	// do not run this if any of the toggled tools are active, or if a popup is opened
-	isPopupOpened = ImGui::IsPopupOpen("Mesh Inspector Popup");
+	bool isPopupOpened = ImGui::IsPopupOpen("Mesh Inspector Popup");
 	if (toggleDrawCircle || toggleDrawRect || toggleRuler || isPopupOpened) return;
 
 	if (!hoveredId.has_value()) {
@@ -1413,7 +1396,6 @@ void MeshInspector::drawHighlightedCells2D(ImDrawList* drawList) {
 void MeshInspector::drawBoundarySegments(
 	ImDrawList* drawList
 ) {
-	//printSize(mesh.boundarySegments);
 	for (const BoundarySegment& seg : mesh.boundarySegments) {
 		bool selected =
 			mesh.selectedBoundaryIDs.find(seg.id) !=
@@ -1471,7 +1453,7 @@ void MeshInspector::drawToolBar() {
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
 	if (addImageButton("Reset", "Reset View", assets.houseIcon, buttonSize)) {
-		camera.home();
+		resetView();
 	}
 	ImGui::SameLine();
 
@@ -1576,7 +1558,7 @@ void MeshInspector::drawPopup() {
 		addMenuItemCopyToClipboard("Copy to clipboard");
 
 		if (ImGui::MenuItem("Reset View")) {
-			camera.home();
+			resetView();
 		}
 		
 
@@ -1603,13 +1585,8 @@ void MeshInspector::drawPopup() {
 		ImGui::OpenPopup("Naming Segment");
 	}
 
-	//for (const BoundarySegmentGroup& group : mesh.boundaryGroups) {
-	//	printf("%s\n", group.name);
-	//}
-
 	// add new boundary group
 	if (pendingBoundaryGroup) {
-		//check();
 		if (drawNamingPopup("Naming Segment", *pendingBoundaryGroup, mesh.boundaryGroups)) {
 
 			if (mesh.currentMeshType == MeshType::Structured) {
@@ -1622,19 +1599,8 @@ void MeshInspector::drawPopup() {
 			setGroupOrientation(*pendingBoundaryGroup);
 			setGroupTotalLength(*pendingBoundaryGroup);
 
-			printf(
-				"new group edge count = %zu\n",
-				pendingBoundaryGroup->edges.size()
-			);
-
 			if (!pendingBoundaryGroup->segmentIDs.empty()) {
 				mesh.boundaryGroups.push_back(std::move(*pendingBoundaryGroup));
-			
-
-				printf(
-					"boundary group count = %zu\n",
-					mesh.boundaryGroups.size()
-				);
 			}
 
 			pendingBoundaryGroup.reset();
@@ -1762,9 +1728,6 @@ bool MeshInspector::deleteBoundaryGroupByID(int groupID) {
 	if (pendingBoundaryGroup && pendingBoundaryGroup->id == groupID) {
 		pendingBoundaryGroup.reset();
 	}
-
-	// Optional: clear error text
-	obstacleError.clear();
 
 	return true;
 }
@@ -2054,11 +2017,9 @@ void MeshInspector::render() {
 	// Update hover before mouse logic (suppressed while inspecting cells)
 	if (toggleInspectCell) {
 		hoveredId = std::nullopt;
-		hoveringOverSegment = false;
 	}
 	else {
 		hoveredId = findHoveredBoundarySegment();
-		hoveringOverSegment = hoveredId.has_value();
 	}
 
 	// Now handle mouse using current hoveredId/current segments

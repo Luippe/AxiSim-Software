@@ -106,12 +106,37 @@ void BaseSurfaceViewer::updateLengthScale(double currentScale, const char* unitN
 		return;
 	}
 
-	// scale = 1/toBase, so a smaller display unit (e.g. m -> mm) means a
-	// larger scale value. Zooming in means shrinking unitsPerPixel, so the
-	// ratio is inverted relative to the scale change.
-	camera.rescaleZoom(lastLengthScale / currentScale);
+	// snap to an absolute zoom where one grid cell reads exactly one display
+	// unit (1 mm, 1 m, etc)
+	camera.setZoom(zoomForUnitGrid(currentScale));
 
 	lastLengthScale = currentScale;
+}
+
+double BaseSurfaceViewer::zoomForUnitGrid(double scale) const {
+
+	if (!(scale > 0.0)) {
+		return camera.unitsPerPixel; // leave the zoom unchanged if scale is invalid
+	}
+
+	// gridWorldStep() rounds "gridTargetPixelSpacing worth of world, expressed
+	// in display units" to a 1/2/5 x 10^n step; any value in [1, 2) rounds to 1.
+	// Aim for 1.25 so the result sits safely inside that band regardless of
+	// float rounding, giving a ~48 px cell of exactly one unit.
+	//
+	// scale = 1/toBase, so one display unit is 1/scale in world meters.
+	const double targetDisplayStep = 1.25;
+	double worldPerUnit = 1.0 / scale;
+
+	return worldPerUnit * targetDisplayStep / gridTargetPixelSpacing;
+}
+
+void BaseSurfaceViewer::resetView() {
+
+	// recenter, then match the zoom to the project's current display unit so one
+	// grid cell reads exactly one unit
+	camera.home();
+	camera.setZoom(zoomForUnitGrid(lastLengthScale));
 }
 
 bool BaseSurfaceViewer::isMouseNearImage(ImGuiIO& io) {
@@ -231,10 +256,6 @@ void BaseSurfaceViewer::drawSurface(const Rect& rect) {
 	ImGui::Image((ImTextureID)(intptr_t)frameBuffer.getTextureID(), rect.size, ImVec2(0.0, 1.0f), ImVec2(1.0f, 0.0f));
 	imageMin = ImGui::GetItemRectMin();
 	imageMax = ImGui::GetItemRectMax();
-	imageSize = {
-		imageMax.x - imageMin.x,
-		imageMax.y - imageMin.y
-	};
 }
 
 void BaseSurfaceViewer::drawAxes(ImDrawList* drawList) {
@@ -279,8 +300,7 @@ void BaseSurfaceViewer::drawAxes(ImDrawList* drawList) {
 
 double BaseSurfaceViewer::gridWorldStep() const {
 
-	const double targetPixelSpacing = 60.0;
-	double targetWorldStep = camera.unitsPerPixel * targetPixelSpacing;
+	double targetWorldStep = camera.unitsPerPixel * gridTargetPixelSpacing;
 
 	if (!(targetWorldStep > 0.0) || !std::isfinite(targetWorldStep)) {
 		return 0.0;

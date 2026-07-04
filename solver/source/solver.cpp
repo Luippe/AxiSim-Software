@@ -696,7 +696,7 @@ void Solver::runSimple(const Mesh& mesh) {
                 if (addConvectionTerm) {
                     addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, concCoeff, bcDevice.conc);
                 }
-                underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.conc, 0.7);
+                underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.conc, 1.0);
                 solveLinearSystem(concCoeff, configSolver, stream, simple.conc, simple.concTemp, activeCells, threadsPerBlock);
             }
 

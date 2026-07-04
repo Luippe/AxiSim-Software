@@ -37,6 +37,13 @@ std::wstring loadFileDialog();
 // ====================================================
 // -------------------PROJECT--------------------------
 // ====================================================
+
+// save project when save hotkey is pressed
+void saveHotkeyPressed(Project& project);
+
+// save project given a path
+void saveFromPathProject(const std::wstring& path, Project& project);
+
 // save project by opening explorer
 void saveFromExplorerProject(Project& project);
 

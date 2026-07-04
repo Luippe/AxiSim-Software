@@ -42,10 +42,6 @@ public:
 	MeshInspector(Project& project, AppConfig& appConfig);
 
 	VertexBuffer vertexBuffer;
-	GLsizeiptr gridLineBufferBytes = 0;
-
-	// create dockspace to have multiple tabs
-	DockingSpace meshDockSpace{ "Mesh Inspector" };
 
 	// toolbar is drawn first, then the 2D field is rendered using the remaining space
 	void render();
@@ -78,12 +74,8 @@ private:
 	float pickRadiusPx = 12.0f;
 	std::optional<int> hoveredId;
 
-	bool isPopupOpened = false;
-	bool hoveringOverSegment = false;
 	bool hoveringOverSelectedSegment = false;
 	std::optional<BoundarySegmentGroup> pendingBoundaryGroup;
-	std::string obstacleError;
-	std::vector<int> namedIDs;
 	bool toggleSnapping = false;
 	Vec2 roiStartWorld{};
 	Vec2 roiCurrentWorld{};
@@ -92,13 +84,8 @@ private:
 	PendingCircle pendingCircle;
 	PendingRect pendingRect;
 
-	//-------------status bar--------------
-	float statusBarHeight = 100.0f;
-
 	// -------------drawing variables--------------
 	ImColor drawingColor = IM_COL32(203, 209, 224, 255);
-	const ImU32 sketchBgColor = IM_COL32(102, 102, 102, 255);
-	const ImU32 outlineColor = IM_COL32(150, 150, 150, 255);
 
 	// -------------cell inspection--------------
 	bool toggleInspectCell = false;	// toolbar mode: pick cells to read mesh data

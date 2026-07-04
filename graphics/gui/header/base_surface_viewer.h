@@ -398,26 +398,39 @@ protected:
 	Camera2D camera;
 
 	// tracks the last project display scale seen by updateLengthScale(), so a
-	// change can be detected and the camera zoom rescaled accordingly. Also
+	// change can be detected and the camera zoom snapped accordingly. Also
 	// used to label the grid spacing in the project's chosen display unit.
 	double lastLengthScale = 1.0;
 	const char* currentUnitName = "m";
 	bool lengthScaleInitialized = false;
 
-	// image dimensions
-	int imageWidth = 0, imageHeight = 0;
+	// on-screen spacing (px) that gridWorldStep() aims for when picking a nice
+	// 1/2/5 grid step. Shared with the zoom-snap in updateLengthScale() so the
+	// grid can be made to read exactly one display unit per cell.
+	static constexpr double gridTargetPixelSpacing = 60.0;
+
+	// screen-space bounds of the drawn surface image, updated by drawSurface()
+	// and read by hit-testing (e.g. sketch trimming)
 	ImVec2 imageMin = ImVec2(0.0f, 0.0f);
 	ImVec2 imageMax = ImVec2(0.0f, 0.0f);
-	ImVec2 imageSize = ImVec2(0.0f, 0.0f);
 
 	// ======================================================================
 	// -----------------------HELPER FUNCTION--------------------------------
 	// ======================================================================
-	// rescale the 2D camera's zoom to match a change in the project's display
-	// scale (Project::scale). No-op the first time it is called, since there
-	// is no previous scale to compare against yet. Also records unitName for
-	// labeling the grid spacing.
+	// when the project's display length unit changes, snap the 2D camera to an
+	// absolute zoom where one grid cell reads exactly one display unit (1 mm,
+	// 1 m, etc). No-op the first time it is called, since there is no previous
+	// scale to compare against yet. Also records unitName for labeling the grid.
 	void updateLengthScale(double currentScale, const char* unitName);
+
+	// units-per-pixel that makes one grid cell read exactly one display unit at
+	// the given display scale (scale = 1/toBase). Returns the current zoom
+	// unchanged when scale is invalid.
+	double zoomForUnitGrid(double scale) const;
+
+	// reset the view for the "home" / reset-view action: recenter and snap the
+	// zoom so one grid cell matches the project's current length unit.
+	void resetView();
 
 	bool isMouseNearImage(ImGuiIO& io);
 
@@ -460,7 +473,7 @@ protected:
 	// round a world point to the nearest grid vertex
 	Vec2 snapToGridVertex(Vec2 world) const;
 
-	// draws the main surface. also updates imageMin, imageMax, and imageSize
+	// draws the main surface. also updates imageMin and imageMax
 	void drawSurface(const Rect& rect);
 
 	// draws rectangular canvas
