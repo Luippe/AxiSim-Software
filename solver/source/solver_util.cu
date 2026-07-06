@@ -964,12 +964,10 @@ addDiffusionCoefficient(
 
 				double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
 				double h = 1 / Rtot;
-				double cw;
+				double& cw = mesh.faces.cw[faceID];
 
 				wallConcentrationHill(bc, groupID, phi[n], cw, h);
-
 				mesh.faces.ocrWall[faceID] = area * Hill(bc, groupID, cw) * Inhibition(bc, groupID, cw);
-				mesh.faces.cw[faceID] = cw;
 
 				AC[n] += area * h;
 				b[n] += area * h * cw;

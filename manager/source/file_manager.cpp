@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <iostream>
 
 #include "project.h"
 #include "mesh.h"
@@ -438,6 +439,29 @@ bool readString(std::ifstream& in, std::string& value) {
 
 	return (bool)in.read(value.data(), size);
 }
+// ====================================================
+// -------------------SETTINGS-------------------------
+// ====================================================
+void saveSettings(Project& project, AppSettings& settings) {
+
+	std::wstring path = L"project_settings.bin";
+	std::ofstream out(std::filesystem::path(path), std::ios::binary);
+	settings.quickLaunch = project.path;
+
+	writeAll(
+		out,
+		settings.quickLaunch
+	);
+}
+
+bool loadSettings(std::ifstream& in, AppSettings& settings) {
+
+	return readAll(
+		in,
+		settings.quickLaunch
+	);
+
+}
 
 // ====================================================
 // -------------------KEYBOARD-------------------------
@@ -467,6 +491,8 @@ void saveEtc(std::ofstream& out, const Project& project) {
 
 	writeAll(
 		out,
+		project.name,
+		project.path,
 		project.lengthScale
 	);
 }
@@ -475,8 +501,14 @@ void loadEtc(std::ifstream& in, Project& project) {
 
 	readAll(
 		in,
+		project.name,
+		project.path,
 		project.lengthScale
 	);
+
+	// units are now known: ask the GUI to reset every inspector's view so the
+	// grid/zoom matches the loaded project's length unit.
+	project.resetInspectorViews = true;
 }
 
 void saveHotkeyPressed(Project& project) {
@@ -502,6 +534,8 @@ void saveFromPathProject(const std::wstring& path, Project& project) {
 }
 
 void saveLaunchProject(Project& project) {
+	if (project.path.empty()) return;
+
 	std::wstring path = L"openAtLaunchProject.bin";
 	saveFromPathProject(path, project);
 }
@@ -518,6 +552,16 @@ void saveFromExplorerProject(Project& project) {
 	project.name = p.stem().string();
 
 	saveFromPathProject(path, project);
+}
+
+void loadFromPathProject(std::ifstream& in, Project& project) {
+
+	loadFromPathGeometry(in, project.geometry);
+	loadFromPathMesh(in, project.mesh);
+	project.mesh.updateAfterLoadingFile();
+	loadFromPathSolver(in, project.solver);
+	loadEtc(in, project);
+
 }
 
 void loadFromExplorerProject(Project& project) {
@@ -801,20 +845,23 @@ void loadFromPathResults(std::ifstream& in, Results& results) {
 
 }
 
-void loadAtLaunch(Project& project) {
+void loadAtLaunch(Project& project, AppSettings& settings) {
 
-	const char* projectFile = "openAtLaunchProject.bin";
-
+	const char* projectFile = "project_settings.bin";
 	std::ifstream in(projectFile, std::ios::binary);
 
-	{
-		if (in) {
-			loadFromPathGeometry(in, project.geometry);
-			loadFromPathMesh(in, project.mesh);
-			project.mesh.updateAfterLoadingFile();
-			loadFromPathSolver(in, project.solver);
-			loadEtc(in, project);
-		}
+	if (!in) return;
+
+	loadSettings(in ,settings);
+
+	in.close();
+	//std::printf("%ls\n", settings.quickLaunch.c_str());
+
+	if (!settings.quickLaunch.empty())
+	{	
+		std::ifstream in(std::filesystem::path(settings.quickLaunch), std::ios::binary);
+		loadFromPathProject(in, project);
+		
 	}
 
 	//// load results file if it exists

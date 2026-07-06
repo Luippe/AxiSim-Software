@@ -4,8 +4,6 @@
 
 #include "imgui_internal.h"
 
-#include "project.h"
-
 #include "file_manager.h"
 #include "keyboard_manager.h"
 
@@ -13,39 +11,35 @@ using namespace Shortcuts;
 
 Menu::Menu(Project& project) :
 	project(project) {
-	loadAtLaunch(project);
+	loadAtLaunch(project, settings);
 };
 
 
 void Menu::drawOpen() {
-	if (ImGui::BeginMenu("Open")) {
-		if (ImGui::MenuItem("Project")) {
-			loadFromExplorerProject(project);
-		}
-
-		ImGui::EndMenu();
+	if (ImGui::MenuItem("Open Project")) {
+		loadFromExplorerProject(project);
 	}
 }
 
 void Menu::drawOpenAtLaunch() {
-	if (ImGui::BeginMenu("Open At Launch")) {
-
-		if (ImGui::MenuItem("Project")) {
-			saveLaunchProject(project);
-		}
-
-		ImGui::EndMenu();
+	if (ImGui::MenuItem("Open Current Project At Startup")) {
+		saveSettings(project, settings);
 	}
 }
 
 void Menu::drawSave() {
-	if (ImGui::BeginMenu("Save")) {
 
-		if (ImGui::MenuItem("Save Entire Project")) {
+	if (ImGui::MenuItem("Save")) {
+		if (!project.name.empty()) {
+			saveFromPathProject(project.path, project);
+		}
+		else {
 			saveFromExplorerProject(project);
 		}
+	}
 
-		ImGui::EndMenu();
+	if (ImGui::MenuItem("Save As")) {
+		saveFromExplorerProject(project);
 	}
 }
 

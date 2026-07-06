@@ -161,6 +161,12 @@ private:
 
 	void createCylinderVertices();
 
+	// From the rasterized activeCell grid, collect the interior grid faces that
+	// separate a fluid cell from a solid cell into selectableOuterEdges. These are
+	// the obstacle/wall boundaries the Mesh Inspector displays and lets the user
+	// pick; without them any wall not lying on the outer grid border is invisible.
+	void rebuildSelectableObstacleEdges();
+
 	// even-odd ray cast: is a world point inside the discretized boundary loops?
 	bool pointInsideDomain(const Vec2& p) const;
 

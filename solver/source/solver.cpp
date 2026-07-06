@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iomanip>
 #include <sstream>
+#include <cuda_profiler_api.h>
 #include "printer.h"
 #include "file_manager.h"
 
@@ -84,12 +85,14 @@ void Solver::run(const Mesh& mesh) {
     createResidualPrintItems(); // must be called before residualPlot->setName
 
     solverRunning = true;
+
     solverThread = std::thread([&]() {
         runSimple(mesh);
         solverRunning = false;
         });
 
 }
+
 
 void Solver::createResidualPrintItems() {
 
@@ -566,6 +569,8 @@ void Solver::runSimple(const Mesh& mesh) {
     CUDA_CHECK(cudaGetLastError());
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
+    cudaProfilerStart();
+
     // record time
     CudaTimer timer;
     timer.startTimer(stream);
@@ -752,6 +757,8 @@ void Solver::runSimple(const Mesh& mesh) {
     // end timer and print to console
     timer.endTimer(stream);
     float ms = timer.getElapsedTime();
+
+    cudaProfilerStop();
 
     console->addCompletionTime("Solver", ms);
 

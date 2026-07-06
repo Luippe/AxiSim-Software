@@ -1044,6 +1044,11 @@ bool Mesh::convertSketchToStructuredMesh(const SketchModel& sketch) {
 		}
 	}
 
+	// The Mesh Inspector reconstructs the selectable wall boundary from these
+	// fluid/solid interface faces. Without this the rasterized walls (any wall not
+	// on the outer grid border) can't be shown or picked in the inspector.
+	rebuildSelectableObstacleEdges();
+
 	isReady = true;
 
 	if (console) {
@@ -1053,6 +1058,47 @@ bool Mesh::convertSketchToStructuredMesh(const SketchModel& sketch) {
 	}
 
 	return true;
+}
+
+void Mesh::rebuildSelectableObstacleEdges() {
+	selectableOuterEdges.clear();
+
+	const int nr = g.nr;
+	const int nz = g.nz;
+
+	if (static_cast<int>(g.activeCell.size()) != nr * nz) {
+		return;
+	}
+
+	auto isFluid = [&](int i, int j) {
+		if (i < 0 || i >= nr || j < 0 || j >= nz) {
+			return false;
+		}
+		return g.activeCell[i * nz + j] != 0;
+	};
+
+	// Interior axial faces (constant z) between cells (i, jFace - 1) and (i, jFace).
+	// MeshEdge convention matches makeAxialEdge()/buildDomainBoundaryEdges().
+	for (int i = 0; i < nr; i++) {
+		for (int jFace = 1; jFace < nz; jFace++) {
+			if (isFluid(i, jFace - 1) != isFluid(i, jFace)) {
+				selectableOuterEdges.insert(
+					MeshEdge{ EdgeOrient::Vertical, i, jFace }
+				);
+			}
+		}
+	}
+
+	// Interior radial faces (constant r) between cells (iFace - 1, j) and (iFace, j).
+	for (int iFace = 1; iFace < nr; iFace++) {
+		for (int j = 0; j < nz; j++) {
+			if (isFluid(iFace - 1, j) != isFluid(iFace, j)) {
+				selectableOuterEdges.insert(
+					MeshEdge{ EdgeOrient::Horizontal, iFace, j }
+				);
+			}
+		}
+	}
 }
 
 bool Mesh::pointInsideDomain(const Vec2& p) const {

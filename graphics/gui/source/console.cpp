@@ -3,6 +3,7 @@
 #include <sstream>
 #include <iomanip>
 #include <format>
+#include <algorithm>
 
 #include "clipboard.h"
 
@@ -61,8 +62,8 @@ Console::Console(GUI& gui, Project& project) :
 
 }
 
-void Console::addCommand(const std::string& name, CommandFn function, const std::string& usage, const std::string& description) {
-	commands[name] = Command{ function, usage, description };
+void Console::addCommand(const std::string& name, CommandFn function, const std::string& usage, const std::string& description, std::vector<std::string> objects) {
+	commands[name] = Command{ function, usage, description, std::move(objects) };
 }
 
 void Console::checkAutoScroll() {
@@ -124,7 +125,8 @@ void Console::registerSetCommands() {
 		}
 		},
 		"set <object> <value>",
-		"Sets a program setting"
+		"Sets a program setting",
+		{ "colormap", "cmap" }
 	);
 }
 
@@ -189,7 +191,8 @@ void Console::registerGetCommands() {
 		}
 		},
 		"get <object> <value>",
-		"display a program setting"
+		"display a program setting",
+		{ "gpu", "colormap" }
 	);
 }
 
@@ -230,7 +233,8 @@ void Console::registerCopyCommands() {
 		}
 		},
 		"copy <object>",
-		"copies object to clipboard"
+		"copies object to clipboard",
+		{ "residual", "mesh", "inspector", "colormap" }
 	);
 }
 
@@ -245,7 +249,8 @@ void Console::registerSaveAndLoadCommands() {
 		}
 		},
 		"save <object>",
-		"save object to folder"
+		"save object to folder",
+		{ "project" }
 	);
 
 	addCommand("load", [this](const std::vector<std::string>& words) {
@@ -260,7 +265,8 @@ void Console::registerSaveAndLoadCommands() {
 		}
 		},
 		"load <object>",
-		"load object from folder"
+		"load object from folder",
+		{ "project" }
 	);
 
 }
@@ -346,7 +352,10 @@ int Console::textEditCallbackStub(ImGuiInputTextCallbackData* data) {
 }
 
 int Console::textEditCallback(ImGuiInputTextCallbackData* data) {
-	if (data->EventFlag == ImGuiInputTextFlags_CallbackHistory) {
+	if (data->EventFlag == ImGuiInputTextFlags_CallbackCompletion) {
+		handleCompletion(data);
+	}
+	else if (data->EventFlag == ImGuiInputTextFlags_CallbackHistory) {
 
 		const int prevHistoryPos = historyPos;
 
@@ -376,6 +385,92 @@ int Console::textEditCallback(ImGuiInputTextCallbackData* data) {
 	}
 
 	return 0;
+}
+
+void Console::handleCompletion(ImGuiInputTextCallbackData* data) {
+
+	// The word being completed runs from the start of the current token up to
+	// the cursor. Scan back from the cursor to the previous space to find it.
+	const char* bufBegin = data->Buf;
+	const char* wordEnd = data->Buf + data->CursorPos;
+	const char* wordStart = wordEnd;
+
+	while (wordStart > bufBegin && wordStart[-1] != ' ' && wordStart[-1] != '\t') {
+		wordStart--;
+	}
+
+	std::string partial(wordStart, wordEnd);
+
+	// Words fully typed before the current one decide which token this is:
+	// 0 words before -> completing the action, 1 -> completing its object.
+	std::vector<std::string> priorWords = parseWords(std::string(bufBegin, wordStart));
+	int wordIndex = (int)priorWords.size();
+
+	std::vector<std::string> candidates;
+
+	if (wordIndex == 0) {
+		// completing the action: candidates are all command names
+		for (const auto& [name, command] : commands) {
+			candidates.push_back(name);
+		}
+	}
+	else if (wordIndex == 1) {
+		// completing the object: candidates are the action's registered objects
+		auto it = commands.find(priorWords[0]);
+		if (it != commands.end()) {
+			candidates = it->second.objects;
+		}
+	}
+
+	// keep only candidates that start with what the user has typed so far
+	std::vector<std::string> matches;
+	for (const std::string& candidate : candidates) {
+		if (candidate.size() >= partial.size() &&
+			candidate.compare(0, partial.size(), partial) == 0) {
+			matches.push_back(candidate);
+		}
+	}
+
+	if (matches.empty()) {
+		return;
+	}
+
+	std::sort(matches.begin(), matches.end());
+
+	// completion text: the whole word for a single match, otherwise the longest
+	// common prefix of all matches (fill in as far as it stays unambiguous)
+	std::string completion = matches[0];
+	for (size_t m = 1; m < matches.size(); m++) {
+		size_t k = 0;
+		while (k < completion.size() && k < matches[m].size() &&
+			completion[k] == matches[m][k]) {
+			k++;
+		}
+		completion.resize(k);
+	}
+
+	// replace the partial word with the completion
+	int start = (int)(wordStart - bufBegin);
+	int end = (int)(wordEnd - bufBegin);
+
+	data->DeleteChars(start, end - start);
+	data->InsertChars(start, completion.c_str());
+
+	if (matches.size() == 1) {
+		// unambiguous: finish the word and start the next argument
+		data->InsertChars(data->CursorPos, " ");
+	}
+	else {
+		// several options: show them so the user can pick
+		std::string list;
+		for (const std::string& match : matches) {
+			list += "  " + match;
+		}
+
+		addLine("> " + std::string(bufBegin, wordEnd));
+		addLine(list);
+		scrollToBottom = true;
+	}
 }
 
 void Console::draw() {

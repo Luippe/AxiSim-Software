@@ -47,6 +47,9 @@ private:
 		CommandFn run;
 		std::string usage;
 		std::string description;
+
+		// valid objects for this action (second word), used for tab completion
+		std::vector<std::string> objects;
 	};
 
 	std::vector<std::string> lines;
@@ -66,7 +69,7 @@ private:
 	void registerSaveAndLoadCommands();
 	void registerUtilityCommands();
 
-	void addCommand(const std::string& name, CommandFn function, const std::string& usage, const std::string& description);
+	void addCommand(const std::string& name, CommandFn function, const std::string& usage, const std::string& description, std::vector<std::string> objects = {});
 
 	// check if auto scroll is on, if it is, scroll to bottom whener a line is added
 	void checkAutoScroll();
@@ -75,6 +78,44 @@ private:
 	int historyPos = -1;
 	static int textEditCallbackStub(ImGuiInputTextCallbackData* data);
 	int textEditCallback(ImGuiInputTextCallbackData* data);
+
+	// ----------------- tab / dropdown autocomplete -----------------
+	struct CompletionItem {
+		std::string word;
+		std::string description;
+	};
+
+	// where the word being completed sits in the input and which token it is
+	struct CompletionContext {
+		int wordStart = 0;			// byte offset of the token start
+		int wordEnd = 0;			// byte offset of the cursor / token end
+		int wordIndex = 0;			// 0 = action, 1 = object, ...
+		std::string partial;		// text typed so far for this token
+	};
+
+	std::vector<CompletionItem> completionItems;	// current dropdown entries
+	int completionIndex = 0;						// highlighted entry
+	bool completionActive = false;					// dropdown is showing
+	bool completionNavigated = false;				// user moved with arrows
+	std::string lastInput;							// detect edits between frames
+	bool refocusInput = false;						// re-focus input next frame
+	bool resetInputCursor = false;					// snap cursor to end next frame
+
+	CompletionContext getCompletionContext(const std::string& text, int cursor) const;
+	std::vector<CompletionItem> computeMatches(const std::string& text, int cursor) const;
+
+	// recompute the dropdown entries from the current input each frame
+	void updateCompletionState(bool inputActive);
+
+	// insert the highlighted entry into the input buffer (Enter / right arrow /
+	// external accepts); Tab accepts inline through the InputText callback.
+	void acceptCompletion();
+
+	// draw the floating suggestion list just above the input box
+	void drawCompletionPopup(const ImVec2& inputMin, const ImVec2& inputMax);
+
+	// accept the highlighted entry from inside the InputText callback (Tab)
+	void handleCompletion(ImGuiInputTextCallbackData* data);
 
 };
 

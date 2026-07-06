@@ -17,11 +17,10 @@ class SceneView;
 struct GridConfig;
 struct SolutionField;
 
-// The Inspector renders the solved field over the (unstructured) finite-volume
-// mesh using the same 2D ImDrawList + Camera2D approach as the Mesh Inspector
-// and the geometry/sketch view. Each FV cell maps 1:1 to a triangle in
-// mesh.unstructuredTriangles and is colored by the current solution field
-// through the active colormap.
+// The Inspector renders solved fields over the finite-volume mesh using the
+// same 2D ImDrawList + Camera2D approach as the Mesh Inspector and the
+// geometry/sketch view. Unstructured cells draw from mesh.unstructuredTriangles;
+// structured cells draw from the grid face coordinates.
 class Inspector : public BaseSurfaceViewer {
 public:
 
@@ -70,6 +69,15 @@ private:
 
 	// map a scalar value to a color using the active colormap LUT
 	ImU32 valueToColor(double value, double vmin, double vmax) const;
+
+	// true when structured face coordinates are available for drawing cells
+	bool hasStructuredGrid() const;
+
+	// structured results keep solid cells in the arrays, but those cells are not solved
+	bool isStructuredCellActive(int cellID) const;
+
+	// true when a field value can be shown for this cell
+	bool isDrawableCell(int cellID, int fieldSize) const;
 
 	// fit the camera so the whole mesh is visible
 	void frameToMesh();

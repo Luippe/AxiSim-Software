@@ -336,6 +336,16 @@ void GUI::render() {
 
 	menu.render();
 
+	// a project load (via the menu or at launch) requests that every surface
+	// inspector recenter/re-zoom to the loaded units. Fan the request out here,
+	// before the tab viewers render, so each applies it on this frame.
+	if (project.resetInspectorViews) {
+		sketch.requestResetView();
+		meshInspector.requestResetView();
+		inspector.requestResetView();
+		project.resetInspectorViews = false;
+	}
+
 	console.draw();
 
 	drawUI();

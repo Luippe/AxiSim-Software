@@ -63,7 +63,12 @@ bool Inspector::computeFieldRange(const SolutionField& sol, float& vmin, float& 
 	double hi = std::numeric_limits<double>::lowest();
 	bool found = false;
 
-	for (double v : sol.field) {
+	for (int c = 0; c < (int)sol.field.size(); c++) {
+		if (!isDrawableCell(c, (int)sol.field.size())) {
+			continue;
+		}
+
+		double v = sol.field[c];
 		if (!std::isfinite(v)) {
 			continue;
 		}
@@ -105,7 +110,101 @@ ImU32 Inspector::valueToColor(double value, double vmin, double vmax) const {
 	return IM_COL32(lut[idx][0], lut[idx][1], lut[idx][2], 255);
 }
 
+bool Inspector::hasStructuredGrid() const {
+
+	if (mesh.currentMeshType != MeshType::Structured) {
+		return false;
+	}
+
+	return g.nr > 0 &&
+		g.nz > 0 &&
+		(int)g.rFace.size() >= g.nr + 1 &&
+		(int)g.zFace.size() >= g.nz + 1;
+}
+
+bool Inspector::isStructuredCellActive(int cellID) const {
+
+	if (cellID < 0) {
+		return false;
+	}
+
+	const FVMesh& fv = project.solver.fvMesh;
+	if (cellID < (int)fv.cells.size()) {
+		return fv.cells[cellID].active && !fv.cells[cellID].solid;
+	}
+
+	if (cellID < (int)g.activeCell.size()) {
+		return g.activeCell[cellID] != 0;
+	}
+
+	return true;
+}
+
+bool Inspector::isDrawableCell(int cellID, int fieldSize) const {
+
+	if (cellID < 0 || cellID >= fieldSize) {
+		return false;
+	}
+
+	if (mesh.currentMeshType == MeshType::Structured) {
+		return isStructuredCellActive(cellID);
+	}
+
+	const FVMesh& fv = project.solver.fvMesh;
+	if (cellID < (int)fv.cells.size()) {
+		return fv.cells[cellID].active && !fv.cells[cellID].solid;
+	}
+
+	return true;
+}
+
 void Inspector::frameToMesh() {
+
+	if (hasStructuredGrid()) {
+		double zMin = std::numeric_limits<double>::max();
+		double zMax = std::numeric_limits<double>::lowest();
+		double rMin = std::numeric_limits<double>::max();
+		double rMax = std::numeric_limits<double>::lowest();
+		bool found = false;
+
+		for (int i = 0; i < g.nr; i++) {
+			for (int j = 0; j < g.nz; j++) {
+				int n = i * g.nz + j;
+				if (!isStructuredCellActive(n)) {
+					continue;
+				}
+
+				zMin = std::min(zMin, g.zFace[j]);
+				zMax = std::max(zMax, g.zFace[j + 1]);
+				rMin = std::min(rMin, g.rFace[i]);
+				rMax = std::max(rMax, g.rFace[i + 1]);
+				found = true;
+			}
+		}
+
+		if (!found) {
+			zMin = g.zFace.front();
+			zMax = g.zFace.back();
+			rMin = g.rFace.front();
+			rMax = g.rFace.back();
+		}
+
+		camera.center = Vec2{ 0.5 * (zMin + zMax), 0.5 * (rMin + rMax) };
+
+		double w = zMax - zMin;
+		double h = rMax - rMin;
+
+		double uppZ = (w > 1.0e-12) ? w / (double)canvasRect.size.x : camera.unitsPerPixel;
+		double uppR = (h > 1.0e-12) ? h / (double)canvasRect.size.y : camera.unitsPerPixel;
+
+		double upp = std::max(uppZ, uppR);
+		if (upp <= 1.0e-30) {
+			upp = 0.001;
+		}
+
+		camera.unitsPerPixel = upp * 1.15;
+		return;
+	}
 
 	const std::vector<Vec2>& pts = mesh.unstructuredPoints;
 
@@ -147,7 +246,34 @@ static double pickSign(const Vec2& p, const Vec2& a, const Vec2& b) {
 	return (p.z - b.z) * (a.r - b.r) - (a.z - b.z) * (p.r - b.r);
 }
 
+static int inspectorCellIndexAt(const std::vector<double>& faces, double x) {
+	if (faces.size() < 2) {
+		return -1;
+	}
+
+	if (x < faces.front() || x > faces.back()) {
+		return -1;
+	}
+
+	auto it = std::upper_bound(faces.begin(), faces.end(), x);
+	int index = static_cast<int>(it - faces.begin()) - 1;
+
+	return std::clamp(index, 0, static_cast<int>(faces.size()) - 2);
+}
+
 int Inspector::pickCell(const Vec2& world) const {
+
+	if (hasStructuredGrid()) {
+		int j = inspectorCellIndexAt(g.zFace, world.z);
+		int i = inspectorCellIndexAt(g.rFace, world.r);
+
+		if (i < 0 || j < 0) {
+			return -1;
+		}
+
+		int n = i * g.nz + j;
+		return isStructuredCellActive(n) ? n : -1;
+	}
 
 	const std::vector<Vec2>& pts = mesh.unstructuredPoints;
 	const std::vector<Triangle>& tris = mesh.unstructuredTriangles;
@@ -249,11 +375,9 @@ void Inspector::drawField(ImDrawList* drawList) {
 		return;
 	}
 
-	const std::vector<Vec2>& pts = mesh.unstructuredPoints;
-	const std::vector<Triangle>& tris = mesh.unstructuredTriangles;
 	const std::vector<double>& field = sol->field;
 
-	if (pts.empty() || tris.empty() || field.empty()) {
+	if (field.empty()) {
 		return;
 	}
 
@@ -271,6 +395,119 @@ void Inspector::drawField(ImDrawList* drawList) {
 
 	bool smooth = (results.currentShadingType == ShadingType::Interp);
 
+	const ImVec2 uv = drawList->_Data->TexUvWhitePixel;
+
+	if (hasStructuredGrid()) {
+		const int nr = g.nr;
+		const int nz = g.nz;
+
+		auto vertexIndex = [nz](int iFace, int jFace) {
+			return iFace * (nz + 1) + jFace;
+		};
+
+		if (smooth) {
+			int nVertices = (nr + 1) * (nz + 1);
+			vertexValues.assign(nVertices, 0.0f);
+			vertexCounts.assign(nVertices, 0);
+
+			for (int i = 0; i < nr; i++) {
+				for (int j = 0; j < nz; j++) {
+					int c = i * nz + j;
+					if (!isDrawableCell(c, (int)field.size())) {
+						continue;
+					}
+
+					double raw = field[c];
+					if (!std::isfinite(raw)) {
+						continue;
+					}
+
+					float v = (float)raw;
+					int ids[4] = {
+						vertexIndex(i, j),
+						vertexIndex(i, j + 1),
+						vertexIndex(i + 1, j + 1),
+						vertexIndex(i + 1, j)
+					};
+
+					for (int id : ids) {
+						if (id < 0 || id >= nVertices) continue;
+						vertexValues[id] += v;
+						vertexCounts[id] += 1;
+					}
+				}
+			}
+
+			for (size_t i = 0; i < vertexValues.size(); i++) {
+				if (vertexCounts[i] > 0) {
+					vertexValues[i] /= (float)vertexCounts[i];
+				}
+			}
+		}
+
+		for (int i = 0; i < nr; i++) {
+			for (int j = 0; j < nz; j++) {
+				int c = i * nz + j;
+				if (!isDrawableCell(c, (int)field.size())) {
+					continue;
+				}
+
+				double v = field[c];
+				if (!std::isfinite(v)) {
+					continue;
+				}
+
+				ImVec2 p00 = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[i] });
+				ImVec2 p10 = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i] });
+				ImVec2 p11 = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i + 1] });
+				ImVec2 p01 = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[i + 1] });
+
+				if (smooth) {
+					float fallback = (float)v;
+					auto cornerValue = [&](int id) {
+						if (id >= 0 &&
+							id < (int)vertexValues.size() &&
+							vertexCounts[id] > 0) {
+							return vertexValues[id];
+						}
+						return fallback;
+					};
+
+					int i00 = vertexIndex(i, j);
+					int i10 = vertexIndex(i, j + 1);
+					int i11 = vertexIndex(i + 1, j + 1);
+					int i01 = vertexIndex(i + 1, j);
+
+					ImU32 c00 = valueToColor(cornerValue(i00), vmin, vmax);
+					ImU32 c10 = valueToColor(cornerValue(i10), vmin, vmax);
+					ImU32 c11 = valueToColor(cornerValue(i11), vmin, vmax);
+					ImU32 c01 = valueToColor(cornerValue(i01), vmin, vmax);
+
+					drawList->PrimReserve(6, 6);
+					drawList->PrimVtx(p00, uv, c00);
+					drawList->PrimVtx(p10, uv, c10);
+					drawList->PrimVtx(p11, uv, c11);
+					drawList->PrimVtx(p00, uv, c00);
+					drawList->PrimVtx(p11, uv, c11);
+					drawList->PrimVtx(p01, uv, c01);
+				}
+				else {
+					ImU32 col = valueToColor(v, vmin, vmax);
+					drawList->AddQuadFilled(p00, p10, p11, p01, col);
+				}
+			}
+		}
+
+		return;
+	}
+
+	const std::vector<Vec2>& pts = mesh.unstructuredPoints;
+	const std::vector<Triangle>& tris = mesh.unstructuredTriangles;
+
+	if (pts.empty() || tris.empty()) {
+		return;
+	}
+
 	// for smooth shading, average the surrounding cell values onto each vertex
 	if (smooth) {
 		vertexValues.assign(pts.size(), 0.0f);
@@ -279,8 +516,17 @@ void Inspector::drawField(ImDrawList* drawList) {
 		int nCells = std::min((int)tris.size(), (int)field.size());
 
 		for (int c = 0; c < nCells; c++) {
+			if (!isDrawableCell(c, (int)field.size())) {
+				continue;
+			}
+
 			const Triangle& t = tris[c];
-			float v = (float)field[c];
+			double raw = field[c];
+			if (!std::isfinite(raw)) {
+				continue;
+			}
+
+			float v = (float)raw;
 
 			int ids[3] = { t.v0, t.v1, t.v2 };
 			for (int k = 0; k < 3; k++) {
@@ -300,9 +546,14 @@ void Inspector::drawField(ImDrawList* drawList) {
 
 
 
-	const ImVec2 uv = drawList->_Data->TexUvWhitePixel;
-
 	for (int c = 0; c < (int)tris.size(); c++) {
+		if (!isDrawableCell(c, (int)field.size())) {
+			continue;
+		}
+		if (!std::isfinite(field[c])) {
+			continue;
+		}
+
 		const Triangle& t = tris[c];
 
 		if (t.v0 < 0 || t.v1 < 0 || t.v2 < 0) continue;
@@ -327,7 +578,7 @@ void Inspector::drawField(ImDrawList* drawList) {
 			drawList->PrimVtx(d, uv, cd);
 		}
 		else {
-			double v = (c < (int)field.size()) ? field[c] : 0.0;
+			double v = field[c];
 			ImU32 col = valueToColor(v, vmin, vmax);
 			drawList->AddTriangleFilled(a, b, d, col);
 		}
@@ -338,6 +589,45 @@ void Inspector::drawField(ImDrawList* drawList) {
 void Inspector::drawMeshOverlay(ImDrawList* drawList) {
 
 	if (!showMesh) {
+		return;
+	}
+
+	if (hasStructuredGrid()) {
+		const ImU32 lineColor = IM_COL32(25, 35, 45, 140);
+		const int nr = g.nr;
+		const int nz = g.nz;
+
+		auto activeAt = [&](int i, int j) {
+			if (i < 0 || i >= nr || j < 0 || j >= nz) {
+				return false;
+			}
+			return isStructuredCellActive(i * nz + j);
+		};
+
+		for (int i = 0; i < nr; i++) {
+			for (int jFace = 0; jFace <= nz; jFace++) {
+				if (!activeAt(i, jFace - 1) && !activeAt(i, jFace)) {
+					continue;
+				}
+
+				ImVec2 a = camera.worldToScreen(Vec2{ g.zFace[jFace], g.rFace[i] });
+				ImVec2 b = camera.worldToScreen(Vec2{ g.zFace[jFace], g.rFace[i + 1] });
+				drawList->AddLine(a, b, lineColor, 1.0f);
+			}
+		}
+
+		for (int iFace = 0; iFace <= nr; iFace++) {
+			for (int j = 0; j < nz; j++) {
+				if (!activeAt(iFace - 1, j) && !activeAt(iFace, j)) {
+					continue;
+				}
+
+				ImVec2 a = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[iFace] });
+				ImVec2 b = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[iFace] });
+				drawList->AddLine(a, b, lineColor, 1.0f);
+			}
+		}
+
 		return;
 	}
 
@@ -390,6 +680,10 @@ void Inspector::drawValueProbe(ImDrawList* drawList) {
 	if (c < 0 || c >= (int)sol->field.size()) {
 		return;
 	}
+	if (!isDrawableCell(c, (int)sol->field.size()) ||
+		!std::isfinite(sol->field[c])) {
+		return;
+	}
 
 	ImVec2 m = currentMousePos;
 	drawList->AddCircleFilled(m, 3.0f, IM_COL32(255, 255, 255, 220), 12);
@@ -422,31 +716,57 @@ void Inspector::drawCellInfo(ImDrawList* drawList) {
 		return;
 	}
 
-	const std::vector<Vec2>& pts = mesh.unstructuredPoints;
-	const std::vector<Triangle>& tris = mesh.unstructuredTriangles;
-
-	if (selectedCell >= (int)tris.size()) {
-		// stale selection (mesh changed) - clear it
-		selectedCell = -1;
-		return;
-	}
-
-	const Triangle& t = tris[selectedCell];
-	if (t.v0 < 0 || t.v1 < 0 || t.v2 < 0 ||
-		t.v0 >= (int)pts.size() ||
-		t.v1 >= (int)pts.size() ||
-		t.v2 >= (int)pts.size()) {
-		return;
-	}
-
 	// --- highlight the pinned cell ---
-	ImVec2 a = camera.worldToScreen(pts[t.v0]);
-	ImVec2 b = camera.worldToScreen(pts[t.v1]);
-	ImVec2 d = camera.worldToScreen(pts[t.v2]);
-
 	drawList->PushClipRect(canvasMin, canvasMax, true);
-	drawList->AddTriangleFilled(a, b, d, IM_COL32(255, 235, 60, 70));
-	drawList->AddTriangle(a, b, d, IM_COL32(255, 235, 60, 255), 2.0f);
+
+	if (hasStructuredGrid()) {
+		int nCells = g.nr * g.nz;
+		if (selectedCell >= nCells || !isStructuredCellActive(selectedCell)) {
+			selectedCell = -1;
+			drawList->PopClipRect();
+			return;
+		}
+
+		int i = selectedCell / g.nz;
+		int j = selectedCell % g.nz;
+
+		ImVec2 p00 = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[i] });
+		ImVec2 p11 = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i + 1] });
+
+		ImVec2 rmin(std::min(p00.x, p11.x), std::min(p00.y, p11.y));
+		ImVec2 rmax(std::max(p00.x, p11.x), std::max(p00.y, p11.y));
+
+		drawList->AddRectFilled(rmin, rmax, IM_COL32(255, 235, 60, 70));
+		drawList->AddRect(rmin, rmax, IM_COL32(255, 235, 60, 255), 0.0f, 0, 2.0f);
+	}
+	else {
+		const std::vector<Vec2>& pts = mesh.unstructuredPoints;
+		const std::vector<Triangle>& tris = mesh.unstructuredTriangles;
+
+		if (selectedCell >= (int)tris.size()) {
+			// stale selection (mesh changed) - clear it
+			selectedCell = -1;
+			drawList->PopClipRect();
+			return;
+		}
+
+		const Triangle& t = tris[selectedCell];
+		if (t.v0 < 0 || t.v1 < 0 || t.v2 < 0 ||
+			t.v0 >= (int)pts.size() ||
+			t.v1 >= (int)pts.size() ||
+			t.v2 >= (int)pts.size()) {
+			drawList->PopClipRect();
+			return;
+		}
+
+		ImVec2 a = camera.worldToScreen(pts[t.v0]);
+		ImVec2 b = camera.worldToScreen(pts[t.v1]);
+		ImVec2 d = camera.worldToScreen(pts[t.v2]);
+
+		drawList->AddTriangleFilled(a, b, d, IM_COL32(255, 235, 60, 70));
+		drawList->AddTriangle(a, b, d, IM_COL32(255, 235, 60, 255), 2.0f);
+	}
+
 	drawList->PopClipRect();
 
 	// --- build the info text ---
@@ -550,8 +870,11 @@ void Inspector::drawCellInfo(ImDrawList* drawList) {
 
 void Inspector::drawEmptyMessage(ImDrawList* drawList) {
 
-	if (!mesh.unstructuredTriangles.empty() && getCurrentSolution()) {
-		return;
+	const SolutionField* sol = getCurrentSolution();
+	if (sol && !sol->field.empty()) {
+		if (hasStructuredGrid() || !mesh.unstructuredTriangles.empty()) {
+			return;
+		}
 	}
 
 	const char* msg = "No results to display";
@@ -643,6 +966,9 @@ void Inspector::render() {
 		(int)canvasRect.size.y,
 		canvasRect.min
 	);
+
+	// recenter/re-zoom to the loaded project's units if a reset was requested
+	applyPendingResetView();
 
 	if (pendingFrame && canvasRect.size.x > 1.0f && canvasRect.size.y > 1.0f) {
 		frameToMesh();

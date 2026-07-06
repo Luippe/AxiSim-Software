@@ -5,6 +5,7 @@
 struct GridConfig;
 struct FluidPropertyConfig;
 struct MultigridLevel;
+struct MultiBlockMesh;
 
 // initialize and allocate GridConfig variables
 void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f);
@@ -25,6 +26,10 @@ void allocateMultigridLevel(MultigridLevel& level);
 void free_GridConfig(GridConfig& g);
 
 FVMeshDevice createFVMeshDevice(const FVMesh& fvMesh);
+
+// Multi-block structured path (structs/multiblock.h): assemble the packed mesh
+// from blocks + interfaces, then upload through the same path as the FVMesh overload.
+FVMeshDevice createFVMeshDevice(const MultiBlockMesh& mb);
 
 BoundarySolverDevice createBoundarySolverDevice(
 	const std::vector<BoundarySegmentGroup>& boundaryGroups,

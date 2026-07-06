@@ -1,5 +1,6 @@
 #include "memory_manager.h"
 #include "setting.cuh"
+#include "multiblock.h"
 
 #include <unordered_set>
 #include <cmath>
@@ -425,9 +426,9 @@ FVMeshHostPacked packFVMeshForDevice(const FVMesh& mesh) {
 
 
 
-FVMeshDevice createFVMeshDevice(const FVMesh& mesh) {
-
-	FVMeshHostPacked h = packFVMeshForDevice(mesh);
+// Upload an already-packed host mesh to the device. Shared by both the FVMesh
+// and MultiBlockMesh entry points below.
+FVMeshDevice createFVMeshDeviceFromPacked(const FVMeshHostPacked& h) {
 
 	FVMeshDevice d{};
 
@@ -474,6 +475,19 @@ FVMeshDevice createFVMeshDevice(const FVMesh& mesh) {
 	copyHostToDevice(d.cells.faceIDs, h.cellFaceIDs);
 
 	return d;
+}
+
+// Single-block / unstructured FVMesh path (behavior unchanged): pack, then upload.
+FVMeshDevice createFVMeshDevice(const FVMesh& mesh) {
+	return createFVMeshDeviceFromPacked(packFVMeshForDevice(mesh));
+}
+
+// Multi-block structured path: assemble the packed mesh from blocks + interfaces
+// (structs/multiblock.h), then upload through the identical path above.
+FVMeshDevice createFVMeshDevice(const MultiBlockMesh& mb) {
+	FVMeshHostPacked h{};
+	toPackedMesh(mb, h);
+	return createFVMeshDeviceFromPacked(h);
 }
 
 

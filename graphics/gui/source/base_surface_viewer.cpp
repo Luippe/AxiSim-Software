@@ -139,6 +139,13 @@ void BaseSurfaceViewer::resetView() {
 	camera.setZoom(zoomForUnitGrid(lastLengthScale));
 }
 
+void BaseSurfaceViewer::applyPendingResetView() {
+	if (pendingResetView) {
+		resetView();
+		pendingResetView = false;
+	}
+}
+
 bool BaseSurfaceViewer::isMouseNearImage(ImGuiIO& io) {
 
 	ImVec2 imageMin = canvasRect.min;

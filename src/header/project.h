@@ -22,9 +22,17 @@ public:
 	ViewTab currentTab = ViewTab::TAB_MESH;
 	LengthScale lengthScale;
 
+	// set true when a project is loaded (units determined); the GUI consumes it
+	// to recenter/re-zoom every surface inspector to the loaded project's units.
+	bool resetInspectorViews = false;
+
 	std::wstring path;
 	std::string name;
 
+};
 
+struct AppSettings {
+
+	std::wstring quickLaunch;
 
 };

@@ -1611,6 +1611,9 @@ void SketchView::render() {
 		canvasRect.min
 	);
 
+	// recenter/re-zoom to the loaded project's units if a reset was requested
+	applyPendingResetView();
+
 	// update current global mouse pos
 	updateCurrentMousePos();
 	updateCurrentWorld();

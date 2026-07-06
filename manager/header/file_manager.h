@@ -14,6 +14,7 @@ class Geometry;
 class Mesh;
 class Solver;
 class Results;
+struct AppSettings;
 struct Config;
 struct BoundaryCondition;
 struct BoundaryConditionConfig;
@@ -33,6 +34,10 @@ std::wstring saveFileDialog();
 
 // open file dialog for loading
 std::wstring loadFileDialog();
+// ====================================================
+// -------------------SETTINGS-------------------------
+// ====================================================
+void saveSettings(Project& project, AppSettings& settings);
 
 // ====================================================
 // -------------------PROJECT--------------------------
@@ -99,7 +104,7 @@ void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc);
 void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc);
 
 // load selected files when the application launches
-void loadAtLaunch(Project& project);
+void loadAtLaunch(Project& project, AppSettings& settings);
 
 // read boundary condition config from save file
 template<typename...Args>
@@ -155,6 +160,25 @@ inline bool readVar(std::ifstream& in, std::string& value) {
 	return (bool)in.read(value.data(), size);
 }
 
+
+// load a std::wstring (length-prefixed by CHARACTER count). wchar_t is 2 bytes on
+// Windows, so we read size*sizeof(wchar_t) bytes. Must be declared before readAll so
+// the variadic dispatch picks this overload instead of raw-copying the object.
+inline bool readVar(std::ifstream& in, std::wstring& value) {
+	size_t size = 0;
+
+	if (!in.read((char*)&size, sizeof(size))) {
+		return false;
+	}
+
+	value.resize(size);
+
+	if (size == 0) {
+		return true;
+	}
+
+	return (bool)in.read((char*)value.data(), size * sizeof(wchar_t));
+}
 
 template<typename T,
 		typename Hash,
@@ -267,6 +291,12 @@ inline void writeVar(std::ofstream& out, const std::string& value) {
 	size_t size = value.size();
 	out.write((const char*)&size, sizeof(size));
 	out.write(value.data(), size);
+}
+
+inline void writeVar(std::ofstream& out, const std::wstring& value) {
+	size_t size = value.size();
+	out.write((const char*)&size, sizeof(size));
+	out.write((const char*)value.data(), size * sizeof(wchar_t));
 }
 
 // save std::unordered_set

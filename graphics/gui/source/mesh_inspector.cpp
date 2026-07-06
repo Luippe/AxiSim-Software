@@ -2001,6 +2001,9 @@ void MeshInspector::render() {
 		canvasRect.min
 	);
 
+	// recenter/re-zoom to the loaded project's units if a reset was requested
+	applyPendingResetView();
+
 	// Build current segments before hover/mouse logic
 	if (mesh.currentMeshType == MeshType::Structured) {
 		buildSegments();

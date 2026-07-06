@@ -354,6 +354,11 @@ public:
 	bool pendingCopy = false;
 	bool consoleCopy = false;
 
+	// request that this viewer recenter and re-zoom to the project's current
+	// length unit on its next render (e.g. after a project is loaded). Deferred
+	// to render so it runs once the camera size and length scale are current.
+	void requestResetView() { pendingResetView = true; }
+
 protected:
 
 	// store mouse position of where the user left clicked
@@ -404,6 +409,10 @@ protected:
 	const char* currentUnitName = "m";
 	bool lengthScaleInitialized = false;
 
+	// set by requestResetView(); consumed by applyPendingResetView() during
+	// render to trigger a one-shot resetView().
+	bool pendingResetView = false;
+
 	// on-screen spacing (px) that gridWorldStep() aims for when picking a nice
 	// 1/2/5 grid step. Shared with the zoom-snap in updateLengthScale() so the
 	// grid can be made to read exactly one display unit per cell.
@@ -431,6 +440,10 @@ protected:
 	// reset the view for the "home" / reset-view action: recenter and snap the
 	// zoom so one grid cell matches the project's current length unit.
 	void resetView();
+
+	// if a reset was requested via requestResetView(), apply it now. Call after
+	// the camera dimensions and length scale have been updated for the frame.
+	void applyPendingResetView();
 
 	bool isMouseNearImage(ImGuiIO& io);
 

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "imgui.h"
+#include "project.h"
 
-class Project;
 class GUI;
 
 
@@ -16,6 +16,7 @@ private:
 
 	bool openShortcutModal = false;
 
+	AppSettings settings;
 	Project& project;
 
 	// open selected file
