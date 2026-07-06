@@ -38,10 +38,10 @@ void Colorbar::formatTickValue(char* buf, size_t bufSize, double value, int prec
 void Colorbar::drawBar() {
 
 	ImVec2 avail = ImGui::GetContentRegionAvail();
-	float xCenter = (avail.x - barWidth) * 0.2f;
 	float yCenter = (avail.y - barHeight) * 0.5f;
 
-	ImGui::SetCursorPosX(ImGui::GetCursorPosX() + xCenter);
+	// barLeftPad is chosen by updateLayout() so the label and tick values fit
+	ImGui::SetCursorPosX(ImGui::GetCursorPosX() + barLeftPad);
 	ImGui::SetCursorPosY(ImGui::GetCursorPosY() + yCenter);
 
 	ImGui::Image((ImTextureID)(intptr_t)colormap.getTextureID(), ImVec2(barWidth, barHeight), ImVec2(0.0f, 1.0f), ImVec2(1.0f,0.0f));
@@ -51,24 +51,90 @@ void Colorbar::drawOutline() {
 	drawList->AddRect(posMin, posMax, IM_COL32(255, 255, 255, 255), 0.0f, 0, 1.0f);
 }
 
-void Colorbar::drawTickValue() {
+// A field can sit on a large baseline with only a small fractional variation
+// across the domain (e.g. an inlet-dominated concentration field with a thin
+// depletion layer). At the user's chosen precision, adjacent ticks can then
+// round to the same displayed string even though the underlying values differ.
+// Bump precision up (never down) so ticks stay distinguishable regardless of
+// the field's magnitude.
+int Colorbar::computeTickPrecision() {
 
-	float dval = (results.currentField->vmax - results.currentField->vmin) / numTicks;	// maybe fix this since it calculates this every frame
+	if (!results.currentField) {
+		return std::clamp(currentPrecision, 0, 12);
+	}
 
-	// A field can sit on a large baseline with only a small fractional
-	// variation across the domain (e.g. an inlet-dominated concentration
-	// field with a thin depletion layer). At the user's chosen precision,
-	// adjacent ticks can then round to the same displayed string even
-	// though the underlying values differ. Bump precision up (never down)
-	// so ticks stay distinguishable regardless of the field's magnitude.
-	int precision = currentPrecision;
+	float dval = (results.currentField->vmax - results.currentField->vmin) / numTicks;
 	double refValue = std::max(std::fabs((double)(results.currentField->vmax)), std::fabs((double)(results.currentField->vmin)));
+
+	int precision = currentPrecision;
 
 	if (dval > 0.0f && refValue > 0.0) {
 		int magRef = (int)(std::floor(std::log10(refValue)));
 		int magStep = (int)(std::floor(std::log10((double)(dval))));
 		precision = std::clamp(std::max(currentPrecision, magRef - magStep + 2), 0, 12);
 	}
+
+	return precision;
+}
+
+float Colorbar::maxTickTextWidth(int precision) {
+
+	if (!results.currentField) return 0.0f;
+
+	float dval = (results.currentField->vmax - results.currentField->vmin) / numTicks;
+	float maxW = 0.0f;
+
+	for (int i = 0; i < numTicks + 1; i++) {
+		char buf[32];
+		double value = results.currentField->vmax - i * dval;
+
+		formatTickValue(buf, sizeof(buf), value, precision);
+		maxW = std::max(maxW, ImGui::CalcTextSize(buf).x);
+	}
+
+	return maxW;
+}
+
+float Colorbar::maxLabelLineWidth() {
+
+	std::string text = results.fieldType[results.currentItem];
+	std::stringstream ss(text);
+	std::string word;
+
+	float maxW = 0.0f;
+	while (ss >> word) {
+		maxW = std::max(maxW, ImGui::CalcTextSize(word.c_str()).x);
+	}
+
+	return maxW;
+}
+
+void Colorbar::updateLayout() {
+
+	const float minLeftPad = 8.0f;
+	const float rightPad = 8.0f;
+
+	// keep the centered label from spilling left onto the canvas: push the bar
+	// right by however far the label overhangs the bar on each side
+	float labelHalf = maxLabelLineWidth() * 0.5f;
+	barLeftPad = std::max(minLeftPad, labelHalf - barWidth * 0.5f);
+
+	int precision = computeTickPrecision();
+
+	// right edge of the tick numbers, and of the centered label
+	float valueRight =
+		barLeftPad + barWidth + tickLen + textOffset + maxTickTextWidth(precision);
+	float labelRight = barLeftPad + barWidth * 0.5f + labelHalf;
+
+	width = std::max(valueRight, labelRight) + rightPad;
+	width = std::max(width, 60.0f);
+}
+
+void Colorbar::drawTickValue() {
+
+	float dval = (results.currentField->vmax - results.currentField->vmin) / numTicks;	// maybe fix this since it calculates this every frame
+
+	int precision = computeTickPrecision();
 
 	for (int i = 0; i < numTicks + 1; i++) {
 		float y = posMin.y + i * dy;

@@ -1,16 +1,16 @@
 % ======================================================================
 %  AxiSim Software Manual  v1.04-alpha
 %  ---------------------------------------------------------------------
-%  Drop-in Overleaf project. All diagrams are native TikZ (no uploads
-%  needed). Screenshots are optional: to enable them, create an
-%  "images/" folder in your Overleaf project and upload the following
-%  (rename your existing repo screenshots to these names):
+%  Drop-in Overleaf project. All diagrams are native TikZ. Screenshots
+%  are optional: to enable them in Overleaf, create an "images/" folder
+%  and upload the following files. In the repository they already exist
+%  under docs/images/ with these names:
 %
-%     images/sketch.png            <-  docs/images/v1.04-alpha screenshots/Picture2.png
-%     images/mesh_structured.png   <-  docs/images/v1.03-alpha screenshots/Picture1.png
-%     images/mesh_unstructured.png <-  docs/images/v1.04-alpha screenshots/Picture1.png
-%     images/solver_residuals.png  <-  docs/images/v1.03-alpha screenshots/Picture2.png
-%     images/results_view.png      <-  docs/images/v1.03-alpha screenshots/Picture3.png
+%     images/sketch.png
+%     images/mesh_structured.png
+%     images/mesh_unstructured.png
+%     images/solver_residuals.png
+%     images/results_view.png
 %
 %  If you do NOT want screenshots yet, set \showscreenshotsfalse below
 %  and the figures become captioned placeholders so the document still
@@ -73,7 +73,7 @@
 
 \title{\textbf{AxiSim Software Manual} \\[2pt] \large GPU-accelerated axisymmetric CFD, from sketch to solution \\[6pt] \normalsize Version 1.04-alpha}
 \author{Lui Tsumura}
-\date{June 21, 2026}
+\date{July 5, 2026}
 
 \begin{document}
 \maketitle
@@ -84,7 +84,8 @@
 meshing, a GPU (CUDA) SIMPLE solver, and real-time post-processing in a single
 application. This manual documents how to use the software, what it contains, the
 algorithms and data structures behind it, and its present limitations. It supersedes
-the v1.01 manual and reflects the v1.04-alpha codebase.
+the v1.01 manual and reflects the v1.04-alpha codebase through the July 5, 2026
+development snapshot.
 \end{abstract}
 
 \tableofcontents
@@ -167,19 +168,31 @@ third-party components and their licenses are listed in Section~\ref{sec:librari
   \item \textbf{GPU:} an NVIDIA GPU with CUDA compute capability \(\geq 7.5\)
         (Turing / GTX 16 / RTX 20 series and newer) plus a recent driver. AxiSim runs
         its solver on the GPU and \emph{will not run} on machines without a compatible
-        NVIDIA card.
+        NVIDIA card. Release builds must be compiled for the GPU architectures they
+        are expected to support.
   \item \textbf{To build from source:} CUDA Toolkit 13.0, a C++20 compiler
-        (Visual Studio 2022), CMake \(\geq 3.24\), and vcpkg.
+        (Visual Studio 2022), CMake \(\geq 3.24\), Ninja, and vcpkg.
 \end{itemize}
 
 \subsection{Building from source}
 Dependencies that come from vcpkg (GLFW, GLAD, GLM, OpenGL) are installed first; Gmsh
-and Dear ImGui/ImPlot are bundled in the repository.
+and Dear ImGui/ImPlot are bundled in the repository. The repository currently includes
+\texttt{CMakeSettings.json} for Visual Studio's CMake integration. If configuring from
+the command line, use the vcpkg toolchain file explicitly:
 \begin{lstlisting}[language={}]
 vcpkg install glfw3 glad glm
-cmake --preset x64-Release
-cmake --build out/build/x64-Release
+cmake -S . -B out/build/x64-Release -G Ninja ^
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
+  -DCMAKE_TOOLCHAIN_FILE=<path-to-vcpkg>/scripts/buildsystems/vcpkg.cmake
+cmake --build out/build/x64-Release --target AxiSim
 \end{lstlisting}
+
+\warnbox{\textbf{CUDA architecture note.} The checked-in CMake file currently targets
+\texttt{CUDA\_ARCHITECTURES "86-real"} for a local Ampere development GPU. For a
+redistributable build, change this list to include the architectures you intend to
+support (for example Turing/Ampere/Ada plus a PTX fallback). Otherwise the produced
+binary may only run on matching GPUs even though the source code targets CUDA-capable
+hardware more broadly.}
 
 \subsection{Runtime files}
 The executable loads several resources by relative path, so the following must sit
@@ -189,6 +202,17 @@ icons), and the \texttt{graphics/shaders/} folder. The CUDA runtime is staticall
 linked, so end users do not need the CUDA Toolkit---only an NVIDIA driver. The Visual
 C++ runtime (\texttt{MSVCP140.dll}, \texttt{VCRUNTIME140*.dll}) must be present (install
 the Microsoft Visual C++ Redistributable x64 if needed).
+
+\subsection{Packaging a release ZIP}
+The \texttt{package.ps1} script builds the \texttt{AxiSim} target, installs it into a
+staging directory, checks for required runtime assets, and writes a ZIP under
+\texttt{dist/}. A typical release-package command is:
+\begin{lstlisting}[language={}]
+.\package.ps1 -Version v1.04-alpha
+\end{lstlisting}
+Use \texttt{-SkipBuild} only when the chosen build directory already contains a fresh
+successful build. The package still cannot include the user's NVIDIA driver; target
+machines need a compatible driver and GPU.
 
 % ======================================================================
 \section{Libraries and Dependencies}\label{sec:libraries}
@@ -227,7 +251,8 @@ NVIDIA CUDA Toolkit & GPU compute: assembly and linear solvers                  
 AxiSim ships as a single application whose major components are:
 \begin{itemize}[nosep]
   \item \textbf{Geometry / Sketch view} --- draw the axisymmetric cross-section
-        (lines, rectangles, circles, arcs) with live dimensions and snapping.
+        (lines, rectangles, circles, arcs) with live dimensions, snapping, trim,
+        erase, select/move, and undo/redo.
   \item \textbf{Mesh Inspector} --- convert the sketch into a structured (Cartesian)
         or unstructured (Gmsh) mesh, define boundary groups, add local refinement
         regions, and inspect per-cell mesh data.
@@ -237,7 +262,8 @@ AxiSim ships as a single application whose major components are:
         inspector with colormaps and a colorbar.
   \item \textbf{Console} --- text commands to drive major operations and settings.
   \item \textbf{Residual plot} --- live convergence monitoring via ImPlot.
-  \item \textbf{Save / Load} --- persist and reload project state.
+  \item \textbf{Save / Load} --- persist and reload project state through the File
+        menu or console commands.
 \end{itemize}
 
 A typical end-to-end session follows the workflow in Figure~\ref{fig:workflow}.
@@ -264,8 +290,11 @@ A typical end-to-end session follows the workflow in Figure~\ref{fig:workflow}.
 \subsection{Sketching the geometry}
 The geometry view lets you draw the cross-section of the axisymmetric domain in the
 \((z, r)\) half-plane. Supported primitives are lines, rectangles, circles, and arcs,
-with live dimensioning and snapping to existing geometry, the axes, and the origin.
-A 2D camera (pan with the middle mouse button, zoom with the wheel) frames the sketch.
+with live dimensioning and snapping to existing geometry, the axes, grid vertices, and
+the origin. The toolbar includes reset-view, dimension, trim, erase, line, rectangle,
+circle, grid display, and copy-to-clipboard controls. Selection supports single clicks,
+box selection, moving selected segments, undo/redo, and editable dimension labels. A
+2D camera (pan with the middle mouse button, zoom with the wheel) frames the sketch.
 
 \begin{figure}[h]
 \centering
@@ -277,13 +306,21 @@ A 2D camera (pan with the middle mouse button, zoom with the wheel) frames the s
 \subsection{Generating the mesh}
 With a closed sketch, the Mesh Inspector converts the geometry into a finite-volume
 mesh (Section~\ref{sec:mesh}). Choose either a structured Cartesian mesh or an
-unstructured triangular mesh. Boundary segments are detected automatically and can be
-grouped and named for boundary-condition assignment.
+unstructured triangular mesh in the Mesh tab, then press \textbf{Generate Mesh}.
+Boundary segments are detected automatically and can be grouped and named for
+boundary-condition assignment. If no sketch geometry exists, the mesh generator falls
+back to a simple default domain so the rest of the workflow can still be exercised.
 
 \subsection{Defining boundaries and running}
 Assign a boundary type to each named group, configure the solver
 (Section~\ref{sec:solver}), and run. The residual plot updates live so you can monitor
 convergence. When the run finishes, switch to the Results tab to explore the field.
+
+\subsection{Saving the project}
+Use \textbf{File \(\rightarrow\) Save}, \textbf{File \(\rightarrow\) Save As}, or
+\texttt{save project} in the console to persist the whole project. Use
+\textbf{File \(\rightarrow\) Open Project} or \texttt{load project} to reload it. The
+File menu can also mark the current project as the one to reopen at startup.
 
 % ======================================================================
 \section{Mesh Generation}\label{sec:mesh}
@@ -298,15 +335,19 @@ radial grading (\texttt{zBias}, \texttt{rBias}). The sketch is \emph{rasterised}
 grid: every cell whose centre lies outside the sketched domain (or inside an obstacle)
 is flagged solid. This is recorded in \texttt{activeCell} (1 = fluid, 0 = solid) and the
 set \texttt{obstacleIndices}. Cell index ordering is row-major, \(n = i\,n_z + j\), where
-\(i\) is the radial index and \(j\) the axial index.
+\(i\) is the radial index and \(j\) the axial index. In v1.04-alpha, sketch-to-structured
+conversion first reconstructs the closed sketch loops, then uses those loops to set the
+structured domain extents and active cells.
 
 \subsection{Unstructured mesh}
 The unstructured mesh is a constrained Delaunay triangulation produced by Gmsh from the
 sketch boundary. Local refinement is controlled by \emph{regions of influence}
 (rectangular or circular), which set a target element size inside the region and a
 transition to the background size outside it. Boundary sizing (edge count / target
-spacing / bias) can be set per boundary group. Each triangle becomes one finite-volume
-cell.
+spacing / bias) can be set per boundary segment or group. Each triangle becomes one
+finite-volume cell. Sketch rectangles, circles, and arcs are sampled into boundary
+segments before triangulation; the outermost closed loop is treated as the domain and
+inner loops become obstacles.
 
 \begin{figure}[h]
 \centering
@@ -386,7 +427,18 @@ $\mathbf{S}$ is the shared-face outward normal. The angle $\theta$ between them 
 Boundary faces are organised into named \emph{boundary groups}. Domain edges and
 obstacle edges are detected, merged into segments, and the user groups and names them.
 Each group carries a boundary type and per-field values that the solver reads when
-applying boundary conditions (Section~\ref{sec:bc}).
+applying boundary conditions (Section~\ref{sec:bc}). Groups also store orientation
+metadata, total boundary length, optional boundary sizing, and optional scalar wall
+layers. For structured meshes, groups retain a lookup to their grid edges; for
+unstructured meshes, groups are resolved through boundary vertices, edges, and
+segments.
+
+\subsection{Regions of influence}
+Regions of influence are local mesh-sizing controls for unstructured meshes. A region
+may be circular or rectangular, enabled/disabled independently, and configured with a
+target spacing, outside spacing, and transition thickness. They are useful for
+concentrating triangles around inlets, outlets, wall-reaction zones, or other areas
+where stronger gradients are expected. Regions are saved with the project.
 
 \subsection{Mesh quality: non-orthogonality}\label{sec:nonortho}
 For each interior face, the non-orthogonality angle is
@@ -416,7 +468,41 @@ axisymmetric \((z, r)\) coordinates (no swirl). Continuity and momentum are
 \end{align}
 Optional passive scalars---temperature \(T\) (energy) and concentration \(C\)---are
 transported by convection--diffusion equations and can be enabled independently
-(\texttt{solveEnergy}, \texttt{solveConcentration}).
+(\texttt{solveEnergy}, \texttt{solveConcentration}). The scalars are solved after the
+momentum/pressure update within the SIMPLE iteration. The concentration solver also
+supports reactive wall-consumption boundary conditions.
+
+\subsection{Scalar transport and wall reactions}
+The scalar equations use the same finite-volume mesh and optional convection term as
+the momentum equations. In compact form:
+\begin{align}
+\frac{\partial T}{\partial t} + \nabla\cdot(\mathbf{u}T)
+  &= \nabla\cdot(\alpha_T\nabla T), \qquad
+     \alpha_T = \frac{k}{\rho c_p}, \\
+\frac{\partial C}{\partial t} + \nabla\cdot(\mathbf{u}C)
+  &= \nabla\cdot(D\nabla C).
+\end{align}
+For concentration walls, v1.04-alpha includes Michaelis--Menten and Hill kinetic
+conditions. The wall concentration \(C_w\) is found from a transfer balance between the
+cell value \(C_P\), the cell-to-face diffusion resistance, any user-entered wall-layer
+resistance, and the reaction flux:
+\begin{equation}
+h(C_P - C_w) = J(C_w).
+\end{equation}
+For Michaelis--Menten kinetics,
+\begin{equation}
+J_{MM}(C_w)=\frac{V_{\max} C_w}{K_m + C_w}\,I(C_w),
+\end{equation}
+and for Hill kinetics,
+\begin{equation}
+J_H(C_w)=\frac{V_{\max} C_w^n}{K_m^n + C_w^n}\,I(C_w).
+\end{equation}
+The optional inhibition factor is
+\begin{equation}
+I(C_w)=1-\frac{V_2 C_w^m}{K_2^m + C_w^m},
+\end{equation}
+and is disabled by setting \(V_2=0\). The solver uses Newton iterations on the GPU to
+solve the wall balance and clamps negative wall concentrations to zero.
 
 \subsection{The SIMPLE algorithm}
 Pressure--velocity coupling uses SIMPLE (Semi-Implicit Method for Pressure-Linked
@@ -449,50 +535,82 @@ momentum \(\approx 0.7\) and pressure \(\approx 0.3\).
 \subsection{Discretisation schemes}
 Equations are discretised with the finite-volume method. The available
 \emph{convection} schemes are first-order upwind, central differencing, second-order
-upwind, and QUICK. Diffusion uses the centroid-distance gradient along $\mathbf{d}$ plus
-an optional \emph{non-orthogonal correction} for the cross term
+upwind. Diffusion uses the centroid-distance gradient along $\mathbf{d}$ plus an
+optional \emph{non-orthogonal correction} for the cross term
 (Section~\ref{sec:nonortho}); the number of deferred corrector passes is
 \texttt{nNonOrthCorrectors} (default 0, i.e.\ orthogonal-only, which is the stable
-default). Cell gradients (used for the pressure / pressure-correction terms) use either
-Green--Gauss or least-squares (\texttt{GRAD\_GREEN\_GAUSS}, \texttt{GRAD\_LSQ}).
+default). Cell gradients use either Green--Gauss or least-squares
+(\texttt{GRAD\_GREEN\_GAUSS}, \texttt{GRAD\_LSQ}) where exposed by the solver path.
 
 \subsection{Linear solvers}
-The discretised systems are solved on the GPU. Selectable iterative solvers include
-Jacobi and red--black Gauss--Seidel; additional Krylov methods (BiCGStab, GMRES) and a
-geometric multigrid path exist in the codebase. Inner/outer iteration counts and
-tolerances are configurable (\texttt{ConfigSimple}, \texttt{LinearSolverConfig},
-\texttt{IterationConfig}).
+The discretised systems are solved on the GPU. The v1.04-alpha GUI exposes Jacobi and
+red--black Gauss--Seidel for the main SIMPLE solve. Some experimental or legacy solver
+paths exist in the source tree, but they should not be treated as validated user-facing
+features. Inner iteration counts, SIMPLE iteration counts, residual frequency, and
+tolerances are configurable through the solver settings.
 
 \subsection{Boundary conditions}\label{sec:bc}
-Boundary conditions are applied per boundary group. The supported boundary
-\emph{types} are wall, velocity inlet, pressure outlet, and symmetry
-(Table~\ref{tab:bc}); internally each field at each group is realised as a Dirichlet or
-Neumann condition with a per-group value. Axisymmetry implies a symmetry condition on
-the centreline.
+Boundary conditions are applied per boundary group. A group first has a physical
+\emph{boundary type} (wall, velocity inlet, pressure outlet, or symmetry), then each
+active field on that type has a \emph{condition type} (Dirichlet, Neumann, fully
+developed, Michaelis--Menten, Hill, or none). The boundary editor only shows scalar
+fields when their solves are enabled.
 
 \begin{table}[h]
 \centering
-\caption{Boundary types and their typical field treatment.}
+\caption{Boundary types and variables exposed by the editor.}
 \label{tab:bc}
 \begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.24\linewidth}
-                   >{\raggedright\arraybackslash}p{0.70\linewidth}@{}}
+                   >{\raggedright\arraybackslash}p{0.30\linewidth}
+                   >{\raggedright\arraybackslash}p{0.38\linewidth}@{}}
 \toprule
-\textbf{Type} & \textbf{Treatment} \\
+\textbf{Boundary type} & \textbf{Variables} & \textbf{Typical/default treatment} \\
 \midrule
-Wall            & No-slip velocity (Dirichlet $u=v=0$); zero-gradient pressure. \\
-Velocity inlet  & Prescribed velocity (Dirichlet); zero-gradient pressure. \\
-Pressure outlet & Prescribed pressure (Dirichlet); zero-gradient velocity. \\
-Symmetry        & Zero normal velocity and zero normal gradient (centreline / planes of symmetry). \\
+Wall & \(u_z\), \(u_r\), optional \(T\), optional \(C\)
+     & No-slip velocity; scalar Dirichlet/Neumann or concentration kinetics. \\
+Velocity inlet & \(u_z\), \(u_r\), optional \(T\), optional \(C\)
+     & Prescribed velocity/scalars; pressure defaults to zero-gradient. Fully developed velocity is allowed when the group orientation is compatible. \\
+Pressure outlet & \(p\), optional \(T\), optional \(C\)
+     & Prescribed pressure; velocity and concentration default to zero-gradient. \\
+Symmetry & No editable rows in the GUI
+     & Effective defaults enforce the expected zero-normal/zero-gradient symmetry behavior based on boundary orientation. \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\begin{table}[h]
+\centering
+\caption{Condition types used by boundary variables.}
+\label{tab:bctypes}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.25\linewidth}
+                   >{\raggedright\arraybackslash}p{0.67\linewidth}@{}}
+\toprule
+\textbf{Condition type} & \textbf{Meaning} \\
+\midrule
+Dirichlet & Prescribed field value at the boundary. \\
+Neumann & Prescribed normal gradient/flux value; zero gives a zero-gradient boundary. \\
+Fully developed & Parabolic fully developed inlet profile using the group's total length and the edited peak/reference value. \\
+Michaelis--Menten & Concentration wall consumption with \(V_{\max}\), \(K_m\), optional inhibition \(m,K_2,V_2\), and optional wall-layer resistance. \\
+Hill & Concentration wall consumption with \(V_{\max}\), \(K_m\), Hill exponent \(n\), optional inhibition \(m,K_2,V_2\), and optional wall-layer resistance. \\
+None & No condition for that variable/group combination. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Wall-layer entries are available for concentration and static temperature on wall
+groups. Each layer has a transport coefficient \(k\), thickness \(d\), and derived
+resistance \(R=d/k\). The solver uploads the total layer resistance
+\(R_{\mathrm{tot}}\) and adds it in series with the cell-to-wall diffusion resistance
+when evaluating scalar wall fluxes.
 
 \subsection{Steady vs.\ transient, convergence, residuals}
 The solver runs steady-state or transient (with time step \texttt{dt}). Convergence is
 monitored through residuals plotted live with ImPlot. Residuals can be computed raw or
 RMS, with $L_1$, $L_2$, or $L_\infty$ norms and optional scaling by $N$ or $\sqrt{N}$
-(\texttt{ResidualType}, \texttt{ResidualNormType}, \texttt{ResidualScalingType}). Plots
-are available for $u$, $v$, $p$, continuity, temperature, and concentration.
+(\texttt{ResidualType}, \texttt{ResidualNormType}, \texttt{ResidualScalingType}). The
+primary plotted residuals are \(u_z\), \(u_r\), continuity, and enabled scalar fields.
+Transient binary export is currently written only for structured meshes; unstructured
+transient solves continue without that export.
 
 \begin{figure}[h]
 \centering
@@ -513,10 +631,13 @@ and time the work.
 \section{Post-processing and Results}
 % ======================================================================
 \subsection{3D results view}
-The Results tab revolves the 2D solution into a 3D model that you can orbit, pan, and
-zoom with an arcball camera (Section~\ref{sec:camera}). The field is coloured by the
-active colormap, the geometry can be sliced, and an outline is drawn so the cylinder's
-silhouette and cap edges remain distinct.
+After a solve, press \textbf{Generate Results} to copy the solver fields into the
+post-processing views. The Results tab revolves the 2D solution into a 3D model that
+you can orbit, pan, and zoom with an arcball camera (Section~\ref{sec:camera}).
+Structured results are drawn with instanced cylindrical strips; unstructured results
+are revolved from the triangular finite-volume mesh. The active field is coloured by
+the active colormap. Filter controls can show values less than, equal to, greater than,
+between, or outside selected thresholds.
 
 \begin{figure}[h]
 \centering
@@ -545,8 +666,9 @@ continuity and face mass fluxes.
 \subsection{Colorbar and colormaps}
 A colorbar accompanies the field views. Colormaps (Turbo, Parula, HSV, Gray) are stored
 as 256-entry lookup tables compiled into the application; the colorbar and field views
-sample the active colormap and clamp to each field's min/max. The colormap can also be
-changed from the console (Section~\ref{sec:console}).
+sample the active colormap and clamp to each field's min/max. The display panel lets
+you choose numeric precision and number format. The colormap can also be changed,
+printed, or copied from the console (Section~\ref{sec:console}).
 
 % ======================================================================
 \section{Interactive Features and Camera}\label{sec:camera}
@@ -577,39 +699,37 @@ boundary picking use point-in-triangle and point-to-segment tests in world space
 % ======================================================================
 \section{Console}\label{sec:console}
 % ======================================================================
-The console accepts text commands composed of an \emph{action}, an \emph{object}, and an
-optional \emph{value}. For example, \texttt{run solver} runs the solver, and
-\texttt{set colormap Turbo} changes the colormap. Tables~\ref{tab:actions}--\ref{tab:values}
-list the recognised keywords.
+The console accepts text commands, keeps a command history, and offers tab/dropdown
+completion for registered commands and objects. It is primarily a utility interface for
+settings, inspection, copying, and project I/O; solver execution is controlled from the
+GUI in v1.04-alpha. Table~\ref{tab:consolecmds} lists the current command families.
 
 \begin{table}[h]
 \centering
-\begin{minipage}[t]{0.32\linewidth}\centering
-\caption{Actions.}\label{tab:actions}
-\begin{tabular}{@{}ll@{}}\toprule
-\texttt{run} & run an operation \\
-\texttt{set} & set a setting \\
-\texttt{clear/clr} & clear the line \\
-\bottomrule\end{tabular}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.32\linewidth}\centering
-\caption{Objects.}\label{tab:objects}
-\begin{tabular}{@{}ll@{}}\toprule
-\texttt{mesh} & mesh \\
-\texttt{solver} & solver \\
-\texttt{results} & results \\
-\texttt{colormap/cmap} & colormap \\
-\bottomrule\end{tabular}
-\end{minipage}\hfill
-\begin{minipage}[t]{0.32\linewidth}\centering
-\caption{Values.}\label{tab:values}
-\begin{tabular}{@{}ll@{}}\toprule
-\multicolumn{2}{@{}l@{}}{\texttt{Turbo, Parula,}}\\
-\multicolumn{2}{@{}l@{}}{\texttt{HSV, Gray}}\\
-\multicolumn{2}{@{}l@{}}{(colormaps, case-}\\
-\multicolumn{2}{@{}l@{}}{sensitive)}\\
-\bottomrule\end{tabular}
-\end{minipage}
+\caption{Console commands in v1.04-alpha.}
+\label{tab:consolecmds}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.32\linewidth}
+                   >{\raggedright\arraybackslash}p{0.58\linewidth}@{}}
+\toprule
+\textbf{Command} & \textbf{Purpose} \\
+\midrule
+\texttt{set colormap <name>} or \texttt{set cmap <name>}
+  & Switch the active colormap. Valid names are the built-in colormap names such as \texttt{Turbo}, \texttt{Parula}, \texttt{HSV}, and \texttt{Gray}. \\
+\texttt{get gpu memory} or \texttt{get gpu mem}
+  & Print free, total, and used GPU memory. \\
+\texttt{get colormap} & Print the active colormap name. \\
+\texttt{get colormap <name>} & Print all 256 RGB rows for a named colormap. \\
+\texttt{copy residual} & Copy the residual plot image to the clipboard. \\
+\texttt{copy mesh} & Copy the mesh inspector image to the clipboard. \\
+\texttt{copy inspector} & Copy the 2D result inspector image to the clipboard. \\
+\texttt{copy colormap [name]} & Copy RGB rows for the active or named colormap to the clipboard. \\
+\texttt{save project} & Open a save dialog and write the whole project. \\
+\texttt{load project} & Open a load dialog and reload a whole project. \\
+\texttt{clear} or \texttt{clr} & Clear the console output. \\
+\texttt{help} & Print registered commands and their usage strings. \\
+\texttt{ping} & Diagnostic command; prints \texttt{pong!}. \\
+\bottomrule
+\end{tabular}
 \end{table}
 
 % ======================================================================
@@ -628,6 +748,8 @@ packed structure-of-arrays form is uploaded to the GPU for solving.
 \toprule
 \textbf{Structure} & \textbf{Purpose} \\
 \midrule
+\texttt{Project} & Shared project state that owns \texttt{Geometry}, \texttt{Mesh}, \texttt{Solver}, \texttt{Results}, the current tab, project path/name, and display length scale. \\
+\texttt{SketchModel} & Geometry sketch: points, lines, circles, arcs, rectangles, dimensions, active tool, and ID counters. \\
 \texttt{GridConfig} & Structured grid: $n_r, n_z, L, R$, face/centre coordinates, grading, \texttt{activeCell}, \texttt{obstacleIndices}, and device pointers. \\
 \texttt{FluidPropertyConfig} & Fluid and transport properties: density $\rho$, viscosity $\mu$, $c_p$, $k$, diffusivities, and reaction parameters. \\
 \texttt{Triangle} & Three vertex indices; one triangle = one unstructured FV cell. \\
@@ -636,7 +758,11 @@ packed structure-of-arrays form is uploaded to the GPU for solving.
 \texttt{ConfigSolver / ConfigSimple} & Solver configuration: schemes, transient/$dt$, tolerances, corrector passes. \\
 \texttt{VariablesSimple} & Device field arrays for SIMPLE ($u, v, p, p'$, $T$, gradients, mass flux) and relaxation factors. \\
 \texttt{Coefficients} & Per-field linear-system coefficients ($A_E, A_W, A_N, A_S, A_C, b$, residuals). \\
-\texttt{BoundarySegmentGroup} & A named group of boundary segments carrying a boundary type and per-field values. \\
+\texttt{BoundaryCondition / BCParams} & Variant-backed per-variable boundary condition: Dirichlet, Neumann, fully developed, Michaelis--Menten, Hill, or none. \\
+\texttt{BoundarySegmentGroup} & A named group of boundary segments carrying a boundary type, per-field boundary conditions, sizing, total length, orientation, and scalar wall layers. \\
+\texttt{MeshRegionOfInfluence} & Circular or rectangular unstructured-mesh refinement region with target/outside spacing and transition thickness. \\
+\texttt{BoundaryFieldHost / BoundaryFieldDevice} & Host/device boundary arrays by group: condition type, boundary type, values, length, kinetics parameters, inhibition parameters, and total layer resistance. \\
+\texttt{SolutionField} & Host result field and metadata used by the Results tab and 2D inspector. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -644,11 +770,35 @@ packed structure-of-arrays form is uploaded to the GPU for solving.
 % ======================================================================
 \section{Save and Load}
 % ======================================================================
-Project state is saved to and loaded from binary (\texttt{.bin}) files to keep file size
-small. Geometry, mesh, solver settings, and boundary groups are persisted per tab and
-can be loaded manually or automatically at launch, which speeds up iterating on test
-cases. The binary format favours compactness over editability and may change between
-versions.
+Project state is saved to and loaded from binary (\texttt{.bin}) files to keep file
+size small and preserve the internal data structures used by the GUI. A project file
+currently stores:
+\begin{itemize}[nosep]
+  \item sketch geometry, including points, lines, circles, arcs, rectangles,
+        dimensions, and ID counters;
+  \item mesh state, including structured grid dimensions/spacing, active/obstacle
+        cells, unstructured points/triangles, boundary segments, boundary groups,
+        boundary-condition settings, wall-layer settings, and regions of influence;
+  \item solver settings, including active fields, residual plotting settings, linear
+        solver settings, SIMPLE settings, transient/key-frame settings, convection
+        scheme, and fluid/transport/reaction properties;
+  \item project metadata, including project name, project path, and display length
+        scale.
+\end{itemize}
+
+Result fields are not currently written as part of the main project file. After
+loading a project, regenerate or reload results as needed from the Results tab.
+
+The application also writes small local startup files. \texttt{project\_settings.bin}
+stores the quick-launch project path, while \texttt{openAtLaunchProject.bin} can store
+a snapshot of the current project for reopening at launch. These files are application
+state, not portable interchange files.
+
+The solver payload has a small file marker and version field, and v1.04-alpha can
+fallback-load selected legacy solver payloads. Even with that guard, the binary format
+is intended for this application version and may change between alpha releases. For
+long-term archiving, keep screenshots, exported plots/tables, and notes alongside the
+\texttt{.bin} project file.
 
 % ======================================================================
 \section{Limitations}\label{sec:limitations}
@@ -663,11 +813,27 @@ versions.
         is passive/one-way unless otherwise configured.
   \item \textbf{Solver scope.} SIMPLE is the implemented pressure--velocity coupling;
         other schemes (SIMPLER, SIMPLEC, PISO) are not yet available.
+  \item \textbf{GUI-exposed linear solvers.} Jacobi and red--black Gauss--Seidel are
+        the supported user-facing linear solvers in v1.04-alpha. Other experimental
+        solver code paths in the repository should not be treated as validated UI
+        features.
   \item \textbf{Non-orthogonal correction.} Off by default; the deferred cross term can
         destabilise on skewed or near-axis cells, so it is opt-in and limited.
+  \item \textbf{Transient export.} Transient binary key-frame export is implemented
+        for structured meshes. Unstructured transient solves can run, but the current
+        export path does not write unstructured transient key frames.
+  \item \textbf{Console scope.} The console adjusts settings, copies/export views,
+        saves/loads projects, and reports information; it does not currently launch the
+        main solver from a text command.
   \item \textbf{Platform.} Windows x64 only, and it requires a CUDA-capable NVIDIA GPU
         (compute capability $\geq 7.5$); it will not run on AMD/Intel GPUs or CPU-only
         machines. Single-GPU only.
+  \item \textbf{CUDA build target.} The checked-in CMake configuration is currently set
+        for a local Ampere target (\texttt{sm\_86}). Release builds must broaden the
+        CUDA architecture list or include a PTX fallback before distributing to other
+        NVIDIA GPUs.
+  \item \textbf{Gmsh licensing.} Unstructured meshing depends on Gmsh; redistribution
+        must account for Gmsh's licence terms.
   \item \textbf{Scale / memory.} Large meshes are bounded by GPU memory; very large
         cases may not fit or may be slow.
   \item \textbf{Robustness.} Convergence is sensitive to mesh quality, relaxation
@@ -707,8 +873,6 @@ Pressure relax.    & ---          & \(0.3\) \\
 \bibitem{versteeg} H.~K.~Versteeg and W.~Malalasekera, \emph{An Introduction to Computational Fluid Dynamics: The Finite Volume Method}, 2nd ed., Pearson, 2007.
 \bibitem{gmsh} C.~Geuzaine and J.-F.~Remacle, ``Gmsh: a three-dimensional finite element mesh generator with built-in pre- and post-processing facilities,'' \emph{Int.\ J.\ Numer.\ Methods Eng.}, 79(11), 2009.
 \bibitem{imgui} O.~Cornut, \emph{Dear ImGui}, \url{https://github.com/ocornut/imgui}.
-\bibitem{ldraw1} LDraw.org Wiki, ``Conditional Line,'' \url{https://wiki.ldraw.org/wiki/Conditional_Line}, 2018.
-\bibitem{ldraw2} LDraw.org, ``LDraw File Format Specification,'' \url{https://www.ldraw.org/article/218.html}.
 \end{thebibliography}
 
 \end{document}

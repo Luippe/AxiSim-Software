@@ -50,6 +50,10 @@ private:
 
 		// valid objects for this action (second word), used for tab completion
 		std::vector<std::string> objects;
+
+		// valid values per object (third word), keyed by object name, used for
+		// tab completion of the value token
+		std::unordered_map<std::string, std::vector<std::string>> values;
 	};
 
 	std::vector<std::string> lines;
@@ -69,7 +73,10 @@ private:
 	void registerSaveAndLoadCommands();
 	void registerUtilityCommands();
 
-	void addCommand(const std::string& name, CommandFn function, const std::string& usage, const std::string& description, std::vector<std::string> objects = {});
+	void addCommand(const std::string& name, CommandFn function, const std::string& usage, const std::string& description, std::vector<std::string> objects = {}, std::unordered_map<std::string, std::vector<std::string>> values = {});
+
+	// colormap names available for value completion (e.g. "set colormap <name>")
+	std::vector<std::string> colormapNames() const;
 
 	// check if auto scroll is on, if it is, scroll to bottom whener a line is added
 	void checkAutoScroll();
@@ -100,6 +107,7 @@ private:
 	std::string lastInput;							// detect edits between frames
 	bool refocusInput = false;						// re-focus input next frame
 	bool resetInputCursor = false;					// snap cursor to end next frame
+	int inputCursorPos = 0;							// live caret position in the input
 
 	CompletionContext getCompletionContext(const std::string& text, int cursor) const;
 	std::vector<CompletionItem> computeMatches(const std::string& text, int cursor) const;

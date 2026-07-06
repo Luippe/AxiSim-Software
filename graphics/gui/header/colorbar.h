@@ -18,7 +18,12 @@ public:
 
 	void render();
 
-	const float width = 100.0f;
+	// size the reserved strip to fit the tick values and the label. Call this
+	// before the caller reserves horizontal space for the colorbar so nothing
+	// gets clipped by the panel edge.
+	void updateLayout();
+
+	float width = 100.0f;
 	int currentPrecision = 3;
 	const char* formatOption[3] = { "Fixed", "Scientific", "General" };
 	NumberFormat currentNumberFormat = NumberFormat::General;
@@ -43,6 +48,10 @@ private:
 	int numTicks = 6;
 	float dy = barHeight / (numTicks);
 
+	// bar's left offset inside the reserved strip. Grown by updateLayout() so the
+	// centered label and the tick values stay fully inside the strip.
+	float barLeftPad = 8.0f;
+
 	ImVec2 posMin;
 	ImVec2 posMax;
 	ImDrawList* drawList;
@@ -55,6 +64,14 @@ private:
 
 	// change number display depending on current format
 	void formatTickValue(char* buf, size_t bufSize, double value, int precision);
+
+	// precision actually used for the tick values (bumped so adjacent ticks stay
+	// distinguishable on large-baseline fields)
+	int computeTickPrecision();
+
+	// widest formatted tick value / widest label word, used to size the strip
+	float maxTickTextWidth(int precision);
+	float maxLabelLineWidth();
 
 	// draw only the colorbar
 	void drawBar();

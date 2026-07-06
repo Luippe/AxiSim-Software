@@ -947,6 +947,10 @@ void Inspector::render() {
 
 	drawToolBar();
 
+	// size the colorbar strip to the current tick values + label so nothing is
+	// clipped, before we reserve that width out of the canvas
+	colorbar.updateLayout();
+
 	ImVec2 pos = ImGui::GetCursorScreenPos();
 	ImVec2 size = ImGui::GetContentRegionAvail();
 

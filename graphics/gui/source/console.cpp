@@ -1,5 +1,7 @@
 #include "console.h"
 
+#include "imgui_internal.h"
+
 #include <sstream>
 #include <iomanip>
 #include <format>
@@ -62,8 +64,19 @@ Console::Console(GUI& gui, Project& project) :
 
 }
 
-void Console::addCommand(const std::string& name, CommandFn function, const std::string& usage, const std::string& description, std::vector<std::string> objects) {
-	commands[name] = Command{ function, usage, description, std::move(objects) };
+void Console::addCommand(const std::string& name, CommandFn function, const std::string& usage, const std::string& description, std::vector<std::string> objects, std::unordered_map<std::string, std::vector<std::string>> values) {
+	commands[name] = Command{ function, usage, description, std::move(objects), std::move(values) };
+}
+
+std::vector<std::string> Console::colormapNames() const {
+	std::vector<std::string> names;
+
+	auto& cmap = gui.scene.colormap;
+	for (int i = 0; i < IM_ARRAYSIZE(cmap.items); i++) {
+		names.push_back(cmap.items[i]);
+	}
+
+	return names;
 }
 
 void Console::checkAutoScroll() {
@@ -126,7 +139,11 @@ void Console::registerSetCommands() {
 		},
 		"set <object> <value>",
 		"Sets a program setting",
-		{ "colormap", "cmap" }
+		{ "colormap", "cmap" },
+		{
+			{ "colormap", colormapNames() },
+			{ "cmap", colormapNames() }
+		}
 	);
 }
 
@@ -192,7 +209,11 @@ void Console::registerGetCommands() {
 		},
 		"get <object> <value>",
 		"display a program setting",
-		{ "gpu", "colormap" }
+		{ "gpu", "colormap" },
+		{
+			{ "gpu", { "memory", "mem" } },
+			{ "colormap", colormapNames() }
+		}
 	);
 }
 
@@ -226,7 +247,7 @@ void Console::registerCopyCommands() {
 					<< std::setw(3) << (int)cmap[i][2] << " }\n";
 			}
 			copyTextToClipboard(ss.str());
-			addLine("copied RGB values to clipboard");
+			addLine("copied current RGB values to clipboard");
 		}
 		else {
 			addLine("Invalid object: " + object);
@@ -234,7 +255,10 @@ void Console::registerCopyCommands() {
 		},
 		"copy <object>",
 		"copies object to clipboard",
-		{ "residual", "mesh", "inspector", "colormap" }
+		{ "residual", "mesh", "inspector", "colormap" },
+		{
+			{ "colormap", colormapNames() }
+		}
 	);
 }
 
@@ -352,10 +376,43 @@ int Console::textEditCallbackStub(ImGuiInputTextCallbackData* data) {
 }
 
 int Console::textEditCallback(ImGuiInputTextCallbackData* data) {
-	if (data->EventFlag == ImGuiInputTextFlags_CallbackCompletion) {
+	if (data->EventFlag == ImGuiInputTextFlags_CallbackAlways) {
+		inputCursorPos = data->CursorPos;
+
+		// after an external accept, snap the caret to the end and clear the
+		// selection that re-focusing would otherwise create
+		if (resetInputCursor) {
+			data->CursorPos = data->BufTextLen;
+			data->SelectionStart = data->BufTextLen;
+			data->SelectionEnd = data->BufTextLen;
+			inputCursorPos = data->BufTextLen;
+			resetInputCursor = false;
+		}
+	}
+	else if (data->EventFlag == ImGuiInputTextFlags_CallbackCompletion) {
 		handleCompletion(data);
 	}
 	else if (data->EventFlag == ImGuiInputTextFlags_CallbackHistory) {
+
+		// while the dropdown is open, up/down move the highlight instead of
+		// recalling command history
+		if (completionActive && !completionItems.empty()) {
+			if (data->EventKey == ImGuiKey_UpArrow) {
+				completionIndex--;
+				if (completionIndex < 0) {
+					completionIndex = (int)completionItems.size() - 1;
+				}
+			}
+			else if (data->EventKey == ImGuiKey_DownArrow) {
+				completionIndex++;
+				if (completionIndex >= (int)completionItems.size()) {
+					completionIndex = 0;
+				}
+			}
+
+			completionNavigated = true;
+			return 0;
+		}
 
 		const int prevHistoryPos = historyPos;
 
@@ -387,89 +444,236 @@ int Console::textEditCallback(ImGuiInputTextCallbackData* data) {
 	return 0;
 }
 
-void Console::handleCompletion(ImGuiInputTextCallbackData* data) {
+// Find the token being completed and which argument slot it is. The token runs
+// from the previous space up to the cursor; the count of fully-typed words
+// before it decides whether we're completing the action (0) or its object (1).
+Console::CompletionContext Console::getCompletionContext(
+	const std::string& text,
+	int cursor
+) const {
+	CompletionContext ctx;
 
-	// The word being completed runs from the start of the current token up to
-	// the cursor. Scan back from the cursor to the previous space to find it.
-	const char* bufBegin = data->Buf;
-	const char* wordEnd = data->Buf + data->CursorPos;
-	const char* wordStart = wordEnd;
+	int end = cursor;
+	if (end > (int)text.size()) end = (int)text.size();
+	if (end < 0) end = 0;
 
-	while (wordStart > bufBegin && wordStart[-1] != ' ' && wordStart[-1] != '\t') {
-		wordStart--;
+	int start = end;
+	while (start > 0 && text[start - 1] != ' ' && text[start - 1] != '\t') {
+		start--;
 	}
 
-	std::string partial(wordStart, wordEnd);
+	ctx.wordStart = start;
+	ctx.wordEnd = end;
+	ctx.partial = text.substr(start, end - start);
+	ctx.wordIndex = (int)parseWords(text.substr(0, start)).size();
 
-	// Words fully typed before the current one decide which token this is:
-	// 0 words before -> completing the action, 1 -> completing its object.
-	std::vector<std::string> priorWords = parseWords(std::string(bufBegin, wordStart));
-	int wordIndex = (int)priorWords.size();
+	return ctx;
+}
 
-	std::vector<std::string> candidates;
+// Build the dropdown entries that match the token at the cursor: action names
+// for the first word, the action's objects for the second.
+std::vector<Console::CompletionItem> Console::computeMatches(
+	const std::string& text,
+	int cursor
+) const {
+	CompletionContext ctx = getCompletionContext(text, cursor);
+	std::vector<std::string> priorWords = parseWords(text.substr(0, ctx.wordStart));
 
-	if (wordIndex == 0) {
-		// completing the action: candidates are all command names
+	std::vector<CompletionItem> items;
+
+	auto startsWith = [&](const std::string& candidate) {
+		return candidate.size() >= ctx.partial.size() &&
+			candidate.compare(0, ctx.partial.size(), ctx.partial) == 0;
+		};
+
+	if (ctx.wordIndex == 0) {
 		for (const auto& [name, command] : commands) {
-			candidates.push_back(name);
+			if (startsWith(name)) {
+				items.push_back({ name, command.description });
+			}
 		}
 	}
-	else if (wordIndex == 1) {
-		// completing the object: candidates are the action's registered objects
+	else if (ctx.wordIndex == 1 && !priorWords.empty()) {
 		auto it = commands.find(priorWords[0]);
 		if (it != commands.end()) {
-			candidates = it->second.objects;
+			for (const std::string& obj : it->second.objects) {
+				if (startsWith(obj)) {
+					items.push_back({ obj, "" });
+				}
+			}
+		}
+	}
+	else if (ctx.wordIndex == 2 && priorWords.size() >= 2) {
+		// completing the value: candidates are the values registered for the
+		// action's object (e.g. "set colormap <name>")
+		auto it = commands.find(priorWords[0]);
+		if (it != commands.end()) {
+			auto vit = it->second.values.find(priorWords[1]);
+			if (vit != it->second.values.end()) {
+				for (const std::string& val : vit->second) {
+					if (startsWith(val)) {
+						items.push_back({ val, "" });
+					}
+				}
+			}
 		}
 	}
 
-	// keep only candidates that start with what the user has typed so far
-	std::vector<std::string> matches;
-	for (const std::string& candidate : candidates) {
-		if (candidate.size() >= partial.size() &&
-			candidate.compare(0, partial.size(), partial) == 0) {
-			matches.push_back(candidate);
+	std::sort(
+		items.begin(),
+		items.end(),
+		[](const CompletionItem& a, const CompletionItem& b) {
+			return a.word < b.word;
+		}
+	);
+
+	return items;
+}
+
+// Recompute the dropdown every frame from the current input, and decide whether
+// it should be visible.
+void Console::updateCompletionState(bool inputActive) {
+	std::string text = inputBuffer;
+	int cursor = (int)text.size();
+
+	completionItems = computeMatches(text, cursor);
+
+	if (completionIndex >= (int)completionItems.size()) completionIndex = 0;
+	if (completionIndex < 0) completionIndex = 0;
+
+	CompletionContext ctx = getCompletionContext(text, cursor);
+
+	// show while typing an action (needs at least one character) or while
+	// completing a later argument (objects may list on an empty partial)
+	bool showRule = !ctx.partial.empty() || ctx.wordIndex > 0;
+
+	completionActive = inputActive && !completionItems.empty() && showRule;
+}
+
+// Tab: accept the highlighted entry inline, from inside the InputText callback
+// (editing through the callback keeps ImGui's internal buffer in sync).
+void Console::handleCompletion(ImGuiInputTextCallbackData* data) {
+	if (completionItems.empty()) return;
+	if (completionIndex < 0 || completionIndex >= (int)completionItems.size()) return;
+
+	std::string text(data->Buf, data->BufTextLen);
+	CompletionContext ctx = getCompletionContext(text, data->CursorPos);
+
+	const std::string& word = completionItems[completionIndex].word;
+
+	data->DeleteChars(ctx.wordStart, ctx.wordEnd - ctx.wordStart);
+	data->InsertChars(ctx.wordStart, word.c_str());
+	data->InsertChars(data->CursorPos, " ");
+
+	completionActive = false;
+	completionNavigated = false;
+}
+
+// Enter / right-arrow: accept the highlighted entry. These happen outside the
+// InputText callback, so edit our buffer and force the widget to reload it.
+void Console::acceptCompletion() {
+	if (completionItems.empty()) return;
+	if (completionIndex < 0 || completionIndex >= (int)completionItems.size()) return;
+
+	std::string text = inputBuffer;
+	int cursor = (int)text.size();
+	CompletionContext ctx = getCompletionContext(text, cursor);
+
+	const std::string& word = completionItems[completionIndex].word;
+
+	std::string newText =
+		text.substr(0, ctx.wordStart) + word + " " + text.substr(ctx.wordEnd);
+
+	if (newText.size() >= sizeof(inputBuffer)) {
+		newText.resize(sizeof(inputBuffer) - 1);
+	}
+
+	std::snprintf(inputBuffer, sizeof(inputBuffer), "%s", newText.c_str());
+
+	completionActive = false;
+	completionNavigated = false;
+
+	// While active, InputText keeps its own copy of the text, so an external
+	// edit is ignored. Drop the active id and re-focus next frame to reload,
+	// and reset the caret to the end (avoids the default select-all).
+	ImGui::ClearActiveID();
+	refocusInput = true;
+	resetInputCursor = true;
+}
+
+// Floating suggestion list drawn just above the input box.
+void Console::drawCompletionPopup(const ImVec2& inputMin, const ImVec2& inputMax) {
+	if (completionItems.empty()) return;
+
+	ImDrawList* dl = ImGui::GetForegroundDrawList();
+	ImFont* font = ImGui::GetFont();
+	float fontSize = ImGui::GetFontSize();
+
+	const float padX = 8.0f;
+	const float padY = 4.0f;
+	const float rowH = fontSize + 6.0f;
+	const int maxVisible = 8;
+
+	int count = (int)completionItems.size();
+	int visible = count < maxVisible ? count : maxVisible;
+
+	// keep the highlighted row within the visible window
+	int firstRow = 0;
+	if (completionIndex >= maxVisible) {
+		firstRow = completionIndex - maxVisible + 1;
+	}
+
+	// size the box to the widest "word   description"
+	float wordColW = 0.0f;
+	float descColW = 0.0f;
+	for (const CompletionItem& item : completionItems) {
+		wordColW = std::max(wordColW, ImGui::CalcTextSize(item.word.c_str()).x);
+		if (!item.description.empty()) {
+			descColW = std::max(descColW, ImGui::CalcTextSize(item.description.c_str()).x);
 		}
 	}
 
-	if (matches.empty()) {
-		return;
+	float gap = descColW > 0.0f ? 24.0f : 0.0f;
+	float contentW = wordColW + gap + descColW + padX * 2.0f + 12.0f;
+	float inputW = inputMax.x - inputMin.x;
+	float width = std::min(std::max(inputW, contentW), 640.0f);
+
+	float height = visible * rowH + padY * 2.0f;
+
+	ImVec2 boxMin(inputMin.x, inputMin.y - height - 4.0f);
+	ImVec2 boxMax(inputMin.x + width, inputMin.y - 4.0f);
+
+	// not enough room above -> drop the list below the input instead
+	if (boxMin.y < 0.0f) {
+		boxMin.y = inputMax.y + 4.0f;
+		boxMax.y = boxMin.y + height;
 	}
 
-	std::sort(matches.begin(), matches.end());
+	dl->AddRectFilled(boxMin, boxMax, IM_COL32(28, 32, 40, 250), 4.0f);
+	dl->AddRect(boxMin, boxMax, IM_COL32(90, 110, 140, 220), 4.0f, 0, 1.0f);
 
-	// completion text: the whole word for a single match, otherwise the longest
-	// common prefix of all matches (fill in as far as it stays unambiguous)
-	std::string completion = matches[0];
-	for (size_t m = 1; m < matches.size(); m++) {
-		size_t k = 0;
-		while (k < completion.size() && k < matches[m].size() &&
-			completion[k] == matches[m][k]) {
-			k++;
-		}
-		completion.resize(k);
-	}
+	for (int r = 0; r < visible; r++) {
+		int i = firstRow + r;
+		if (i >= count) break;
 
-	// replace the partial word with the completion
-	int start = (int)(wordStart - bufBegin);
-	int end = (int)(wordEnd - bufBegin);
+		const CompletionItem& item = completionItems[i];
 
-	data->DeleteChars(start, end - start);
-	data->InsertChars(start, completion.c_str());
+		ImVec2 rowMin(boxMin.x + 2.0f, boxMin.y + padY + r * rowH);
+		ImVec2 rowMax(boxMax.x - 2.0f, rowMin.y + rowH);
 
-	if (matches.size() == 1) {
-		// unambiguous: finish the word and start the next argument
-		data->InsertChars(data->CursorPos, " ");
-	}
-	else {
-		// several options: show them so the user can pick
-		std::string list;
-		for (const std::string& match : matches) {
-			list += "  " + match;
+		if (i == completionIndex) {
+			dl->AddRectFilled(rowMin, rowMax, IM_COL32(56, 92, 140, 255), 3.0f);
 		}
 
-		addLine("> " + std::string(bufBegin, wordEnd));
-		addLine(list);
-		scrollToBottom = true;
+		float textY = rowMin.y + (rowH - fontSize) * 0.5f;
+
+		ImVec2 wordPos(rowMin.x + padX, textY);
+		dl->AddText(font, fontSize, wordPos, IM_COL32(236, 239, 245, 255), item.word.c_str());
+
+		if (!item.description.empty()) {
+			ImVec2 descPos(rowMin.x + padX + wordColW + gap, textY);
+			dl->AddText(font, fontSize, descPos, IM_COL32(150, 158, 172, 255), item.description.c_str());
+		}
 	}
 }
 
@@ -508,19 +712,67 @@ void Console::draw() {
 
 	ImGui::EndChild();
 
+	// re-focus the input after an accept that had to reset the widget
+	if (refocusInput) {
+		ImGui::SetKeyboardFocusHere();
+		refocusInput = false;
+	}
+
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	if (ImGui::InputText("##Console", inputBuffer, sizeof(inputBuffer), UIFlags::ConsoleInputFlags, &Console::textEditCallbackStub, this)) {
-		std::string cmd = inputBuffer;
-		scrollToBottom = true;
-		if (!cmd.empty()) {
-			executeCommand(cmd);
-			if (commandHistory.empty() || commandHistory.back() != cmd) {
-				commandHistory.push_back(cmd);
-			}
+	bool submitted = ImGui::InputText(
+		"##Console",
+		inputBuffer,
+		sizeof(inputBuffer),
+		UIFlags::ConsoleInputFlags,
+		&Console::textEditCallbackStub,
+		this
+	);
+
+	ImVec2 inputMin = ImGui::GetItemRectMin();
+	ImVec2 inputMax = ImGui::GetItemRectMax();
+	bool inputActive = ImGui::IsItemActive();
+
+	// reset the highlight whenever the text actually changes
+	if (lastInput != inputBuffer) {
+		completionIndex = 0;
+		completionNavigated = false;
+	}
+	lastInput = inputBuffer;
+
+	updateCompletionState(inputActive);
+
+	// right arrow at the end of the line accepts the highlighted entry
+	bool caretAtEnd = inputCursorPos >= (int)std::string(inputBuffer).size();
+	if (completionActive && caretAtEnd &&
+		ImGui::IsKeyPressed(ImGuiKey_RightArrow, false)) {
+		acceptCompletion();
+		submitted = false;
+	}
+
+	if (submitted) {
+		if (completionActive && completionNavigated) {
+			// a dropdown entry is highlighted: accept it instead of running
+			acceptCompletion();
 		}
-		inputBuffer[0] = '\0';
-		historyPos = -1;
-		ImGui::SetKeyboardFocusHere(-1);
+		else {
+			std::string cmd = inputBuffer;
+			scrollToBottom = true;
+			if (!cmd.empty()) {
+				executeCommand(cmd);
+				if (commandHistory.empty() || commandHistory.back() != cmd) {
+					commandHistory.push_back(cmd);
+				}
+			}
+			inputBuffer[0] = '\0';
+			historyPos = -1;
+			lastInput.clear();
+			completionActive = false;
+			ImGui::SetKeyboardFocusHere(-1);
+		}
+	}
+
+	if (completionActive) {
+		drawCompletionPopup(inputMin, inputMax);
 	}
 
 	ImGui::PopFont();

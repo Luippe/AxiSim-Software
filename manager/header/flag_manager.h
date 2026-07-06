@@ -89,7 +89,8 @@ namespace UIFlags {
 		ImGuiInputTextFlags_EnterReturnsTrue |
 		ImGuiInputTextFlags_EscapeClearsAll |
 		ImGuiInputTextFlags_CallbackHistory |
-		ImGuiInputTextFlags_CallbackCompletion;
+		ImGuiInputTextFlags_CallbackCompletion |
+		ImGuiInputTextFlags_CallbackAlways;
 
 
 	inline constexpr ImGuiTableFlags TableBoundaryFlags =
