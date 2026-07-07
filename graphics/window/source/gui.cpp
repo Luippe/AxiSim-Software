@@ -325,7 +325,9 @@ void GUI::drawUI() {
 void GUI::handleKeyInput() {
 
 	if (ImGui::IsKeyChordPressed(saveProjectShortcut)) {
-		saveHotkeyPressed(project);
+		if (saveHotkeyPressed(project)) {
+			console.addLine("Project Saved!");
+		}
 	}
 }
 

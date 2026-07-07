@@ -511,7 +511,7 @@ void loadEtc(std::ifstream& in, Project& project) {
 	project.resetInspectorViews = true;
 }
 
-void saveHotkeyPressed(Project& project) {
+bool saveHotkeyPressed(Project& project) {
 
 	if (!project.name.empty()) {
 		saveFromPathProject(project.path, project);
@@ -519,6 +519,7 @@ void saveHotkeyPressed(Project& project) {
 	else {
 		saveFromExplorerProject(project);
 	}
+	return true;
 }
 
 void saveFromPathProject(const std::wstring& path, Project& project) {

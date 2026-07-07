@@ -55,10 +55,10 @@ private:
 	bool BBIntersect(BoundingBox& box, float& t);
 
 	// check if ray intersects cap of cylinder
-	bool capIntersect(const glm::vec3& capCenter, const glm::vec3& capNormal, float radius, float& t);
+	bool capIntersect(const glm::vec3& capCenter, const glm::vec3& capNormal, float innerRadius, float outerRadius, float& t);
 
 	// check if ray intersects ring of cylinder with radius rad
-	bool ringIntersect(float radius, float& t);
+	bool ringIntersect(float radius, float front, float back, float& t);
 
 	// given a bounding box ID, return the picked axis
 	glm::vec3 getPickedAxis(int& pickedID);

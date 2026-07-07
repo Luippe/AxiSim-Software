@@ -27,16 +27,6 @@ public:
 	std::vector<double> dr;
 	int nr, nz;
 
-	int colFront;
-	int colBack;
-	int rowTop;
-	int rowBot;
-
-	float currentOuter;
-	float currentFront;
-	float currentBack;
-	float currentInner;
-
 	int currentItem = 0;
 
 	std::vector<std::string> fieldType;

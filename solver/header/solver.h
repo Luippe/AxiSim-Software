@@ -2,6 +2,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
 #include "jacobi_pcg.cuh"
 #include "residual_plot.h"
@@ -48,10 +49,16 @@ public:
 	bool continueSolver = false;
 	bool isReady = false;
 
-
+	// run solver
 	void run(const Mesh& mesh);
 	void runSimple(const Mesh& mesh);
 	void runBiCGStab();
+
+	// check if solver can be continued
+	bool canContinue(const Mesh& mesh, std::string* reason = nullptr) const;
+
+	// shutdown by syncing solverThread with the main system. A synchronization point
+	// if this is called while the solver is running, the app will block until the solver finishes
 	void shutdown();
 
 	Config& config;
@@ -99,16 +106,40 @@ public:
 
 private:
 
+	struct ContinuationState {
+		bool valid = false;
+		int cells = 0;
+		int faces = 0;
+		int faceRefs = 0;
+		int nr = 0;
+		int nz = 0;
+		bool useFaceCoefficients = false;
+		bool solveEnergy = false;
+		bool solveConcentration = false;
+	};
+
 	// store all the coeffs which will be printed
 	std::vector<ResidualPrintItem> residualsToPrint;
 
 	int currentIteration = 0;
 
 	// check if the solver can run
-	bool runCheck();
+	bool runCheck(const Mesh& mesh);
+
+	bool buildContinuationState(
+		const Mesh& mesh,
+		ContinuationState& state,
+		std::string* reason = nullptr
+	) const;
+
+	std::vector<uint8_t> buildStructuredActiveCells(
+		const Mesh& mesh,
+		std::string* reason = nullptr
+	) const;
 
 	void createResidualPrintItems();
 
+	// determine what field we're solving for
 	void addFieldType();
 
 	// create solution map
@@ -116,5 +147,6 @@ private:
 
 	Coefficients uCoeff, vCoeff, ppCoeff, massFluxCoeff, tempCoeff, concCoeff;
 	MemoryConfig mem;
+	ContinuationState continuationState;
 
 };

@@ -44,7 +44,7 @@ void saveSettings(Project& project, AppSettings& settings);
 // ====================================================
 
 // save project when save hotkey is pressed
-void saveHotkeyPressed(Project& project);
+bool saveHotkeyPressed(Project& project);
 
 // save project given a path
 void saveFromPathProject(const std::wstring& path, Project& project);

@@ -16,6 +16,7 @@
 
 #include "file_manager.h"
 #include "flag_manager.h"
+#include "keyboard_manager.h"
 
 #include "printer.h"
 #include "console_keywords.h"

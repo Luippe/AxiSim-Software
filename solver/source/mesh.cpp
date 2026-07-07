@@ -1009,6 +1009,13 @@ bool Mesh::convertSketchToUnstructuredMesh(const SketchModel& sketch) {
 }
 
 bool Mesh::convertSketchToStructuredMesh(const SketchModel& sketch) {
+	const bool preserveStructuredGroups =
+		currentMeshType == MeshType::Structured;
+	std::vector<BoundarySegmentGroup> preservedStructuredGroups;
+
+	if (preserveStructuredGroups) {
+		preservedStructuredGroups = boundaryGroups;
+	}
 
 	// Reuse the shared sketch -> boundary pipeline. It builds the boundary
 	// segments / vertices / edges and boundary groups (used for BCs) and sets
@@ -1048,6 +1055,70 @@ bool Mesh::convertSketchToStructuredMesh(const SketchModel& sketch) {
 	// fluid/solid interface faces. Without this the rasterized walls (any wall not
 	// on the outer grid border) can't be shown or picked in the inspector.
 	rebuildSelectableObstacleEdges();
+
+	if (preserveStructuredGroups) {
+		auto isFluid = [&](int i, int j) {
+			if (i < 0 || i >= nr || j < 0 || j >= nz) {
+				return false;
+			}
+
+			return g.activeCell[i * nz + j] != 0;
+			};
+
+		auto isCurrentBoundaryEdge = [&](const MeshEdge& edge) {
+			if (edge.orient == EdgeOrient::Horizontal) {
+				if (edge.j < 0 || edge.j >= nz || edge.i < 0 || edge.i > nr) {
+					return false;
+				}
+
+				if (edge.i == 0) {
+					return isFluid(0, edge.j);
+				}
+
+				if (edge.i == nr) {
+					return isFluid(nr - 1, edge.j);
+				}
+
+				return isFluid(edge.i - 1, edge.j) != isFluid(edge.i, edge.j);
+			}
+
+			if (edge.i < 0 || edge.i >= nr || edge.j < 0 || edge.j > nz) {
+				return false;
+			}
+
+			if (edge.j == 0) {
+				return isFluid(edge.i, 0);
+			}
+
+			if (edge.j == nz) {
+				return isFluid(edge.i, nz - 1);
+			}
+
+			return isFluid(edge.i, edge.j - 1) != isFluid(edge.i, edge.j);
+			};
+
+		boundaryGroups.clear();
+
+		for (BoundarySegmentGroup group : preservedStructuredGroups) {
+			group.segmentIDs.clear();
+			group.totalLength = 0.0f;
+
+			group.edges.erase(
+				std::remove_if(
+					group.edges.begin(),
+					group.edges.end(),
+					[&](const MeshEdge& edge) {
+						return !isCurrentBoundaryEdge(edge);
+					}
+				),
+				group.edges.end()
+			);
+
+			if (!group.edges.empty()) {
+				boundaryGroups.push_back(std::move(group));
+			}
+		}
+	}
 
 	isReady = true;
 
@@ -2220,6 +2291,20 @@ std::optional<BoundarySegmentGroup> Mesh::createBoundaryGroupFromSelection() {
 		"%s",
 		group.name.c_str()
 	);
+
+	// new boundary groups default to target-spacing sizing, with a spacing
+	// scaled to the domain so it doesn't over-refine on the first assignment
+	group.sizing.enabled = true;
+	group.sizing.mode = BoundarySizingMode::TargetSpacing;
+
+	double sizingScale = std::min(g.L, g.R);
+	if (sizingScale <= 0.0) {
+		sizingScale = std::max(g.L, g.R);
+	}
+	if (sizingScale <= 0.0) {
+		sizingScale = 1.0;
+	}
+	group.sizing.targetSpacing = std::max(sizingScale / 40.0, 1e-6);
 
 	for (int segmentID : group.segmentIDs) {
 		BoundarySegment* seg = getBoundarySegmentByID(segmentID);

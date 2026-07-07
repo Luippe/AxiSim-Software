@@ -93,7 +93,7 @@ bool MousePicker::BBIntersect(BoundingBox& box, float& t) {
 	return true;
 }
 
-bool MousePicker::capIntersect(const glm::vec3& capCenter, const glm::vec3& capNormal, float radius, float& t) {
+bool MousePicker::capIntersect(const glm::vec3& capCenter, const glm::vec3& capNormal, float innerRadius, float outerRadius, float& t) {
 	float t0 = glm::dot(capCenter - camera.position, capNormal) / glm::dot(currentRay, capNormal);
 	if (t0 < 0.0f) return false;
 
@@ -102,7 +102,7 @@ bool MousePicker::capIntersect(const glm::vec3& capCenter, const glm::vec3& capN
 	glm::vec3 radial = P - glm::dot(P, capNormal) * capNormal;
 	float rad = glm::dot(radial, radial);
 
-	if (rad <= results.currentOuter * results.currentOuter && rad >= results.currentInner * results.currentInner) {
+	if (rad <= outerRadius * outerRadius && rad >= innerRadius * innerRadius) {
 		if (t > t0) {
 			t = t0;
 		}
@@ -114,7 +114,7 @@ bool MousePicker::capIntersect(const glm::vec3& capCenter, const glm::vec3& capN
 	return true;
 }
 
-bool MousePicker::ringIntersect(float radius, float& t) {
+bool MousePicker::ringIntersect(float radius, float front, float back, float& t) {
 
 	bool collided = false;
 	glm::vec3 cylinderDirection = glm::vec3(1.0f, 0.0f, 0.0f);
@@ -144,7 +144,7 @@ bool MousePicker::ringIntersect(float radius, float& t) {
 			if (t1 > 0.0f) {
 				glm::vec3 P1 = position + t1 * currentRay;
 				float y1 = glm::dot(P1, cylinderDirection);
-				if (y1 >= results.currentFront && y1 <= results.currentBack && t1 < t) {
+				if (y1 >= front && y1 <= back && t1 < t) {
 					t = t1;
 					collided = true;
 				}
@@ -153,7 +153,7 @@ bool MousePicker::ringIntersect(float radius, float& t) {
 			if (t2 > 0.0f) {
 				glm::vec3 P2 = position + t2 * currentRay;
 				float y2 = glm::dot(P2, cylinderDirection);
-				if (y2 >= results.currentFront && y2 <= results.currentBack && t2 < t) {
+				if (y2 >= front && y2 <= back && t2 < t) {
 					t = t2;
 					collided = true;
 				}
@@ -168,16 +168,22 @@ bool MousePicker::ringIntersect(float radius, float& t) {
 bool MousePicker::dataPick() {
 
 	if (!(project.currentTab == ViewTab::TAB_RESULTS)) return false;
+	if (!results.isReady || !results.currentField) return false;
 
 	float t = FLT_MAX;
 	glm::vec3 cylinderDirection = glm::vec3(1.0f, 0.0f, 0.0f);
+	const float front = results.g.zFace.empty() ? 0.0f : static_cast<float>(results.g.zFace.front());
+	const float back = results.g.zFace.empty() ? static_cast<float>(results.g.L) : static_cast<float>(results.g.zFace.back());
+	const float inner = results.g.rFace.empty() ? 0.0f : static_cast<float>(results.g.rFace.front());
+	const float outer = results.g.rFace.empty() ? static_cast<float>(results.g.R) : static_cast<float>(results.g.rFace.back());
+
 	// get the location of intersect
-	capIntersect({ results.currentFront, 0.0f, 0.0f },  -cylinderDirection, results.currentOuter, t);
-	capIntersect({ results.currentBack, 0.0f, 0.0f }, cylinderDirection, results.currentOuter, t);
-	ringIntersect(results.currentOuter, t);
+	capIntersect({ front, 0.0f, 0.0f },  -cylinderDirection, inner, outer, t);
+	capIntersect({ back, 0.0f, 0.0f }, cylinderDirection, inner, outer, t);
+	ringIntersect(outer, front, back, t);
 
 	// get value at given location and print to console
-	if (t != FLT_MAX && results.isReady) {
+	if (t != FLT_MAX) {
 		glm::vec3 P = camera.position + t * currentRay;
 		float val = results.currentField->getData(P);
 		std::string s = " (" + 

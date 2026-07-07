@@ -282,8 +282,21 @@ void MeshGUI::drawOverview() {
 				column("Value", 100.0f, ImGuiTableColumnFlags_WidthStretch)
 			);
 
-			std::string numCells = std::to_string(mesh.g.nr * mesh.g.nz);
-			std::string numNodes = std::to_string((mesh.g.nr + 1) * (mesh.g.nz + 1));
+			// cells/nodes come from different data depending on the mesh type:
+			// a structured grid is nr x nz cells with (nr+1)(nz+1) nodes, while an
+			// unstructured mesh is counted from its triangles and points. Both are
+			// read live, so they refresh after each Generate Mesh.
+			std::string numCells;
+			std::string numNodes;
+
+			if (mesh.currentMeshType == MeshType::Structured) {
+				numCells = std::to_string(mesh.g.nr * mesh.g.nz);
+				numNodes = std::to_string((mesh.g.nr + 1) * (mesh.g.nz + 1));
+			}
+			else {
+				numCells = std::to_string(mesh.unstructuredTriangles.size());
+				numNodes = std::to_string(mesh.unstructuredPoints.size());
+			}
 
 			labelRow("Mesh Type");
 			createSimpleCombo("##MeshType", mesh.meshType, (int&)mesh.currentMeshType, IM_ARRAYSIZE(mesh.meshType));
@@ -329,27 +342,16 @@ void MeshGUI::draw() {
 	if (ImGui::BeginTabItem("Mesh")) {
 		project.currentTab = ViewTab::TAB_MESH;
 
-		ImGui::BeginChild("SetupTree", ImVec2(0.0f, 600), true);
+		// fill the available height but leave room for the Generate button below,
+		// so the tree scales with the panel and no scrollbar appears
+		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), true);
 
-		// draw general tree node
-		bool generalOpen = ImGui::TreeNodeEx("General", UIFlagsTree::BranchOpenedFlags);
-
-		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
-
+		// draw general as a childless leaf; clicking it shows mesh statistics in
+		// the overview (drawLeaf sets selectedItem and handles the hover cursor)
+		if (drawLeaf("General")) {
 			selectedBoundaryGroupID = -1;
 			mesh.highlightedBoundarySegmentIDs.clear();
-			selectedItem = "General";
-
 		}
-
-		if (generalOpen) {
-			if (drawLeaf("Option")) {
-				selectedBoundaryGroupID = -1;
-				mesh.highlightedBoundarySegmentIDs.clear();
-			}
-			ImGui::TreePop();
-		}
-		changeCursorOnHover();
 
 		// draw boundary tree node
 		bool editOpen = ImGui::TreeNodeEx("Edit", UIFlagsTree::BranchOpenedFlags);
@@ -427,6 +429,16 @@ void MeshGUI::draw() {
 				if (!mesh.convertSketchToStructuredMesh(sketch)) {
 					shouldGenerate = false;
 				}
+			}
+			else if (mesh.currentMeshType == MeshType::Structured) {
+				mesh.selectedBoundaryIDs.clear();
+				mesh.highlightedBoundarySegmentIDs.clear();
+				mesh.selectableOuterEdges.clear();
+				mesh.g.obstacleIndices.clear();
+				mesh.g.activeCell.assign(
+					static_cast<size_t>(mesh.g.nr) * mesh.g.nz,
+					1
+				);
 			}
 			else {
 

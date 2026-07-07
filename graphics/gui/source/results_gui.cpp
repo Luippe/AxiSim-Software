@@ -4,7 +4,6 @@
 #include "gui.h"
 #include "scene_view.h"
 #include "results.h"
-#include "mesh.h"
 
 #include "colormap.h"
 #include "colorbar.h"
@@ -18,7 +17,6 @@ ResultsGUI::ResultsGUI(Project& project, GUI& gui) :
 	project(project),
 	gui(gui),
 	scene(gui.scene),
-	mesh(project.mesh),
 	results(project.results),
 	colormap(gui.scene.colormap),
 	colorbar(gui.inspector.colorbar){
@@ -28,45 +26,33 @@ void ResultsGUI::drawPropertiesPanel() {
 
 	ImGui::Begin("Overview");
 
-	if (selectedItem == "Settings") {
-
-	}
-	else if (selectedItem == "View") {
+	if (selectedItem == "View") {
 		if (ImGui::BeginTable("Geometry", 3)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 45.0f);
 			ImGui::TableSetupColumn("Slider", ImGuiTableColumnFlags_WidthStretch);
-
-			labelRow("Front");
-			if (ImGui::SliderInt("##Front", &results.colFront, 0, mesh.g.nz)) {
-				results.currentFront = (float)results.colFront * (float)mesh.g.dz[results.colFront];
-			}
-
-			labelRow("Back");
-			if (ImGui::SliderInt("##Back", &results.colBack, 0, mesh.g.nz)) {
-				results.currentBack = (float)results.colBack * (float)mesh.g.dz[results.colBack];
-			}
-
-			labelRow("Outer");
-			if (ImGui::SliderInt("##Outer", &results.rowTop, 0, mesh.g.nr)) {
-				results.currentOuter = (float)results.rowTop * (float)mesh.g.dr[results.rowTop];
-			}
-
-			labelRow("Inner");
-			if (ImGui::SliderInt("##Inner", &results.rowBot, 0, mesh.g.nr)) {
-				results.currentInner = (float)results.rowBot * (float)mesh.g.dr[results.rowBot];
-			}
 
 			labelRow("Filter");
 			createSimpleCombo("##Filter", results.compareType, (int&)results.currentCompareType, IM_ARRAYSIZE(results.compareType));
 
 			labelRow("Value");
+			const bool hasCurrentField = results.currentField != nullptr;
+			if (!hasCurrentField) {
+				ImGui::BeginDisabled();
+			}
+
 			if (results.currentCompareType == CompareType::Between || results.currentCompareType == CompareType::Exclude) {
 				ImGui::InputFloat("##LowerBound", &results.filterValues.valueLower, 0.0f, 0.0f);
 				ImGui::TableNextColumn();
 				ImGui::InputFloat("##UpperBound", &results.filterValues.valueUpper, 0.0f, 0.0f);
 			}
 			else {
-				ImGui::SliderFloat("##Value", &results.filterValues.valueAt, results.currentField->vmin, results.currentField->vmax);
+				const float vmin = hasCurrentField ? results.currentField->vmin : 0.0f;
+				const float vmax = hasCurrentField ? results.currentField->vmax : 1.0f;
+				ImGui::SliderFloat("##Value", &results.filterValues.valueAt, vmin, vmax);
+			}
+
+			if (!hasCurrentField) {
+				ImGui::EndDisabled();
 			}
 
 
@@ -129,7 +115,7 @@ void ResultsGUI::draw() {
 	if (ImGui::BeginTabItem("Results")) {
 		project.currentTab = ViewTab::TAB_RESULTS;
 
-		ImGui::BeginChild("SetupTree", ImVec2(0.0f, 600.0f), true);
+		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), true);
 
 		if (ImGui::BeginTable("Field", 2)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
@@ -148,7 +134,6 @@ void ResultsGUI::draw() {
 		}
 
 		if (ImGui::TreeNodeEx("General", UIFlagsTree::BranchOpenedFlags)) {
-			drawLeaf("Settings");
 			drawLeaf("View");
 			ImGui::TreePop();
 		}

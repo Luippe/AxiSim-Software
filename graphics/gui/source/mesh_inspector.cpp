@@ -1625,6 +1625,67 @@ void MeshInspector::buildSegments() {
 		g.rFace,
 		g.zFace
 	);
+
+	syncStructuredBoundaryGroups();
+}
+
+void MeshInspector::syncStructuredBoundaryGroups() {
+	std::unordered_map<MeshEdge, int, MeshEdgeHash> segmentByEdge;
+
+	for (const BoundarySegment& segment : mesh.boundarySegments) {
+		for (int edgeID : segment.edgeIDs) {
+			if (edgeID < 0 ||
+				edgeID >= static_cast<int>(mesh.boundaryEdges.size())) {
+				continue;
+			}
+
+			const BoundaryEdge& edge = mesh.boundaryEdges[edgeID];
+
+			if (edge.hasMeshEdge) {
+				segmentByEdge[edge.meshEdge] = segment.id;
+			}
+		}
+	}
+
+	for (BoundarySegment& segment : mesh.boundarySegments) {
+		segment.groupID = -1;
+	}
+
+	for (BoundaryEdge& edge : mesh.boundaryEdges) {
+		edge.groupID = -1;
+	}
+
+	for (BoundarySegmentGroup& group : mesh.boundaryGroups) {
+		std::unordered_set<int> segmentIDs;
+
+		for (const MeshEdge& meshEdge : group.edges) {
+			auto it = segmentByEdge.find(meshEdge);
+
+			if (it == segmentByEdge.end()) {
+				continue;
+			}
+
+			segmentIDs.insert(it->second);
+
+			BoundarySegment* segment = mesh.getBoundarySegmentByID(it->second);
+			if (segment) {
+				segment->groupID = group.id;
+			}
+		}
+
+		group.segmentIDs.assign(segmentIDs.begin(), segmentIDs.end());
+		std::sort(group.segmentIDs.begin(), group.segmentIDs.end());
+
+		for (BoundaryEdge& edge : mesh.boundaryEdges) {
+			if (edge.hasMeshEdge &&
+				std::find(group.edges.begin(), group.edges.end(), edge.meshEdge) != group.edges.end()) {
+				edge.groupID = group.id;
+			}
+		}
+
+		setGroupOrientation(group);
+		setGroupTotalLength(group);
+	}
 }
 
 std::unordered_set<MeshEdge, MeshEdgeHash>

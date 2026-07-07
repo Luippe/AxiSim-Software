@@ -74,7 +74,7 @@ void Solver::setDefault() {
 
 void Solver::run(const Mesh& mesh) {
 
-    if (!runCheck()) return;
+    if (!runCheck(mesh)) return;
 
     if (!continueSolver) {
         residualPlot->resetState();
@@ -170,7 +170,170 @@ void Solver::addFieldType() {
     fieldType.push_back("dP/dr");
 }
 
-bool Solver::runCheck() {
+namespace {
+    void setContinuationReason(std::string* reason, const std::string& text) {
+        if (reason) {
+            *reason = text;
+        }
+    }
+}
+
+std::vector<uint8_t> Solver::buildStructuredActiveCells(
+    const Mesh& mesh,
+    std::string* reason
+) const {
+    const int nr = mesh.g.nr;
+    const int nz = mesh.g.nz;
+
+    if (nr <= 0 || nz <= 0) {
+        setContinuationReason(reason, "Structured mesh has invalid grid dimensions.");
+        return {};
+    }
+
+    const int N = nr * nz;
+
+    if ((int)mesh.g.r.size() != nr ||
+        (int)mesh.g.z.size() != nz ||
+        (int)mesh.g.rFace.size() != nr + 1 ||
+        (int)mesh.g.zFace.size() != nz + 1) {
+        setContinuationReason(reason, "Structured mesh spacing has not been generated.");
+        return {};
+    }
+
+    std::vector<uint8_t> activeCell(static_cast<size_t>(N), 1);
+
+    for (int n : mesh.g.obstacleIndices) {
+        if (n < 0 || n >= N) {
+            setContinuationReason(reason, "Structured mesh obstacle data no longer matches the grid.");
+            return {};
+        }
+        activeCell[n] = 0;
+    }
+
+    return activeCell;
+}
+
+bool Solver::buildContinuationState(
+    const Mesh& mesh,
+    ContinuationState& state,
+    std::string* reason
+) const {
+    state = ContinuationState{};
+
+    if (!mesh.isReady) {
+        setContinuationReason(reason, "Generate a mesh first.");
+        return false;
+    }
+
+    const bool isStructuredMesh = mesh.currentMeshType == MeshType::Structured;
+    std::vector<uint8_t> activeCell;
+    std::vector<uint8_t> emptyActiveCell;
+
+    if (isStructuredMesh) {
+        activeCell = buildStructuredActiveCells(mesh, reason);
+        if (activeCell.empty()) {
+            return false;
+        }
+    }
+
+    FVMesh candidate = mesh.createFVMesh(isStructuredMesh ? activeCell : emptyActiveCell);
+
+    if (candidate.numCells() <= 0 || candidate.numFaces() <= 0) {
+        setContinuationReason(reason, "Generate a valid mesh first.");
+        return false;
+    }
+
+    int faceRefs = 0;
+    for (const FVCell& cell : candidate.cells) {
+        faceRefs += static_cast<int>(cell.faceIDs.size());
+    }
+
+    state.valid = true;
+    state.cells = candidate.numCells();
+    state.faces = candidate.numFaces();
+    state.faceRefs = faceRefs;
+    state.nr = candidate.nr;
+    state.nz = candidate.nz;
+    state.useFaceCoefficients = !isStructuredMesh;
+    state.solveEnergy = fieldOption.solveEnergy;
+    state.solveConcentration = fieldOption.solveConcentration;
+
+    return true;
+}
+
+bool Solver::canContinue(const Mesh& mesh, std::string* reason) const {
+    if (solverRunning) {
+        setContinuationReason(reason, "Solver is already running.");
+        return false;
+    }
+
+    if (!isReady || !continuationState.valid) {
+        setContinuationReason(reason, "Run the solver once before continuing.");
+        return false;
+    }
+
+    if (!simple.u || !simple.v || !simple.p || !simple.pp || !simple.mDot) {
+        setContinuationReason(reason, "Solver fields are not allocated.");
+        return false;
+    }
+
+    if (fieldOption.solveEnergy != continuationState.solveEnergy) {
+        setContinuationReason(reason, "Energy field selection changed.");
+        return false;
+    }
+
+    if (fieldOption.solveConcentration != continuationState.solveConcentration) {
+        setContinuationReason(reason, "Concentration field selection changed.");
+        return false;
+    }
+
+    if (fieldOption.solveEnergy &&
+        (!simple.temp || !simple.tempTemp || !simple.gradTZ || !simple.gradTR)) {
+        setContinuationReason(reason, "Temperature fields are not allocated.");
+        return false;
+    }
+
+    if (fieldOption.solveConcentration &&
+        (!simple.conc || !simple.concTemp || !simple.gradCZ || !simple.gradCR)) {
+        setContinuationReason(reason, "Concentration fields are not allocated.");
+        return false;
+    }
+
+    ContinuationState current;
+    if (!buildContinuationState(mesh, current, reason)) {
+        return false;
+    }
+
+    if (current.useFaceCoefficients != continuationState.useFaceCoefficients) {
+        setContinuationReason(reason, "Mesh type changed.");
+        return false;
+    }
+
+    if (current.cells != continuationState.cells) {
+        setContinuationReason(reason, "Mesh cell count changed.");
+        return false;
+    }
+
+    if (current.faces != continuationState.faces) {
+        setContinuationReason(reason, "Mesh face count changed.");
+        return false;
+    }
+
+    if (current.faceRefs != continuationState.faceRefs) {
+        setContinuationReason(reason, "Mesh connectivity changed.");
+        return false;
+    }
+
+    if (!current.useFaceCoefficients &&
+        (current.nr != continuationState.nr || current.nz != continuationState.nz)) {
+        setContinuationReason(reason, "Structured grid dimensions changed.");
+        return false;
+    }
+
+    return true;
+}
+
+bool Solver::runCheck(const Mesh& mesh) {
     
     if (solverRunning) {
         console->addLine("Solver still running");
@@ -204,6 +367,20 @@ bool Solver::runCheck() {
             console->addLine("Solver needs positive density and viscosity.\n");
         }
         return false;
+    }
+
+    if (continueSolver) {
+        std::string reason;
+        if (!canContinue(mesh, &reason)) {
+            continueSolver = false;
+
+            if (console) {
+                console->addLine(
+                    "Continue Solver disabled: " + reason +
+                    " Starting from a fresh solve.\n"
+                );
+            }
+        }
     }
 
     return true;
@@ -487,7 +664,14 @@ void Solver::runSimple(const Mesh& mesh) {
 
     const bool needsAllocation =
         !isReady ||
+        !continuationState.valid ||
         !continueSolver ||
+        continuationState.cells != N ||
+        continuationState.faces != Nface ||
+        continuationState.faceRefs != expectedFaceRefs ||
+        continuationState.useFaceCoefficients != useFaceCoefficients ||
+        continuationState.solveEnergy != fieldOption.solveEnergy ||
+        continuationState.solveConcentration != fieldOption.solveConcentration ||
         uCoeff.N != N ||
         uCoeff.useFaceCoeffs != (useFaceCoefficients ? 1 : 0) ||
         (useFaceCoefficients && uCoeff.nFaceRefs != expectedFaceRefs) ||
@@ -526,6 +710,16 @@ void Solver::runSimple(const Mesh& mesh) {
         }
 
         allocateSimple(config, simple, fvMesh, fieldOption);
+
+        continuationState.valid = true;
+        continuationState.cells = N;
+        continuationState.faces = Nface;
+        continuationState.faceRefs = expectedFaceRefs;
+        continuationState.nr = config.g.nr;
+        continuationState.nz = config.g.nz;
+        continuationState.useFaceCoefficients = useFaceCoefficients;
+        continuationState.solveEnergy = fieldOption.solveEnergy;
+        continuationState.solveConcentration = fieldOption.solveConcentration;
 
         currentIteration = 0;
     }
@@ -716,6 +910,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     false,
                     ResidualPairs{ uCoeff, simple.u },
                     ResidualPairs{ vCoeff, simple.v },
+                    ResidualPairs{ tempCoeff, simple.temp},
                     ResidualPairs{ concCoeff, simple.conc}
                     );
                 if (cudaError_t errResidualAll = cudaGetLastError(); errResidualAll != cudaSuccess) {
@@ -732,7 +927,7 @@ void Solver::runSimple(const Mesh& mesh) {
                 }
                 CUDA_CHECK(cudaGetLastError());
                 CUDA_CHECK(cudaStreamSynchronize(stream));
-                residualAllHost(configResidual, uCoeff, vCoeff, massFluxCoeff, concCoeff);
+                residualAllHost(configResidual, uCoeff, vCoeff, massFluxCoeff, tempCoeff, concCoeff);
                 residualPlot->add(currentIteration, residualsToPrint);
                 printResidualConsole(currentIteration, residualsToPrint, console);
                 //if (contRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;

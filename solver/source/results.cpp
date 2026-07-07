@@ -1,5 +1,8 @@
 #include "results.h"
 
+#include <cmath>
+
+#include <glm/vec2.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "solver.h"
@@ -14,17 +17,6 @@
 Results::Results(Config& config) :
 
 	config(config) {
-
-	colFront = 0;
-	colBack = config.g.nz;
-	rowTop = config.g.nr;
-	rowBot = 0;
-
-	currentFront = 0.0f;
-	currentBack = 0.0f;
-	currentOuter = 0.0f;
-	currentInner = 0.0f;
-
 }
 
 void createCylinderTemplate(std::vector<CylinderTemplateVertex>& vertices, std::vector<unsigned int>& indices, int nseg) {
@@ -34,137 +26,84 @@ void createCylinderTemplate(std::vector<CylinderTemplateVertex>& vertices, std::
 
 	if (nseg < 3) return;
 
-	const float PI = 3.14159265359f;
+	constexpr float PI = 3.14159265359f;
+	vertices.reserve(static_cast<size_t>(8 * nseg + 4));
+	indices.reserve(static_cast<size_t>(24 * nseg));
 
-	auto addVertex = [&](float c, float s, float xCoord, float radialCoord) {
+	std::vector<glm::vec2> circle(static_cast<size_t>(nseg) + 1);
+	for (int k = 0; k <= nseg; ++k) {
+		const float theta = 2.0f * PI * static_cast<float>(k) / static_cast<float>(nseg);
+		circle[k] = glm::vec2(std::cos(theta), std::sin(theta));
+	}
+
+	auto addVertex = [&](const glm::vec2& p, float xCoord, float radialCoord) {
 		vertices.push_back({
-			glm::vec3(0.0f, c, s),
+			glm::vec3(0.0f, p.x, p.y),
 			xCoord,
 			radialCoord
 			});
 		};
 
-	// outer
-	{
-		unsigned int base = (unsigned int)(vertices.size());
+	auto addTriangle = [&](unsigned int a, unsigned int b, unsigned int c) {
+		indices.push_back(a);
+		indices.push_back(b);
+		indices.push_back(c);
+		};
+
+	auto addWall = [&](float radialCoord, bool reverseWinding) {
+		const unsigned int base = static_cast<unsigned int>(vertices.size());
 
 		for (int k = 0; k <= nseg; ++k) {
-			float theta = 2.0f * PI * float(k) / float(nseg);
-			float c = std::cos(theta);
-			float s = std::sin(theta);
-
-			addVertex(c, s, 0.0f, 1.0f); // front outer
-			addVertex(c, s, 1.0f, 1.0f); // back outer
+			addVertex(circle[k], 0.0f, radialCoord);
+			addVertex(circle[k], 1.0f, radialCoord);
 		}
 
 		for (int k = 0; k < nseg; ++k) {
-			unsigned int a = base + 2 * k;
-			unsigned int b = base + 2 * k + 1;
-			unsigned int c = base + 2 * (k + 1);
-			unsigned int d = base + 2 * (k + 1) + 1;
+			const unsigned int a = base + 2 * k;
+			const unsigned int b = base + 2 * k + 1;
+			const unsigned int c = base + 2 * (k + 1);
+			const unsigned int d = base + 2 * (k + 1) + 1;
 
-			// outward-facing winding
-			indices.push_back(a);
-			indices.push_back(c);
-			indices.push_back(b);
-
-			indices.push_back(c);
-			indices.push_back(d);
-			indices.push_back(b);
+			if (reverseWinding) {
+				addTriangle(a, b, c);
+				addTriangle(c, b, d);
+			}
+			else {
+				addTriangle(a, c, b);
+				addTriangle(c, d, b);
+			}
 		}
-	}
+		};
 
-	// inner
-	{
-		unsigned int base = (unsigned int)(vertices.size());
+	auto addCap = [&](float xCoord, bool frontFace) {
+		const unsigned int base = static_cast<unsigned int>(vertices.size());
 
-		for (int k = 0; k <= nseg; ++k) {
-			float theta = 2.0f * PI * float(k) / float(nseg);
-			float c = std::cos(theta);
-			float s = std::sin(theta);
-
-			addVertex(c, s, 0.0f, 0.0f); // front inner
-			addVertex(c, s, 1.0f, 0.0f); // back inner
+		for (int k = 0; k < nseg; ++k) {
+			addVertex(circle[k], xCoord, 0.0f);
+			addVertex(circle[k], xCoord, 1.0f);
 		}
 
 		for (int k = 0; k < nseg; ++k) {
-			unsigned int a = base + 2 * k;
-			unsigned int b = base + 2 * k + 1;
-			unsigned int c = base + 2 * (k + 1);
-			unsigned int d = base + 2 * (k + 1) + 1;
+			const unsigned int i0 = base + 2 * k;
+			const unsigned int o0 = base + 2 * k + 1;
+			const unsigned int i1 = base + 2 * ((k + 1) % nseg);
+			const unsigned int o1 = base + 2 * ((k + 1) % nseg) + 1;
 
-			// reversed winding for inner wall
-			indices.push_back(a);
-			indices.push_back(b);
-			indices.push_back(c);
-
-			indices.push_back(c);
-			indices.push_back(b);
-			indices.push_back(d);
+			if (frontFace) {
+				addTriangle(i0, o1, o0);
+				addTriangle(i0, i1, o1);
+			}
+			else {
+				addTriangle(i0, o0, o1);
+				addTriangle(i0, o1, i1);
+			}
 		}
-	}
+		};
 
-	// front face
-	{
-		unsigned int base = (unsigned int)(vertices.size());
-
-		for (int k = 0; k < nseg; ++k) {
-			float theta = 2.0f * PI * float(k) / float(nseg);
-			float c = std::cos(theta);
-			float s = std::sin(theta);
-
-			addVertex(c, s, 0.0f, 0.0f); // front inner
-			addVertex(c, s, 0.0f, 1.0f); // front outer
-		}
-
-		for (int k = 0; k < nseg; ++k) {
-			unsigned int i0 = base + 2 * k;
-			unsigned int o0 = base + 2 * k + 1;
-
-			unsigned int i1 = base + 2 * ((k + 1) % nseg);
-			unsigned int o1 = base + 2 * ((k + 1) % nseg) + 1;
-
-			// front cap, -x facing
-			indices.push_back(i0);
-			indices.push_back(o1);
-			indices.push_back(o0);
-
-			indices.push_back(i0);
-			indices.push_back(i1);
-			indices.push_back(o1);
-		}
-	}
-
-	// back face
-	{
-		unsigned int base = (unsigned int)(vertices.size());
-
-		for (int k = 0; k < nseg; ++k) {
-			float theta = 2.0f * PI * float(k) / float(nseg);
-			float c = std::cos(theta);
-			float s = std::sin(theta);
-
-			addVertex(c, s, 1.0f, 0.0f); // back inner
-			addVertex(c, s, 1.0f, 1.0f); // back outer
-		}
-
-		for (int k = 0; k < nseg; ++k) {
-			unsigned int i0 = base + 2 * k;
-			unsigned int o0 = base + 2 * k + 1;
-
-			unsigned int i1 = base + 2 * ((k + 1) % nseg);
-			unsigned int o1 = base + 2 * ((k + 1) % nseg) + 1;
-
-			// back cap, +x facing
-			indices.push_back(i0);
-			indices.push_back(o0);
-			indices.push_back(o1);
-
-			indices.push_back(i0);
-			indices.push_back(o1);
-			indices.push_back(i1);
-		}
-	}
+	addWall(1.0f, false);
+	addWall(0.0f, true);
+	addCap(0.0f, true);
+	addCap(1.0f, false);
 }
 
 

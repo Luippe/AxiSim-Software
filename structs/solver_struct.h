@@ -228,7 +228,7 @@ struct VariablesSimple {
 	double* mDot = nullptr;
 
 	void free() {
-		freeAllDev(DU, DV, p, pp, u, v, temp, uTemp, vTemp, ppTemp, tempTemp, uOld, vOld, tempOld, gradPZ, gradPR, gradUZ, gradUR, gradVZ, gradVR, gradTZ, gradTR, gradCZ, gradCR, mDot);
+		freeAllDev(DU, DV, p, pp, u, v, temp, conc, uTemp, vTemp, ppTemp, tempTemp, concTemp, uOld, vOld, tempOld, concOld, gradPZ, gradPR, gradUZ, gradUR, gradVZ, gradVR, gradTZ, gradTR, gradCZ, gradCR, mDot);
 	}
 };
 

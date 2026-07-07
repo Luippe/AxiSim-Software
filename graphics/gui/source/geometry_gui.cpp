@@ -68,7 +68,7 @@ void GeometryGUI::draw() {
 	if (ImGui::BeginTabItem("Geometry")) {
 		project.currentTab = ViewTab::TAB_GEOMETRY;
 
-		ImGui::BeginChild("SetupTree", ImVec2(0.0f, 600.0f), true);
+		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), true);
 
 		bool geometryOpen =
 			ImGui::TreeNodeEx("Geometry", UIFlagsTree::BranchOpenedFlags);

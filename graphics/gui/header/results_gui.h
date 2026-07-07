@@ -5,7 +5,6 @@ class SceneView;
 class GUI;
 class Results;
 class Colormap;
-class Mesh;
 class Colorbar;
 class Project;
 
@@ -24,6 +23,5 @@ private:
 	Results& results;
 	Colormap& colormap;
 	Colorbar& colorbar;
-	Mesh& mesh;
 
 };

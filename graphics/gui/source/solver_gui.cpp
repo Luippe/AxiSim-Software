@@ -700,7 +700,7 @@ void SolverGUI::draw() {
 	if (ImGui::BeginTabItem("Solver")) {
 		project.currentTab = ViewTab::TAB_SOLVER;
 
-		ImGui::BeginChild("SetupTree", ImVec2(0.0f, 600.0f), true);
+		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() - 30.0f), true);
 
 		bool generalOpen = false;
 		
@@ -792,7 +792,20 @@ void SolverGUI::draw() {
 
 		ImGui::EndChild();
 
+		std::string continueReason;
+		bool canContinueSolver = solver.canContinue(mesh, &continueReason);
+		if (!canContinueSolver && !solver.solverRunning) {
+			solver.continueSolver = false;
+		}
+
+		ImGui::BeginDisabled(!canContinueSolver);
 		ImGui::Checkbox("Continue Solver", &solver.continueSolver);
+		ImGui::EndDisabled();
+
+		if (!canContinueSolver &&
+			ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+			ImGui::SetTooltip("%s", continueReason.c_str());
+		}
 
 		if (ImGui::Button("Start Solver")) {
 			project.solver.run(project.mesh);

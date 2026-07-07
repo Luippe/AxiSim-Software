@@ -108,6 +108,7 @@ private:
 
 	// build all boundary segments
 	void buildSegments();
+	void syncStructuredBoundaryGroups();
 
 	// handle mouse events
 	void handleMouse();
