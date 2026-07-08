@@ -6,6 +6,7 @@
 
 #include "file_manager.h"
 #include "keyboard_manager.h"
+#include "unit_manager.h"
 
 using namespace Shortcuts;
 
@@ -91,6 +92,10 @@ void Menu::drawEditShortcut() {
 	if (ImGui::BeginMenu("Edit")) {
 		if (ImGui::MenuItem("Keyboard Shortcuts")) {
 			openShortcutModal = true;
+		}
+
+		if (ImGui::MenuItem("Units")) {
+			openUnitsModal = true;
 		}
 
 		ImGui::EndMenu();
@@ -209,6 +214,132 @@ void Menu::drawShortcutModal() {
 }
 
 
+void Menu::drawUnitsModal() {
+	if (openUnitsModal) {
+		ImGui::OpenPopup("Units");
+		openUnitsModal = false;
+	}
+
+	if (ImGui::BeginPopupModal(
+		"Units",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove
+	)) {
+		bool justOpened = ImGui::IsWindowAppearing();
+
+		VariableUnits& u = project.solver.varUnits;
+
+		// one label + unit dropdown row; works for any Units table (UnitOption
+		// or LinearUnitOption, both expose .name).
+		auto unitRow = [&](
+			const char* label,
+			std::uint8_t& index,
+			const auto& table
+		) {
+			if (index >= table.size()) {
+				index = 0;
+			}
+
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextUnformatted(label);
+			ImGui::SameLine(220.0f);
+			ImGui::SetNextItemWidth(170.0f);
+
+			ImGui::PushID(label);
+			if (ImGui::BeginCombo("##unit", table[index].name)) {
+				for (int i = 0; i < (int)(table.size()); i++) {
+					bool isSelected = index == i;
+					if (ImGui::Selectable(table[i].name, isSelected)) {
+						index = (std::uint8_t)(i);
+					}
+					if (isSelected) {
+						ImGui::SetItemDefaultFocus();
+					}
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::PopID();
+		};
+
+		// the project length scale keeps an index AND a display scale in sync,
+		// so it needs its own row rather than the generic unitRow above.
+		auto lengthScaleRow = [&](const char* label) {
+			LengthScale& ls = project.lengthScale;
+			if (ls.index >= Units::lengthUnits.size()) {
+				ls.index = 0;
+			}
+
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextUnformatted(label);
+			ImGui::SameLine(220.0f);
+			ImGui::SetNextItemWidth(170.0f);
+
+			ImGui::PushID(label);
+			if (ImGui::BeginCombo("##unit", Units::lengthUnits[ls.index].name)) {
+				for (int i = 0; i < (int)(Units::lengthUnits.size()); i++) {
+					bool isSelected = ls.index == i;
+					if (ImGui::Selectable(Units::lengthUnits[i].name, isSelected)) {
+						ls.index = (std::uint8_t)(i);
+						ls.value = 1.0 / Units::lengthUnits[i].toBase;
+					}
+					if (isSelected) {
+						ImGui::SetItemDefaultFocus();
+					}
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::PopID();
+		};
+
+		ImGui::SeparatorText("Geometry");
+		lengthScaleRow("Length");
+
+		ImGui::SeparatorText("Flow field");
+		unitRow("Axial velocity", u.axialUnit, Units::velocityUnits);
+		unitRow("Radial velocity", u.radialUnit, Units::velocityUnits);
+		unitRow("Pressure", u.pressureUnit, Units::pressureUnits);
+		unitRow("Temperature", u.temperatureUnit, Units::temperatureUnits);
+
+		ImGui::SeparatorText("Species");
+		unitRow("Concentration", u.concentrationUnit, Units::concentrationUnits);
+		unitRow("Diffusion coefficient", u.DUnit, Units::diffusionCoefficientUnits);
+		unitRow("Vmax", u.VmaxUnit, Units::VmaxUnits);
+
+		ImGui::SeparatorText("Material");
+		unitRow("Density", u.rhoUnit, Units::densityUnits);
+		unitRow("Dynamic viscosity", u.muUnit, Units::dynamicViscosityUnits);
+		unitRow("Specific heat", u.specificHeatUnit, Units::specificHeatUnits);
+		unitRow("Thermal conductivity", u.heatCondUnit, Units::thermalConductivityUnits);
+
+		ImGui::Separator();
+
+		if (ImGui::Button("Close")) {
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("Reset To Default")) {
+			u = VariableUnits{};
+			project.lengthScale = LengthScale{};
+		}
+
+		bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+		bool clickedOutside =
+			!justOpened &&
+			!ImGui::IsAnyItemActive() &&
+			!ImGui::IsAnyItemHovered() &&
+			!hovered &&
+			ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+
+		if (clickedOutside) {
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+}
+
+
 
 void Menu::render() {
 	if (ImGui::BeginMainMenuBar()) {
@@ -227,4 +358,5 @@ void Menu::render() {
 	}
 
 	drawShortcutModal();
+	drawUnitsModal();
 }

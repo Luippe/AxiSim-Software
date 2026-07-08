@@ -272,33 +272,13 @@ void GUI::drawStatusBar() {
 	ImGui::SetCursorScreenPos(ImVec2(unitsLabelX, textY));
 	ImGui::TextDisabled("%s", unitsLabel);
 
-	ImGui::SetCursorScreenPos(ImVec2(unitsComboX, comboY));
-	ImGui::SetNextItemWidth(unitsComboWidth);
-	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, comboFramePadY));
-	ImGui::PushID("StatusBarUnits");
-
+	// length unit is edited in the Units modal (Option -> Edit -> Units);
+	// the status bar only displays the active unit.
 	uint8_t currentUnitIndex = Units::lengthUnitIndexForScale(project.lengthScale.value);
 	const char* unitsPreview = Units::lengthUnits[currentUnitIndex].name;
-	if (ImGui::BeginCombo("##units", unitsPreview)) {
-		for (int i = 0; i < (int)Units::lengthUnits.size(); i++) {
-			bool isSelected = currentUnitIndex == i;
 
-			if (ImGui::Selectable(Units::lengthUnits[i].name, isSelected)) {
-				if (currentUnitIndex != i) {
-					project.lengthScale.index = (uint8_t)i;
-					project.lengthScale.value = 1.0 / Units::lengthUnits[i].toBase;
-				}
-			}
-
-			if (isSelected) {
-				ImGui::SetItemDefaultFocus();
-			}
-		}
-		ImGui::EndCombo();
-	}
-
-	ImGui::PopID();
-	ImGui::PopStyleVar();
+	ImGui::SetCursorScreenPos(ImVec2(unitsComboX, textY));
+	ImGui::TextDisabled("%s", unitsPreview);
 
 	ImGui::End();
 

@@ -117,6 +117,21 @@ public:
 		return changed;
 	}
 
+	// draw the unit name as static text (read-only). units are edited in the
+	// Units modal, not inline; this occupies the same table cell comboUnit did.
+	template <typename UnitT, size_t N>
+	void unitLabel(const std::array<UnitT, N>& units, std::uint8_t unitIndex) {
+		if constexpr (N > 0) {
+			if (unitIndex >= N) {
+				unitIndex = 0;
+			}
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextUnformatted(units[unitIndex].name);
+		}
+
+		ImGui::TableNextColumn();
+	}
+
 	// draw input double
 	template<typename UnitT, size_t N>
 	bool inputDouble(

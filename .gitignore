@@ -19,3 +19,13 @@ imgui.ini
 /CMakeSettings.json.user
 /Concentration Solver Software.vcxproj
 /Concentration Solver Software.vcxproj.filters
+
+# Nsight / CUDA profiler output
+*.nsys-rep
+*.ncu-rep
+*.sqlite
+
+# Local Claude working notes (not shared)
+/CLAUDE.md
+CLAUDE.local.md
+.claude/settings.local.json

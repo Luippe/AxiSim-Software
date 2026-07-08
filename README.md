@@ -7,13 +7,13 @@
 AxiSim is an interactive finite-volume solver for **axisymmetric incompressible flow**.
 Sketch a geometry, mesh it, run the solver on your GPU, and explore the results — all in one app.
 
-![version](https://img.shields.io/badge/version-v1.03--alpha-blue)
+![version](https://img.shields.io/badge/version-v1.04--alpha-blue)
 ![platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey)
 ![GPU](https://img.shields.io/badge/GPU-NVIDIA%20CUDA-76B900)
 ![C++](https://img.shields.io/badge/C%2B%2B-20-00599C)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
-<img src="docs/images/v1.03-alpha%20screenshots/Picture3.png" alt="AxiSim results view — 3D revolved axial-velocity field with a 2D cross-section inspector" width="780">
+<img src="docs/images/v1.04-alpha%20screenshots/Picture5.png" alt="AxiSim v1.04-alpha solver view with concentration boundary settings and live residual plots" width="780">
 
 </div>
 
@@ -36,10 +36,12 @@ problems without stitching together separate CAD, meshing, solver, and visualiza
 - **Structured** (Cartesian) and **unstructured** (Gmsh triangulation) meshing
 - Region-of-influence controls for local mesh refinement
 - Boundary groups with per-group sizing (edge count, target spacing, bias)
+- Structured boundary groups are preserved across mesh regeneration where possible
 
 **🧮 Physics & numerics**
 - Axisymmetric incompressible Navier–Stokes, finite-volume discretization
 - SIMPLE pressure–velocity coupling with under-relaxation
+- Guarded Continue Solver mode for resuming compatible solver states
 - Convection schemes: first-order upwind, central difference, second-order upwind
 - Gradient schemes: Green–Gauss and least-squares
 - Optional scalar transport: **energy (temperature)** and **concentration**
@@ -52,18 +54,19 @@ problems without stitching together separate CAD, meshing, solver, and visualiza
 
 **📊 Visualize & analyze**
 - 3D revolved field visualization with selectable colormaps
-- 2D cross-section inspector with per-cell field values and a live colorbar
+- 2D cross-section inspector with per-cell field values and an auto-sizing live colorbar
 - Live residual plots for U, V, pressure, continuity, temperature, and concentration
 - Per-face mass-flux and continuity-imbalance inspection
+- Command console with live autocomplete for actions, objects, and supported values
 - Save / load projects, and copy results and images straight to the clipboard
 
 ## Screenshots
 
 | Geometry sketching | Structured meshing |
 | :---: | :---: |
-| <img src="docs/images/v1.04-alpha%20screenshots/Picture2.png" width="380"> | <img src="docs/images/v1.03-alpha%20screenshots/Picture1.png" width="380"> |
-| **Unstructured meshing** | **Solver with live residuals** |
-| <img src="docs/images/v1.04-alpha%20screenshots/Picture1.png" width="380"> | <img src="docs/images/v1.03-alpha%20screenshots/Picture2.png" width="380"> |
+| <img src="docs/images/v1.04-alpha%20screenshots/Picture6.png" width="380"> | <img src="docs/images/v1.04-alpha%20screenshots/Picture1.png" width="380"> |
+| **Unstructured meshing and refinement** | **Solver with live residuals** |
+| <img src="docs/images/v1.04-alpha%20screenshots/Picture7.png" width="380"> | <img src="docs/images/v1.04-alpha%20screenshots/Picture5.png" width="380"> |
 
 ## Requirements
 
@@ -88,17 +91,19 @@ cmake --build out/build/x64-Release
 
 ## Documentation
 
-The full software manual is available here: [AxiSim Software Manual](docs/AxiSim_Software_Manual%20v1.01-alpha.pdf).
+The full software manual is available here: [AxiSim Software Manual v1.04-alpha](docs/AxiSim_Software_Manual_v1.04-alpha.pdf).
+
+Release notes are tracked in the [v1.04-alpha update log](docs/update%20logs/v1.04-alpha%20update%20log.md).
 
 ## Project status
 
-AxiSim is **work in progress** (currently `v1.03-alpha`) and updated frequently. Expect rapid changes and the occasional rough edge.
+AxiSim is **work in progress** (currently `v1.04-alpha`) and updated frequently. Expect rapid changes and the occasional rough edge.
 
 ## License
 
 The original AxiSim source code is released under the **[MIT License](LICENSE)**.
 
-Third-party components bundled with or linked into AxiSim retain their own licenses — see [license.txt](license.txt) for the full notices. **Important:** AxiSim links the [Gmsh](https://gmsh.info) library, which is licensed under the **GNU GPL v2-or-later**. Binaries built and distributed with Gmsh are therefore subject to the GPL, in addition to the MIT terms that cover AxiSim's own source.
+Third-party components bundled with or linked into AxiSim retain their own licenses. **Important:** AxiSim links the [Gmsh](https://gmsh.info) library, which is licensed under the **GNU GPL v2-or-later**. Binaries built and distributed with Gmsh are therefore subject to the GPL, in addition to the MIT terms that cover AxiSim's own source.
 
 ## Acknowledgments
 

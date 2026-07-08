@@ -15,6 +15,7 @@ public:
 private:
 
 	bool openShortcutModal = false;
+	bool openUnitsModal = false;
 
 	AppSettings settings;
 	Project& project;
@@ -32,5 +33,8 @@ private:
 
 	// open popup when edit shortcut is pressed
 	void drawShortcutModal();
+
+	// open popup to edit display units
+	void drawUnitsModal();
 
 };

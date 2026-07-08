@@ -138,23 +138,23 @@ void SolverGUI::drawRowBoundaryVariableEditor(
 		switch (var) {
 		case BoundaryVariable::UVelocity:
 			inputDouble(id.c_str(), v, varUnits.axialUnit, Units::velocityUnits);
-			comboUnit(id.c_str(), varUnits.axialUnit, Units::velocityUnits);
+			unitLabel(Units::velocityUnits, varUnits.axialUnit);
 			break;
 		case BoundaryVariable::VVelocity:
 			inputDouble(id.c_str(), v, varUnits.radialUnit, Units::velocityUnits);
-			comboUnit(id.c_str(), varUnits.radialUnit, Units::velocityUnits);
+			unitLabel(Units::velocityUnits, varUnits.radialUnit);
 			break;
 		case BoundaryVariable::Pressure:
 			inputDouble(id.c_str(), v, varUnits.pressureUnit, Units::pressureUnits);
-			comboUnit(id.c_str(), varUnits.pressureUnit, Units::pressureUnits);
+			unitLabel(Units::pressureUnits, varUnits.pressureUnit);
 			break;
 		case BoundaryVariable::StaticTemperature:
 			inputDouble(id.c_str(), v, varUnits.temperatureUnit, Units::temperatureUnits);
-			comboUnit(id.c_str(), varUnits.temperatureUnit, Units::temperatureUnits);
+			unitLabel(Units::temperatureUnits, varUnits.temperatureUnit);
 			break;
 		case BoundaryVariable::Concentration:
 			inputDouble(id.c_str(), v, varUnits.concentrationUnit, Units::concentrationUnits);
-			comboUnit(id.c_str(), varUnits.concentrationUnit, Units::concentrationUnits);
+			unitLabel(Units::concentrationUnits, varUnits.concentrationUnit);
 			break;
 		default:
 			ImGui::TableNextColumn();
@@ -166,13 +166,13 @@ void SolverGUI::drawRowBoundaryVariableEditor(
 	// Value + unit in concentration units (e.g. Km, a half-saturation concentration).
 	auto concValue = [&](const std::string& id, double& v) {
 		inputDouble(id.c_str(), v, varUnits.concentrationUnit, Units::concentrationUnits);
-		comboUnit(id.c_str(), varUnits.concentrationUnit, Units::concentrationUnits);
+		unitLabel(Units::concentrationUnits, varUnits.concentrationUnit);
 	};
 
 	// Value + unit in maximum-rate units (Vmax, a molar surface flux).
 	auto vmaxValue = [&](const std::string& id, double& v) {
 		inputDouble(id.c_str(), v, varUnits.VmaxUnit, Units::VmaxUnits);
-		comboUnit(id.c_str(), varUnits.VmaxUnit, Units::VmaxUnits);
+		unitLabel(Units::VmaxUnits, varUnits.VmaxUnit);
 	};
 
 	// Raw value, no unit (Vmax, Hill exponents). Advances 2 columns.
@@ -312,16 +312,16 @@ void SolverGUI::drawLayerEditor(
 			ImGui::Text("%d", i + 1);
 
 			ImGui::TableSetColumnIndex(1);
-			inputDouble("##k", layer.k, varUnits.layerKUnit, Units::diffusionUnits);
+			inputDouble("##k", layer.k, varUnits.DUnit, Units::diffusionCoefficientUnits);
 
 			ImGui::TableSetColumnIndex(2);
-			comboUnit("##kUnit", varUnits.layerKUnit, Units::diffusionUnits);
+			unitLabel(Units::diffusionCoefficientUnits, varUnits.DUnit);
 
 			ImGui::TableSetColumnIndex(3);
-			inputDouble("##d", layer.d, varUnits.layerDUnit, Units::lengthUnits);
+			inputDouble("##d", layer.d, project.lengthScale.index, Units::lengthUnits);
 
 			ImGui::TableSetColumnIndex(4);
-			comboUnit("##dUnit", varUnits.layerDUnit, Units::lengthUnits);
+			unitLabel(Units::lengthUnits, project.lengthScale.index);
 
 			// R is fully derived from D and d; recompute it so the stored value
 			// the solver will read stays in sync with the inputs.
@@ -652,19 +652,19 @@ void SolverGUI::drawPropertiesPanel() {
 
 			labelRow("Density");
 			inputDouble("##Density", solver.f.rho, varUnits.rhoUnit, Units::densityUnits, "%.6g");
-			comboUnit("##DensityUnit", varUnits.rhoUnit, Units::densityUnits);
+			unitLabel(Units::densityUnits, varUnits.rhoUnit);
 
 			labelRow("Dynamic Viscosity");
 			inputDouble("##DynamicViscosity", solver.f.mu, varUnits.muUnit, Units::dynamicViscosityUnits, "%.6g");
-			comboUnit("##DynamicViscosityUnit", varUnits.muUnit, Units::dynamicViscosityUnits);
+			unitLabel(Units::dynamicViscosityUnits, varUnits.muUnit);
 
 			labelRow("Diffusion Coefficient");
 			inputDouble("##DiffusionCoefficient", solver.f.D, varUnits.DUnit, Units::diffusionCoefficientUnits, "%.6g");
-			comboUnit("##DiffusionCoefficientUnit", varUnits.DUnit, Units::diffusionCoefficientUnits);
+			unitLabel(Units::diffusionCoefficientUnits, varUnits.DUnit);
 
 			labelRow("Heat Capacity");
 			inputDouble("##HeatCapacity", solver.f.cp, varUnits.specificHeatUnit, Units::specificHeatUnits, "%.6g");
-			comboUnit("##HeatCapacityUnit", varUnits.specificHeatUnit, Units::specificHeatUnits);
+			unitLabel(Units::specificHeatUnits, varUnits.specificHeatUnit);
 
 			ImGui::EndTable();
 		}
