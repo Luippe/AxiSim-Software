@@ -27,12 +27,7 @@ public:
 	std::string selectedItem;
 
 	void changeCursorOnHover();
-	void textToLeft(const char* text);
-	void setTableColumn(const int column);
-	void tableNextRow();
 	void tableNextColumn();
-
-	void setNextWindowSize(int height, int width);
 
 	// helper function to move to next row, set text, and move to next column
 	void labelRow(const char* text);
@@ -74,11 +69,6 @@ public:
 
 	// full-width primary action button shown under a setup tree (Generate, Start...)
 	bool actionButton(const char* label);
-
-	// table functions
-
-	// draw table header. uses single column
-	void drawTableHeader(const char* label);
 
 	// draw property values. uses two columns
 	void drawTableProperty(const char* label, const char* value);

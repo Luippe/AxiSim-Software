@@ -1,9 +1,8 @@
 #pragma once
 #include <vector>
 #include <string>
-#include "buffer_manager.h"
+
 #include "field_manager.h"
-#include "solver_struct.h"
 
 struct SceneView;
 class Project;
@@ -40,12 +39,6 @@ private:
 	
 	Project& project;
 	SceneView& scene;
-
-	int widgetWidth;
-	int widgetHeight;
-
-	int nr = 0;
-	int nz = 0;
 
 	int currentFrame = 0;
 	int previousFrame = 0;

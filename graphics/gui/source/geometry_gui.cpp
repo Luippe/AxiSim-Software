@@ -1,34 +1,9 @@
 #include "geometry_gui.h"
 
 #include "project.h"
-#include "gui.h"
 
-#include "printer.h"
-
-#include <algorithm>
-
-namespace {
-	const char* sketchEntityTypeName(SketchEntityType type) {
-		switch (type) {
-		case SketchEntityType::Line:
-			return "Line";
-		case SketchEntityType::Circle:
-			return "Circle";
-		case SketchEntityType::Rectangle:
-			return "Rectangle";
-		case SketchEntityType::Arc:
-			return "Arc";
-		case SketchEntityType::Point:
-			return "Point";
-		default:
-			return "Unknown";
-		}
-	}
-}
-
-GeometryGUI::GeometryGUI(Project& project, GUI& gui) :
-	project(project),
-	gui(gui) {
+GeometryGUI::GeometryGUI(Project& project) :
+	project(project) {
 
 }
 
@@ -66,7 +41,7 @@ void GeometryGUI::draw() {
 		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), true);
 
 		bool geometryOpen = false;
-		drawTree("Geometry", geometryOpen);
+		drawLeaf("Geometry");
 
 		if (geometryOpen) {
 			ImGui::TreePop();

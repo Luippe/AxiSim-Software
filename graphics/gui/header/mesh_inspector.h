@@ -19,6 +19,7 @@
 class Mesh;
 class Geometry;
 class Project;
+class Console;
 struct GridConfig;
 
 enum class MeshSnapType {
@@ -48,6 +49,8 @@ public:
 
 	// copy surface to clipboard
 	void copyActiveSurfaceToClipboard();
+
+	Console* console = nullptr;
 
 	// create buffer using mesh.gridVertices
 	void createGridBuffer();
@@ -152,7 +155,13 @@ private:
 	// (-1 if the cell has no interior faces); also reports the average
 	double cellNonOrthogonality(int cellID, double& avgDeg, int& interiorFaces) const;
 
-	// highlight the pinned cell and draw a panel with its mesh data
+	// build the text report for a picked cell
+	std::string buildCellInfoText(int cellID) const;
+
+	// print the picked cell's mesh data to the console
+	void logCellInfoToConsole();
+
+	// highlight the pinned cell
 	void drawCellInfo(ImDrawList* drawList);
 
 	void fillBoundaryGroupEdges(BoundarySegmentGroup& group);

@@ -8,19 +8,6 @@ void BaseGUI::changeCursorOnHover() {
 	}
 }
 
-void BaseGUI::textToLeft(const char* text) {
-	ImGui::AlignTextToFramePadding();
-	ImGui::TextUnformatted(text);
-}
-
-void BaseGUI::setTableColumn(const int column) {
-	ImGui::TableSetColumnIndex(column);
-}
-
-void BaseGUI::tableNextRow() {
-	ImGui::TableNextRow();
-}
-
 void BaseGUI::tableNextColumn() {
 	ImGui::TableNextColumn();
 }
@@ -33,10 +20,6 @@ void BaseGUI::labelRow(const char* text) {
 	ImGui::TextUnformatted(text);
 	ImGui::TableNextColumn();
 
-}
-
-void BaseGUI::setNextWindowSize(int height, int width) {
-	ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_Appearing);
 }
 
 bool BaseGUI::createSimpleCombo(const char* label, const char* items[], int& currentItem, int itemCount) {
@@ -111,31 +94,6 @@ bool BaseGUI::actionButton(const char* label) {
 	bool clicked = ImGui::Button(label, ImVec2(-FLT_MIN, 0.0f));
 	ImGui::PopStyleVar();
 	return clicked;
-}
-
-void BaseGUI::drawTableHeader(const char* label) {
-
-	ImGui::PushID(label);
-
-	if (ImGui::BeginTable("Table", 1, UIFlags::TableBoundaryFlags)) {
-
-		setupTableColumns(
-			column("Label", 100.0f)
-		);
-		ImGui::TableNextRow();
-
-		ImGui::TableSetBgColor(
-			ImGuiTableBgTarget_RowBg0,
-			ImGui::GetColorU32(ImGuiCol_Header)
-		);
-
-		ImGui::TableSetColumnIndex(0);
-		ImGui::TextUnformatted(label);
-
-		ImGui::EndTable();
-	}
-	ImGui::PopID();
-
 }
 
 void BaseGUI::drawTableProperty(const char* label, const char* value) {

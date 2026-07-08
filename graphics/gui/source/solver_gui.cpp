@@ -12,7 +12,6 @@
 
 #include "flag_manager.h"
 #include "unit_manager.h"
-#include "printer.h"
 
 #include <string>
 
@@ -355,25 +354,11 @@ void SolverGUI::drawPropertiesPanel() {
 
 	if (selectedItem == "General") {
 
-		sectionHeader("General");
-
+		sectionHeader("Fields");
 		drawFieldCheckbox();
 
-	}
-	else if (selectedItem == "Solver Settings") {
-		ImGui::TextUnformatted("Solver");
-
-		// total width = sum of table width + 10 * num of columns to account for padding
-		// total height = number of rows * 31
-
-		ImGui::BeginChild("Solver", ImVec2(220.0f, 62.0f), true);
-		if (ImGui::BeginTable("Solver", 2)) {
-
-			setupTableColumns(
-				column("Label", 100.0f),
-				column("Combo", 100.0f)
-			);
-
+		sectionHeader("Solver");
+		if (beginPropertyTable("SolverGeneral")) {
 			labelRow("Solver");
 			createSimpleCombo("##Solver", solver.velocitySolverType, (int&)solver.currentVelocitySolver, IM_ARRAYSIZE(solver.velocitySolverType));
 
@@ -382,18 +367,9 @@ void SolverGUI::drawPropertiesPanel() {
 
 			ImGui::EndTable();
 		}
-		ImGui::EndChild();
 
-		ImGui::Dummy(ImVec2(0.0f, 10.0f));
-		ImGui::TextUnformatted("Options");
-		ImGui::BeginChild("Options", ImVec2(380.0f, 120.0f), true);
-		if (ImGui::BeginTable("Options", 2)) {
-
-			setupTableColumns(
-				column("Label", 200.0f),
-				column("Combo", 160.0f)
-			);
-
+		sectionHeader("Options");
+		if (beginPropertyTable("SolverOptions", 200.0f)) {
 			labelRow("Convection Discretization");
 			createSimpleCombo("##ConvectionScheme", solver.convectionDiscretizationType, (int&)(solver.convectionScheme), IM_ARRAYSIZE(solver.convectionDiscretizationType));
 
@@ -404,9 +380,7 @@ void SolverGUI::drawPropertiesPanel() {
 			checkBox("##TransientTerm", &solver.configSolver.transient);
 
 			ImGui::EndTable();
-
 		}
-		ImGui::EndChild();
 	}
 	else if (selectedItem == "Boundary Group") {
 		BoundarySegmentGroup* group = getBoundaryGroupByID(mesh.boundaryGroups, selectedBoundaryGroupID);
@@ -512,8 +486,8 @@ void SolverGUI::drawPropertiesPanel() {
 		ImGui::PopStyleVar();
 
 	}
-	else if (selectedItem == "Residuals") {
-		sectionHeader("Residual Type");
+	else if (selectedItem == "Convergence") {
+		sectionHeader("Residuals");
 
 		if (ImGui::BeginTable("Residual Type Settings", 3)) {
 
@@ -534,7 +508,7 @@ void SolverGUI::drawPropertiesPanel() {
 			}
 
 			if (ImGui::BeginPopup("Advanced Settings")) {
-				if (ImGui::BeginTable("Residual Type Settings", 2)) {
+				if (ImGui::BeginTable("Residual Norm Settings", 2)) {
 
 					setupTableColumns(
 						column("Label", 130.0f),
@@ -554,46 +528,20 @@ void SolverGUI::drawPropertiesPanel() {
 			ImGui::EndTable();
 		}
 
-		sectionHeader("Plot Residuals");
+		ImGui::TextDisabled("Plot residuals");
 
-		if (ImGui::BeginTable("Plot Residuals", 3)) {
+		ImGui::Checkbox("U", &solver.enabledResiduals.plotU);
+		ImGui::Checkbox("V", &solver.enabledResiduals.plotV);
+		ImGui::Checkbox("Continuity", &solver.enabledResiduals.plotCont);
 
-			setupTableColumns(
-				column("Label1", 100.0f),
-				column("Label2", 100.0f),
-				column("Label3", 100.0f)
-			);
-
-			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex(0);
-			ImGui::Checkbox("U", &solver.enabledResiduals.plotU);
-			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex(0);
-			ImGui::Checkbox("V", &solver.enabledResiduals.plotV);
-			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex(0);
-			ImGui::Checkbox("Continuity", &solver.enabledResiduals.plotCont);
-			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex(0);
-
-			if (solver.fieldOption.solveEnergy) {
-				ImGui::Checkbox("Temperature", &solver.enabledResiduals.plotTemp);
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0);
-
-			}
-
-			if (solver.fieldOption.solveConcentration) {
-				ImGui::Checkbox("Concentration", &solver.enabledResiduals.plotConc);
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0);
-
-			}
-			ImGui::EndTable();
+		if (solver.fieldOption.solveEnergy) {
+			ImGui::Checkbox("Temperature", &solver.enabledResiduals.plotTemp);
 		}
 
-	}
-	else if (selectedItem == "Tolerance") {
+		if (solver.fieldOption.solveConcentration) {
+			ImGui::Checkbox("Concentration", &solver.enabledResiduals.plotConc);
+		}
+
 		sectionHeader("Tolerance");
 
 		if (ImGui::BeginTable("Iteration Settings", 2)) {
@@ -646,8 +594,8 @@ void SolverGUI::drawPropertiesPanel() {
 			ImGui::EndTable();
 		}
 	}
-	else if (selectedItem == "Fluid Settings") {
-		sectionHeader("Fluid Settings");
+	else if (selectedItem == "Fluid Properties") {
+		sectionHeader("Fluid Properties");
 		if (ImGui::BeginTable("Fluid Settings", 3)) {
 
 			labelRow("Density");
@@ -702,17 +650,9 @@ void SolverGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() - 30.0f), true);
 
-		bool generalOpen = false;
-		
-		if (drawTree("General", generalOpen)) {
+		if (drawLeaf("General")) {
 			selectedBoundaryGroupID = -1;
 		}
-
-		if (generalOpen) {
-			drawLeaf("Solver Settings");
-			ImGui::TreePop();
-		}
-
 
 		// draw boundary tree node
 		bool boundariesOpen = false;
@@ -737,16 +677,9 @@ void SolverGUI::draw() {
 			ImGui::TreePop();
 		}
 
-		if (treeHeader("Convergence")) {
-			drawLeaf("Residuals");
-			drawLeaf("Tolerance");
-			ImGui::TreePop();
-		}
+		drawLeaf("Convergence");
 
-		if (treeHeader("Fluid Properties")) {
-			drawLeaf("Fluid Settings");
-			ImGui::TreePop();
-		}
+		drawLeaf("Fluid Properties");
 
 		if (solver.configSolver.transient) {
 			if (treeHeader("Transient")) {

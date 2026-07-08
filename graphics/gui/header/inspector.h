@@ -14,6 +14,7 @@ class Mesh;
 class Results;
 class Project;
 class SceneView;
+class Console;
 struct GridConfig;
 struct SolutionField;
 
@@ -34,6 +35,8 @@ public:
 
 	// copy active surface to clipboard
 	void copyActiveSurfaceToClipboard();
+
+	Console* console = nullptr;
 
 	Colorbar colorbar;
 
@@ -97,7 +100,13 @@ private:
 	void drawMeshOverlay(ImDrawList* drawList);
 	void drawValueProbe(ImDrawList* drawList);
 
-	// highlight the pinned cell and draw a panel with its full data
+	// build the console line for the picked cell's current field value
+	std::string buildCellInfoText(int cellID) const;
+
+	// print the picked cell's current field value to the console
+	void logCellInfoToConsole();
+
+	// highlight the pinned cell
 	void drawCellInfo(ImDrawList* drawList);
 
 	void drawEmptyMessage(ImDrawList* drawList);

@@ -1,15 +1,13 @@
 #include "animation_gui.h"
 
+#include <algorithm>
+
 #include "imgui.h"
 
 #include "project.h"
 #include "gui.h"
 
 #include "scene_view.h"
-
-#include "file_manager.h"
-#include "flag_manager.h"
-#include "printer.h"
 
 
 AnimationGUI::AnimationGUI(Project& project, GUI& gui) :

@@ -139,7 +139,7 @@ void Solver::createSolutions(int N) {
 
     // per-face mass flux for inspector probing (continuity + face fluxes)
     mDotHost = copyDeviceToHostVector(simple.mDot, (size_t)fvMesh.numFaces());
-
+    
 }
 
 void Solver::addFieldType() {
@@ -149,6 +149,7 @@ void Solver::addFieldType() {
     fieldType.push_back("Axial Velocity");
     fieldType.push_back("Radial Velocity");
     fieldType.push_back("Pressure");
+    //fieldType.push_back("Continuity");
 
     if (fieldOption.solveEnergy) {
         fieldType.push_back("Temperature");

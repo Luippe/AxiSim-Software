@@ -3,10 +3,7 @@
 
 
 class Project;
-class SceneView;
 class GUI;
-class Results;
-class Colormap;
 class Mesh;
 class Config;
 
@@ -31,7 +28,6 @@ private:
 	Project& project;
 	GUI& gui;
 
-	Colormap& colormap;
 	Mesh& mesh;
 	Config& config;
 };

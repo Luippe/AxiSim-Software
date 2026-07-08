@@ -544,11 +544,16 @@ void Console::updateCompletionState(bool inputActive) {
 
 	CompletionContext ctx = getCompletionContext(text, cursor);
 
-	// show while typing an action (needs at least one character) or while
-	// completing a later argument (objects may list on an empty partial)
+	// first token (the command) needs at least one typed character, so an empty
+	// input stays closed; later tokens (object / value) list candidates even on
+	// an empty token, e.g. "set colormap " shows the colormap names
 	bool showRule = !ctx.partial.empty() || ctx.wordIndex > 0;
 
-	completionActive = inputActive && !completionItems.empty() && showRule;
+	// showRule is a hard requirement: with an empty token there is nothing to
+	// match, so the list stays closed even if Ctrl+Space was pressed. force only
+	// lifts the dismissed latch (re-open after an accept/delete on a typed token).
+	completionActive = inputActive && !completionItems.empty() &&
+		showRule && (!completionDismissed || forceCompletion);
 }
 
 // Tab: accept the highlighted entry inline, from inside the InputText callback
@@ -564,10 +569,15 @@ void Console::handleCompletion(ImGuiInputTextCallbackData* data) {
 
 	data->DeleteChars(ctx.wordStart, ctx.wordEnd - ctx.wordStart);
 	data->InsertChars(ctx.wordStart, word.c_str());
-	data->InsertChars(data->CursorPos, " ");
 
 	completionActive = false;
 	completionNavigated = false;
+	completionDismissed = true;
+
+	// this Tab edit changed the buffer from inside the callback; flag it so the
+	// change-detector in draw() keeps the list closed instead of mistaking it
+	// for user typing and re-opening the dropdown
+	completionJustAccepted = true;
 }
 
 // Enter / right-arrow: accept the highlighted entry. These happen outside the
@@ -583,7 +593,7 @@ void Console::acceptCompletion() {
 	const std::string& word = completionItems[completionIndex].word;
 
 	std::string newText =
-		text.substr(0, ctx.wordStart) + word + " " + text.substr(ctx.wordEnd);
+		text.substr(0, ctx.wordStart) + word + text.substr(ctx.wordEnd);
 
 	if (newText.size() >= sizeof(inputBuffer)) {
 		newText.resize(sizeof(inputBuffer) - 1);
@@ -593,6 +603,11 @@ void Console::acceptCompletion() {
 
 	completionActive = false;
 	completionNavigated = false;
+	completionDismissed = true;
+
+	// this programmatic edit changed the buffer; sync lastInput so draw() does
+	// not mistake it for user typing and re-open the dropdown
+	lastInput = inputBuffer;
 
 	// While active, InputText keeps its own copy of the text, so an external
 	// edit is ignored. Drop the active id and re-focus next frame to reload,
@@ -684,14 +699,6 @@ void Console::draw() {
 
 	ImFont* defaultFont = gui.appConfig.fonts.defaultFont;
 
-	if (ImGui::Button("Clear")) {
-		clear();
-	}
-
-	ImGui::SameLine();
-	ImGui::Checkbox("Auto scroll", &autoScroll);
-	ImGui::Separator();
-
 	ImGui::PushFont(defaultFont);
 	ImGui::BeginChild(
 		"ConsoleOutput",
@@ -709,6 +716,11 @@ void Console::draw() {
 	if (scrollToBottom) {
 		ImGui::SetScrollHereY(1.0f);
 		scrollToBottom = false;
+	}
+
+	// clicking anywhere in the output region focuses the input box
+	if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+		refocusInput = true;
 	}
 
 	ImGui::EndChild();
@@ -737,8 +749,33 @@ void Console::draw() {
 	if (lastInput != inputBuffer) {
 		completionIndex = 0;
 		completionNavigated = false;
+		forceCompletion = false;
+
+		if (completionJustAccepted) {
+			// the buffer changed because a completion was inserted (Tab), not
+			// because the user typed: keep the list closed
+			completionDismissed = true;
+		}
+		else {
+			// deleting characters should not pop the dropdown; only forward
+			// typing (or an explicit Ctrl+Space) does
+			completionDismissed = std::string(inputBuffer).size() < lastInput.size();
+		}
 	}
+	completionJustAccepted = false;
 	lastInput = inputBuffer;
+
+	// Left Ctrl + Space force-opens the candidate list (even on empty input)
+	if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl) &&
+		ImGui::IsKeyPressed(ImGuiKey_Space, false)) {
+		completionDismissed = false;
+		forceCompletion = true;
+	}
+
+	// snapshot the dropdown's open state: pressing Enter deactivates the
+	// InputText, so updateCompletionState() below clears completionActive this
+	// frame before the submit check can tell that the user was navigating.
+	bool completionWasActive = completionActive;
 
 	updateCompletionState(inputActive);
 
@@ -751,7 +788,7 @@ void Console::draw() {
 	}
 
 	if (submitted) {
-		if (completionActive && completionNavigated) {
+		if (completionWasActive && completionNavigated) {
 			// a dropdown entry is highlighted: accept it instead of running
 			acceptCompletion();
 		}

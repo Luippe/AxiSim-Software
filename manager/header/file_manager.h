@@ -356,4 +356,3 @@ void saveBinary(std::ofstream& out, const Args&... args) {
 	}
 	writeAll(out, args...);
 }
-

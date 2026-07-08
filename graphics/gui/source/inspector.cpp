@@ -11,6 +11,7 @@
 #include "mesh.h"
 #include "colormap.h"
 #include "colorbar.h"
+#include "console.h"
 
 #include "flag_manager.h"
 #include "printer.h"
@@ -339,6 +340,10 @@ void Inspector::handleSelection(ImGuiIO& io) {
 
 	Vec2 world = camera.screenToWorld(ImGui::GetMousePos());
 	selectedCell = pickCell(world); // -1 if the click missed the mesh (deselect)
+
+	if (selectedCell >= 0) {
+		logCellInfoToConsole();
+	}
 }
 
 // ======================================================================
@@ -711,6 +716,38 @@ static const char* shortFieldName(const std::string& name) {
 	return name.c_str();
 }
 
+std::string Inspector::buildCellInfoText(int cellID) const {
+	if (cellID < 0 || results.fieldType.empty()) {
+		return {};
+	}
+
+	int idx = std::clamp(results.currentItem, 0, (int)results.fieldType.size() - 1);
+	const std::string& name = results.fieldType[idx];
+
+	auto it = results.solutions.find(name);
+	if (it == results.solutions.end() || cellID >= (int)it->second.field.size()) {
+		return {};
+	}
+
+	char line[160];
+	std::snprintf(line, sizeof(line), "Cell #%d %s: %.6g",
+		cellID, shortFieldName(name), it->second.field[cellID]);
+	return line;
+}
+
+void Inspector::logCellInfoToConsole() {
+	if (!console) {
+		return;
+	}
+
+	std::string info = buildCellInfoText(selectedCell);
+	if (info.empty()) {
+		return;
+	}
+
+	console->addLine(info);
+}
+
 void Inspector::drawCellInfo(ImDrawList* drawList) {
 
 	ImVec2 canvasMin = canvasRect.min;
@@ -721,7 +758,6 @@ void Inspector::drawCellInfo(ImDrawList* drawList) {
 		return;
 	}
 
-	// --- highlight the pinned cell ---
 	drawList->PushClipRect(canvasMin, canvasMax, true);
 
 	if (hasStructuredGrid()) {
@@ -749,7 +785,6 @@ void Inspector::drawCellInfo(ImDrawList* drawList) {
 		const std::vector<Triangle>& tris = mesh.unstructuredTriangles;
 
 		if (selectedCell >= (int)tris.size()) {
-			// stale selection (mesh changed) - clear it
 			selectedCell = -1;
 			drawList->PopClipRect();
 			return;
@@ -773,104 +808,6 @@ void Inspector::drawCellInfo(ImDrawList* drawList) {
 	}
 
 	drawList->PopClipRect();
-
-	// --- build the info text ---
-	std::string info;
-	char line[160];
-
-	std::snprintf(line, sizeof(line), "Cell #%d", selectedCell);
-	info += line;
-
-	const FVMesh& fv = project.solver.fvMesh;
-	if (selectedCell < (int)fv.cells.size()) {
-		const FVCell& cell = fv.cells[selectedCell];
-
-		std::snprintf(line, sizeof(line), "\ncenter:  z %.6g   r %.6g", cell.center.z, cell.center.r);
-		info += line;
-		std::snprintf(line, sizeof(line), "\narea2D:  %.6g", cell.area2D);
-		info += line;
-		std::snprintf(line, sizeof(line), "\nvolume:  %.6g", cell.volume);
-		info += line;
-		std::snprintf(line, sizeof(line), "\nfaces:   %d", (int)cell.faceIDs.size());
-		info += line;
-		std::snprintf(line, sizeof(line), "\nactive:  %s%s",
-			cell.active ? "yes" : "no",
-			cell.solid ? "   (solid)" : "");
-		info += line;
-	}
-
-	// per-field values at this cell
-	bool wroteHeader = false;
-	for (const std::string& name : results.fieldType) {
-		auto it = results.solutions.find(name);
-		if (it == results.solutions.end()) {
-			continue;
-		}
-		if (selectedCell >= (int)it->second.field.size()) {
-			continue;
-		}
-
-		if (!wroteHeader) {
-			info += "\n----------------";
-			wroteHeader = true;
-		}
-
-		std::snprintf(line, sizeof(line), "\n%-12s %.6g",
-			shortFieldName(name), it->second.field[selectedCell]);
-		info += line;
-	}
-
-	// per-cell continuity (net outward mass flux) and the individual face fluxes
-	const std::vector<double>& mDot = project.solver.mDotHost;
-	if (selectedCell < (int)fv.cells.size() && !mDot.empty()) {
-		const FVCell& cell = fv.cells[selectedCell];
-
-		double continuity = 0.0;
-		for (int fid : cell.faceIDs) {
-			if (fid < 0 || fid >= (int)mDot.size() || fid >= (int)fv.faces.size()) {
-				continue;
-			}
-			double out = (fv.faces[fid].owner == selectedCell) ? mDot[fid] : -mDot[fid];
-			continuity += out;
-		}
-
-		info += "\n----------------";
-		std::snprintf(line, sizeof(line), "\ncontinuity (net): %.6g", continuity);
-		info += line;
-
-		info += "\nface mass flux (outward):";
-		for (int fid : cell.faceIDs) {
-			if (fid < 0 || fid >= (int)mDot.size() || fid >= (int)fv.faces.size()) {
-				continue;
-			}
-
-			const FVFace& face = fv.faces[fid];
-			double out = (face.owner == selectedCell) ? mDot[fid] : -mDot[fid];
-
-			if (face.neighbor < 0) {
-				std::snprintf(line, sizeof(line), "\n  f%-5d bdry     %.6g", fid, out);
-			}
-			else {
-				int nb = (face.owner == selectedCell) ? face.neighbor : face.owner;
-				std::snprintf(line, sizeof(line), "\n  f%-5d nb %-5d %.6g", fid, nb, out);
-			}
-			info += line;
-		}
-	}
-
-	// --- draw the panel (top-left of the canvas) ---
-	const ImVec2 pad(8.0f, 6.0f);
-	ImVec2 origin(canvasMin.x + 10.0f, canvasMin.y + 10.0f);
-
-	ImVec2 ts = ImGui::CalcTextSize(info.c_str());
-
-	ImVec2 rmin = origin;
-	ImVec2 rmax(origin.x + ts.x + pad.x * 2.0f, origin.y + ts.y + pad.y * 2.0f);
-
-	drawList->AddRectFilled(rmin, rmax, IM_COL32(15, 20, 28, 235), 4.0f);
-	drawList->AddRect(rmin, rmax, IM_COL32(90, 120, 150, 200), 4.0f, 0, 1.0f);
-	drawList->AddText(ImVec2(origin.x + pad.x, origin.y + pad.y),
-		IM_COL32(230, 235, 245, 255), info.c_str());
 }
 
 void Inspector::drawEmptyMessage(ImDrawList* drawList) {

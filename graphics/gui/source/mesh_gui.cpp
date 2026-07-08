@@ -2,7 +2,6 @@
 #include "project.h"
 
 #include "gui.h"
-#include "colormap.h"
 #include "mesh.h"
 
 #include "solver_struct.h"
@@ -12,8 +11,6 @@
 #include "unit_manager.h"
 #include "flag_manager.h"
 
-#include "printer.h"
-
 #include <algorithm>
 
 using namespace BoundaryGet;
@@ -22,7 +19,6 @@ MeshGUI::MeshGUI(Project& project, GUI& gui) :
 	project(project),
 	gui(gui),
 	mesh(project.mesh),
-	colormap(gui.scene.colormap),
 	config(project.config){
 }
 

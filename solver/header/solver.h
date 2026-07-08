@@ -87,6 +87,7 @@ public:
 	// after a solve so the inspector can report face fluxes and per-cell
 	// continuity imbalance.
 	std::vector<double> mDotHost;
+	std::vector<double> mContinuity;
 
 	// which variables will the residual plot show?
 	EnabledResiduals enabledResiduals;

@@ -11,6 +11,7 @@
 #include "project.h"
 #include "geometry.h"
 #include "colorbar.h"
+#include "console.h"
 
 #include "flag_manager.h"
 #include "printer.h"
@@ -878,6 +879,10 @@ void MeshInspector::handleCellSelection(ImGuiIO& io) {
 
 	Vec2 world = camera.screenToWorld(ImGui::GetMousePos());
 	selectedCell = pickCell(world); // -1 if the click missed the mesh (deselect)
+
+	if (selectedCell >= 0) {
+		logCellInfoToConsole();
+	}
 }
 
 // ======================================================================
@@ -1887,6 +1892,112 @@ void MeshInspector::drawRegionsOfInfluence(ImDrawList* drawList) {
 	}
 }
 
+std::string MeshInspector::buildCellInfoText(int cellID) const {
+	if (cellID < 0 || cellID >= (int)inspectFVMesh.cells.size()) {
+		return {};
+	}
+
+	const FVCell& cell = inspectFVMesh.cells[cellID];
+	std::string info;
+	char line[160];
+
+	std::snprintf(line, sizeof(line), "Cell #%d", cellID);
+	info += line;
+
+	std::snprintf(line, sizeof(line), "\ncenter:  z %.6g   r %.6g", cell.center.z, cell.center.r);
+	info += line;
+
+	if (cell.area2D > 0.0) {
+		std::snprintf(line, sizeof(line), "\narea2D:  %.6g", cell.area2D);
+		info += line;
+	}
+
+	std::snprintf(line, sizeof(line), "\nvolume:  %.6g", cell.volume);
+	info += line;
+
+	std::snprintf(line, sizeof(line), "\nfaces:   %d", (int)cell.faceIDs.size());
+	info += line;
+
+	std::snprintf(line, sizeof(line), "\nactive:  %s%s",
+		cell.active ? "yes" : "no",
+		cell.solid ? "   (solid)" : "");
+	info += line;
+
+	// --- non-orthogonality (the mesh-quality measure) ---
+	double avgDeg = 0.0;
+	int interiorFaces = 0;
+	double maxDeg = cellNonOrthogonality(cellID, avgDeg, interiorFaces);
+
+	info += "\n----------------";
+	if (maxDeg < 0.0) {
+		info += "\nnon-orthogonality: n/a (no interior faces)";
+	}
+	else {
+		std::snprintf(line, sizeof(line),
+			"\nnon-orthogonality (deg):\n  max %.3f   avg %.3f", maxDeg, avgDeg);
+		info += line;
+	}
+
+	// --- per-face geometry: neighbour, edge length, face non-orthogonality ---
+	if (!cell.faceIDs.empty()) {
+		info += "\nfaces (nb | len | non-orth):";
+
+		constexpr double radToDeg = 57.29577951308232;
+
+		for (int fid : cell.faceIDs) {
+			if (fid < 0 || fid >= (int)inspectFVMesh.faces.size()) {
+				continue;
+			}
+
+			const FVFace& f = inspectFVMesh.faces[fid];
+
+			if (f.neighbor < 0) {
+				std::snprintf(line, sizeof(line), "\n  f%-5d bdry   %.4g", fid, f.length2D);
+				info += line;
+				continue;
+			}
+
+			int nb = (f.owner == cellID) ? f.neighbor : f.owner;
+
+			const FVCell& P = inspectFVMesh.cells[f.owner];
+			const FVCell& N = inspectFVMesh.cells[f.neighbor];
+
+			double dz = N.center.z - P.center.z;
+			double dr = N.center.r - P.center.r;
+			double dLen = std::sqrt(dz * dz + dr * dr);
+			double nLen = std::sqrt(f.normal.z * f.normal.z + f.normal.r * f.normal.r);
+
+			double ang = 0.0;
+			if (dLen > 1e-30 && nLen > 1e-30) {
+				double cosAng = (dz * f.normal.z + dr * f.normal.r) / (dLen * nLen);
+				cosAng = std::clamp(cosAng, -1.0, 1.0);
+				ang = std::acos(std::abs(cosAng)) * radToDeg;
+			}
+
+			std::snprintf(line, sizeof(line), "\n  f%-5d nb %-5d %.4g  %.2f deg",
+				fid, nb, f.length2D, ang);
+			info += line;
+		}
+	}
+
+	return info;
+}
+
+void MeshInspector::logCellInfoToConsole() {
+	if (!console) {
+		return;
+	}
+
+	std::string info = buildCellInfoText(selectedCell);
+	if (info.empty()) {
+		return;
+	}
+
+	console->addSeparator();
+	console->addLine(info);
+	console->addSeparator();
+}
+
 void MeshInspector::drawCellInfo(ImDrawList* drawList) {
 	if (selectedCell < 0) {
 		return;
@@ -1903,7 +2014,6 @@ void MeshInspector::drawCellInfo(ImDrawList* drawList) {
 	const ImU32 fillCol = IM_COL32(255, 235, 60, 70);
 	const ImU32 lineCol = IM_COL32(255, 235, 60, 255);
 
-	// --- highlight the pinned cell ---
 	drawList->PushClipRect(canvasMin, canvasMax, true);
 
 	if (mesh.currentMeshType == MeshType::Structured) {
@@ -1940,105 +2050,6 @@ void MeshInspector::drawCellInfo(ImDrawList* drawList) {
 	}
 
 	drawList->PopClipRect();
-
-	// --- build the info text ---
-	const FVCell& cell = inspectFVMesh.cells[selectedCell];
-
-	std::string info;
-	char line[160];
-
-	std::snprintf(line, sizeof(line), "Cell #%d", selectedCell);
-	info += line;
-
-	std::snprintf(line, sizeof(line), "\ncenter:  z %.6g   r %.6g", cell.center.z, cell.center.r);
-	info += line;
-
-	if (cell.area2D > 0.0) {
-		std::snprintf(line, sizeof(line), "\narea2D:  %.6g", cell.area2D);
-		info += line;
-	}
-
-	std::snprintf(line, sizeof(line), "\nvolume:  %.6g", cell.volume);
-	info += line;
-
-	std::snprintf(line, sizeof(line), "\nfaces:   %d", (int)cell.faceIDs.size());
-	info += line;
-
-	std::snprintf(line, sizeof(line), "\nactive:  %s%s",
-		cell.active ? "yes" : "no",
-		cell.solid ? "   (solid)" : "");
-	info += line;
-
-	// --- non-orthogonality (the mesh-quality measure) ---
-	double avgDeg = 0.0;
-	int interiorFaces = 0;
-	double maxDeg = cellNonOrthogonality(selectedCell, avgDeg, interiorFaces);
-
-	info += "\n----------------";
-	if (maxDeg < 0.0) {
-		info += "\nnon-orthogonality: n/a (no interior faces)";
-	}
-	else {
-		std::snprintf(line, sizeof(line),
-			"\nnon-orthogonality (deg):\n  max %.3f   avg %.3f", maxDeg, avgDeg);
-		info += line;
-	}
-
-	// --- per-face geometry: neighbour, edge length, face non-orthogonality ---
-	if (!cell.faceIDs.empty()) {
-		info += "\nfaces (nb | len | non-orth):";
-
-		constexpr double radToDeg = 57.29577951308232;
-
-		for (int fid : cell.faceIDs) {
-			if (fid < 0 || fid >= (int)inspectFVMesh.faces.size()) {
-				continue;
-			}
-
-			const FVFace& f = inspectFVMesh.faces[fid];
-
-			if (f.neighbor < 0) {
-				std::snprintf(line, sizeof(line), "\n  f%-5d bdry   %.4g", fid, f.length2D);
-				info += line;
-				continue;
-			}
-
-			int nb = (f.owner == selectedCell) ? f.neighbor : f.owner;
-
-			const FVCell& P = inspectFVMesh.cells[f.owner];
-			const FVCell& N = inspectFVMesh.cells[f.neighbor];
-
-			double dz = N.center.z - P.center.z;
-			double dr = N.center.r - P.center.r;
-			double dLen = std::sqrt(dz * dz + dr * dr);
-			double nLen = std::sqrt(f.normal.z * f.normal.z + f.normal.r * f.normal.r);
-
-			double ang = 0.0;
-			if (dLen > 1e-30 && nLen > 1e-30) {
-				double cosAng = (dz * f.normal.z + dr * f.normal.r) / (dLen * nLen);
-				cosAng = std::clamp(cosAng, -1.0, 1.0);
-				ang = std::acos(std::abs(cosAng)) * radToDeg;
-			}
-
-			std::snprintf(line, sizeof(line), "\n  f%-5d nb %-5d %.4g  %.2f deg",
-				fid, nb, f.length2D, ang);
-			info += line;
-		}
-	}
-
-	// --- draw the panel (top-left of the canvas) ---
-	const ImVec2 pad(8.0f, 6.0f);
-	ImVec2 origin(canvasMin.x + 10.0f, canvasMin.y + 10.0f);
-
-	ImVec2 ts = ImGui::CalcTextSize(info.c_str());
-
-	ImVec2 rmin = origin;
-	ImVec2 rmax(origin.x + ts.x + pad.x * 2.0f, origin.y + ts.y + pad.y * 2.0f);
-
-	drawList->AddRectFilled(rmin, rmax, IM_COL32(15, 20, 28, 235), 4.0f);
-	drawList->AddRect(rmin, rmax, IM_COL32(90, 120, 150, 200), 4.0f, 0, 1.0f);
-	drawList->AddText(ImVec2(origin.x + pad.x, origin.y + pad.y),
-		IM_COL32(230, 235, 245, 255), info.c_str());
 }
 
 void MeshInspector::render() {

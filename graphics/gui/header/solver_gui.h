@@ -47,7 +47,6 @@ private:
 	);
 
 	int selectedBoundaryGroupID = -1;
-	BoundaryVariable selectedBoundaryVariable = BoundaryVariable::UVelocity;
 
 	Project& project;
 	Solver& solver;

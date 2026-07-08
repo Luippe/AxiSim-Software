@@ -104,6 +104,9 @@ private:
 	int completionIndex = 0;						// highlighted entry
 	bool completionActive = false;					// dropdown is showing
 	bool completionNavigated = false;				// user moved with arrows
+	bool completionDismissed = false;				// stay closed after an accept / delete until the user types
+	bool forceCompletion = false;					// Ctrl+Space force-opened the list (show even on empty input)
+	bool completionJustAccepted = false;			// a completion was just inserted (Tab); keep the list closed
 	std::string lastInput;							// detect edits between frames
 	bool refocusInput = false;						// re-focus input next frame
 	bool resetInputCursor = false;					// snap cursor to end next frame

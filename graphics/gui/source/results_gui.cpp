@@ -26,7 +26,7 @@ void ResultsGUI::drawPropertiesPanel() {
 
 	ImGui::Begin("Overview");
 
-	if (selectedItem == "View") {
+	if (selectedItem == "General") {
 		sectionHeader("Filter");
 		if (ImGui::BeginTable("Geometry", 3, UIFlags::TableSimpleFlags)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 45.0f);
@@ -60,47 +60,28 @@ void ResultsGUI::drawPropertiesPanel() {
 			ImGui::EndTable();
 		}
 	}
-	else if (selectedItem == "Change Colormap") {
+	else if (selectedItem == "Colormap") {
 
-		sectionHeader("Colormap");
-
-		if (ImGui::BeginTable("Colormap", 2, UIFlags::TableSimpleFlags)) {
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
-			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-
+		sectionHeader("Options");
+		if (beginPropertyTable("ColormapOptions", 90.0f)) {
 			labelRow("Colormap");
 			if (createSimpleCombo("##Colormap", colormap.items, colormap.currentItem, IM_ARRAYSIZE(colormap.items))) {
 				colormap.setColormap(colormap.currentItem);
 			}
 
-			ImGui::EndTable();
-		}
-
-		sectionHeader("Shading");
-		if (ImGui::BeginTable("Shading", 2, UIFlags::TableSimpleFlags)) {
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
-			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-
 			labelRow("Shading");
 			if (createSimpleCombo("##Shading", results.shadingType, (int&)results.currentShadingType, IM_ARRAYSIZE(results.shadingType))) {
-				
-				GLint shadingMode = (results.currentShadingType == ShadingType::Interp) ? GL_LINEAR : GL_NEAREST;	// choose lienar and flat shading
+				GLint shadingMode = (results.currentShadingType == ShadingType::Interp) ? GL_LINEAR : GL_NEAREST;
 				results.setTextureShadingAllField(shadingMode);
-
 			}
+
 			ImGui::EndTable();
 		}
-	}
-	else if (selectedItem == "Display") {
 
 		sectionHeader("Display Settings");
-
-		if (ImGui::BeginTable("Display Settings", 2, UIFlags::TableSimpleFlags)) {
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-			ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-
+		if (beginPropertyTable("DisplaySettings", 110.0f)) {
 			labelRow("Precision");
-			ImGui::InputInt("##NumberPrecision", &colorbar.currentPrecision, 0, 0);
+			inputInt("##NumberPrecision", &colorbar.currentPrecision);
 
 			labelRow("Number Format");
 			createSimpleCombo("##NumberFormat", colorbar.formatOption, (int&)colorbar.currentNumberFormat, IM_ARRAYSIZE(colorbar.formatOption));
@@ -134,16 +115,9 @@ void ResultsGUI::draw() {
 			ImGui::EndTable();
 		}
 
-		if (treeHeader("General")) {
-			drawLeaf("View");
-			ImGui::TreePop();
-		}
+		drawLeaf("General");
 
-		if (treeHeader("Colormap")) {
-			drawLeaf("Change Colormap");
-			drawLeaf("Display");
-			ImGui::TreePop();
-		}
+		drawLeaf("Colormap");
 
 		ImGui::EndChild();
 

@@ -59,7 +59,6 @@ private:
 	unsigned int samples = 4;
 
 	std::vector<CylinderInstance> selectedInstances;
-	std::vector<Vertex> vertices;
 
 	VertexBuffer cvInstanceBuffer;
 	ElementBuffer cvElementBuffer;

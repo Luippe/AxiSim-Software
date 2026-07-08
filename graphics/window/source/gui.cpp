@@ -22,12 +22,6 @@ using namespace Shortcuts;
 // ======================================================================
 // -----------------------HELPER FUNCTIONS-------------------------------
 // ======================================================================
-void changeCursorOnHover() {
-	if (ImGui::IsItemHovered()) {
-		ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-	}
-}
-
 void setContext(ImGuiContext* imguiContext, ImPlotContext* implotContext) {
 	ImGui::SetCurrentContext(imguiContext);
 	ImPlot::SetCurrentContext(implotContext);
@@ -153,7 +147,7 @@ GUI::GUI(Project& project, Display& disp) :
 	mesh(project.mesh),
 	solver(project.solver),
 	results(project.results),
-	geometryGUI(project, *this),
+	geometryGUI(project),
 	meshGUI(project, *this),
 	solverGUI(project, appConfig),
 	resultsGUI(project, *this),
@@ -167,6 +161,8 @@ GUI::GUI(Project& project, Display& disp) :
 	solver.console = &console;
 	results.console = &console;
 	scene.picker.console = &console;
+	meshInspector.console = &console;
+	inspector.console = &console;
 
 	solver.residualPlot = &residualPlot;
 
