@@ -1452,11 +1452,14 @@ void MeshInspector::drawToolBar() {
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
-	if (addImageButton("Reset", "Reset View", assets.houseIcon, buttonSize)) {
+	// view
+	if (addImageButton("Reset", "Reset view", assets.houseIcon, buttonSize)) {
 		resetView();
 	}
-	ImGui::SameLine();
 
+	addToolbarSeparator();
+
+	// tools
 	if (addImageButtonToggle(
 		"ROICircle",
 		"Draw circular region of influence",
@@ -1495,18 +1498,20 @@ void MeshInspector::drawToolBar() {
 		inspectMeshDirty = true;
 	}
 
-	ImGui::SameLine();
+	addToolbarSeparator();
 
+	// display
 	addImageButtonToggle(
 		"ToggleMesh",
-		"Toggle Mesh",
+		"Toggle mesh",
 		assets.fillCellIcon,
 		buttonSize,
 		toggleMesh
 	);
 
-	ImGui::SameLine();
+	addToolbarSeparator();
 
+	// export
 	if (addImageButton("Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
 		pendingCopyWidth = frameBuffer.width;
 		pendingCopyHeight = frameBuffer.height;
@@ -2044,6 +2049,7 @@ void MeshInspector::render() {
 		Units::lengthUnits[project.lengthScale.index].name
 	);
 
+	ImGui::SetNextWindowClass(&windowClass);
 	ImGui::Begin("Mesh Inspector");
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();

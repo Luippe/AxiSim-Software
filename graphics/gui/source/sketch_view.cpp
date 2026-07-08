@@ -10,10 +10,12 @@
 #include "geometry.h"
 #include "math_func.h"
 #include "keyboard_manager.h"
+#include "flag_manager.h"
 #include "unit_manager.h"
 
 using namespace sketchmath;
 using namespace Shortcuts;
+using namespace UIDockFlags;
 
 namespace {
 	Vec2 translatePoint(Vec2 point, Vec2 delta) {
@@ -1590,7 +1592,10 @@ void SketchView::render() {
 		Units::lengthUnits[gui.project.lengthScale.index].name
 	);
 
+
+	ImGui::SetNextWindowClass(&windowClass);
 	ImGui::Begin("Sketch View");
+
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 

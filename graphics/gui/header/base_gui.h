@@ -58,8 +58,25 @@ public:
 
 	bool drawTree(const char* label, bool& isOpen, ImGuiTreeNodeFlags flags = UIFlagsTree::BranchOpenedFlags);
 
+	// grouping tree node that only holds child leaves: shows the nav hover cursor
+	// but does NOT change selectedItem. returns whether the node is expanded.
+	bool treeHeader(const char* label, ImGuiTreeNodeFlags flags = UIFlagsTree::BranchOpenedFlags);
+
+	// ---- shared panel design helpers (used by every setup tab) ----
+
+	// standard section header for a properties panel (a labelled separator)
+	void sectionHeader(const char* label);
+
+	// begin a standard 2-column label/value property table. returns true when the
+	// table opened (call ImGui::EndTable() in that case). rows use labelRow(...)
+	// then a value/widget, or drawTableProperty(...) for read-only text.
+	bool beginPropertyTable(const char* id, float labelWidth = 150.0f);
+
+	// full-width primary action button shown under a setup tree (Generate, Start...)
+	bool actionButton(const char* label);
+
 	// table functions
-	
+
 	// draw table header. uses single column
 	void drawTableHeader(const char* label);
 

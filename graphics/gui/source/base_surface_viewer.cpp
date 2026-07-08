@@ -6,6 +6,9 @@
 #include <glm/glm.hpp>
 #include "imgui_internal.h"
 
+#include "flag_manager.h"
+using namespace UIDockFlags;
+
 DockingSpace::DockingSpace(const char* name) : dockName(name) {
 
 
@@ -81,7 +84,7 @@ bool DockingSpace::isCurrentDockTabDoubleClicked() {
 BaseSurfaceViewer::BaseSurfaceViewer(const char* vertexPath, const char* fragmentPath) :
 	shader(vertexPath, fragmentPath) {
 
-
+	windowClass.DockNodeFlagsOverrideSet = NoDockWindowFlags;
 
 }
 
@@ -426,10 +429,18 @@ void BaseSurfaceViewer::addMenuItemCopyToClipboard(const char* text) {
 bool BaseSurfaceViewer::addImageButton(const char* id, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize) {
 	ImGui::PushID(id);
 	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, imageButtonRounding);
+
+	// transparent by default so the button blends into the toolbar;
+	// only paint a subtle fill on hover / press.
+	ImGui::PushStyleColor(ImGuiCol_Button,        IM_COL32(0, 0, 0, 0));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(255, 255, 255, 30));
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive,  IM_COL32(255, 255, 255, 48));
+
 	bool clicked = ImGui::ImageButton("##addImageButton", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize);
 
 	setToolTip(tooltip);
 
+	ImGui::PopStyleColor(3);
 	ImGui::PopID();
 	ImGui::PopStyleVar();
 	return clicked;
@@ -441,13 +452,18 @@ bool BaseSurfaceViewer::addImageButtonToggle(const char* id, const char* tooltip
 	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, imageButtonRounding);
 	bool pushed = false;
 
-	// highlight button when toggle is on
-	bool pushedStyle = toggle;
+	// transparent by default so the button blends into the toolbar; highlight on hover.
+	ImGui::PushStyleColor(ImGuiCol_Button,        IM_COL32(0, 0, 0, 0));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(255, 255, 255, 30));
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive,  IM_COL32(255, 255, 255, 48));
+	int styleColorCount = 3;
 
-	if (pushedStyle) {
-		ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(60, 140, 255, 255));
+	// when the tool is active, fill it with the accent color instead.
+	if (toggle) {
+		ImGui::PushStyleColor(ImGuiCol_Button,        IM_COL32(60, 140, 255, 255));
 		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(80, 160, 255, 255));
-		ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(40, 120, 235, 255));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive,  IM_COL32(40, 120, 235, 255));
+		styleColorCount += 3;
 	}
 
 	if (ImGui::ImageButton("##toggleDrawCell", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
@@ -455,9 +471,7 @@ bool BaseSurfaceViewer::addImageButtonToggle(const char* id, const char* tooltip
 		pushed = true;
 	}
 
-	if (pushedStyle) {
-		ImGui::PopStyleColor(3);
-	}
+	ImGui::PopStyleColor(styleColorCount);
 
 	setToolTip(tooltip);
 

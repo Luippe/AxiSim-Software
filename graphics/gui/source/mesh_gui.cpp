@@ -270,11 +270,11 @@ void MeshGUI::drawRegionOfInfluenceGUI() {
 	}
 }
 
-void MeshGUI::drawOverview() {
+void MeshGUI::drawPropertiesPanel() {
 	ImGui::Begin("Overview");
 	if (selectedItem == "General") {
 
-		drawTableHeader("Statistics");
+		sectionHeader("Statistics");
 
 		if (ImGui::BeginTable("StatisticsTable", 2, UIFlags::TableSimpleFlags, ImVec2(0.0f, 0.0f))) {
 			setupTableColumns(
@@ -308,7 +308,7 @@ void MeshGUI::drawOverview() {
 	}
 	else if (selectedItem == "Boundary") {
 
-		drawTableHeader("Statistics");
+		sectionHeader("Statistics");
 
 		if (ImGui::BeginTable("StatsticsTable", 2, UIFlags::TableSimpleFlags, ImVec2(0.0f, 220.0f))) {
 			setupTableColumns(
@@ -353,15 +353,11 @@ void MeshGUI::draw() {
 			mesh.highlightedBoundarySegmentIDs.clear();
 		}
 
-		// draw boundary tree node
-		bool editOpen = ImGui::TreeNodeEx("Edit", UIFlagsTree::BranchOpenedFlags);
-
-		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
-
+		// draw edit tree node
+		bool editOpen = false;
+		if (drawTree("Edit", editOpen)) {
 			selectedBoundaryGroupID = -1;
 			mesh.highlightedBoundarySegmentIDs.clear();
-			selectedItem = "Edit";
-
 		}
 
 		if (editOpen) {
@@ -372,18 +368,13 @@ void MeshGUI::draw() {
 			}
 			ImGui::TreePop();
 		}
-		changeCursorOnHover();
 
 
 		// draw boundary tree node
-		bool boundariesOpen = ImGui::TreeNodeEx("Boundary", UIFlagsTree::BranchOpenedFlags);
-
-		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
-
+		bool boundariesOpen = false;
+		if (drawTree("Boundary", boundariesOpen)) {
 			selectedBoundaryGroupID = -1;
 			mesh.highlightedBoundarySegmentIDs.clear();
-			selectedItem = "Boundary";
-
 		}
 
 		if (boundariesOpen) {
@@ -400,14 +391,11 @@ void MeshGUI::draw() {
 
 			ImGui::TreePop();
 		}
-		changeCursorOnHover();
-		changeCursorOnHover();
 
 		ImGui::EndChild();
 
 		// draw generate button
-		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
-		if (ImGui::Button("Generate Mesh")) {
+		if (actionButton("Generate Mesh")) {
 			const SketchModel& sketch = project.geometry.sketch;
 			bool hasSketchGeometry =
 				!sketch.lines.empty() ||
@@ -462,13 +450,10 @@ void MeshGUI::draw() {
 				gui.meshInspector.createGridBuffer();
 			}
 		}
-		changeCursorOnHover();
-		ImGui::PopStyleVar();
 
 		// draw overview window
-		drawOverview();
+		drawPropertiesPanel();
 
 		ImGui::EndTabItem();
 	}
-	changeCursorOnHover();
 }

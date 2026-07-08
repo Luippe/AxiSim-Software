@@ -279,7 +279,7 @@ void SolverGUI::drawLayerEditor(
 	ImGui::Dummy(ImVec2(0.0f, 10.0f));
 
 	std::string title = std::string(varLabel) + " Wall Layers";
-	ImGui::SeparatorText(title.c_str());
+	sectionHeader(title.c_str());
 
 	ImGui::PushID(varLabel);
 
@@ -355,7 +355,7 @@ void SolverGUI::drawPropertiesPanel() {
 
 	if (selectedItem == "General") {
 
-		ImGui::TextUnformatted("General");
+		sectionHeader("General");
 
 		drawFieldCheckbox();
 
@@ -412,7 +412,7 @@ void SolverGUI::drawPropertiesPanel() {
 		BoundarySegmentGroup* group = getBoundaryGroupByID(mesh.boundaryGroups, selectedBoundaryGroupID);
 
 		ImGui::PushFont(appConfig.fonts.uiFontLarge);
-		ImGui::SeparatorText(group->nameBuffer);
+		sectionHeader(group->nameBuffer);
 		ImGui::PopFont();
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 10.0f));
@@ -513,7 +513,7 @@ void SolverGUI::drawPropertiesPanel() {
 
 	}
 	else if (selectedItem == "Residuals") {
-		ImGui::SeparatorText("Residual Type");
+		sectionHeader("Residual Type");
 
 		if (ImGui::BeginTable("Residual Type Settings", 3)) {
 
@@ -554,7 +554,7 @@ void SolverGUI::drawPropertiesPanel() {
 			ImGui::EndTable();
 		}
 
-		ImGui::SeparatorText("Plot Residuals");
+		sectionHeader("Plot Residuals");
 
 		if (ImGui::BeginTable("Plot Residuals", 3)) {
 
@@ -594,7 +594,7 @@ void SolverGUI::drawPropertiesPanel() {
 
 	}
 	else if (selectedItem == "Tolerance") {
-		ImGui::SeparatorText("Tolerance");
+		sectionHeader("Tolerance");
 
 		if (ImGui::BeginTable("Iteration Settings", 2)) {
 			if (solver.currentVelocitySolver == SOLVER_SIMPLE) {
@@ -647,7 +647,7 @@ void SolverGUI::drawPropertiesPanel() {
 		}
 	}
 	else if (selectedItem == "Fluid Settings") {
-		ImGui::SeparatorText("Fluid Settings");
+		sectionHeader("Fluid Settings");
 		if (ImGui::BeginTable("Fluid Settings", 3)) {
 
 			labelRow("Density");
@@ -671,7 +671,7 @@ void SolverGUI::drawPropertiesPanel() {
 	}
 
 	else if (selectedItem == "Transient Settings") {
-		ImGui::SeparatorText("Transient Settings");
+		sectionHeader("Transient Settings");
 
 		if (ImGui::BeginTable("Transient Settings", 2)) {
 
@@ -709,24 +709,16 @@ void SolverGUI::draw() {
 		}
 
 		if (generalOpen) {
-
 			drawLeaf("Solver Settings");
-			changeCursorOnHover();
-
 			ImGui::TreePop();
-			changeCursorOnHover();
 		}
 
 
 		// draw boundary tree node
-		bool boundariesOpen = ImGui::TreeNodeEx("Boundary", UIFlagsTree::BranchOpenedFlags);
-
-		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
-
+		bool boundariesOpen = false;
+		if (drawTree("Boundary", boundariesOpen)) {
 			selectedBoundaryGroupID = -1;
 			mesh.highlightedBoundarySegmentIDs.clear();
-			selectedItem = "Boundary";
-
 		}
 
 		if (boundariesOpen) {
@@ -744,51 +736,24 @@ void SolverGUI::draw() {
 
 			ImGui::TreePop();
 		}
-		changeCursorOnHover();
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-		if (ImGui::TreeNodeEx("Convergence", UIFlagsTree::BranchOpenedFlags)) {
+		if (treeHeader("Convergence")) {
 			drawLeaf("Residuals");
 			drawLeaf("Tolerance");
 			ImGui::TreePop();
 		}
-		changeCursorOnHover();
-		
-		if (ImGui::TreeNodeEx("Fluid Properties", UIFlagsTree::BranchOpenedFlags)) {
+
+		if (treeHeader("Fluid Properties")) {
 			drawLeaf("Fluid Settings");
 			ImGui::TreePop();
 		}
-		changeCursorOnHover();
 
 		if (solver.configSolver.transient) {
-			if (ImGui::TreeNodeEx("Transient", UIFlagsTree::BranchOpenedFlags)) {
+			if (treeHeader("Transient")) {
 				drawLeaf("Transient Settings");
 				ImGui::TreePop();
 			}
 		}
-		changeCursorOnHover();
 
 		ImGui::EndChild();
 
@@ -807,10 +772,9 @@ void SolverGUI::draw() {
 			ImGui::SetTooltip("%s", continueReason.c_str());
 		}
 
-		if (ImGui::Button("Start Solver")) {
+		if (actionButton("Start Solver")) {
 			project.solver.run(project.mesh);
 		}
-		changeCursorOnHover();
 
 		drawPropertiesPanel();
 

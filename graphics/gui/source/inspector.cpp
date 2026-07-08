@@ -349,21 +349,26 @@ void Inspector::drawToolBar() {
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
-	if (addImageButton("Reset", "Reset View", assets.houseIcon, buttonSize)) {
+	// view
+	if (addImageButton("Reset", "Reset view", assets.houseIcon, buttonSize)) {
 		camera.home();
 		pendingFrame = true;
 	}
-	ImGui::SameLine();
 
+	addToolbarSeparator();
+
+	// display
+	addImageButtonToggle("ToggleMesh", "Toggle mesh overlay", assets.gridIcon, buttonSize, showMesh);
+
+	addToolbarSeparator();
+
+	// export
 	if (addImageButton("Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
 		pendingCopyWidth = frameBuffer.width;
 		pendingCopyHeight = frameBuffer.height;
 		pendingCopy = true;
 		consoleCopy = false;
 	}
-	ImGui::SameLine();
-
-	ImGui::Checkbox("Mesh", &showMesh);
 
 	ImGui::EndChild();
 }
@@ -940,6 +945,7 @@ void Inspector::render() {
 		Units::lengthUnits[project.lengthScale.index].name
 	);
 
+	ImGui::SetNextWindowClass(&windowClass);
 	ImGui::Begin("Inspector");
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();

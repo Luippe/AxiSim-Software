@@ -19,7 +19,7 @@ public:
 private:
 
 	// draw properties panel when a tree node is clicked on
-	void drawOverview();
+	void drawPropertiesPanel();
 
 	// draw each boundary groups
 	void drawBoundaryGroupGUI();

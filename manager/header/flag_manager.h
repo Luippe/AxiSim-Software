@@ -34,9 +34,27 @@ namespace UIFlagsDocking {
 		ImGuiWindowFlags_NoNavFocus |
 		ImGuiWindowFlags_NoBackground |
 		ImGuiWindowFlags_NoDecoration;
+
+}
+
+namespace UIDockFlags {
+
+	inline constexpr ImGuiDockNodeFlags NoDockWindowFlags =
+		ImGuiDockNodeFlags_NoTabBar |
+		ImGuiDockNodeFlags_NoDockingOverMe;
+
+	inline constexpr ImGuiDockNodeFlags BaseDockspaceFlags =
+		ImGuiDockNodeFlags_NoWindowMenuButton;
+
+	inline constexpr ImGuiDockNodeFlags ResidualDockSpaceFlags =
+		ImGuiDockNodeFlags_None |
+		ImGuiDockNodeFlags_NoCloseButton;
+
 }
 
 namespace UIFlags {
+
+
 
 	inline constexpr ImGuiWindowFlags StatusBarWindowFlags =
 		ImGuiWindowFlags_NoTitleBar |
@@ -61,12 +79,6 @@ namespace UIFlags {
 
 	inline constexpr ImGuiTabBarFlags TabBarFlags = ImGuiTabItemFlags_NoReorder;
 
-	inline constexpr ImGuiDockNodeFlags BaseDockspaceFlags =
-		ImGuiDockNodeFlags_NoWindowMenuButton;
-
-	inline constexpr ImGuiDockNodeFlags ResidualDockSpaceFlags =
-		ImGuiDockNodeFlags_None |
-		ImGuiDockNodeFlags_NoCloseButton;
 
 	inline constexpr ImGuiWindowFlags TemporaryWindowFlags = 
 		ImGuiWindowFlags_NoDecoration |
@@ -77,7 +89,6 @@ namespace UIFlags {
 		ImGuiWindowFlags_NoInputs |
 		ImGuiWindowFlags_NoFocusOnAppearing |
 		ImGuiWindowFlags_NoBringToFrontOnFocus;
-
 
 
 	inline constexpr ImGuiInputTextFlags ConsoleMultilineInputFlags =

@@ -361,6 +361,10 @@ public:
 
 protected:
 
+	// window class used for the viewer
+	ImGuiWindowClass windowClass;
+
+
 	// store mouse position of where the user left clicked
 	ImVec2 initLeftMouse = ImVec2(0.0f, 0.0f);
 

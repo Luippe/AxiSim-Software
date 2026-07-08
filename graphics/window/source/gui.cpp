@@ -42,6 +42,9 @@ void applyTextColors() {
 
 	// Disabled text / gray text
 	colors[ImGuiCol_TextDisabled] = ImVec4(0.55f, 0.60f, 0.65f, 1.00f);
+
+	// Opaque menus / dropdowns (StyleColorsDark leaves these ~6% transparent)
+	colors[ImGuiCol_PopupBg] = ImVec4(0.11f, 0.11f, 0.12f, 1.00f);
 }
 
 void initImGuiFonts(AppFonts& fonts) {
@@ -128,7 +131,7 @@ void GUI::newFrame() {
 	ImGui::Begin("MainDockSpace", nullptr, UIFlagsDocking::MainDockWindowFlags);
 
 	ImGuiID dockspaceID = ImGui::GetID("MainDockSpaceID");
-	ImGui::DockSpace(dockspaceID, ImVec2(0.0f, 0.0f), UIFlags::BaseDockspaceFlags);
+	ImGui::DockSpace(dockspaceID, ImVec2(0.0f, 0.0f), UIDockFlags::BaseDockspaceFlags);
 
 	ImGui::End();
 

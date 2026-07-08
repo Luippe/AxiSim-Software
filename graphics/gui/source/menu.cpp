@@ -89,16 +89,13 @@ std::string shortcutButtonLabel(
 }
 
 void Menu::drawEditShortcut() {
-	if (ImGui::BeginMenu("Edit")) {
-		if (ImGui::MenuItem("Keyboard Shortcuts")) {
-			openShortcutModal = true;
-		}
 
-		if (ImGui::MenuItem("Units")) {
-			openUnitsModal = true;
-		}
+	if (ImGui::MenuItem("Keyboard Shortcuts")) {
+		openShortcutModal = true;
+	}
 
-		ImGui::EndMenu();
+	if (ImGui::MenuItem("Units")) {
+		openUnitsModal = true;
 	}
 }
 
@@ -350,7 +347,7 @@ void Menu::render() {
 			ImGui::EndMenu();
 		}
 
-		if (ImGui::BeginMenu("Option")) {
+		if (ImGui::BeginMenu("Edit")) {
 			drawEditShortcut();
 			ImGui::EndMenu();
 		}

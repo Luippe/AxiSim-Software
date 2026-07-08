@@ -37,14 +37,9 @@ void GeometryGUI::drawPropertiesPanel() {
 
 	ImGui::Begin("Overview");
 	if (selectedItem == "Geometry") {
-		drawTableHeader("Geometry");
+		sectionHeader("Geometry");
 
-		if (ImGui::BeginTable("GeometryStats", 2, UIFlags::TableSimpleFlags)) {
-			setupTableColumns(
-				column("Label", 150.0f),
-				column("Value", 100.0f, ImGuiTableColumnFlags_WidthStretch)
-			);
-
+		if (beginPropertyTable("GeometryStats")) {
 			std::string lines = std::to_string(sketch.lines.size());
 			std::string rectangles = std::to_string(sketch.rectangles.size());
 			std::string circles = std::to_string(sketch.circles.size());
@@ -70,13 +65,8 @@ void GeometryGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), true);
 
-		bool geometryOpen =
-			ImGui::TreeNodeEx("Geometry", UIFlagsTree::BranchOpenedFlags);
-
-		if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
-			selectedItem = "Geometry";
-		}
-		changeCursorOnHover();
+		bool geometryOpen = false;
+		drawTree("Geometry", geometryOpen);
 
 		if (geometryOpen) {
 			ImGui::TreePop();

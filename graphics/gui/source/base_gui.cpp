@@ -92,6 +92,27 @@ bool BaseGUI::inputInt(const char* label, int* value) {
 	return ImGui::InputInt(label, value, 0.0, 0.0);
 }
 
+void BaseGUI::sectionHeader(const char* label) {
+	ImGui::SeparatorText(label);
+}
+
+bool BaseGUI::beginPropertyTable(const char* id, float labelWidth) {
+	if (!ImGui::BeginTable(id, 2, UIFlags::TableSimpleFlags)) {
+		return false;
+	}
+
+	ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, labelWidth);
+	ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+	return true;
+}
+
+bool BaseGUI::actionButton(const char* label) {
+	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
+	bool clicked = ImGui::Button(label, ImVec2(-FLT_MIN, 0.0f));
+	ImGui::PopStyleVar();
+	return clicked;
+}
+
 void BaseGUI::drawTableHeader(const char* label) {
 
 	ImGui::PushID(label);
@@ -145,6 +166,12 @@ bool BaseGUI::drawLeaf(const char* label) {
 	changeCursorOnHover();
 
 	return clicked;
+}
+
+bool BaseGUI::treeHeader(const char* label, ImGuiTreeNodeFlags flags) {
+	bool isOpen = ImGui::TreeNodeEx(label, flags);
+	changeCursorOnHover();
+	return isOpen;
 }
 
 bool BaseGUI::drawTree(const char* label, bool& isOpen, ImGuiTreeNodeFlags flags) {

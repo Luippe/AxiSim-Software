@@ -386,10 +386,21 @@ void TextureBuffer::createBuffer(GLenum internalFormat, int nx, int ny,  GLenum 
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void TextureBuffer::createBuffer(const char* path) {
+void TextureBuffer::createBuffer(const char* path, bool whiten) {
 
 	int width, height, channels;
 	unsigned char* data = stbi_load(path, &width, &height, &channels, 4);
+
+	// Monochrome icons store their shape in the alpha channel with black RGB, so
+	// they render black. Force RGB to white (keeping alpha as the mask) so the icon
+	// draws white; a draw-time tint can then recolor it if needed.
+	if (whiten && data) {
+		for (int i = 0; i < width * height; i++) {
+			data[i * 4 + 0] = 255;
+			data[i * 4 + 1] = 255;
+			data[i * 4 + 2] = 255;
+		}
+	}
 
 	if (TBO) {
 		deleteBuffer();

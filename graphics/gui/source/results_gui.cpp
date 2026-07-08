@@ -27,7 +27,8 @@ void ResultsGUI::drawPropertiesPanel() {
 	ImGui::Begin("Overview");
 
 	if (selectedItem == "View") {
-		if (ImGui::BeginTable("Geometry", 3)) {
+		sectionHeader("Filter");
+		if (ImGui::BeginTable("Geometry", 3, UIFlags::TableSimpleFlags)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 45.0f);
 			ImGui::TableSetupColumn("Slider", ImGuiTableColumnFlags_WidthStretch);
 
@@ -61,9 +62,9 @@ void ResultsGUI::drawPropertiesPanel() {
 	}
 	else if (selectedItem == "Change Colormap") {
 
-		ImGui::SeparatorText("Colormap Settings");
+		sectionHeader("Colormap");
 
-		if (ImGui::BeginTable("Colormap", 2)) {
+		if (ImGui::BeginTable("Colormap", 2, UIFlags::TableSimpleFlags)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
 			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 
@@ -75,8 +76,8 @@ void ResultsGUI::drawPropertiesPanel() {
 			ImGui::EndTable();
 		}
 
-		ImGui::SeparatorText("Colormap Settings");
-		if (ImGui::BeginTable("Shading", 2)) {
+		sectionHeader("Shading");
+		if (ImGui::BeginTable("Shading", 2, UIFlags::TableSimpleFlags)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
 			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 
@@ -92,9 +93,9 @@ void ResultsGUI::drawPropertiesPanel() {
 	}
 	else if (selectedItem == "Display") {
 
-		ImGui::SeparatorText("Display Settings");
+		sectionHeader("Display Settings");
 
-		if (ImGui::BeginTable("Display Settings", 2)) {
+		if (ImGui::BeginTable("Display Settings", 2, UIFlags::TableSimpleFlags)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 80.0f);
 			ImGui::TableSetupColumn("Input", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 
@@ -117,7 +118,7 @@ void ResultsGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), true);
 
-		if (ImGui::BeginTable("Field", 2)) {
+		if (ImGui::BeginTable("Field", 2, UIFlags::TableSimpleFlags)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
 			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
 
@@ -133,29 +134,26 @@ void ResultsGUI::draw() {
 			ImGui::EndTable();
 		}
 
-		if (ImGui::TreeNodeEx("General", UIFlagsTree::BranchOpenedFlags)) {
+		if (treeHeader("General")) {
 			drawLeaf("View");
 			ImGui::TreePop();
 		}
-		changeCursorOnHover();
 
-		if (ImGui::TreeNodeEx("Colormap", UIFlagsTree::BranchOpenedFlags)) {
+		if (treeHeader("Colormap")) {
 			drawLeaf("Change Colormap");
 			drawLeaf("Display");
 			ImGui::TreePop();
 		}
-		changeCursorOnHover();
 
 		ImGui::EndChild();
 
-		if (ImGui::Button("Generate Results")) {
+		if (actionButton("Generate Results")) {
 			if (project.solver.isReady) {
 				project.results.generate(project.mesh, project.solver);
 				gui.inspector.generate();
 				scene.createBuffer();
 			}
 		}
-		changeCursorOnHover();
 
 		drawPropertiesPanel();
 
