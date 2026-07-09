@@ -89,7 +89,112 @@ void ResultsGUI::drawPropertiesPanel() {
 			ImGui::EndTable();
 		}
 	}
+	else if (selectedItem == "Graphics") {
+		drawFieldSelector();
+	}
+
 	ImGui::End();
+}
+
+void ResultsGUI::drawFieldSelector() {
+
+	const std::vector<std::string>& fieldType = results.fieldType;
+
+	sectionHeader("Displayed Fields");
+	ImGui::TextWrapped(
+		"Drag a field into Shown to add it as a tab in the inspector. "
+		"Drag it back (or double-click) to remove it."
+	);
+	ImGui::Spacing();
+
+	const float spacing = ImGui::GetStyle().ItemSpacing.x;
+	const float colWidth = (ImGui::GetContentRegionAvail().x - spacing) * 0.5f;
+	const float colHeight = 240.0f;
+
+	// payload shared by both regions: the index of the dragged field within
+	// fieldType. The drop target decides add vs remove based on which region it is.
+	const char* DND_FIELD = "DND_FIELD";
+
+	// ------------------------- Available (all fields) -------------------------
+	ImGui::BeginGroup();
+	ImGui::TextUnformatted("Available");
+	ImGui::BeginChild("##AvailableFields", ImVec2(colWidth, colHeight), true);
+
+	for (int i = 0; i < (int)fieldType.size(); i++) {
+
+		// a field already in Shown does not also appear here - each name lives
+		// in exactly one region
+		if (results.isShown(fieldType[i])) {
+			continue;
+		}
+
+		ImGui::Selectable(fieldType[i].c_str());
+
+		// double-click as a shortcut for the drag
+		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+			results.addShownField(fieldType[i]);
+		}
+
+		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+			ImGui::SetDragDropPayload(DND_FIELD, &i, sizeof(int));
+			ImGui::TextUnformatted(fieldType[i].c_str());	// drag preview
+			ImGui::EndDragDropSource();
+		}
+	}
+
+	ImGui::EndChild();
+
+	// dropping onto Available removes the field from the shown set
+	if (ImGui::BeginDragDropTarget()) {
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(DND_FIELD)) {
+			int idx = *(const int*)payload->Data;
+			if (idx >= 0 && idx < (int)fieldType.size()) {
+				results.removeShownField(fieldType[idx]);
+			}
+		}
+		ImGui::EndDragDropTarget();
+	}
+	ImGui::EndGroup();
+
+	ImGui::SameLine();
+
+	// ------------------------- Shown (inspector tabs) -------------------------
+	ImGui::BeginGroup();
+	ImGui::TextUnformatted("Shown");
+	ImGui::BeginChild("##ShownFields", ImVec2(colWidth, colHeight), true);
+
+	for (int i = 0; i < (int)results.shownFields.size(); i++) {
+		const std::string& name = results.shownFields[i];
+
+		ImGui::Selectable(name.c_str());
+
+		if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+			results.removeShownField(name);
+			break;	// shownFields was mutated; stop iterating this frame
+		}
+
+		// dragging a shown field lets the user drop it onto Available to remove it
+		if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+			int idx = results.indexOfField(name);
+			ImGui::SetDragDropPayload(DND_FIELD, &idx, sizeof(int));
+			ImGui::TextUnformatted(name.c_str());
+			ImGui::EndDragDropSource();
+		}
+	}
+
+	ImGui::EndChild();
+
+	// dropping onto Shown adds the field (and activates its new inspector tab)
+	if (ImGui::BeginDragDropTarget()) {
+		if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(DND_FIELD)) {
+			int idx = *(const int*)payload->Data;
+			if (idx >= 0 && idx < (int)fieldType.size()) {
+				results.addShownField(fieldType[idx]);
+			}
+		}
+		ImGui::EndDragDropTarget();
+	}
+	ImGui::EndGroup();
 }
 
 void ResultsGUI::draw() {
@@ -99,25 +204,11 @@ void ResultsGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), true);
 
-		if (ImGui::BeginTable("Field", 2, UIFlags::TableSimpleFlags)) {
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 70.0f);
-			ImGui::TableSetupColumn("Combo", ImGuiTableColumnFlags_WidthFixed, 120.0f);
-
-			labelRow("Field");
-			if (createCombo(
-				"##SelectField",
-				project.results.fieldType,
-				results.currentItem
-			)) {
-				results.updateCurrentField();
-			}
-
-			ImGui::EndTable();
-		}
-
 		drawLeaf("General");
 
 		drawLeaf("Colormap");
+
+		drawLeaf("Graphics");
 
 		ImGui::EndChild();
 

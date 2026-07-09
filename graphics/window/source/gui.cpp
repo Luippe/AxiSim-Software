@@ -18,6 +18,7 @@
 #include "keyboard_manager.h"
 
 using namespace Shortcuts;
+using namespace UITabBarFlags;
 
 // ======================================================================
 // -----------------------HELPER FUNCTIONS-------------------------------
@@ -286,7 +287,7 @@ void GUI::drawStatusBar() {
 
 void GUI::drawUI() {
 	ImGui::Begin("Project");
-	if (ImGui::BeginTabBar("Main", UIFlags::TabBarFlags)) {
+	if (ImGui::BeginTabBar("Main", TabBarFlags)) {
 
 		geometryGUI.draw();
 
@@ -372,6 +373,8 @@ void GUI::render() {
 
 		setContext(mainImGuiContext, mainImPlotContext);
 
+		console.addLine("copied to clipboard!");
+
 	}
 
 	if (inspector.pendingCopy) {
@@ -382,6 +385,8 @@ void GUI::render() {
 		inspector.copyActiveSurfaceToClipboard();
 
 		setContext(mainImGuiContext, mainImPlotContext);
+
+		console.addLine("copied to clipboard!");
 
 	}
 
@@ -394,6 +399,8 @@ void GUI::render() {
 
 		setContext(mainImGuiContext, mainImPlotContext);
 
+		console.addLine("copied to clipboard!");
+
 	}
 
 	if (sketch.pendingCopy) {
@@ -404,6 +411,8 @@ void GUI::render() {
 		sketch.copyActiveSurfaceToClipboard();
 
 		setContext(mainImGuiContext, mainImPlotContext);
+
+		console.addLine("copied to clipboard!");
 
 	}
 }

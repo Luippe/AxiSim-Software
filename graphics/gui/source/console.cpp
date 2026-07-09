@@ -21,6 +21,8 @@
 #include "printer.h"
 #include "console_keywords.h"
 
+using namespace UIInputTextFlags;
+
 // parse words separated by space
 std::vector<std::string> parseWords(const std::string& line) {
 
@@ -736,7 +738,7 @@ void Console::draw() {
 		"##Console",
 		inputBuffer,
 		sizeof(inputBuffer),
-		UIFlags::ConsoleInputFlags,
+		ConsoleInputFlags,
 		&Console::textEditCallbackStub,
 		this
 	);

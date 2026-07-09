@@ -31,6 +31,10 @@ public:
 
 	std::vector<std::string> fieldType;
 
+	// fields shown as tabs in the inspector (a subset of fieldType, in tab order).
+	// edited from the Results panel's Graphics picker via drag and drop.
+	std::vector<std::string> shownFields;
+
 	ShadingType currentShadingType = ShadingType::Interp;
 	const char* compareType[5] = { "Less Than", "Equal To", "Greater Than", "Between", "Exclude"};
 	const char* shadingType[2] = { "Interp", "Flat" };
@@ -47,6 +51,22 @@ public:
 
 	// update all relevant variables
 	void updateCurrentField();
+
+	// index of a field name within fieldType, or -1 if it is not a known field
+	int indexOfField(const std::string& name) const;
+
+	// true when the field is currently in the inspector's shown set
+	bool isShown(const std::string& name) const;
+
+	// add/remove a field from the inspector's shown set. no-op on unknown names or
+	// duplicates. adding activates the field so its new inspector tab becomes current;
+	// removing the active field falls back to the first remaining shown field.
+	void addShownField(const std::string& name);
+	void removeShownField(const std::string& name);
+
+	// drop stale names from shownFields after fieldType changes, and seed a default
+	// so the inspector isn't blank the first time results are generated.
+	void syncShownFields();
 
 	// update current buffer with new data, as texture buffers cannot be copied over, they must be updated instead
 	void updateTextureBuffer(const void* data);

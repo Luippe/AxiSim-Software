@@ -137,9 +137,54 @@ void Solver::createSolutions(int N) {
         solutions["dC/dr"] = SolutionField{ copyDeviceToHostVector(simple.gradCR, N), g.dr, g.dz, BoundaryVariable::Concentration };
     }
 
-    // per-face mass flux for inspector probing (continuity + face fluxes)
+    // per-face mass flux
     mDotHost = copyDeviceToHostVector(simple.mDot, (size_t)fvMesh.numFaces());
     
+    solutions["Continuity"] = SolutionField{
+        getMassImbalance(N),
+        g.dr,
+        g.dz,
+        BoundaryVariable::None
+    };
+}
+
+std::vector<double> Solver::getMassImbalance(int N) {
+
+    mDotHost = copyDeviceToHostVector(simple.mDot, (size_t)fvMesh.numFaces());
+
+    std::vector<double> mContinuity;
+    mContinuity.assign(N, 0.0);
+
+    for (int c = 0; c < N && c < (int)fvMesh.cells.size(); c++) {
+        const FVCell& cell = fvMesh.cells[c];
+
+        if (!cell.active || cell.solid) {
+            continue;
+        }
+
+        double imbalance = 0.0;
+
+        for (int fid : cell.faceIDs) {
+            if (fid < 0 || fid >= (int)mDotHost.size() || fid >= (int)fvMesh.faces.size()) {
+                continue;
+            }
+
+            const FVFace& face = fvMesh.faces[fid];
+            double mDotOwner = mDotHost[fid];
+
+            if (face.owner == c) {
+                imbalance += mDotOwner;
+            }
+            else if (face.neighbor == c) {
+                imbalance -= mDotOwner;
+            }
+        }
+
+        mContinuity[c] = imbalance;
+    }
+
+    return mContinuity;
+
 }
 
 void Solver::addFieldType() {
@@ -149,7 +194,7 @@ void Solver::addFieldType() {
     fieldType.push_back("Axial Velocity");
     fieldType.push_back("Radial Velocity");
     fieldType.push_back("Pressure");
-    //fieldType.push_back("Continuity");
+    fieldType.push_back("Continuity");
 
     if (fieldOption.solveEnergy) {
         fieldType.push_back("Temperature");
@@ -777,6 +822,9 @@ void Solver::runSimple(const Mesh& mesh) {
     double rho = f.rho;
     double thermDiffusivity = k / (rho * cp);
 
+    GridLevel grid{ fvMesh.nr, fvMesh.nz, N, config.g.rFace, config.g.zFace, config.g.activeCell };
+    MultigridSolver multigrid(mem, grid);
+
     //print(Nface, N, threadsPerBlock, blocks);
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
@@ -855,10 +903,19 @@ void Solver::runSimple(const Mesh& mesh) {
             cudaMemsetAsync(simple.pp, 0, N * sizeof(double), stream);
             cudaMemsetAsync(simple.ppTemp, 0, N * sizeof(double), stream);
 
+
+
+
+
             for (int corr = 0; corr <= nNonOrth; corr++) {
                 computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
                 createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, applyNonOrtho);
-                solveLinearSystem(ppCoeff, configSolver, stream, simple.pp, simple.ppTemp, activeCells, threadsPerBlock);
+                if (useMultigrid) {
+                    multigrid.run(ppCoeff, stream, simple.pp);
+                }
+                else {
+                    solveLinearSystem(ppCoeff, configSolver, stream, simple.pp, simple.ppTemp, activeCells, threadsPerBlock);
+                }
             }
 
             // final grad(p') (with p' BCs) for the velocity and mass-flux corrections
@@ -905,7 +962,8 @@ void Solver::runSimple(const Mesh& mesh) {
             // ======================================================================
             // check for convergence and print residual to console
             if (k % configSimple.checkConv == 0) {
-
+                CUDA_CHECK(cudaGetLastError());
+                CUDA_CHECK(cudaStreamSynchronize(stream));
                 residualAll << <blocks, threadsPerBlock, 0, stream >> > (
                     fvMeshDevice.cells.active,
                     false,
@@ -914,6 +972,8 @@ void Solver::runSimple(const Mesh& mesh) {
                     ResidualPairs{ tempCoeff, simple.temp},
                     ResidualPairs{ concCoeff, simple.conc}
                     );
+                CUDA_CHECK(cudaGetLastError());
+                CUDA_CHECK(cudaStreamSynchronize(stream));
                 if (cudaError_t errResidualAll = cudaGetLastError(); errResidualAll != cudaSuccess) {
                     printf("residualAll launch error: %s\n", cudaGetErrorString(errResidualAll));
                 }
@@ -923,6 +983,8 @@ void Solver::runSimple(const Mesh& mesh) {
                     massFluxCoeff,
                     simple
                     );
+                CUDA_CHECK(cudaGetLastError());
+                CUDA_CHECK(cudaStreamSynchronize(stream));
                 if (cudaError_t errContinuity = cudaGetLastError(); errContinuity != cudaSuccess) {
                     printf("continuityResidual launch error: %s\n", cudaGetErrorString(errContinuity));
                 }

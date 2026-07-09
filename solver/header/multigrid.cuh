@@ -4,129 +4,80 @@
 
 
 struct GridLevel {
-	int nr;
-	int nz;
-	int N;
-	
-	std::vector<double> rFace; // size nr + 1
-	std::vector<double> zFace; // size nz + 1
 
-	std::vector<double> r;     // size nr
-	std::vector<double> z;     // size nz
+	int nr = 0;
+	int nz = 0;
+	int N = 0;
 
-	std::vector<double> dr;    // size nr
-	std::vector<double> dz;    // size nz
-
-	std::vector<double> volume; // size nr * nz
-
+	std::vector<double> rFace;
+	std::vector<double> zFace;
 	std::vector<uint8_t> active;
 
 };
 
 struct MultigridLevel {
 
-	FVMeshDevice fvMesh;
-	BoundaryFieldDevice bc;
-
-
-
 	GridLevel grid;
 
-	Coefficients coeff;
-	double* d_volume = nullptr;
-	uint8_t* d_active = nullptr;
 	double* x = nullptr;
-
-
-	// for jacobi solver
 	double* xTemp = nullptr;
+	double* d_rFace = nullptr;
+	double* d_zFace = nullptr;
+	uint8_t* d_active = nullptr;
+
+	Coefficients coeff;
 
 };
 
-GridLevel createFineGrid(const GridConfig& g);
-
-GridLevel createCoarseGrid(const GridLevel& fine);
-
-// create a vector of coarser grids, given the initial fine grid
-std::vector<GridLevel> createGridHierarchy(
-	const GridLevel& fine,
-	int minNr,
-	int minNz
-);
-
-
-__global__
-void restrictResidualSum(
-	const double* fineResidual,
-	const double* fineVolume,
-	const uint8_t* fineActive,
-	const uint8_t* coarseActive,
-	double* coarseB,
-	int fineNr,
-	int fineNz,
-	int coarseNr,
-	int coarseNz
-);
-
-__global__
-void prolongateCorrectionInjection(
-	double* finePP,
-	const double* coarsePP,
-	const uint8_t* fineActive,
-	const uint8_t* coarseActive,
-	int fineNr,
-	int fineNz,
-	int coarseNr,
-	int coarseNz
-);
 
 class MultigridSolver {
+
 public:
+
+	MultigridSolver(MemoryConfig& mem, GridLevel& grid);
+
+	// coarsen the grid by halve. this assumes the canCoarsen(grid) return true
+	GridLevel coarsenGrid(const GridLevel& grid);
+
+	void computeResidual(MultigridLevel& level, cudaStream_t& stream);
+
+	std::vector<GridLevel> grids;
 	std::vector<MultigridLevel> levels;
-	std::vector<std::vector<BoundarySegmentGroup>> boundaryGroupsByLevel;
 
-	int numCycles = 2;
-	int preSmooth = 3;
-	int postSmooth = 3;
-	int coarseIterations = 50;
+	// smoothen the field
+	void smoothen(MultigridLevel& level, cudaStream_t& stream);
 
-	ConfigSolver smootherConfig;
+	void buildHierarchy(GridLevel grid);
 
-	void allocateLevels(const std::vector<GridLevel>& gridLevels);
+	// prolongation from coarse -> fine grid
+	void buildProlongation(const MultigridLevel& fine, MultigridLevel& coarse, cudaStream_t& stream);
 
-	void solve(Coefficients& coeff, double* x, cudaStream_t stream, int threadsPerBlock);
+	// restriction from fine -> coarse grid
+	void buildRestriction(const MultigridLevel& fine, MultigridLevel& coarse, cudaStream_t& stream);
 
-	void buildCoarseCoefficients(cudaStream_t stream, int threadsPerBlock);
+	// populate levels
+	void buildLevels();
 
-	void coarsenBoundaryGroups(const std::vector<BoundarySegmentGroup>& fineGroups);
+	MultigridLevel createMultigridLevel(GridLevel& grid);
+
+	// Route A coarse operator: build the coarse level's 5-point stencil by
+	// averaging the fine level's face coefficients (which already carry d = A/aP)
+	void buildCoarseOperator(const MultigridLevel& fine, MultigridLevel& coarse, cudaStream_t& stream);
+
+	// two grid cycles
+	void twoGridCycle(cudaStream_t& stream);
+
+	// run vcycle
+	void vCycle();
+
+	// run multigrid. this will be called in the solver
+	void run(Coefficients& coeff, cudaStream_t& stream, double* x);
+
+	MemoryConfig& mem;
 
 private:
-	void vCycle(int level, cudaStream_t stream, int threadsPerBlock);
 
-	void smooth(
-		MultigridLevel& L,
-		int iterations,
-		cudaStream_t stream,
-		int threadsPerBlock
-	);
+	double jacobiWeight = 0.6;
+	int jacobiSweep = 10;
 
-	void computeResidual(
-		MultigridLevel& L,
-		cudaStream_t stream,
-		int threadsPerBlock
-	);
-
-	void restrictResidual(
-		MultigridLevel& fine,
-		MultigridLevel& coarse,
-		cudaStream_t stream,
-		int threadsPerBlock
-	);
-
-	void prolongateAndCorrect(
-		MultigridLevel& coarse,
-		MultigridLevel& fine,
-		cudaStream_t stream,
-		int threadsPerBlock
-	);
 };

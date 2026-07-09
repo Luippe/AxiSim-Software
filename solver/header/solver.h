@@ -48,6 +48,7 @@ public:
 	bool solverRunning = false;
 	bool continueSolver = false;
 	bool isReady = false;
+	bool useMultigrid = false;
 
 	// run solver
 	void run(const Mesh& mesh);
@@ -87,7 +88,7 @@ public:
 	// after a solve so the inspector can report face fluxes and per-cell
 	// continuity imbalance.
 	std::vector<double> mDotHost;
-	std::vector<double> mContinuity;
+
 
 	// which variables will the residual plot show?
 	EnabledResiduals enabledResiduals;
@@ -126,6 +127,9 @@ private:
 
 	// check if the solver can run
 	bool runCheck(const Mesh& mesh);
+
+	// solve for mass imbalance
+	std::vector<double> getMassImbalance(int N);
 
 	bool buildContinuationState(
 		const Mesh& mesh,

@@ -1,535 +1,285 @@
 #include "multigrid.cuh"
 
-#include "device_launch_parameters.h"
-#include <stdexcept>
+#include <math_constants.h>
+#include <cstdio>
+#include <vector>
 
-#include "mesh.h"
-
-#include "linear_solver.cuh"
 #include "residuals.cuh"
 
 #include "memory_manager.h"
 
-inline int id(int i, int j, int nz) {
-    return i * nz + j;
+__host__ __device__ inline int id(int i, int j, int nz) {
+	return i * nz + j;
 }
 
-// course cell should become active if it contains at least one active fine child
-void buildCoarseActiveAndVolume(const GridLevel& fine, GridLevel& coarse) {
-    coarse.active.resize(coarse.N, 0);
-    coarse.volume.resize(coarse.N, 0.0);
+MultigridSolver::MultigridSolver(MemoryConfig& mem, GridLevel& grid) :
+	mem(mem) {
 
-    for (int I = 0; I < coarse.nr; I++) {
-        for (int J = 0; J < coarse.nz; J++) {
-            int nc = I * coarse.nz + J;
+	// init once
+	buildHierarchy(grid);
+	buildLevels();
 
-            double volumeSum = 0.0;
-            bool hasActive = false;
-
-            for (int di = 0; di < 2; di++) {
-                for (int dj = 0; dj < 2; dj++) {
-                    int i = 2 * I + di;
-                    int j = 2 * J + dj;
-
-                    int nf = i * fine.nz + j;
-
-                    if (fine.active[nf]) {
-                        hasActive = true;
-                        volumeSum += fine.volume[nf];
-                    }
-                }
-            }
-
-            coarse.active[nc] = hasActive ? 1 : 0;
-            coarse.volume[nc] = volumeSum;
-        }
-    }
+}
+bool canCoarsen(const GridLevel& grid) {
+	return grid.nr % 2 == 0 && grid.nz % 2 == 0		// make sure grid size is divisible by 2
+		&& grid.nr / 2 >= 4 && grid.nz / 2 >= 4;		// make sure grid size does not go below 4x4
 }
 
-// build current grid level
-void buildGridMetrics(GridLevel& g) {
-    g.nr = (int)(g.rFace.size()) - 1;
-    g.nz = (int)(g.zFace.size()) - 1;
-    g.N = g.nr * g.nz;
+GridLevel MultigridSolver::coarsenGrid(const GridLevel& grid) {
 
-    g.r.resize(g.nr);
-    g.z.resize(g.nz);
-    g.dr.resize(g.nr);
-    g.dz.resize(g.nz);
-    g.volume.resize(g.N);
+	GridLevel tempGrid;
 
-    for (int i = 0; i < g.nr; i++) {
-        g.dr[i] = g.rFace[i + 1] - g.rFace[i];
-        g.r[i] = 0.5 * (g.rFace[i + 1] + g.rFace[i]);
-    }
+	int nr = grid.nr;
+	int nz = grid.nz;
 
-    for (int j = 0; j < g.nz; j++) {
-        g.dz[j] = g.zFace[j + 1] - g.zFace[j];
-        g.z[j] = 0.5 * (g.zFace[j + 1] + g.zFace[j]);
-    }
+	// populate grid dimensions
+	tempGrid.nr = nr / 2;
+	tempGrid.nz = nz / 2;
+	tempGrid.N = tempGrid.nr * tempGrid.nz;
 
-    for (int i = 0; i < g.nr; i++) {
-        double rInner = g.rFace[i];
-        double rOuter = g.rFace[i + 1];
+	// populate rFace and zFace
+	for (int I = 0; I <= tempGrid.nr; I++) {
+		tempGrid.rFace.push_back(grid.rFace[2 * I]);
+	}
 
-        for (int j = 0; j < g.nz; j++) {
-            int n = id(i, j, g.nz);
+	for (int J = 0; J <= tempGrid.nz; J++) {
+		tempGrid.zFace.push_back(grid.zFace[2 * J]);
+	}
 
-            if (!g.active.empty() && g.active[n] == 0) {
-                g.volume[n] = 0.0;
-            }
-            else {
-                g.volume[n] =
-                    PI * (rOuter * rOuter - rInner * rInner) * g.dz[j];
-            }
-        }
-    }
+	// populate active. check 2x2 grid. if any of the cells are active, then the coarsened cell is also active
+	tempGrid.active.assign(tempGrid.N, 0);
+	for (int I = 0; I < tempGrid.nr; I++) {
+		for (int J = 0; J < tempGrid.nz; J++) {
+
+			int nTemp = I * tempGrid.nz + J;
+
+			int n1 = (2 * I) * nz + 2 * J;
+			int n2 = (2 * I + 1) * nz + 2 * J;
+			int n3 = (2 * I) * nz + 2 * J + 1;
+			int n4 = (2 * I + 1) * nz + 2 * J + 1;
+
+			bool isActive = grid.active[n1] || grid.active[n2] || grid.active[n3] || grid.active[n4];
+
+			tempGrid.active[nTemp] = (uint8_t)isActive;
+		}
+	}
+
+	return tempGrid;
+
 }
 
-GridLevel createFineGrid(const GridConfig& g) {
+MultigridLevel MultigridSolver::createMultigridLevel(GridLevel& grid) {
 
-	GridLevel level;
 
-	level.rFace = g.rFace;
-	level.zFace = g.zFace;
-    level.active = g.activeCell;
-
-    buildGridMetrics(level);
+	MultigridLevel level;
+	level.grid = grid;
+	allocateMultigridLevel(level);
 
 	return level;
 
 }
 
-GridLevel createCoarseGrid(const GridLevel& fine) {
+void MultigridSolver::buildLevels() {
 
-	if (fine.nr % 2 != 0 || fine.nz % 2 != 0) {
-		throw std::runtime_error("Grid dimensions must be divisible by 2.");
+	for (GridLevel& grid : grids) {
+
+		levels.push_back(createMultigridLevel(grid));
+
 	}
 
-	GridLevel coarse;
-
-	coarse.nr = fine.nr / 2;
-	coarse.nz = fine.nz / 2;
-	coarse.N = coarse.nr * coarse.nz;
-
-    coarse.rFace.resize(coarse.nr + 1);
-    coarse.zFace.resize(coarse.nz + 1);
-
-	for (int I = 0; I <= coarse.nr; I++) {
-		coarse.rFace[I] = fine.rFace[2 * I];
-	}
-
-	for (int J = 0; J <= coarse.nz; J++) {
-		coarse.zFace[J] = fine.zFace[2 * J];
-	}
-
-    coarse.active.assign(coarse.N, 1);
-
-    buildGridMetrics(coarse);
-
-    buildCoarseActiveAndVolume(fine, coarse);
-
-    return coarse;
 }
 
+void MultigridSolver::buildHierarchy(GridLevel fine) {
 
-std::vector<GridLevel> createGridHierarchy(
-    const GridLevel& fine,
-    int minNr = 4,
-    int minNz = 4
-) {
-    std::vector<GridLevel> levels;
-    levels.push_back(fine);
-
-    while (true) {
-        const GridLevel& current = levels.back();
-
-        // can the grid become coarser?
-        // if yes, add a new coarser mesh
-        // if no, then exit loop
-        bool canCoarsen =
-            current.nr % 2 == 0 &&
-            current.nz % 2 == 0 &&
-            current.nr / 2 >= minNr &&
-            current.nz / 2 >= minNz;
-
-
-        if (!canCoarsen) {
-            break;
-        }
-
-        levels.push_back(createCoarseGrid(current));
-    }
-
-    return levels;
+	grids.push_back(fine);
+	while (canCoarsen(grids.back())) {
+		grids.push_back(coarsenGrid(grids.back()));
+	}
 }
 
+void MultigridSolver::run(Coefficients& coeff, cudaStream_t& stream, double* x) {
+
+	cudaMemcpyAsync(levels[0].x, x, coeff.N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+
+	// load the fine operator's DATA into level 0's own buffers (not `= coeff`,
+	// which would leak level 0's buffers and alias the solver's arrays)
+	copyCoefficients(levels[0].coeff, coeff, levels[0].grid.N, stream);
+
+	// start at index 1, as the 0th index contains the fine level
+	for (int l = 1; l < levels.size(); l++) {
+		buildCoarseOperator(levels[l - 1], levels[l], stream);
+	}
+
+	twoGridCycle(stream);
+
+	cudaMemcpyAsync(x, levels[0].x, coeff.N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+	cudaStreamSynchronize(stream);
+}
+
+// ============================================================================
+// Route A coarse operator: build A_H by AVERAGING the fine face coefficients.
+// A coarse face is made of two fine faces; parallel conductances add and the
+// doubled cell spacing halves them, so coarse coeff = average of the two fine.
+// The fine AE/AW/AN/AS already carry d = A/aP, so this needs no geometry.
+// One thread per coarse cell.
+// ============================================================================
 __global__
-void buildCoarsePPCoefficients(
-    Coefficients coeff,
-    const double* rFace,
-    const double* zFace,
-    const double* r,
-    const double* dr,
-    const double* dz,
-    const uint8_t* active,
-    int nr,
-    int nz
-) {
-    int n = blockIdx.x * blockDim.x + threadIdx.x;
-    if (n >= nr * nz) return;
+void buildCoarseOperatorKernel(Coefficients fine, Coefficients coarse, const uint8_t* coarseActive) {
 
-    int i = n / nz;
-    int j = n % nz;
+	int nc = blockIdx.x * blockDim.x + threadIdx.x;
+	if (nc >= coarse.N) return;
 
-    coeff.AC[n] = 0.0;
-    coeff.AE[n] = 0.0;
-    coeff.AW[n] = 0.0;
-    coeff.AN[n] = 0.0;
-    coeff.AS[n] = 0.0;
+	int I = nc / coarse.nz;
+	int J = nc % coarse.nz;
 
-    if (!active[n]) {
-        coeff.AC[n] = 1.0;
-        coeff.b[n] = 0.0;
-        return;
-    }
+	// inactive coarse cell -> trivial identity row so its correction stays 0
+	if (!coarseActive[nc]) {
+		coarse.AE[nc] = 0.0;
+		coarse.AW[nc] = 0.0;
+		coarse.AN[nc] = 0.0;
+		coarse.AS[nc] = 0.0;
+		coarse.AC[nc] = 1.0;
+		coarse.b[nc]  = 0.0;
+		return;
+	}
 
-    double aP = 0.0;
+	int fnz = fine.nz;
 
-    // axial east/west neighbors, depending on your naming convention
-    if (j + 1 < nz) {
-        int e = i * nz + (j + 1);
+	// coarse cell (I,J) owns fine cells i in {2I, 2I+1}, j in {2J, 2J+1}.
+	// each coarse face averages the two fine faces of the same type on that side:
+	double AE = 0.5 * (fine.AE[id(2 * I,     2 * J + 1, fnz)] +    // east  = right column
+	                   fine.AE[id(2 * I + 1, 2 * J + 1, fnz)]);
+	double AW = 0.5 * (fine.AW[id(2 * I,     2 * J,     fnz)] +    // west  = left column
+	                   fine.AW[id(2 * I + 1, 2 * J,     fnz)]);
+	double AN = 0.5 * (fine.AN[id(2 * I + 1, 2 * J,     fnz)] +    // north = top row
+	                   fine.AN[id(2 * I + 1, 2 * J + 1, fnz)]);
+	double AS = 0.5 * (fine.AS[id(2 * I,     2 * J,     fnz)] +    // south = bottom row
+	                   fine.AS[id(2 * I,     2 * J + 1, fnz)]);
 
-        if (active[e]) {
-            double dzE = zFace[j + 2] - zFace[j + 1];
-            double dzC = zFace[j + 1] - zFace[j];
+	coarse.AE[nc] = AE;
+	coarse.AW[nc] = AW;
+	coarse.AN[nc] = AN;
+	coarse.AS[nc] = AS;
 
-            double d = 0.5 * (dzC + dzE);
-
-            double area = PI * (rFace[i + 1] * rFace[i + 1] - rFace[i] * rFace[i]);
-
-            double a = area / d;
-
-            coeff.AE[n] = -a;
-            aP += a;
-        }
-    }
-
-    if (j - 1 >= 0) {
-        int w = i * nz + (j - 1);
-
-        if (active[w]) {
-            double dzW = zFace[j] - zFace[j - 1];
-            double dzC = zFace[j + 1] - zFace[j];
-
-            double d = 0.5 * (dzC + dzW);
-
-            double area = PI * (rFace[i + 1] * rFace[i + 1] - rFace[i] * rFace[i]);
-
-            double a = area / d;
-
-            coeff.AW[n] = -a;
-            aP += a;
-        }
-    }
-
-    // radial outer neighbor
-    if (i + 1 < nr) {
-        int no = (i + 1) * nz + j;
-
-        if (active[no]) {
-            double rF = rFace[i + 1];
-            double area = 2.0 * PI * rF * dz[j];
-
-            double d = r[i + 1] - r[i];
-
-            double a = area / d;
-
-            coeff.AN[n] = -a;
-            aP += a;
-        }
-    }
-
-    // radial inner neighbor
-    if (i - 1 >= 0) {
-        int ni = (i - 1) * nz + j;
-
-        if (active[ni]) {
-            double rF = rFace[i];
-            double area = 2.0 * PI * rF * dz[j];
-
-            double d = r[i] - r[i - 1];
-
-            double a = area / d;
-
-            coeff.AS[n] = -a;
-            aP += a;
-        }
-    }
-
-    coeff.AC[n] = aP;
-}
-
-__global__
-void restrictResidualSum(
-    const double* fineResidual,
-    const uint8_t* fineActive,
-    const uint8_t* coarseActive,
-    double* coarseB,
-    int fineNr,
-    int fineNz,
-    int coarseNr,
-    int coarseNz
-) {
-    int n = blockIdx.x * blockDim.x + threadIdx.x;
-    if (n >= coarseNr * coarseNz) return;
-
-    if (!coarseActive[n]) {
-        coarseB[n] = 0.0;
-        return;
-    }
-
-    int I = n / coarseNz;
-    int J = n % coarseNz;
-
-    int i0 = 2 * I;
-    int j0 = 2 * J;
-
-    double sumR = 0.0;
-
-    for (int di = 0; di < 2; di++) {
-        for (int dj = 0; dj < 2; dj++) {
-            int i = i0 + di;
-            int j = j0 + dj;
-
-            int nf = i * fineNz + j;
-
-            if (!fineActive[nf]) continue;
-
-            sumR += fineResidual[nf];
-        }
-    }
-
-    coarseB[n] = sumR;
+	// diagonal from the coarse neighbours keeps the row sum zero (constants in null space)
+	coarse.AC[nc] = -(AE + AW + AN + AS);
 }
 
 
 __global__
-void prolongateCorrectionInjection(
-    double* finePP,
-    const double* coarsePP,
-    const uint8_t* fineActive,
-    const uint8_t* coarseActive,
-    int fineNr,
-    int fineNz,
-    int coarseNr,
-    int coarseNz
-) {
-    int nf = blockIdx.x * blockDim.x + threadIdx.x;
-    if (nf >= fineNr * fineNz) return;
+void buildRestrictionKernel(Coefficients fine, Coefficients coarse, const uint8_t* coarseActive) {
 
-    if (!fineActive[nf]) return;
+	int nc = blockIdx.x * blockDim.x + threadIdx.x;
+	if (nc >= coarse.N) return;
 
-    int i = nf / fineNz;
-    int j = nf % fineNz;
+	int I = nc / coarse.nz;
+	int J = nc % coarse.nz;
 
-    int I = i / 2;
-    int J = j / 2;
+	if (!coarseActive[nc]) {
+		coarse.b[nc] = 0.0;
+		return;
+	}
 
-    if (I >= coarseNr || J >= coarseNz) return;
+	int fnz = fine.nz;
 
-    int nc = I * coarseNz + J;
+	// average over 4 cells
+	double r1 = fine.res[id(2 * I, 2 * J + 1, fnz)];
+	double r2 = fine.res[id(2 * I, 2 * J, fnz)];
+	double r3 = fine.res[id(2 * I + 1, 2 * J, fnz)];
+	double r4 = fine.res[id(2 * I + 1, 2 * J + 1, fnz)];
 
-    if (!coarseActive[nc]) return;
-
-    finePP[nf] += coarsePP[nc];
-}
-
-void MultigridSolver::solve(Coefficients& coeff, double* x, cudaStream_t stream, int threadsPerBlock) {
-
-    if (levels.empty()) return;
-
-    MultigridLevel& finest = levels[0];
-
-    // Attach the finest level to the current pressure-correction matrix.
-    // This copies the coefficient pointers from your current ppCoeff.
-    finest.coeff = coeff;
-
-    // Start pressure correction from zero.
-    cudaMemsetAsync(finest.x, 0, finest.grid.N * sizeof(double), stream);
-
-    // IMPORTANT:
-    // Coarse levels must already have valid coeff.AC, AE, AW, AN, AS.
-    // Their coeff.b will be overwritten by restriction during the V-cycle.
-
-    for (int cycle = 0; cycle < numCycles; cycle++) {
-        vCycle(0, stream, threadsPerBlock);
-    }
-
-    // Copy multigrid pressure correction back to SIMPLE pp.
-    cudaMemcpyAsync(
-        x,
-        finest.x,
-        finest.grid.N * sizeof(double),
-        cudaMemcpyDeviceToDevice,
-        stream
-    );
+	coarse.b[nc] = 0.25 * (r1 + r2 + r3 + r4);
 
 }
 
-void MultigridSolver::allocateLevels(const std::vector<GridLevel>& gridLevels) {
+__global__
+void buildProlongationKernel(Coefficients fine, Coefficients coarse, double* xf, double* xc, const uint8_t* fineActive) {
 
-    levels.resize(gridLevels.size());
+	int nf = blockIdx.x * blockDim.x + threadIdx.x;
+	if (nf >= fine.N) return;
 
-    for (int l = 0; l < (int)(gridLevels.size()); l++) {
+	int I = nf / fine.nz;
+	int J = nf % fine.nz;
 
-        levels[l].grid = gridLevels[l];
+	if (!fineActive[nf]) {
+		return;
+	}
 
-        allocateMultigridLevel(levels[l]);
+	int cnz = coarse.nz;
 
-    }
-
-}
-
-std::vector<BoundarySegmentGroup> coarsenBoundaryGroups(
-    const std::vector<BoundarySegmentGroup>& fineGroups
-) {
-    std::vector<BoundarySegmentGroup> coarseGroups;
-
-    for (const BoundarySegmentGroup& fineGroup : fineGroups) {
-        BoundarySegmentGroup coarseGroup = fineGroup;
-
-        coarseGroup.edges.clear();
-
-        std::unordered_set<MeshEdge, MeshEdgeHash> uniqueEdges;
-
-        for (const MeshEdge& fineEdge : fineGroup.edges) {
-            MeshEdge coarseEdge = fineEdge;
-
-            if (fineEdge.orient == EdgeOrient::Vertical) {
-                coarseEdge.i = fineEdge.i / 2;
-                coarseEdge.j = fineEdge.j / 2;
-            }
-            else if (fineEdge.orient == EdgeOrient::Horizontal) {
-                coarseEdge.i = fineEdge.i / 2;
-                coarseEdge.j = fineEdge.j / 2;
-            }
-
-            uniqueEdges.insert(coarseEdge);
-        }
-
-        coarseGroup.edges.assign(uniqueEdges.begin(), uniqueEdges.end());
-
-        coarseGroups.push_back(std::move(coarseGroup));
-    }
-
-    return coarseGroups;
-}
-
-
-
-
-void MultigridSolver::vCycle(int level, cudaStream_t stream, int threadsPerBlock) {
-
-    MultigridLevel& L = levels[level];
-
-    bool coarsest = level == (int)(levels.size()) - 1;
-
-    if (coarsest) {
-        smooth(L, coarseIterations, stream, threadsPerBlock);
-        return;
-    }
-
-
-    MultigridLevel& C = levels[level + 1];
-
-    smooth(L, preSmooth, stream, threadsPerBlock);
-
-    computeResidual(L, stream, threadsPerBlock);
-
-    restrictResidual(L, C, stream, threadsPerBlock);
-
-    cudaMemsetAsync(C.x, 0, C.grid.N * sizeof(double), stream);
-
-    vCycle(level + 1, stream, threadsPerBlock);
-
-    prolongateAndCorrect(C, L, stream, threadsPerBlock);
-
-    smooth(L, postSmooth, stream, threadsPerBlock);
+	xf[nf] += xc[id(I / 2, J / 2, cnz)];
 
 }
 
-void MultigridSolver::smooth(
-    MultigridLevel& L,
-    int iterations,
-    cudaStream_t stream,
-    int threadsPerBlock
-) {
-    ConfigSolver config = smootherConfig;
-    config.maxIter = iterations;
+__global__
+void jacobiSmoother(Coefficients coeff, double* x, const uint8_t* active, double weight) {
 
-    solveLinearSystem(
-        L.coeff,
-        config,
-        stream,
-        L.x,
-        L.xTemp,
-        L.d_active,
-        threadsPerBlock
-    );
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+	if (n >= coeff.N) return;
+	if (!active[n]) return;
+
+	x[n] += weight * coeff.res[n] / coeff.AC[n];
 }
 
-void MultigridSolver::computeResidual(
-    MultigridLevel& L,
-    cudaStream_t stream,
-    int threadsPerBlock
-) {
+void MultigridSolver::buildCoarseOperator(const MultigridLevel& fine, MultigridLevel& coarse, cudaStream_t& stream) {
 
-    const int blocks = (L.grid.N + threadsPerBlock - 1) / threadsPerBlock;
-    residualAll << <blocks, threadsPerBlock, 0, stream >> > (
-        L.d_active,
-        true,
-        ResidualPairs{ L.coeff, L.x }
-        );
+	int blocks = (coarse.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+
+	buildCoarseOperatorKernel << <blocks, mem.threadsPerBlock, 0, stream >> > (fine.coeff, coarse.coeff, coarse.d_active);
 
 }
 
-void MultigridSolver::restrictResidual(
-    MultigridLevel& fine,
-    MultigridLevel& coarse,
-    cudaStream_t stream,
-    int threadsPerBlock
-) {
-    int blocks = (coarse.grid.N + threadsPerBlock - 1) / threadsPerBlock;
+void MultigridSolver::buildRestriction(const MultigridLevel& fine, MultigridLevel& coarse, cudaStream_t& stream) {
 
-    restrictResidualSum << <blocks, threadsPerBlock, 0, stream >> > (
-        fine.coeff.res,
-        fine.d_active,
-        coarse.d_active,
-        coarse.coeff.b,
-        fine.grid.nr,
-        fine.grid.nz,
-        coarse.grid.nr,
-        coarse.grid.nz
-        );
+	int blocks = (coarse.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+
+	buildRestrictionKernel << <blocks, mem.threadsPerBlock, 0, stream >> > (fine.coeff, coarse.coeff, coarse.d_active);
+
 }
 
-void MultigridSolver::prolongateAndCorrect(
-    MultigridLevel& coarse,
-    MultigridLevel& fine,
-    cudaStream_t stream,
-    int threadsPerBlock
-) {
-    int blocks = (fine.grid.N + threadsPerBlock - 1) / threadsPerBlock;
+void MultigridSolver::buildProlongation(const MultigridLevel& fine, MultigridLevel& coarse, cudaStream_t& stream) {
 
-    prolongateCorrectionInjection << <blocks, threadsPerBlock, 0, stream >> > (
-        fine.x,
-        coarse.x,
-        fine.d_active,
-        coarse.d_active,
-        fine.grid.nr,
-        fine.grid.nz,
-        coarse.grid.nr,
-        coarse.grid.nz
-        );
+	int blocks = (fine.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+
+	buildProlongationKernel << <blocks, mem.threadsPerBlock, 0, stream >> > (fine.coeff, coarse.coeff, fine.x, coarse.x, fine.d_active);
+}
+
+void MultigridSolver::computeResidual(MultigridLevel& level, cudaStream_t& stream) {
+
+	int blocks = (level.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+
+	residualAll << <blocks, mem.threadsPerBlock, 0, stream >> > (
+		level.d_active,
+		true,
+		ResidualPairs{level.coeff, level.x}
+		);
+
+}
+
+
+void MultigridSolver::twoGridCycle(cudaStream_t& stream) {
+	MultigridLevel& fine = levels[0];
+	MultigridLevel& coarse = levels[1];
+
+	smoothen(fine, stream);
+	computeResidual(fine, stream);
+	buildRestriction(fine, coarse, stream);
+	cudaMemsetAsync(coarse.x, 0, coarse.grid.N * sizeof(double), stream);
+	smoothen(coarse, stream);
+	buildProlongation(fine, coarse, stream);
+	smoothen(fine, stream);
+}
+
+void MultigridSolver::vCycle() {
+
+}
+
+void MultigridSolver::smoothen(MultigridLevel& level, cudaStream_t& stream) {
+
+	int blocks = (level.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+
+	for (int n = 0; n < jacobiSweep; n++) {
+		computeResidual(level, stream);
+		jacobiSmoother << <blocks, mem.threadsPerBlock, 0, stream >> > (level.coeff, level.x, level.d_active, jacobiWeight);
+	}
 }

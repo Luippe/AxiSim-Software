@@ -58,6 +58,10 @@ private:
 
 	int selectedCell = -1;		// cell pinned by a left click (-1 = none)
 
+	// tracks results.currentItem so the field tab bar can re-select the matching
+	// tab when the field is changed from elsewhere (e.g. the Results panel combo)
+	int lastFieldItem = -1;
+
 	// scratch buffers reused across frames for smooth (vertex) shading
 	std::vector<float> vertexValues;
 	std::vector<int> vertexCounts;
@@ -96,6 +100,11 @@ private:
 
 	// ----------draw calls-----------
 	void drawToolBar();
+
+	// tab strip for switching the displayed field in place; each tab maps to an
+	// entry in results.fieldType and drives results.currentItem
+	void drawFieldTabs();
+
 	void drawField(ImDrawList* drawList);
 	void drawMeshOverlay(ImDrawList* drawList);
 	void drawValueProbe(ImDrawList* drawList);

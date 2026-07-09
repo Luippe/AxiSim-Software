@@ -113,7 +113,7 @@ bool BaseGUI::drawLeaf(const char* label) {
 
 	bool selected = selectedItem == label;
 
-	ImGui::TreeNodeEx(label, UIFlagsTree::LeafFlags | (selected ? ImGuiTreeNodeFlags_Selected : 0));
+	ImGui::TreeNodeEx(label, UITreeFlags::LeafFlags | (selected ? ImGuiTreeNodeFlags_Selected : 0));
 
 	bool clicked = ImGui::IsItemClicked();
 

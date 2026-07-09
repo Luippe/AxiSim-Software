@@ -64,6 +64,7 @@ BoundaryCondition& SolverGUI::getOrCreateBC(
 void SolverGUI::drawFieldCheckbox() {
 	ImGui::Checkbox("Energy", &solver.fieldOption.solveEnergy);
 	ImGui::Checkbox("Concentration", &solver.fieldOption.solveConcentration);
+	ImGui::Checkbox("Multigrid", &solver.useMultigrid);
 }
 
 

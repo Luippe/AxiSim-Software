@@ -17,6 +17,8 @@
 #include "printer.h"
 #include "unit_manager.h"
 
+using namespace UITabBarFlags;
+
 Inspector::Inspector(Project& project, SceneView& scene, AppConfig& appConfig) :
 		scene(scene),
 		project(project),
@@ -376,6 +378,65 @@ void Inspector::drawToolBar() {
 	}
 
 	ImGui::EndChild();
+}
+
+void Inspector::drawFieldTabs() {
+
+	std::vector<std::string>& shown = results.shownFields;
+	if (shown.empty()) {
+		return;		// nothing selected to show; the canvas draws its empty message
+	}
+
+	// if the field was changed elsewhere (e.g. dropping a field into the Graphics
+	// picker, or the Results combo) since last frame, force the matching tab active
+	// so the strip stays in sync. Only on the change frame - forcing it every frame
+	// would override the user's own tab clicks.
+	bool syncSelection = (results.currentItem != lastFieldItem);
+
+	int tabToClose = -1;
+
+	if (ImGui::BeginTabBar("##FieldTabs", InspectorTabBarFlags)) {
+
+		for (int i = 0; i < (int)shown.size(); i++) {
+
+			// map this shown field back to its index in fieldType (currentItem space)
+			int fieldIdx = results.indexOfField(shown[i]);
+			if (fieldIdx < 0) {
+				continue;	// field no longer exists (results regenerated in another mode)
+			}
+
+			ImGuiTabItemFlags itemFlags = ImGuiTabItemFlags_None;
+			if (syncSelection && fieldIdx == results.currentItem) {
+				itemFlags |= ImGuiTabItemFlags_SetSelected;
+			}
+
+			// BeginTabItem returns true only for the active tab, so this branch is
+			// where a click on a tab switches the displayed field. The close button
+			// (&open) removes the field from the shown set.
+			bool open = true;
+			if (ImGui::BeginTabItem(shown[i].c_str(), &open, itemFlags)) {
+				if (results.currentItem != fieldIdx) {
+					results.currentItem = fieldIdx;
+					results.updateCurrentField();
+				}
+				ImGui::EndTabItem();
+			}
+
+			if (!open) {
+				tabToClose = i;
+			}
+		}
+
+		ImGui::EndTabBar();
+	}
+
+	if (tabToClose >= 0) {
+		// copy the name first: removeShownField erases from the same vector
+		std::string name = shown[tabToClose];
+		results.removeShownField(name);
+	}
+
+	lastFieldItem = results.currentItem;
 }
 
 void Inspector::drawField(ImDrawList* drawList) {
@@ -889,6 +950,10 @@ void Inspector::render() {
 
 
 	drawToolBar();
+
+	// field selector tabs - drawn before the canvas is measured so it sizes to the
+	// space left below the strip
+	drawFieldTabs();
 
 	// size the colorbar strip to the current tick values + label so nothing is
 	// clipped, before we reserve that width out of the canvas

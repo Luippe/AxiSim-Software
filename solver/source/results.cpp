@@ -1,5 +1,6 @@
 #include "results.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include <glm/vec2.hpp>
@@ -154,6 +155,9 @@ void Results::generate(Mesh& mesh, Solver& solver) {
 	createFields(mesh, solver);
 	updateCurrentField();
 
+	// prune stale shown-field names and seed a default so the inspector has a tab
+	syncShownFields();
+
 	console->addCompletionMessage("Completed generating field variables");
 
 	isReady = true;
@@ -186,4 +190,75 @@ void Results::updateCurrentField() {
 	std::string name = fieldType[currentItem];
 	currentField = &fields[name];
 
+}
+
+int Results::indexOfField(const std::string& name) const {
+
+	for (int i = 0; i < (int)fieldType.size(); i++) {
+		if (fieldType[i] == name) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+bool Results::isShown(const std::string& name) const {
+	return std::find(shownFields.begin(), shownFields.end(), name) != shownFields.end();
+}
+
+void Results::addShownField(const std::string& name) {
+
+	if (indexOfField(name) < 0) {
+		return;					// not a real field
+	}
+
+	if (isShown(name)) {
+		return;					// already shown
+	}
+
+	shownFields.push_back(name);
+
+	// activate the freshly added field so the inspector jumps to its new tab
+	currentItem = indexOfField(name);
+	updateCurrentField();
+}
+
+void Results::removeShownField(const std::string& name) {
+
+	auto it = std::find(shownFields.begin(), shownFields.end(), name);
+	if (it == shownFields.end()) {
+		return;
+	}
+	shownFields.erase(it);
+
+	// if the active field is no longer shown, fall back to the first shown field
+	bool activeStillShown =
+		currentItem >= 0 &&
+		currentItem < (int)fieldType.size() &&
+		isShown(fieldType[currentItem]);
+
+	if (!activeStillShown && !shownFields.empty()) {
+		currentItem = indexOfField(shownFields.front());
+		updateCurrentField();
+	}
+}
+
+void Results::syncShownFields() {
+
+	// drop any shown names that are no longer part of fieldType (e.g. after
+	// switching between temperature and concentration modes)
+	shownFields.erase(
+		std::remove_if(
+			shownFields.begin(),
+			shownFields.end(),
+			[&](const std::string& name) { return indexOfField(name) < 0; }
+		),
+		shownFields.end()
+	);
+
+	// seed a default so the inspector shows something on the first generate
+	if (shownFields.empty() && !fieldType.empty()) {
+		int seed = std::clamp(currentItem, 0, (int)fieldType.size() - 1);
+		shownFields.push_back(fieldType[seed]);
+	}
 }

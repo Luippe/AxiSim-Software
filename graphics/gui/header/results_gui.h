@@ -17,6 +17,10 @@ public:
 
 private:
 
+	// two-region drag-and-drop picker (Available | Shown) for choosing which fields
+	// the inspector displays as tabs. Drawn in the Graphics panel.
+	void drawFieldSelector();
+
 	Project& project;
 	SceneView& scene;
 	GUI& gui;

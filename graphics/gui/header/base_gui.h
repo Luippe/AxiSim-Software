@@ -51,11 +51,11 @@ public:
 	// draw leaf for tree node
 	bool drawLeaf(const char* label);
 
-	bool drawTree(const char* label, bool& isOpen, ImGuiTreeNodeFlags flags = UIFlagsTree::BranchOpenedFlags);
+	bool drawTree(const char* label, bool& isOpen, ImGuiTreeNodeFlags flags = UITreeFlags::BranchOpenedFlags);
 
 	// grouping tree node that only holds child leaves: shows the nav hover cursor
 	// but does NOT change selectedItem. returns whether the node is expanded.
-	bool treeHeader(const char* label, ImGuiTreeNodeFlags flags = UIFlagsTree::BranchOpenedFlags);
+	bool treeHeader(const char* label, ImGuiTreeNodeFlags flags = UITreeFlags::BranchOpenedFlags);
 
 	// ---- shared panel design helpers (used by every setup tab) ----
 

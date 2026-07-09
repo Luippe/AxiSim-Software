@@ -20,6 +20,9 @@ void allocateSimple(Config& config, VariablesSimple& vars, FVMesh& mesh, const S
 // initialize and allocate cell variables
 void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& vars);
 
+// copy coefficients
+void copyCoefficients(Coefficients& dst, const Coefficients& src, int N, cudaStream_t stream);
+
 // allocate variables used for the multigrid method
 void allocateMultigridLevel(MultigridLevel& level);
 

@@ -883,6 +883,17 @@ void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& 
 }
 
 
+// copy operator arrays device -> device. NOTE: copies the NUMBERS, not the
+// pointers - a plain `dst = src` would only alias src's buffers (and leak dst's).
+void copyCoefficients(Coefficients& dst, const Coefficients& src, int N, cudaStream_t stream) {
+	cudaMemcpyAsync(dst.AE, src.AE, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+	cudaMemcpyAsync(dst.AW, src.AW, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+	cudaMemcpyAsync(dst.AN, src.AN, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+	cudaMemcpyAsync(dst.AS, src.AS, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+	cudaMemcpyAsync(dst.AC, src.AC, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+	cudaMemcpyAsync(dst.b, src.b, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+}
+
 void allocateMultigridLevel(MultigridLevel& level) {
 
 	int N = level.grid.N;
@@ -891,13 +902,17 @@ void allocateMultigridLevel(MultigridLevel& level) {
 
 	cudaMalloc(&level.x, N * sizeof(double));
 	cudaMalloc(&level.xTemp, N * sizeof(double));
-	cudaMalloc(&level.d_volume, N * sizeof(double));
 	cudaMalloc(&level.d_active, N * sizeof(uint8_t));
+	cudaMalloc(&level.d_rFace, (level.grid.nr + 1) * sizeof(double));
+	cudaMalloc(&level.d_zFace, (level.grid.nz + 1) * sizeof(double));
 
 	cudaMemset(level.x, 0, N * sizeof(double));
 	cudaMemset(level.xTemp, 0, N * sizeof(double));
-	cudaMemset(level.d_volume, 0, N * sizeof(double));
-	cudaMemset(level.d_active, 0, N * sizeof(uint8_t));
+
+	cudaMemcpy(level.d_rFace, level.grid.rFace.data(), (level.grid.nr + 1) * sizeof(double), cudaMemcpyHostToDevice);
+	cudaMemcpy(level.d_zFace, level.grid.zFace.data(), (level.grid.nz + 1) * sizeof(double), cudaMemcpyHostToDevice);
+	cudaMemcpy(level.d_active, level.grid.active.data(), N * sizeof(uint8_t), cudaMemcpyHostToDevice);
+
 
 }
 
