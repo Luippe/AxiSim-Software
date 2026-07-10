@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <cuda_profiler_api.h>
 #include "printer.h"
@@ -30,13 +31,13 @@
 } while(0)
 
 
-void printResidualConsole(int currentIteration, const std::unordered_map<std::string, ConfigResidual>& configResiduals, Console* console) {
+void printResidualConsole(int currentIteration, const std::unordered_map<std::string, ConfigResidual>& cfg, Console* console) {
     std::ostringstream line;
 
     line << "ITERAITON: " << currentIteration;
     line << std::scientific << std::setprecision(6);
 
-    for (auto& [name, configResidual] : configResiduals) {
+    for (auto& [name, configResidual] : cfg) {
         if (!configResidual.enabled) continue;
 
         line << "  " << name << ": " << configResidual.resVal;
@@ -48,6 +49,35 @@ void printResidualConsole(int currentIteration, const std::unordered_map<std::st
     console->addLine(line.str());
 }
 
+
+void initCoefficients(std::unordered_map<std::string, Coefficients>& coeffs) {
+
+    coeffs.emplace("U", Coefficients{});
+    coeffs.emplace("V", Coefficients{});
+    coeffs.emplace("PP", Coefficients{});
+    coeffs.emplace("Continuity", Coefficients{});
+    coeffs.emplace("Temperature", Coefficients{});
+    coeffs.emplace("Concentration", Coefficients{});
+
+}
+
+
+void initConfigResiduals(std::unordered_map<std::string, ConfigResidual>& cfg) {
+
+    cfg.clear();
+
+    cfg.emplace("U", ConfigResidual{});
+    cfg.emplace("V", ConfigResidual{});
+    cfg.emplace("Continuity", ConfigResidual{});
+    cfg.emplace("Temperature", ConfigResidual{});
+    cfg.emplace("Concentration", ConfigResidual{});
+
+    cfg.at("U").enabled = true;
+    cfg.at("V").enabled = true;
+    cfg.at("Continuity").enabled = true;
+
+}
+
 Solver::Solver(Config& config) :
     config(config),
     g(config.g),
@@ -57,32 +87,12 @@ Solver::Solver(Config& config) :
 
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
 
-    initCoefficients();
-    initConfigResiduals();
+    initCoefficients(coeffs);
+    initConfigResiduals(cfg);
     //setDefault();
 }
 
-void Solver::initCoefficients() {
-    for (const char*& name : coefficientNames) {
-        coefficients.emplace(name, Coefficients{});
-    }
-}
 
-void Solver::initConfigResiduals() {
-
-    configResiduals.clear();
-
-    configResiduals.emplace("U", ConfigResidual{});
-    configResiduals.emplace("V", ConfigResidual{});
-    configResiduals.emplace("Continuity", ConfigResidual{});
-    configResiduals.emplace("Temperature", ConfigResidual{});
-    configResiduals.emplace("Concentration", ConfigResidual{});
-
-    configResiduals.at("U").enabled = true;
-    configResiduals.at("V").enabled = true;
-    configResiduals.at("Continuity").enabled = true;
-
-}
 
 void Solver::setDefault() {
 
@@ -670,16 +680,16 @@ static void printBoundaryDiagnostics(
 
 void Solver::runSimple(const Mesh& mesh) {
 
-    // Field coefficient systems now live in the `coefficients` map (created by
+    // Field coefficient systems now live in the `coeffs` map (created by
     // initCoefficients). Bind readable aliases into it so the body below still
     // reads uCoeff/vCoeff/... These are references to the map's own storage, so
     // free()/allocateCoefficients on them operate directly on the map entries.
-    Coefficients& uCoeff        = coefficients.at("U");
-    Coefficients& vCoeff        = coefficients.at("V");
-    Coefficients& ppCoeff       = coefficients.at("PP");
-    Coefficients& massFluxCoeff = coefficients.at("Continuity");
-    Coefficients& tempCoeff     = coefficients.at("Temperature");
-    Coefficients& concCoeff     = coefficients.at("Concentration");
+    Coefficients& uCoeff        = coeffs.at("U");
+    Coefficients& vCoeff        = coeffs.at("V");
+    Coefficients& ppCoeff       = coeffs.at("PP");
+    Coefficients& massFluxCoeff = coeffs.at("Continuity");
+    Coefficients& tempCoeff     = coeffs.at("Temperature");
+    Coefficients& concCoeff     = coeffs.at("Concentration");
 
     // create configs for solver and residual
     Config config{ f, g, itr, varUnits };
@@ -743,7 +753,7 @@ void Solver::runSimple(const Mesh& mesh) {
 
     if (needsAllocation) {
 
-        residualPlot->setName(configResiduals);
+        residualPlot->setName(cfg);
 
         uCoeff.free();
         vCoeff.free();
@@ -751,7 +761,12 @@ void Solver::runSimple(const Mesh& mesh) {
         massFluxCoeff.free();
         tempCoeff.free();
         concCoeff.free();
-        for (auto& [name, configResidual] : configResiduals) configResidual.free();
+
+        for (auto& [name, configResidual] : cfg) {
+            configResidual.free();
+            configResidual.resVal = 0.0;
+            configResidual.scaleVal = 0.0;
+        }
         simple.free();
 
         if (useFaceCoefficients) {
@@ -774,8 +789,8 @@ void Solver::runSimple(const Mesh& mesh) {
             allocateCoefficients(concCoeff, nr, nz);
         }
 
-        // per-field residual vectors (res/scale) live in configResiduals now
-        allocateResiduals(configResiduals, fvMesh);
+        // per-field residual vectors (res/scale) live in cfg now
+        allocateResiduals(cfg, fvMesh);
 
         allocateSimple(config, simple, fvMesh, fieldOption);
 
@@ -844,9 +859,18 @@ void Solver::runSimple(const Mesh& mesh) {
     double rho = f.rho;
     double thermDiffusivity = k / (rho * cp);
 
-    GridLevel grid{ fvMesh.nr, fvMesh.nz, N, config.g.rFace, config.g.zFace, config.g.activeCell };
-    MultigridSolver multigrid(mem, grid);
-
+    // Multigrid only applies to the structured pressure solve: it coarsens a
+    // structured grid and reads config.g's face/active arrays. On an unstructured
+    // mesh those are empty and fvMesh.nr/nz == 0, so building a level there copies
+    // from empty host vectors and raises a CUDA error. Build it only when it can
+    // actually run; the pp solve falls back to solveLinearSystem otherwise.
+    std::optional<MultigridSolver> multigrid;
+    if (useMultigrid && mesh.currentMeshType == MeshType::Structured) {
+        GridLevel grid{ fvMesh.nr, fvMesh.nz, N, config.g.rFace, config.g.zFace, config.g.activeCell };
+        multigrid.emplace(mem, grid);
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+    }
     //print(Nface, N, threadsPerBlock, blocks);
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
@@ -872,7 +896,7 @@ void Solver::runSimple(const Mesh& mesh) {
                 computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, gradientScheme);
             }
 
-            // create coefficients for velocity and pressure correction equations
+            // create coeffs for velocity and pressure correction equations
             addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, bcDevice.u, simple.v, simple.gradUZ, simple.gradUR, applyNonOrtho, f.mu);
             addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, bcDevice.v,  simple.u, simple.gradVZ, simple.gradVR, applyNonOrtho, f.mu);
             
@@ -924,18 +948,20 @@ void Solver::runSimple(const Mesh& mesh) {
 
             cudaMemsetAsync(simple.pp, 0, N * sizeof(double), stream);
             cudaMemsetAsync(simple.ppTemp, 0, N * sizeof(double), stream);
-
+            CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaStreamSynchronize(stream));
             for (int corr = 0; corr <= nNonOrth; corr++) {
                 computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
                 createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, applyNonOrtho);
-                if (useMultigrid) {
-                    multigrid.run(ppCoeff, stream, simple.pp);
+                if (multigrid) {
+                    multigrid->run(ppCoeff, stream, simple.pp);
                 }
                 else {
                     solveLinearSystem(ppCoeff, configSolver, stream, simple.pp, simple.ppTemp, activeCells, threadsPerBlock);
                 }
             }
-
+            CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaStreamSynchronize(stream));
             // final grad(p') (with p' BCs) for the velocity and mass-flux corrections
             computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
 
@@ -984,10 +1010,10 @@ void Solver::runSimple(const Mesh& mesh) {
                 residualAll << <blocks, threadsPerBlock, 0, stream >> > (
                     fvMeshDevice.cells.active,
                     false,
-                    ResidualPairs{ uCoeff,    simple.u,    configResiduals.at("U").res },
-                    ResidualPairs{ vCoeff,    simple.v,    configResiduals.at("V").res },
-                    ResidualPairs{ tempCoeff, simple.temp, configResiduals.at("Temperature").res },
-                    ResidualPairs{ concCoeff, simple.conc, configResiduals.at("Concentration").res }
+                    ResidualPairs{ uCoeff,    simple.u,    cfg.at("U").res, cfg.at("U").scale, cfg.at("U").scaleType},
+                    ResidualPairs{ vCoeff,    simple.v,    cfg.at("V").res, cfg.at("V").scale, cfg.at("V").scaleType},
+                    ResidualPairs{ tempCoeff, simple.temp, cfg.at("Temperature").res, cfg.at("Temperature").scale, cfg.at("Temperature").scaleType },
+                    ResidualPairs{ concCoeff, simple.conc, cfg.at("Concentration").res, cfg.at("Concentration").scale, cfg.at("Concentration").scaleType }
                     );
 
                 if (cudaError_t errResidualAll = cudaGetLastError(); errResidualAll != cudaSuccess) {
@@ -998,7 +1024,7 @@ void Solver::runSimple(const Mesh& mesh) {
                 continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (
                     fvMeshDevice,
                     simple,
-                    configResiduals.at("Continuity").res
+                    cfg.at("Continuity").res
                     );
 
                 if (cudaError_t errContinuity = cudaGetLastError(); errContinuity != cudaSuccess) {
@@ -1006,13 +1032,10 @@ void Solver::runSimple(const Mesh& mesh) {
                 }
                 CUDA_CHECK(cudaGetLastError());
                 CUDA_CHECK(cudaStreamSynchronize(stream));
-                for (auto& [name, configResidual] : configResiduals) {
-                    if (configResidual.enabled) {
-                        residualAllHost(configResidual, coefficients.at(name));
-                    }
-                }
-                residualPlot->add(currentIteration, configResiduals);
-                printResidualConsole(currentIteration, configResiduals, console);
+
+                residualAllHost(cfg, N, currentIteration);
+                residualPlot->add(currentIteration, cfg);
+                printResidualConsole(currentIteration, cfg, console);
                 CUDA_CHECK(cudaGetLastError());
                 CUDA_CHECK(cudaStreamSynchronize(stream));
                 //if (contRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
@@ -1059,6 +1082,7 @@ void Solver::runSimple(const Mesh& mesh) {
     if (solveConcentration) {
         computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, gradientScheme);
     }
+
     CUDA_CHECK(cudaStreamSynchronize(stream));
     createSolutions(N);
 

@@ -55,8 +55,15 @@ void saveFromExplorerProject(Project& project);
 // load project at startup
 void saveLaunchProject(Project& project);
 
+// load project from a given path
+void loadFromPathProject(std::ifstream& in, Project& project);
+
 // load project from explorer
 void loadFromExplorerProject(Project& project);
+
+// load a bundled preset project from the exe's presets/ folder (no file dialog).
+// no-op if the preset file is missing.
+void loadPresetProject(const std::string& fileName, Project& project);
 
 // ======================================================================
 // -----------------------GEOMETRY---------------------------------------

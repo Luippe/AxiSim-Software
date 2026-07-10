@@ -980,20 +980,22 @@ void allocateMultigridLevel(MultigridLevel& level) {
 	int N = level.grid.N;
 
 	allocateCoefficients(level.coeff, level.grid.nr, level.grid.nz);
-
+	CUDA_CHECK(cudaGetLastError());
 	cudaMalloc(&level.x, N * sizeof(double));
 	cudaMalloc(&level.xTemp, N * sizeof(double));
+	cudaMalloc(&level.res, N * sizeof(double));
 	cudaMalloc(&level.d_active, N * sizeof(uint8_t));
 	cudaMalloc(&level.d_rFace, (level.grid.nr + 1) * sizeof(double));
 	cudaMalloc(&level.d_zFace, (level.grid.nz + 1) * sizeof(double));
-
+	CUDA_CHECK(cudaGetLastError());
 	cudaMemset(level.x, 0, N * sizeof(double));
 	cudaMemset(level.xTemp, 0, N * sizeof(double));
-
+	cudaMemset(level.res, 0, N * sizeof(double));
+	CUDA_CHECK(cudaGetLastError());
 	cudaMemcpy(level.d_rFace, level.grid.rFace.data(), (level.grid.nr + 1) * sizeof(double), cudaMemcpyHostToDevice);
 	cudaMemcpy(level.d_zFace, level.grid.zFace.data(), (level.grid.nz + 1) * sizeof(double), cudaMemcpyHostToDevice);
 	cudaMemcpy(level.d_active, level.grid.active.data(), N * sizeof(uint8_t), cudaMemcpyHostToDevice);
-
+	CUDA_CHECK(cudaGetLastError());
 
 }
 

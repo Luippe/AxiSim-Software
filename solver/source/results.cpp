@@ -256,9 +256,26 @@ void Results::syncShownFields() {
 		shownFields.end()
 	);
 
-	// seed a default so the inspector shows something on the first generate
+	// seed a default set the first time results are generated: the core flow fields
+	// plus whichever scalar solvers are active. Temperature/Concentration are only
+	// present in fieldType when their solver is enabled, so membership alone gates them.
 	if (shownFields.empty() && !fieldType.empty()) {
-		int seed = std::clamp(currentItem, 0, (int)fieldType.size() - 1);
-		shownFields.push_back(fieldType[seed]);
+		const char* defaults[] = {
+			"Axial Velocity", "Radial Velocity", "Continuity",
+			"Temperature", "Concentration"
+		};
+
+		for (const char* name : defaults) {
+			if (indexOfField(name) >= 0) {
+				shownFields.push_back(name);
+			}
+		}
+
+		// nothing matched (unexpected) — fall back to the current field so the
+		// inspector still has a tab
+		if (shownFields.empty()) {
+			int seed = std::clamp(currentItem, 0, (int)fieldType.size() - 1);
+			shownFields.push_back(fieldType[seed]);
+		}
 	}
 }

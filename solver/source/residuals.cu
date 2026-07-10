@@ -10,6 +10,8 @@ void residualRaw(uint8_t* activeCell, bool sign, ResidualPairs& pairs, int n) {
 	Coefficients coeff = pairs.coeff;
 	const double* x = pairs.x;
 	double* res = pairs.res;
+	double* scale = pairs.scale;
+	
 
 	if (n >= coeff.N) return;
 
@@ -21,6 +23,11 @@ void residualRaw(uint8_t* activeCell, bool sign, ResidualPairs& pairs, int n) {
 	}
 
 	double Ax = coeff.AC[n] * x[n];
+
+
+	if (pairs.scaleType == RESIDUAL_SCALING_DIAGONAL) {
+		scale[n] = Ax;
+	}
 
 	if (coeff.useFaceCoeffs &&
 		coeff.AF &&
@@ -69,7 +76,6 @@ void residualRaw(uint8_t* activeCell, bool sign, ResidualPairs& pairs, int n) {
 
 }
 
-
 __global__
 void continuityResidual(FVMeshDevice mesh, VariablesSimple simple, double* res) {
 
@@ -106,26 +112,20 @@ void continuityResidual(FVMeshDevice mesh, VariablesSimple simple, double* res) 
 
 }
 
-void residualAllHost(ConfigResidual& cfg, const Coefficients& coeff) {
+double residualScaleSum(ConfigResidual& cfg, int N) {
 
-	// reduce the per-cell residual vector (cfg.res) to a single value
-	switch (cfg.residualNormType) {
+	std::vector<double> h_vec(N);
 
-	case RESIDUAL_L1:   residualL1Host(cfg, coeff.N);   break;
-	case RESIDUAL_L2:   residualL2Host(cfg, coeff.N);   break;
-	case RESIDUAL_LINF: residualLInfHost(cfg, coeff.N); break;
+	cudaMemcpy(h_vec.data(), cfg.scale, N * sizeof(double), cudaMemcpyDeviceToHost);
 
+	double sum = 0.0;
+
+	for (double& x : h_vec) {
+		sum += std::abs(x);
 	}
 
-	// scale the residual
-	switch (cfg.residualScaleType) {
+	return sum;
 
-	case RESIDUAL_SCALING_NONE:                                             break;
-	case RESIDUAL_SCALING_N:        cfg.resVal /= coeff.N;                  break;
-	case RESIDUAL_SCALING_SQRT_N:   cfg.resVal /= sqrt((double)coeff.N);    break;
-	case RESIDUAL_SCALING_MOMENTUM:                                         break;
-
-	}
 }
 
 void residualL1Host(ConfigResidual& cfg, int N) {
@@ -173,6 +173,43 @@ void residualLInfHost(ConfigResidual& cfg, int N) {
 	cfg.resVal = *std::max_element(h_vec.begin(), h_vec.end());
 }
 
-void residualScaled() {
 
+void residualAllHost(std::unordered_map<std::string, ConfigResidual>& cfgs, int N, int currentIteration) {
+
+	for (auto& [name, cfg] : cfgs) {
+		if (cfg.enabled) {
+
+			// treat continuity equation differently
+			if (name == "Continuity") {
+				residualLInfHost(cfg, N);
+				if (currentIteration < 5) {
+					cfg.scaleVal = std::max(cfg.resVal, 0.0);
+				}
+
+				cfg.resVal /= cfg.scaleVal;
+				continue;
+			}
+
+			// reduce the per-cell residual vector (cfg.res) to a single value
+			switch (cfg.normType) {
+
+			case RESIDUAL_L1:   residualL1Host(cfg, N);   break;
+			case RESIDUAL_L2:   residualL2Host(cfg, N);   break;
+			case RESIDUAL_LINF: residualLInfHost(cfg, N); break;
+			}
+
+			// scale the residual
+			switch (cfg.scaleType) {
+
+			case RESIDUAL_SCALING_NONE:     cfg.scaleVal = 1.0;							break;
+			case RESIDUAL_SCALING_N:        cfg.scaleVal = N;							break;
+			case RESIDUAL_SCALING_SQRT_N:   cfg.scaleVal = sqrt((double)N);				break;
+			case RESIDUAL_SCALING_DIAGONAL:	cfg.scaleVal = residualScaleSum(cfg, N);    break;
+			}
+
+			if (cfg.scaleVal == 0.0) continue;
+
+			cfg.resVal /= cfg.scaleVal;
+		}
+	}
 }

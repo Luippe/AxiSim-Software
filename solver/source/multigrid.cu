@@ -1,5 +1,6 @@
 #include "multigrid.cuh"
 
+
 #include <math_constants.h>
 #include <cstdio>
 #include <vector>
@@ -7,6 +8,14 @@
 #include "residuals.cuh"
 
 #include "memory_manager.h"
+
+#define CUDA_CHECK(x) do { \
+  cudaError_t err = (x); \
+  if (err != cudaSuccess) { \
+    printf("CUDA error %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
+    std::abort(); \
+  } \
+} while(0)
 
 __host__ __device__ inline int id(int i, int j, int nz) {
 	return i * nz + j;
@@ -17,7 +26,10 @@ MultigridSolver::MultigridSolver(MemoryConfig& mem, GridLevel& grid) :
 
 	// init once
 	buildHierarchy(grid);
+	CUDA_CHECK(cudaGetLastError());
+
 	buildLevels();
+	CUDA_CHECK(cudaGetLastError());
 
 }
 bool canCoarsen(const GridLevel& grid) {
@@ -74,7 +86,7 @@ MultigridLevel MultigridSolver::createMultigridLevel(GridLevel& grid) {
 	MultigridLevel level;
 	level.grid = grid;
 	allocateMultigridLevel(level);
-
+	CUDA_CHECK(cudaGetLastError());
 	return level;
 
 }
@@ -86,7 +98,7 @@ void MultigridSolver::buildLevels() {
 		levels.push_back(createMultigridLevel(grid));
 
 	}
-
+	CUDA_CHECK(cudaGetLastError());
 }
 
 void MultigridSolver::buildHierarchy(GridLevel fine) {
@@ -229,13 +241,13 @@ void MultigridSolver::buildProlongation(const MultigridLevel& fine, MultigridLev
 
 void MultigridSolver::computeResidual(MultigridLevel& level, cudaStream_t& stream) {
 
-	//int blocks = (level.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+	int blocks = (level.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
 
-	//residualAll << <blocks, mem.threadsPerBlock, 0, stream >> > (
-	//	level.d_active,
-	//	true,
-	//	ResidualPairs{level.coeff, level.x}
-	//	);
+	residualAll << <blocks, mem.threadsPerBlock, 0, stream >> > (
+		level.d_active,
+		true,
+		ResidualPairs{ level.coeff, level.x, level.res }
+		);
 
 }
 

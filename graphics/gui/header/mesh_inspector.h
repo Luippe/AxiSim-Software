@@ -138,6 +138,7 @@ private:
 
 	void drawMeshLines(ImDrawList* drawList);
 	void drawHighlightedCells2D(ImDrawList* drawList);
+	void drawUnstructuredSolidBodies(ImDrawList* drawList);
 	void drawBoundarySegments(ImDrawList* drawList);
 	void drawRegionsOfInfluence(ImDrawList* drawList);
 

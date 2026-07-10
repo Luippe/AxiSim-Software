@@ -179,6 +179,14 @@ else()
     message(WARNING "gmsh.dll was not found. The project may compile but fail to run.")
 endif()
 
+# Bundle the demo presets next to the exe so the exe-anchored preset loader
+# (executableDir()/presets/...) finds them regardless of the working directory.
+add_custom_command(TARGET AxiSim POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${CMAKE_CURRENT_SOURCE_DIR}/presets"
+    "$<TARGET_FILE_DIR:AxiSim>/presets"
+)
+
 target_include_directories(AxiSim PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/structs"
@@ -261,6 +269,9 @@ install(TARGETS AxiSim RUNTIME DESTINATION .)
 # so they must sit alongside the exe with the same layout.
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets"           DESTINATION .)
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/graphics/shaders" DESTINATION graphics)
+
+# Bundled presets, resolved next to the exe by loadPresetProject().
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/presets" DESTINATION .)
 
 # gmsh ships only as a DLL (GMSH_DLL is resolved above in the build section).
 if(EXISTS "${GMSH_DLL}")

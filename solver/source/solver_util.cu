@@ -1327,8 +1327,6 @@ void clearCoefficients(Coefficients coeff) {
 			coeff.AF[k] = 0.0;
 		}
 	}
-
-
 }
 
 

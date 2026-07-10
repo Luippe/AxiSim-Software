@@ -20,12 +20,12 @@ public:
 	Solver(Config& config);
 	
 	const char* boundaryType[4] = { "Wall", "Velocity Inlet", "Pressure Outlet", "Symmetry"};
-	const char* residualType[3] = { "Raw Residual", "RMS", "Custom Residual"};
+	const char* residualType[4] = { "Scaled", "Raw Residual", "RMS", "Custom Residual"};
 	const char* residualNormType[3] = { "L1 Norm", "L2 Norm", "Linf Norm" };
-	const char* residualScalingType[3] = { "None", "N", "sqrt(N)" };
+	const char* residualScalingType[4] = { "None", "N", "sqrt(N)", "Diagonal"};
 	const char* linearSolverType[2] = { "Jacobi", "Red Black Gauss Seidel"};
 	const char* velocitySolverType[1] = { "SIMPLE" };
-	const char* bcTypeNames[2] = {"Constant", "Flux"};
+	const char* bcTypeNames[2] = { "Constant", "Flux" };
 	const char* bcInletTypeNames[3]{ "Constant", "Flux", "Fully Developed" };
 	const char* convectionDiscretizationType[3] = { "First Order Upwind", "Central Difference", "Second Order Upwind"};
 	const char* gradientSchemeType[2] = { "Green-Gauss", "Least Squares" };
@@ -77,10 +77,10 @@ public:
 	std::unordered_map<std::string, SolutionField> solutions;
 
 	// residual
-	std::unordered_map<std::string, ConfigResidual> configResiduals;
+	std::unordered_map<std::string, ConfigResidual> cfg;
 
 	// coefficients
-	std::unordered_map<std::string, Coefficients> coefficients;
+	std::unordered_map<std::string, Coefficients> coeffs;
 
 	// scalar solution
 	SolutionScalar scalarSolutions;
@@ -127,11 +127,6 @@ private:
 
 	// solve for mass imbalance
 	std::vector<double> getMassImbalance(int N);
-
-	// initialize config residuals
-	void initConfigResiduals();
-
-	void initCoefficients();
 
 	bool buildContinuationState(
 		const Mesh& mesh,

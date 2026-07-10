@@ -14,6 +14,7 @@
 #include "unit_manager.h"
 
 #include <string>
+#include <cstring>
 
 using namespace BoundaryDefaults;
 using namespace BoundaryGet;
@@ -31,14 +32,18 @@ SolverGUI::SolverGUI(Project& project, AppConfig& appConfig) :
 // ======================================================================
 // set default values for residual settings based on the current residual type
 void setResidualDefault(ConfigResidual& configRes) {
-	switch (configRes.residualType) {
+	switch (configRes.type) {
+	case RESIDUAL_SCALED:
+		configRes.normType = RESIDUAL_LINF;
+		configRes.scaleType = RESIDUAL_SCALING_DIAGONAL;
+		break;
 	case RESIDUAL_RAW:
-		configRes.residualNormType = RESIDUAL_LINF;
-		configRes.residualScaleType = RESIDUAL_SCALING_NONE;
+		configRes.normType = RESIDUAL_LINF;
+		configRes.scaleType = RESIDUAL_SCALING_NONE;
 		break;
 	case RESIDUAL_RMS:
-		configRes.residualNormType = RESIDUAL_L2;
-		configRes.residualScaleType = RESIDUAL_SCALING_SQRT_N;
+		configRes.normType = RESIDUAL_L2;
+		configRes.scaleType = RESIDUAL_SCALING_SQRT_N;
 		break;
 	}
 }
@@ -71,19 +76,30 @@ void SolverGUI::drawFieldCheckbox() {
 void SolverGUI::drawResidualSettings() {
 	sectionHeader("Residuals");
 
+	// A residual's row only appears when its field is being solved: Temperature
+	// needs the energy solver, Concentration needs the concentration solver.
+	auto rowVisible = [&](const char* name) -> bool {
+		if (std::strcmp(name, "Temperature") == 0)   return solver.fieldOption.solveEnergy;
+		if (std::strcmp(name, "Concentration") == 0) return solver.fieldOption.solveConcentration;
+		return true;
+	};
+
 	ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(8.0f, 5.0f));
-	if (ImGui::BeginTable("Residual Settings", 5, UIFlags::TableSimpleFlags | ImGuiTableFlags_NoSavedSettings)) {
+	if (ImGui::BeginTable("Residual Settings", 4, UIFlags::TableSimpleFlags | ImGuiTableFlags_NoSavedSettings)) {
 		setupTableColumns(
 			column("Plot", 44.0f),
 			column("Residual", 105.0f),
 			column("Type", 130.0f, ImGuiTableColumnFlags_WidthStretch),
-			column("Norm", 105.0f, ImGuiTableColumnFlags_WidthStretch),
-			column("Scaling", 105.0f, ImGuiTableColumnFlags_WidthStretch)
+			column("Tolerance", 105.0f, ImGuiTableColumnFlags_WidthStretch)
 		);
 		ImGui::TableHeadersRow();
 
 		for (const char*& name : solver.residualPlotType) {
-			ConfigResidual& configResidual = solver.configResiduals.at(name);
+			if (!rowVisible(name)) {
+				continue;
+			}
+
+			ConfigResidual& configResidual = solver.cfg.at(name);
 
 			ImGui::TableNextRow();
 			ImGui::PushID(name);
@@ -96,16 +112,17 @@ void SolverGUI::drawResidualSettings() {
 			ImGui::AlignTextToFramePadding();
 			ImGui::TextUnformatted(name);
 
-			ImGui::TableSetColumnIndex(2);
-			if (createSimpleCombo("##ResidualType", solver.residualType, (int&)configResidual.residualType, IM_ARRAYSIZE(solver.residualType))) {
-				setResidualDefault(configResidual);
+			// Continuity is a mass-imbalance sum with no residual "type"; it still
+			// carries a tolerance.
+			if (std::strcmp(name, "Continuity") != 0) {
+				ImGui::TableSetColumnIndex(2);
+				if (createSimpleCombo("##ResidualType", solver.residualType, (int&)configResidual.type, IM_ARRAYSIZE(solver.residualType))) {
+					setResidualDefault(configResidual);
+				}
 			}
 
 			ImGui::TableSetColumnIndex(3);
-			createSimpleCombo("##ResidualNorm", solver.residualNormType, (int&)configResidual.residualNormType, IM_ARRAYSIZE(solver.residualNormType));
-
-			ImGui::TableSetColumnIndex(4);
-			createSimpleCombo("##ResidualScaling", solver.residualScalingType, (int&)configResidual.residualScaleType, IM_ARRAYSIZE(solver.residualScalingType));
+			inputDouble("##ResidualTol", &configResidual.tol, "%.3e");
 
 			ImGui::PopID();
 		}
@@ -113,6 +130,47 @@ void SolverGUI::drawResidualSettings() {
 		ImGui::EndTable();
 	}
 	ImGui::PopStyleVar();
+
+	// Norm and scaling are advanced knobs; keep them out of the main table and only
+	// expose them when the user opens this section.
+	if (ImGui::CollapsingHeader("Advanced Options")) {
+		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(8.0f, 5.0f));
+		if (ImGui::BeginTable("Residual Advanced", 3, UIFlags::TableSimpleFlags | ImGuiTableFlags_NoSavedSettings)) {
+			setupTableColumns(
+				column("Residual", 105.0f),
+				column("Norm", 130.0f, ImGuiTableColumnFlags_WidthStretch),
+				column("Scaling", 130.0f, ImGuiTableColumnFlags_WidthStretch)
+			);
+			ImGui::TableHeadersRow();
+
+			for (const char*& name : solver.residualPlotType) {
+				// Continuity has no norm/scaling; skip hidden fields too.
+				if (!rowVisible(name) || std::strcmp(name, "Continuity") == 0) {
+					continue;
+				}
+
+				ConfigResidual& configResidual = solver.cfg.at(name);
+
+				ImGui::TableNextRow();
+				ImGui::PushID(name);
+
+				ImGui::TableSetColumnIndex(0);
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted(name);
+
+				ImGui::TableSetColumnIndex(1);
+				createSimpleCombo("##ResidualNorm", solver.residualNormType, (int&)configResidual.normType, IM_ARRAYSIZE(solver.residualNormType));
+
+				ImGui::TableSetColumnIndex(2);
+				createSimpleCombo("##ResidualScaling", solver.residualScalingType, (int&)configResidual.scaleType, IM_ARRAYSIZE(solver.residualScalingType));
+
+				ImGui::PopID();
+			}
+
+			ImGui::EndTable();
+		}
+		ImGui::PopStyleVar();
+	}
 }
 
 
@@ -406,6 +464,10 @@ void SolverGUI::drawPropertiesPanel() {
 		sectionHeader("Fields");
 		drawFieldCheckbox();
 
+
+	}
+	else if (selectedItem == "Solver") {
+
 		sectionHeader("Solver");
 		if (beginPropertyTable("SolverGeneral")) {
 			labelRow("Solver");
@@ -419,8 +481,6 @@ void SolverGUI::drawPropertiesPanel() {
 
 		sectionHeader("Options");
 		if (beginPropertyTable("SolverOptions", 200.0f)) {
-			labelRow("Convection Discretization");
-			createSimpleCombo("##ConvectionScheme", solver.convectionDiscretizationType, (int&)(solver.convectionScheme), IM_ARRAYSIZE(solver.convectionDiscretizationType));
 
 			labelRow("Add Convection Term");
 			checkBox("##ConvectionTerm", &solver.configSolver.addConvectionTerm);
@@ -428,8 +488,26 @@ void SolverGUI::drawPropertiesPanel() {
 			labelRow("Transient");
 			checkBox("##TransientTerm", &solver.configSolver.transient);
 
+			labelRow("Convection Discretization");
+			createSimpleCombo("##ConvectionScheme", solver.convectionDiscretizationType, (int&)(solver.convectionScheme), IM_ARRAYSIZE(solver.convectionDiscretizationType));
+
+			labelRow("Non-Orthogonal Correctors");
+			inputInt("##NonOrthCorrectors", &project.solver.configSimple.nNonOrthCorrectors);
+			if (project.solver.configSimple.nNonOrthCorrectors < 0) {
+				project.solver.configSimple.nNonOrthCorrectors = 0;
+			}
+
+			labelRow("Pressure Gradient");
+			createSimpleCombo(
+				"##GradientScheme",
+				project.solver.gradientSchemeType,
+				(int&)project.solver.gradientScheme,
+				IM_ARRAYSIZE(project.solver.gradientSchemeType)
+			);
+
 			ImGui::EndTable();
 		}
+
 	}
 	else if (selectedItem == "Boundary Group") {
 		BoundarySegmentGroup* group = getBoundaryGroupByID(mesh.boundaryGroups, selectedBoundaryGroupID);
@@ -548,43 +626,23 @@ void SolverGUI::drawPropertiesPanel() {
 					column("Value", 150.0f, ImGuiTableColumnFlags_WidthStretch)
 				);
 
-				labelRow("Maximum Iterations");
-				inputInt("##SimpleMaxIter", &project.solver.configSimple.maxIter);
-				if (project.solver.configSimple.maxIter < 1) {
-					project.solver.configSimple.maxIter = 1;
-				}
-
 				labelRow("Plot Residual Every # Iterations");
 				inputInt("##SimpleCheckConv", &project.solver.configSimple.checkConv);
 				if (project.solver.configSimple.checkConv < 1) {
 					project.solver.configSimple.checkConv = 1;
 				}
 
-				labelRow("Momentum Tolerance");
-				inputDouble("##SimpleMomTol", &project.solver.configSimple.momTol, "%.3e");
+				labelRow("Maximum Outer Iterations");
+				inputInt("##SimpleMaxIter", &project.solver.configSimple.maxIter);
+				if (project.solver.configSimple.maxIter < 1) {
+					project.solver.configSimple.maxIter = 1;
+				}
 
-				labelRow("Continuity Tolerance");
-				inputDouble("##SimpleContTol", &project.solver.configSimple.ppTol, "%.3e");
-
-				labelRow("Linear Solver Max Iteration");
+				labelRow("Maximum Linear Solver Iteration");
 				inputInt("##LinearSolverIteration", &project.solver.configSolver.maxIter);
 				if (project.solver.configSolver.maxIter < 1) {
 					project.solver.configSolver.maxIter = 1;
 				}
-
-				labelRow("Non-Orthogonal Correctors");
-				inputInt("##NonOrthCorrectors", &project.solver.configSimple.nNonOrthCorrectors);
-				if (project.solver.configSimple.nNonOrthCorrectors < 0) {
-					project.solver.configSimple.nNonOrthCorrectors = 0;
-				}
-
-				labelRow("Pressure Gradient");
-				createSimpleCombo(
-					"##GradientScheme",
-					project.solver.gradientSchemeType,
-					(int&)project.solver.gradientScheme,
-					IM_ARRAYSIZE(project.solver.gradientSchemeType)
-				);
 
 			}
 			ImGui::EndTable();
@@ -649,6 +707,9 @@ void SolverGUI::draw() {
 		if (drawLeaf("General")) {
 			selectedBoundaryGroupID = -1;
 		}
+
+		// draw solver tree node
+		drawLeaf("Solver");
 
 		// draw boundary tree node
 		bool boundariesOpen = false;

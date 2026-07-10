@@ -12,8 +12,9 @@ struct SolverFieldOption {
 };
 
 enum ResidualType {
-	RESIDUAL_RAW = 0,
-	RESIDUAL_RMS = 1
+	RESIDUAL_SCALED = 0,
+	RESIDUAL_RAW = 1,
+	RESIDUAL_RMS = 2
 };
 
 enum ResidualNormType {
@@ -26,8 +27,8 @@ enum ResidualScalingType {
 	RESIDUAL_SCALING_NONE = 0,
 	RESIDUAL_SCALING_N = 1,
 	RESIDUAL_SCALING_SQRT_N = 2,
-	RESIDUAL_SCALING_MOMENTUM = 3,
-	RESIDUAL_SCALING_CORRECTION = 4
+	RESIDUAL_SCALING_DIAGONAL = 3,
+	RESIDUAL_SCALING_CONTINUITY = 4
 };
 
 enum LinearSolverType {
@@ -163,10 +164,10 @@ struct ConfigSolver {
 
 struct ConfigResidual {
 
-	ResidualType residualType				= RESIDUAL_RAW;
+	ResidualType type				= RESIDUAL_RAW;
 
-	ResidualNormType residualNormType		= RESIDUAL_LINF;
-	ResidualScalingType residualScaleType	= RESIDUAL_SCALING_NONE;
+	ResidualNormType normType		= RESIDUAL_LINF;
+	ResidualScalingType scaleType	= RESIDUAL_SCALING_NONE;
 
 	bool enabled = false;
 
@@ -174,6 +175,10 @@ struct ConfigResidual {
 	double* res = nullptr;
 	double* scale = nullptr;
 	double resVal = 0.0;
+	double scaleVal = 0.0;
+
+	// tolerance
+	double tol = 0.001;
 
 	void free() {
 		freeAllDev(res, scale);
