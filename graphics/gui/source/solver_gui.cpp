@@ -68,6 +68,53 @@ void SolverGUI::drawFieldCheckbox() {
 	ImGui::Checkbox("Multigrid", &solver.useMultigrid);
 }
 
+void SolverGUI::drawResidualSettings() {
+	sectionHeader("Residuals");
+
+	ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(8.0f, 5.0f));
+	if (ImGui::BeginTable("Residual Settings", 5, UIFlags::TableSimpleFlags | ImGuiTableFlags_NoSavedSettings)) {
+		setupTableColumns(
+			column("Plot", 44.0f),
+			column("Residual", 105.0f),
+			column("Type", 130.0f, ImGuiTableColumnFlags_WidthStretch),
+			column("Norm", 105.0f, ImGuiTableColumnFlags_WidthStretch),
+			column("Scaling", 105.0f, ImGuiTableColumnFlags_WidthStretch)
+		);
+		ImGui::TableHeadersRow();
+
+		for (const char*& name : solver.residualPlotType) {
+			ConfigResidual& configResidual = solver.configResiduals.at(name);
+
+			ImGui::TableNextRow();
+			ImGui::PushID(name);
+
+			ImGui::TableSetColumnIndex(0);
+			ImGui::AlignTextToFramePadding();
+			ImGui::Checkbox("##PlotResidual", &configResidual.enabled);
+
+			ImGui::TableSetColumnIndex(1);
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextUnformatted(name);
+
+			ImGui::TableSetColumnIndex(2);
+			if (createSimpleCombo("##ResidualType", solver.residualType, (int&)configResidual.residualType, IM_ARRAYSIZE(solver.residualType))) {
+				setResidualDefault(configResidual);
+			}
+
+			ImGui::TableSetColumnIndex(3);
+			createSimpleCombo("##ResidualNorm", solver.residualNormType, (int&)configResidual.residualNormType, IM_ARRAYSIZE(solver.residualNormType));
+
+			ImGui::TableSetColumnIndex(4);
+			createSimpleCombo("##ResidualScaling", solver.residualScalingType, (int&)configResidual.residualScaleType, IM_ARRAYSIZE(solver.residualScalingType));
+
+			ImGui::PopID();
+		}
+
+		ImGui::EndTable();
+	}
+	ImGui::PopStyleVar();
+}
+
 
 // ======================================================================
 // -------------------BOUNDARY VARIABLE DRAW CALLS-----------------------
@@ -489,76 +536,20 @@ void SolverGUI::drawPropertiesPanel() {
 
 	}
 	else if (selectedItem == "Convergence") {
-		sectionHeader("Residuals");
-
-		if (ImGui::BeginTable("Residual Type Settings", 3)) {
-
-			setupTableColumns(
-				column("Label", 100.0f),
-				column("Value", 150.0f),
-				column("Advanced", 50.0f)
-			);
-
-			labelRow("Residual Type");
-			for (const char*& name : solver.residualPlotType) {
-				ImGui::PushID(name);   // unique ImGui ID per residual, else the combos collide
-				if (createSimpleCombo("##ResidualType", solver.residualType, (int&)solver.configResiduals.at(name).residualType, IM_ARRAYSIZE(solver.residualType))) {
-					setResidualDefault(solver.configResiduals.at(name));
-				}
-				ImGui::PopID();
-			}
-
-			tableNextColumn();
-			if (ImGui::SmallButton("...##AdvancedResidualOptions")) {
-				ImGui::OpenPopup("Advanced Settings");
-			}
-
-			if (ImGui::BeginPopup("Advanced Settings")) {
-				if (ImGui::BeginTable("Residual Norm Settings", 2)) {
-
-					setupTableColumns(
-						column("Label", 130.0f),
-						column("Value", 100.0f)
-					);
-
-					for (const char*& name : solver.residualPlotType) {
-						ImGui::PushID(name);   // unique ImGui ID per residual, else the combos collide
-
-						labelRow(name);
-						createSimpleCombo("##ResidualNorm", solver.residualNormType, (int&)solver.configResiduals.at(name).residualNormType, IM_ARRAYSIZE(solver.residualNormType));
-
-						labelRow(name);
-						createSimpleCombo("##ResidualScaling", solver.residualScalingType, (int&)solver.configResiduals.at(name).residualScaleType, IM_ARRAYSIZE(solver.residualScalingType));
-
-						ImGui::PopID();
-					}
-					ImGui::EndTable();
-				}
-				ImGui::EndPopup();
-			}
-			ImGui::EndTable();
-		}
-
-		ImGui::TextDisabled("Plot residuals");
-
-		for (const char*& name : solver.residualPlotType) {
-
-			ImGui::Checkbox(name, &solver.configResiduals.at(name).enabled);
-			
-		}
+		drawResidualSettings();
 
 		sectionHeader("Tolerance");
 
-		if (ImGui::BeginTable("Iteration Settings", 2)) {
+		if (ImGui::BeginTable("Iteration Settings", 2, UIFlags::TableSimpleFlags)) {
 			if (solver.currentVelocitySolver == SOLVER_SIMPLE) {
 
 				setupTableColumns(
-					column("Label", 300.0f),
-					column("Value", 150.0f)
+					column("Label", 250.0f),
+					column("Value", 150.0f, ImGuiTableColumnFlags_WidthStretch)
 				);
 
 				labelRow("Maximum Iterations");
-				ImGui::InputInt("##SimpleMaxIter", &project.solver.configSimple.maxIter, 0.0, 0.0);
+				inputInt("##SimpleMaxIter", &project.solver.configSimple.maxIter);
 				if (project.solver.configSimple.maxIter < 1) {
 					project.solver.configSimple.maxIter = 1;
 				}
@@ -570,19 +561,19 @@ void SolverGUI::drawPropertiesPanel() {
 				}
 
 				labelRow("Momentum Tolerance");
-				ImGui::InputDouble("##SimpleMomTol", &project.solver.configSimple.momTol, 0.0, 0.0, "%.3e");
+				inputDouble("##SimpleMomTol", &project.solver.configSimple.momTol, "%.3e");
 
 				labelRow("Continuity Tolerance");
-				ImGui::InputDouble("##SimpleContTol", &project.solver.configSimple.ppTol, 0.0, 0.0, "%.3e");
+				inputDouble("##SimpleContTol", &project.solver.configSimple.ppTol, "%.3e");
 
 				labelRow("Linear Solver Max Iteration");
-				ImGui::InputInt("##LinearSolverIteration", &project.solver.configSolver.maxIter, 0.0, 0.0);
+				inputInt("##LinearSolverIteration", &project.solver.configSolver.maxIter);
 				if (project.solver.configSolver.maxIter < 1) {
 					project.solver.configSolver.maxIter = 1;
 				}
 
 				labelRow("Non-Orthogonal Correctors");
-				ImGui::InputInt("##NonOrthCorrectors", &project.solver.configSimple.nNonOrthCorrectors, 0.0, 0.0);
+				inputInt("##NonOrthCorrectors", &project.solver.configSimple.nNonOrthCorrectors);
 				if (project.solver.configSimple.nNonOrthCorrectors < 0) {
 					project.solver.configSimple.nNonOrthCorrectors = 0;
 				}

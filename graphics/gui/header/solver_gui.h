@@ -19,6 +19,8 @@ private:
 
 	void drawFieldCheckbox();
 
+	void drawResidualSettings();
+
 	void drawRowBoundaryVariableEditor(
 		BoundarySegmentGroup& group,
 		BoundaryVariable var,

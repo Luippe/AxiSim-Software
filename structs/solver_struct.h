@@ -61,15 +61,6 @@ enum GradientScheme {
 	GRAD_LSQ = 1
 };
 
-struct EnabledResiduals {
-	bool plotU = true;
-	bool plotV = true;
-	bool plotP = false;
-	bool plotCont = true;
-	bool plotTemp = false;
-	bool plotConc = false;
-};
-
 struct CudaTimer {
 
 	cudaEvent_t startTime, stopTime;
@@ -115,10 +106,6 @@ struct Coefficients {
 	double* AC = nullptr;
 	double* b = nullptr;
 
-	// residuals
-	double* res = nullptr;
-	double* scale = nullptr;
-
 	int* faceStart = nullptr;
 	int* faceNeighbor = nullptr;
 
@@ -127,11 +114,10 @@ struct Coefficients {
 	int N = 0;
 	int nFaceRefs = 0;
 	int useFaceCoeffs = 0;
-	double resVal = 0.0;
+
 
 	void free() {
 		freeAllDev(AE, AW, AN, AS, AF, AC, b);
-		freeAllDev(res, scale);
 		freeAllDev(faceStart, faceNeighbor);
 	}
 };
@@ -177,8 +163,6 @@ struct ConfigSolver {
 
 struct ConfigResidual {
 
-	ConfigResidual(Coefficients& coeff) : coeff(coeff) {};
-
 	ResidualType residualType				= RESIDUAL_RAW;
 
 	ResidualNormType residualNormType		= RESIDUAL_LINF;
@@ -186,7 +170,14 @@ struct ConfigResidual {
 
 	bool enabled = false;
 
-	Coefficients& coeff;
+	// residuals
+	double* res = nullptr;
+	double* scale = nullptr;
+	double resVal = 0.0;
+
+	void free() {
+		freeAllDev(res, scale);
+	}
 
 };
 

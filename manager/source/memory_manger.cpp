@@ -246,6 +246,20 @@ void freeBoundarySolverDevice(BoundarySolverDevice& dBC) {
 	freeBoundaryFieldDevice(dBC.conc);
 }
 
+
+void allocateResiduals(std::unordered_map<std::string, ConfigResidual>& configResiduals, const FVMesh& mesh) {
+
+	int N = mesh.numCells();
+
+	for (auto& [name, cfg] : configResiduals) {
+		cfg.res = deviceAlloc<double>(N);
+		cfg.scale = deviceAlloc<double>(N);
+
+		CUDA_CHECK(cudaMemset(cfg.res, 0, N * sizeof(double)));
+		CUDA_CHECK(cudaMemset(cfg.scale, 0, N * sizeof(double)));
+	}
+}
+
 void allocateCoefficients(Coefficients& coeff, int nr, int nz) {
 
 	// get N
@@ -262,8 +276,6 @@ void allocateCoefficients(Coefficients& coeff, int nr, int nz) {
 	coeff.AS = deviceAlloc<double>(N);
 	coeff.AC = deviceAlloc<double>(N);
 	coeff.b = deviceAlloc<double>(N);
-	coeff.res = deviceAlloc<double>(N);
-	coeff.scale = deviceAlloc<double>(N);
 
 	CUDA_CHECK(cudaMemset(coeff.AE, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.AW, 0, N * sizeof(double)));
@@ -271,9 +283,82 @@ void allocateCoefficients(Coefficients& coeff, int nr, int nz) {
 	CUDA_CHECK(cudaMemset(coeff.AS, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.AC, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.b, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.res, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.scale, 0, N * sizeof(double)));
 
+
+}
+
+
+void allocateCoefficients(std::unordered_map<std::string, Coefficients>& coefficients, const FVMesh& mesh) {
+
+	int N = mesh.numCells();
+
+	for (auto& [name, coeff] : coefficients) {
+
+		coeff.N = N;
+		coeff.nr = mesh.nr;
+		coeff.nz = mesh.nz;
+		coeff.useFaceCoeffs = 1;
+
+		coeff.AE = deviceAlloc<double>(N);
+		coeff.AW = deviceAlloc<double>(N);
+		coeff.AN = deviceAlloc<double>(N);
+		coeff.AS = deviceAlloc<double>(N);
+		coeff.AC = deviceAlloc<double>(N);
+		coeff.b = deviceAlloc<double>(N);
+
+
+		CUDA_CHECK(cudaMemset(coeff.AE, 0, N * sizeof(double)));
+		CUDA_CHECK(cudaMemset(coeff.AW, 0, N * sizeof(double)));
+		CUDA_CHECK(cudaMemset(coeff.AN, 0, N * sizeof(double)));
+		CUDA_CHECK(cudaMemset(coeff.AS, 0, N * sizeof(double)));
+		CUDA_CHECK(cudaMemset(coeff.AC, 0, N * sizeof(double)));
+		CUDA_CHECK(cudaMemset(coeff.b, 0, N * sizeof(double)));
+
+
+		std::vector<int> faceStart(N + 1, 0);
+		std::vector<int> faceNeighbor;
+
+		int totalFaceRefs = 0;
+		for (int c = 0; c < N; c++) {
+			faceStart[c] = totalFaceRefs;
+			totalFaceRefs += static_cast<int>(mesh.cells[c].faceIDs.size());
+		}
+
+		faceStart[N] = totalFaceRefs;
+		faceNeighbor.reserve(totalFaceRefs);
+
+		for (int c = 0; c < N; c++) {
+			for (int faceID : mesh.cells[c].faceIDs) {
+				int neighbor = -1;
+
+				if (faceID >= 0 && faceID < mesh.numFaces()) {
+					const FVFace& face = mesh.faces[faceID];
+					if (face.owner == c) {
+						neighbor = face.neighbor;
+					}
+					else if (face.neighbor == c) {
+						neighbor = face.owner;
+					}
+				}
+
+				faceNeighbor.push_back(neighbor);
+			}
+		}
+
+		coeff.nFaceRefs = (int)(faceNeighbor.size());
+
+		if (coeff.nFaceRefs > 0) {
+			coeff.AF = deviceAlloc<double>(coeff.nFaceRefs);
+			CUDA_CHECK(cudaMemset(coeff.AF, 0, coeff.nFaceRefs * sizeof(double)));
+		}
+		else {
+			coeff.AF = nullptr;
+		}
+
+		copyHostToDevice(coeff.faceStart, faceStart);
+		copyHostToDevice(coeff.faceNeighbor, faceNeighbor);
+
+	}
 
 }
 
@@ -291,8 +376,6 @@ void allocateCoefficients(Coefficients& coeff, const FVMesh& mesh) {
 	coeff.AS = deviceAlloc<double>(N);
 	coeff.AC = deviceAlloc<double>(N);
 	coeff.b = deviceAlloc<double>(N);
-	coeff.res = deviceAlloc<double>(N);
-	coeff.scale = deviceAlloc<double>(N);
 
 	CUDA_CHECK(cudaMemset(coeff.AE, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.AW, 0, N * sizeof(double)));
@@ -300,8 +383,6 @@ void allocateCoefficients(Coefficients& coeff, const FVMesh& mesh) {
 	CUDA_CHECK(cudaMemset(coeff.AS, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.AC, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.b, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.res, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.scale, 0, N * sizeof(double)));
 
 	std::vector<int> faceStart(N + 1, 0);
 	std::vector<int> faceNeighbor;

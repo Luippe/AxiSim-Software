@@ -11,8 +11,11 @@ struct MultiBlockMesh;
 void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f);
 
 // allocate memory for coefficient matrix
+void allocateCoefficients(std::unordered_map<std::string, Coefficients>& coefficients, const FVMesh& mesh);
 void allocateCoefficients(Coefficients& coeff, int nr, int nz);
 void allocateCoefficients(Coefficients& coeff, const FVMesh& mesh);
+
+void allocateResiduals(std::unordered_map<std::string, ConfigResidual>& configResiduals, const FVMesh& mesh);
 
 // allocate memory for simple algorithm
 void allocateSimple(Config& config, VariablesSimple& vars, FVMesh& mesh, const SolverFieldOption& option);

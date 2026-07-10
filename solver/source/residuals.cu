@@ -9,12 +9,13 @@ void residualRaw(uint8_t* activeCell, bool sign, ResidualPairs& pairs, int n) {
 
 	Coefficients coeff = pairs.coeff;
 	const double* x = pairs.x;
+	double* res = pairs.res;
 
 	if (n >= coeff.N) return;
 
 	if (activeCell && !activeCell[n]) {
-		if (coeff.res) {
-			coeff.res[n] = 0.0;
+		if (res) {
+			res[n] = 0.0;
 		}
 		return;
 	}
@@ -36,7 +37,7 @@ void residualRaw(uint8_t* activeCell, bool sign, ResidualPairs& pairs, int n) {
 		}
 
 		double r = coeff.b[n] - Ax;
-		coeff.res[n] = sign ? r : fabs(r);
+		res[n] = sign ? r : fabs(r);
 		return;
 	}
 
@@ -64,19 +65,19 @@ void residualRaw(uint8_t* activeCell, bool sign, ResidualPairs& pairs, int n) {
 
 	double r = coeff.b[n] - Ax;
 
-	coeff.res[n] = sign ? r : fabs(r);
+	res[n] = sign ? r : fabs(r);
 
 }
 
 
 __global__
-void continuityResidual(FVMeshDevice mesh, Coefficients coeff, VariablesSimple simple) {
+void continuityResidual(FVMeshDevice mesh, VariablesSimple simple, double* res) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
 	if (!mesh.cells.active[n]) {
-		coeff.res[n] = 0.0;
+		res[n] = 0.0;
 		return;
 	}
 
@@ -101,15 +102,37 @@ void continuityResidual(FVMeshDevice mesh, Coefficients coeff, VariablesSimple s
 		}
 	}
 
-	coeff.res[n] = imbalance;
+	res[n] = imbalance;
 
 }
 
-void residualL1Host(Coefficients& coeff) {
+void residualAllHost(ConfigResidual& cfg, const Coefficients& coeff) {
 
-	std::vector<double> h_vec(coeff.N);
+	// reduce the per-cell residual vector (cfg.res) to a single value
+	switch (cfg.residualNormType) {
 
-	cudaMemcpy(h_vec.data(), coeff.res, coeff.N * sizeof(double), cudaMemcpyDeviceToHost);
+	case RESIDUAL_L1:   residualL1Host(cfg, coeff.N);   break;
+	case RESIDUAL_L2:   residualL2Host(cfg, coeff.N);   break;
+	case RESIDUAL_LINF: residualLInfHost(cfg, coeff.N); break;
+
+	}
+
+	// scale the residual
+	switch (cfg.residualScaleType) {
+
+	case RESIDUAL_SCALING_NONE:                                             break;
+	case RESIDUAL_SCALING_N:        cfg.resVal /= coeff.N;                  break;
+	case RESIDUAL_SCALING_SQRT_N:   cfg.resVal /= sqrt((double)coeff.N);    break;
+	case RESIDUAL_SCALING_MOMENTUM:                                         break;
+
+	}
+}
+
+void residualL1Host(ConfigResidual& cfg, int N) {
+
+	std::vector<double> h_vec(N);
+
+	cudaMemcpy(h_vec.data(), cfg.res, N * sizeof(double), cudaMemcpyDeviceToHost);
 
 	double sum = 0.0;
 
@@ -117,15 +140,15 @@ void residualL1Host(Coefficients& coeff) {
 		sum += std::abs(x);
 	}
 
-	coeff.resVal = sum;
+	cfg.resVal = sum;
 }
 
 
-void residualL2Host(Coefficients& coeff) {
+void residualL2Host(ConfigResidual& cfg, int N) {
 
-	std::vector<double> h_vec(coeff.N);
+	std::vector<double> h_vec(N);
 
-	cudaMemcpy(h_vec.data(), coeff.res, coeff.N * sizeof(double), cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_vec.data(), cfg.res, N * sizeof(double), cudaMemcpyDeviceToHost);
 
 	double sum = 0.0;
 
@@ -133,21 +156,21 @@ void residualL2Host(Coefficients& coeff) {
 		sum += x * x;
 	}
 
-	coeff.resVal = sqrt(sum);
+	cfg.resVal = sqrt(sum);
 }
 
 
-void residualLInfHost(Coefficients& coeff) {
+void residualLInfHost(ConfigResidual& cfg, int N) {
 
-	std::vector<double> h_vec(coeff.N);
+	std::vector<double> h_vec(N);
 
-	cudaMemcpy(h_vec.data(), coeff.res, coeff.N * sizeof(double), cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_vec.data(), cfg.res, N * sizeof(double), cudaMemcpyDeviceToHost);
 
 	for (double& x : h_vec) {
 		x = std::abs(x);
 	}
 
-	coeff.resVal = *std::max_element(h_vec.begin(), h_vec.end());
+	cfg.resVal = *std::max_element(h_vec.begin(), h_vec.end());
 }
 
 void residualScaled() {

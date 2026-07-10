@@ -56,7 +56,22 @@ namespace {
 	constexpr std::uint32_t solverFileMagic = 0x53585641u; // "AXVS" little-endian
 	// v2: residual display settings (type/norm/scaling/enabled) are stored per-residual
 	// instead of as three global values. v1 files are still read and migrated.
-	constexpr std::uint32_t solverFileVersion = 2u;
+	// v3: the old global EnabledResiduals plot-toggle block was dropped from the
+	// payload; plot-enable now lives per-residual in ConfigResidual::enabled, which
+	// is already serialized in the per-residual block. v1/v2 files are still read.
+	constexpr std::uint32_t solverFileVersion = 3u;
+
+	// Dead on-disk block. v2 and the pre-magic layouts embedded a set of global
+	// plot-enable toggles here (the former EnabledResiduals struct). Plot-enable now
+	// lives per-residual in ConfigResidual::enabled, so this is only kept — with the
+	// same 5-byte size — to consume those bytes when loading old files.
+	struct LegacyEnabledResiduals {
+		bool plotU = false;
+		bool plotV = false;
+		bool plotCont = false;
+		bool plotTemp = false;
+		bool plotConc = false;
+	};
 
 	struct LegacyConfigSimple {
 		int maxIter = 50;
@@ -86,7 +101,7 @@ namespace {
 		return
 			sizeof(VariableUnits) +
 			sizeof(SolverFieldOption) +
-			sizeof(EnabledResiduals) +
+			sizeof(LegacyEnabledResiduals) +
 			sizeof(ConfigSolver) +
 			sizeof(VelocitySolverType) +
 			sizeof(ResidualType) +
@@ -104,7 +119,7 @@ namespace {
 		return
 			sizeof(VariableUnits) +
 			sizeof(SolverFieldOption) +
-			sizeof(EnabledResiduals) +
+			sizeof(LegacyEnabledResiduals) +
 			sizeof(ConfigSolver) +
 			sizeof(VelocitySolverType) +
 			sizeof(ResidualType) +
@@ -158,17 +173,19 @@ namespace {
 		it->second.enabled = enabled;
 	}
 
-	// Migrate an old single global residual setting onto every residual, taking each
-	// residual's enabled flag from the matching plot toggle in enabledResiduals.
+	// Migrate an old single global residual setting onto every residual. These old
+	// files carry no per-residual enable flag, so each residual keeps whatever
+	// enabled default initConfigResiduals gave it (U/V/Continuity on, rest off).
 	void applyGlobalResidualToAll(Solver& solver,
 		ResidualType type, ResidualNormType norm, ResidualScalingType scale) {
 
-		const EnabledResiduals& en = solver.enabledResiduals;
-		applyResidualSettings(solver, "U",             type, norm, scale, en.plotU);
-		applyResidualSettings(solver, "V",             type, norm, scale, en.plotV);
-		applyResidualSettings(solver, "Continuity",    type, norm, scale, en.plotCont);
-		applyResidualSettings(solver, "Temperature",   type, norm, scale, en.plotTemp);
-		applyResidualSettings(solver, "Concentration", type, norm, scale, en.plotConc);
+		for (const char* name : kResidualOrder) {
+			auto it = solver.configResiduals.find(name);
+			if (it == solver.configResiduals.end()) {
+				continue;
+			}
+			applyResidualSettings(solver, name, type, norm, scale, it->second.enabled);
+		}
 	}
 
 	// v2 residual block: type / norm / scaling / enabled for each residual, in kResidualOrder.
@@ -272,13 +289,39 @@ namespace {
 		}
 	}
 
-	// v2: per-residual display settings follow the common block (see writeResidualConfigs).
+	// v3: per-residual display settings follow the common block (see writeResidualConfigs).
+	// The v2 EnabledResiduals block is gone — plot-enable rides along per residual.
 	bool readCurrentSolverPayload(std::ifstream& in, Solver& solver) {
 		bool ok = readAll(
 			in,
 			solver.varUnits,
 			solver.fieldOption,
-			solver.enabledResiduals,
+			solver.configSolver,
+			solver.currentVelocitySolver,
+			solver.convectionScheme,
+			solver.saveKeyFrameIter,
+			solver.f,
+			solver.configSimple
+		);
+
+		if (!ok) {
+			return false;
+		}
+
+		return readResidualConfigs(in, solver);
+	}
+
+	// v2: identical to v3 but the payload still carries the dead EnabledResiduals
+	// block after fieldOption. Consume it into a throwaway; the authoritative enable
+	// flag is read from the per-residual block by readResidualConfigs.
+	bool readV2SolverPayload(std::ifstream& in, Solver& solver) {
+		LegacyEnabledResiduals deadEnabled;
+
+		bool ok = readAll(
+			in,
+			solver.varUnits,
+			solver.fieldOption,
+			deadEnabled,
 			solver.configSolver,
 			solver.currentVelocitySolver,
 			solver.convectionScheme,
@@ -297,6 +340,8 @@ namespace {
 	// v1 (and pre-magic files of the same shape): a single global residual
 	// type/norm/scaling. Read it into temporaries and migrate onto the per-residual map.
 	bool readV1SolverPayload(std::ifstream& in, Solver& solver) {
+		LegacyEnabledResiduals deadEnabled;
+
 		ResidualType        type  = RESIDUAL_RAW;
 		ResidualNormType    norm  = RESIDUAL_LINF;
 		ResidualScalingType scale = RESIDUAL_SCALING_NONE;
@@ -305,7 +350,7 @@ namespace {
 			in,
 			solver.varUnits,
 			solver.fieldOption,
-			solver.enabledResiduals,
+			deadEnabled,
 			solver.configSolver,
 			solver.currentVelocitySolver,
 			type,
@@ -327,6 +372,7 @@ namespace {
 
 	bool readLegacySolverPayload(std::ifstream& in, Solver& solver) {
 		LegacyConfigSimple legacySimple;
+		LegacyEnabledResiduals deadEnabled;
 
 		ResidualType        type  = RESIDUAL_RAW;
 		ResidualNormType    norm  = RESIDUAL_LINF;
@@ -336,7 +382,7 @@ namespace {
 			in,
 			solver.varUnits,
 			solver.fieldOption,
-			solver.enabledResiduals,
+			deadEnabled,
 			solver.configSolver,
 			solver.currentVelocitySolver,
 			type,
@@ -876,7 +922,6 @@ void saveFromPathSolver(std::ofstream& out, Solver& solver) {
 		out,
 		solver.varUnits,
 		solver.fieldOption,
-		solver.enabledResiduals,
 		solver.configSolver,
 		solver.currentVelocitySolver,
 		solver.convectionScheme,
@@ -885,7 +930,7 @@ void saveFromPathSolver(std::ofstream& out, Solver& solver) {
 		solver.configSimple
 	);
 
-	// per-residual display settings (v2): type / norm / scaling / enabled for each
+	// per-residual display settings (v3): type / norm / scaling / enabled for each
 	writeResidualConfigs(out, solver);
 
 }
@@ -923,7 +968,10 @@ void loadFromPathSolver(std::ifstream& in, Solver& solver) {
 		std::uint32_t version = 0;
 		if (readVar(in, version)) {
 			if (version == solverFileVersion) {
-				ok = readCurrentSolverPayload(in, solver);   // v2: per-residual settings
+				ok = readCurrentSolverPayload(in, solver);   // v3: per-residual settings, no enable block
+			}
+			else if (version == 2u) {
+				ok = readV2SolverPayload(in, solver);        // v2: dead enable block, then per-residual
 			}
 			else if (version == 1u) {
 				ok = readV1SolverPayload(in, solver);        // v1: global residual, migrated
@@ -993,12 +1041,6 @@ void loadAtLaunch(Project& project, AppSettings& settings) {
 		
 	}
 
-	//// load results file if it exists
-	//{
-	//	if (in) {
-	//		loadFromPathResults(in, project.results);
-	//	}
-	//}
 }
 
 void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc) {

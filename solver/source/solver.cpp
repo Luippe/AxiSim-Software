@@ -39,7 +39,7 @@ void printResidualConsole(int currentIteration, const std::unordered_map<std::st
     for (auto& [name, configResidual] : configResiduals) {
         if (!configResidual.enabled) continue;
 
-        line << "  " << name << ": " << configResidual.coeff.resVal;
+        line << "  " << name << ": " << configResidual.resVal;
 
     }
 
@@ -57,26 +57,26 @@ Solver::Solver(Config& config) :
 
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
 
-    //initCoefficients();
+    initCoefficients();
     initConfigResiduals();
     //setDefault();
 }
 
-//void Solver::initCoefficients() {
-//
-//
-//
-//}
+void Solver::initCoefficients() {
+    for (const char*& name : coefficientNames) {
+        coefficients.emplace(name, Coefficients{});
+    }
+}
 
 void Solver::initConfigResiduals() {
 
     configResiduals.clear();
 
-    configResiduals.emplace("U", ConfigResidual(uCoeff));
-    configResiduals.emplace("V", ConfigResidual(vCoeff));
-    configResiduals.emplace("Continuity", ConfigResidual(massFluxCoeff));
-    configResiduals.emplace("Temperature", ConfigResidual(tempCoeff));
-    configResiduals.emplace("Concentration", ConfigResidual(concCoeff));
+    configResiduals.emplace("U", ConfigResidual{});
+    configResiduals.emplace("V", ConfigResidual{});
+    configResiduals.emplace("Continuity", ConfigResidual{});
+    configResiduals.emplace("Temperature", ConfigResidual{});
+    configResiduals.emplace("Concentration", ConfigResidual{});
 
     configResiduals.at("U").enabled = true;
     configResiduals.at("V").enabled = true;
@@ -670,6 +670,17 @@ static void printBoundaryDiagnostics(
 
 void Solver::runSimple(const Mesh& mesh) {
 
+    // Field coefficient systems now live in the `coefficients` map (created by
+    // initCoefficients). Bind readable aliases into it so the body below still
+    // reads uCoeff/vCoeff/... These are references to the map's own storage, so
+    // free()/allocateCoefficients on them operate directly on the map entries.
+    Coefficients& uCoeff        = coefficients.at("U");
+    Coefficients& vCoeff        = coefficients.at("V");
+    Coefficients& ppCoeff       = coefficients.at("PP");
+    Coefficients& massFluxCoeff = coefficients.at("Continuity");
+    Coefficients& tempCoeff     = coefficients.at("Temperature");
+    Coefficients& concCoeff     = coefficients.at("Concentration");
+
     // create configs for solver and residual
     Config config{ f, g, itr, varUnits };
 
@@ -740,6 +751,7 @@ void Solver::runSimple(const Mesh& mesh) {
         massFluxCoeff.free();
         tempCoeff.free();
         concCoeff.free();
+        for (auto& [name, configResidual] : configResiduals) configResidual.free();
         simple.free();
 
         if (useFaceCoefficients) {
@@ -761,6 +773,9 @@ void Solver::runSimple(const Mesh& mesh) {
             allocateCoefficients(tempCoeff, nr, nz);
             allocateCoefficients(concCoeff, nr, nz);
         }
+
+        // per-field residual vectors (res/scale) live in configResiduals now
+        allocateResiduals(configResiduals, fvMesh);
 
         allocateSimple(config, simple, fvMesh, fieldOption);
 
@@ -910,7 +925,6 @@ void Solver::runSimple(const Mesh& mesh) {
             cudaMemsetAsync(simple.pp, 0, N * sizeof(double), stream);
             cudaMemsetAsync(simple.ppTemp, 0, N * sizeof(double), stream);
 
-
             for (int corr = 0; corr <= nNonOrth; corr++) {
                 computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
                 createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, applyNonOrtho);
@@ -970,10 +984,10 @@ void Solver::runSimple(const Mesh& mesh) {
                 residualAll << <blocks, threadsPerBlock, 0, stream >> > (
                     fvMeshDevice.cells.active,
                     false,
-                    ResidualPairs{ uCoeff, simple.u },
-                    ResidualPairs{ vCoeff, simple.v },
-                    ResidualPairs{ tempCoeff, simple.temp},
-                    ResidualPairs{ concCoeff, simple.conc}
+                    ResidualPairs{ uCoeff,    simple.u,    configResiduals.at("U").res },
+                    ResidualPairs{ vCoeff,    simple.v,    configResiduals.at("V").res },
+                    ResidualPairs{ tempCoeff, simple.temp, configResiduals.at("Temperature").res },
+                    ResidualPairs{ concCoeff, simple.conc, configResiduals.at("Concentration").res }
                     );
 
                 if (cudaError_t errResidualAll = cudaGetLastError(); errResidualAll != cudaSuccess) {
@@ -983,8 +997,8 @@ void Solver::runSimple(const Mesh& mesh) {
                 CUDA_CHECK(cudaStreamSynchronize(stream));
                 continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (
                     fvMeshDevice,
-                    massFluxCoeff,
-                    simple
+                    simple,
+                    configResiduals.at("Continuity").res
                     );
 
                 if (cudaError_t errContinuity = cudaGetLastError(); errContinuity != cudaSuccess) {
@@ -994,7 +1008,7 @@ void Solver::runSimple(const Mesh& mesh) {
                 CUDA_CHECK(cudaStreamSynchronize(stream));
                 for (auto& [name, configResidual] : configResiduals) {
                     if (configResidual.enabled) {
-                        residualAllHost(configResidual, configResidual.coeff);
+                        residualAllHost(configResidual, coefficients.at(name));
                     }
                 }
                 residualPlot->add(currentIteration, configResiduals);
@@ -1107,10 +1121,8 @@ void Solver::runSimple(const Mesh& mesh) {
     isReady = true;
 
     // free memory
-    //uCoeff.free();
-    //vCoeff.free();
-    //ppCoeff.free();
-    //massFluxCoeff.free();
+    // coefficient systems are freed/reallocated in the needsAllocation block above
+    // and kept across solves for continuation, so nothing is freed here.
     //simple.free();
     //free_GridConfig(configSolver.g);
 

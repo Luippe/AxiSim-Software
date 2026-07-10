@@ -1318,7 +1318,6 @@ void clearCoefficients(Coefficients coeff) {
 	if (coeff.AS) coeff.AS[n] = 0.0;
 	if (coeff.AC) coeff.AC[n] = 0.0;
 	if (coeff.b) coeff.b[n] = 0.0;
-	if (coeff.res) coeff.res[n] = 0.0;
 
 	if (coeff.AF && coeff.faceStart) {
 		int start = coeff.faceStart[n];

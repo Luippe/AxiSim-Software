@@ -150,7 +150,7 @@ void buildCoarseOperatorKernel(Coefficients fine, Coefficients coarse, const uin
 
 
 __global__
-void buildRestrictionKernel(Coefficients fine, Coefficients coarse, const uint8_t* coarseActive) {
+void buildRestrictionKernel(Coefficients fine, Coefficients coarse, const double* fineRes, const uint8_t* coarseActive) {
 
 	int nc = blockIdx.x * blockDim.x + threadIdx.x;
 	if (nc >= coarse.N) return;
@@ -166,10 +166,10 @@ void buildRestrictionKernel(Coefficients fine, Coefficients coarse, const uint8_
 	int fnz = fine.nz;
 
 	// average over 4 cells
-	double r1 = fine.res[id(2 * I, 2 * J + 1, fnz)];
-	double r2 = fine.res[id(2 * I, 2 * J, fnz)];
-	double r3 = fine.res[id(2 * I + 1, 2 * J, fnz)];
-	double r4 = fine.res[id(2 * I + 1, 2 * J + 1, fnz)];
+	double r1 = fineRes[id(2 * I, 2 * J + 1, fnz)];
+	double r2 = fineRes[id(2 * I, 2 * J, fnz)];
+	double r3 = fineRes[id(2 * I + 1, 2 * J, fnz)];
+	double r4 = fineRes[id(2 * I + 1, 2 * J + 1, fnz)];
 
 	coarse.b[nc] = 0.25 * (r1 + r2 + r3 + r4);
 
@@ -195,13 +195,13 @@ void buildProlongationKernel(Coefficients fine, Coefficients coarse, double* xf,
 }
 
 __global__
-void jacobiSmoother(Coefficients coeff, double* x, const uint8_t* active, double weight) {
+void jacobiSmoother(Coefficients coeff, double* x, const double* res, const uint8_t* active, double weight) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 	if (n >= coeff.N) return;
 	if (!active[n]) return;
 
-	x[n] += weight * coeff.res[n] / coeff.AC[n];
+	x[n] += weight * res[n] / coeff.AC[n];
 }
 
 void MultigridSolver::buildCoarseOperator(const MultigridLevel& fine, MultigridLevel& coarse, cudaStream_t& stream) {
@@ -216,7 +216,7 @@ void MultigridSolver::buildRestriction(const MultigridLevel& fine, MultigridLeve
 
 	int blocks = (coarse.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
 
-	buildRestrictionKernel << <blocks, mem.threadsPerBlock, 0, stream >> > (fine.coeff, coarse.coeff, coarse.d_active);
+	buildRestrictionKernel << <blocks, mem.threadsPerBlock, 0, stream >> > (fine.coeff, coarse.coeff, fine.res, coarse.d_active);
 
 }
 
@@ -229,13 +229,13 @@ void MultigridSolver::buildProlongation(const MultigridLevel& fine, MultigridLev
 
 void MultigridSolver::computeResidual(MultigridLevel& level, cudaStream_t& stream) {
 
-	int blocks = (level.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+	//int blocks = (level.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
 
-	residualAll << <blocks, mem.threadsPerBlock, 0, stream >> > (
-		level.d_active,
-		true,
-		ResidualPairs{level.coeff, level.x}
-		);
+	//residualAll << <blocks, mem.threadsPerBlock, 0, stream >> > (
+	//	level.d_active,
+	//	true,
+	//	ResidualPairs{level.coeff, level.x}
+	//	);
 
 }
 
@@ -260,7 +260,7 @@ void MultigridSolver::smoothen(MultigridLevel& level, cudaStream_t& stream, int 
 
 	for (int n = 0; n < iteration; n++) {
 		computeResidual(level, stream);
-		jacobiSmoother << <blocks, mem.threadsPerBlock, 0, stream >> > (level.coeff, level.x, level.d_active, jacobiWeight);
+		jacobiSmoother << <blocks, mem.threadsPerBlock, 0, stream >> > (level.coeff, level.x, level.res, level.d_active, jacobiWeight);
 	}
 }
 

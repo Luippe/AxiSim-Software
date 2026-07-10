@@ -25,6 +25,11 @@ struct MultigridLevel {
 	double* d_zFace = nullptr;
 	uint8_t* d_active = nullptr;
 
+	// per-level residual vector. Previously read off Coefficients::res, which was
+	// removed when residual state moved to ConfigResidual; a multigrid level owns
+	// its own residual for restriction/smoothing. Allocated when MG is wired in.
+	double* res = nullptr;
+
 	Coefficients coeff;
 
 };

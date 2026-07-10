@@ -7,10 +7,11 @@
 struct ResidualPairs {
 	Coefficients coeff;
 	const double* x = nullptr;
+	double* res = nullptr;   // per-cell residual output (owned by ConfigResidual)
 };
 
 __global__
-void continuityResidual(FVMeshDevice mesh, Coefficients coeff, VariablesSimple simple);
+void continuityResidual(FVMeshDevice mesh, VariablesSimple simple, double* res);
 
 
 template <typename... Systems>
@@ -26,51 +27,15 @@ __device__
 void residualRaw(uint8_t* activeCell, bool sign, ResidualPairs& pairs, int n);
 
 
-template <typename... Coefficients>
-void residualAllHost(ConfigResidual& configResidual, Coefficients&...coeff) {
-
-	// get residual values
-	switch (configResidual.residualNormType) {
-
-	case RESIDUAL_L1:
-		(residualL1Host(coeff), ...);
-		break;
-
-	case RESIDUAL_L2:
-		(residualL2Host(coeff), ...);
-		break;
-
-	case RESIDUAL_LINF:
-		(residualLInfHost(coeff), ...);
-		break;
-
-	}
-
-	// scale the residual
-	switch (configResidual.residualScaleType) {
-
-	case RESIDUAL_SCALING_NONE:
-		break;
-
-	case RESIDUAL_SCALING_N:
-		((coeff.resVal /= coeff.N), ...);
-		break;
-
-	case RESIDUAL_SCALING_SQRT_N:
-		((coeff.resVal /= sqrt(coeff.N)), ...);
-		break;
-
-	case RESIDUAL_SCALING_MOMENTUM:
-		break;
-	
-	}
-}
+// reduce a field's per-cell residual vector (cfg.res) to a single value (cfg.resVal).
+// coeff supplies the cell count N used for the norm/scaling.
+void residualAllHost(ConfigResidual& cfg, const Coefficients& coeff);
 
 // absolute sum
-void residualL1Host(Coefficients& coeff);
+void residualL1Host(ConfigResidual& cfg, int N);
 
 // least square
-void residualL2Host(Coefficients& coeff);
+void residualL2Host(ConfigResidual& cfg, int N);
 
 // get maximum absolute value of a residual vector
-void residualLInfHost(Coefficients& coeff);
+void residualLInfHost(ConfigResidual& cfg, int N);

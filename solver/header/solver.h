@@ -30,6 +30,7 @@ public:
 	const char* convectionDiscretizationType[3] = { "First Order Upwind", "Central Difference", "Second Order Upwind"};
 	const char* gradientSchemeType[2] = { "Green-Gauss", "Least Squares" };
 	const char* residualPlotType[5] = { "U", "V", "Continuity", "Temperature", "Concentration" };
+	const char* coefficientNames[6] = { "U", "V", "PP", "Continuity", "Temperature", "Concentration" };
 
 	std::vector<std::string> fieldType;
 
@@ -78,6 +79,9 @@ public:
 	// residual
 	std::unordered_map<std::string, ConfigResidual> configResiduals;
 
+	// coefficients
+	std::unordered_map<std::string, Coefficients> coefficients;
+
 	// scalar solution
 	SolutionScalar scalarSolutions;
 
@@ -88,10 +92,6 @@ public:
 	// after a solve so the inspector can report face fluxes and per-cell
 	// continuity imbalance.
 	std::vector<double> mDotHost;
-
-
-	// which variables will the residual plot show?
-	EnabledResiduals enabledResiduals;
 
 	// config for simple algorithm
 	ConfigSimple configSimple;
@@ -131,6 +131,8 @@ private:
 	// initialize config residuals
 	void initConfigResiduals();
 
+	void initCoefficients();
+
 	bool buildContinuationState(
 		const Mesh& mesh,
 		ContinuationState& state,
@@ -147,8 +149,6 @@ private:
 
 	// create solution map
 	void createSolutions(int N);
-
-	Coefficients uCoeff, vCoeff, ppCoeff, massFluxCoeff, tempCoeff, concCoeff;
 
 	MemoryConfig mem;
 	ContinuationState continuationState;

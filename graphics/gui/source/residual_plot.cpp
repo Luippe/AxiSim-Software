@@ -118,7 +118,7 @@ void ResidualPlot::add(int currentIteration, const std::unordered_map<std::strin
         if (!configResidual.enabled) continue;
 
         tabs[activeTabID].plots[idx++].y.push_back(
-            residualValueForPlot(configResidual.coeff.resVal)
+            residualValueForPlot(configResidual.resVal)
         );
     }
 }
