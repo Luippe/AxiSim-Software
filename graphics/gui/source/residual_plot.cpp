@@ -108,17 +108,17 @@ int closestPlotY(std::vector<Plot>& plots, int idx, double mouseY) {
     return best;
 }
 
-void ResidualPlot::add(int currentIteration, const std::vector<ResidualPrintItem>& residualsToPrint) {
+void ResidualPlot::add(int currentIteration, const std::unordered_map<std::string, ConfigResidual>& configResiduals) {
     std::lock_guard<std::mutex> lock(mutex);
     size_t idx = 0;
     int activeTabID = residualDockSpace.getActiveTabID();
 
     tabs[activeTabID].iterations.push_back((double)currentIteration);
-    for (const ResidualPrintItem& item : residualsToPrint) {
-        if (!item.enabled) continue;
+    for (const auto& [name, configResidual] : configResiduals) {
+        if (!configResidual.enabled) continue;
 
         tabs[activeTabID].plots[idx++].y.push_back(
-            residualValueForPlot(item.coeff->resVal)
+            residualValueForPlot(configResidual.coeff.resVal)
         );
     }
 }
@@ -177,12 +177,12 @@ void displayTextAtPos(double x, double y, ImPlotSpec& marker) {
 }
 
 
-void ResidualPlot::setName(const std::vector<ResidualPrintItem>& residualsToPlot) {
-    for (const ResidualPrintItem& residualPrint : residualsToPlot) {
-        if (residualPrint.enabled) {
+void ResidualPlot::setName(const std::unordered_map<std::string, ConfigResidual>& residualsToPlot) {
+    for (const auto& [name, configResidual] : residualsToPlot) {
+        if (configResidual.enabled) {
             int activeTabID = residualDockSpace.getActiveTabID();
             Plot plot;
-            plot.name = residualPrint.name;
+            plot.name = name;
             tabs[activeTabID].plots.push_back(std::move(plot));
         }
     }

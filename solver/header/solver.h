@@ -29,14 +29,11 @@ public:
 	const char* bcInletTypeNames[3]{ "Constant", "Flux", "Fully Developed" };
 	const char* convectionDiscretizationType[3] = { "First Order Upwind", "Central Difference", "Second Order Upwind"};
 	const char* gradientSchemeType[2] = { "Green-Gauss", "Least Squares" };
-	const char* residualPlotType[6] = { "U", "V", "Continuity", "Temperature", "Concentration" };
+	const char* residualPlotType[5] = { "U", "V", "Continuity", "Temperature", "Concentration" };
 
 	std::vector<std::string> fieldType;
 
 	VelocitySolverType currentVelocitySolver = SOLVER_SIMPLE;
-	ResidualType currentResidual = RESIDUAL_RAW;
-	ResidualNormType currentResidualNorm = RESIDUAL_LINF;
-	ResidualScalingType currentResidualScaling = RESIDUAL_SCALING_NONE;
 	ConvectionScheme convectionScheme = CONV_UPWIND;
 	GradientScheme gradientScheme = GRAD_LSQ;
 
@@ -77,6 +74,9 @@ public:
 
 	// solution fields
 	std::unordered_map<std::string, SolutionField> solutions;
+
+	// residual
+	std::unordered_map<std::string, ConfigResidual> configResiduals;
 
 	// scalar solution
 	SolutionScalar scalarSolutions;
@@ -120,9 +120,6 @@ private:
 		bool solveConcentration = false;
 	};
 
-	// store all the coeffs which will be printed
-	std::vector<ResidualPrintItem> residualsToPrint;
-
 	int currentIteration = 0;
 
 	// check if the solver can run
@@ -130,6 +127,9 @@ private:
 
 	// solve for mass imbalance
 	std::vector<double> getMassImbalance(int N);
+
+	// initialize config residuals
+	void initConfigResiduals();
 
 	bool buildContinuationState(
 		const Mesh& mesh,
@@ -142,8 +142,6 @@ private:
 		std::string* reason = nullptr
 	) const;
 
-	void createResidualPrintItems();
-
 	// determine what field we're solving for
 	void addFieldType();
 
@@ -151,6 +149,7 @@ private:
 	void createSolutions(int N);
 
 	Coefficients uCoeff, vCoeff, ppCoeff, massFluxCoeff, tempCoeff, concCoeff;
+
 	MemoryConfig mem;
 	ContinuationState continuationState;
 

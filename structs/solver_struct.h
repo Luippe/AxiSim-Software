@@ -25,7 +25,9 @@ enum ResidualNormType {
 enum ResidualScalingType {
 	RESIDUAL_SCALING_NONE = 0,
 	RESIDUAL_SCALING_N = 1,
-	RESIDUAL_SCALING_SQRT_N = 2
+	RESIDUAL_SCALING_SQRT_N = 2,
+	RESIDUAL_SCALING_MOMENTUM = 3,
+	RESIDUAL_SCALING_CORRECTION = 4
 };
 
 enum LinearSolverType {
@@ -112,8 +114,10 @@ struct Coefficients {
 	double* AF = nullptr;
 	double* AC = nullptr;
 	double* b = nullptr;
+
+	// residuals
 	double* res = nullptr;
-	double* initRes = nullptr;
+	double* scale = nullptr;
 
 	int* faceStart = nullptr;
 	int* faceNeighbor = nullptr;
@@ -126,15 +130,10 @@ struct Coefficients {
 	double resVal = 0.0;
 
 	void free() {
-		freeAllDev(AE, AW, AN, AS, AF, AC, b, res, initRes);
+		freeAllDev(AE, AW, AN, AS, AF, AC, b);
+		freeAllDev(res, scale);
 		freeAllDev(faceStart, faceNeighbor);
 	}
-};
-
-struct ResidualPrintItem {
-	const char* name;
-	bool enabled;
-	Coefficients* coeff;
 };
 
 struct IterationConfig {
@@ -177,9 +176,18 @@ struct ConfigSolver {
 };
 
 struct ConfigResidual {
-	ResidualType residualType;
-	ResidualNormType residualNormType;
-	ResidualScalingType residualScaleType;
+
+	ConfigResidual(Coefficients& coeff) : coeff(coeff) {};
+
+	ResidualType residualType				= RESIDUAL_RAW;
+
+	ResidualNormType residualNormType		= RESIDUAL_LINF;
+	ResidualScalingType residualScaleType	= RESIDUAL_SCALING_NONE;
+
+	bool enabled = false;
+
+	Coefficients& coeff;
+
 };
 
 struct VariablesSimple {

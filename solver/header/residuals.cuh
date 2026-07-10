@@ -60,11 +60,17 @@ void residualAllHost(ConfigResidual& configResidual, Coefficients&...coeff) {
 		((coeff.resVal /= sqrt(coeff.N)), ...);
 		break;
 
+	case RESIDUAL_SCALING_MOMENTUM:
+		break;
+	
 	}
 }
 
+// absolute sum
 void residualL1Host(Coefficients& coeff);
 
+// least square
 void residualL2Host(Coefficients& coeff);
 
+// get maximum absolute value of a residual vector
 void residualLInfHost(Coefficients& coeff);

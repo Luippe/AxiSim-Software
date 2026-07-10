@@ -57,13 +57,13 @@ public:
     void clearPlot(int i);
 
     // set the variables which will be plotted onto the current plot
-    void setName(const std::vector<ResidualPrintItem>& residualsToPlot);
+    void setName(const std::unordered_map<std::string, ConfigResidual>& configResiduals);
 
     // copy image to clipboard. DO NOT NEST INSIDE ANOTHER IMGUI FRAME
     bool copyActivePlotToClipboard();
 
     // add residuals to current plot
-    void add(int currentIteration, const std::vector<ResidualPrintItem>& residualsToPrint);
+    void add(int currentIteration, const std::unordered_map<std::string, ConfigResidual>& configResiduals);
 
 private:
 

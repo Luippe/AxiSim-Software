@@ -30,16 +30,16 @@
 } while(0)
 
 
-void printResidualConsole(int currentIteration, const std::vector<ResidualPrintItem>& residualsToPrint, Console* console) {
+void printResidualConsole(int currentIteration, const std::unordered_map<std::string, ConfigResidual>& configResiduals, Console* console) {
     std::ostringstream line;
 
     line << "ITERAITON: " << currentIteration;
     line << std::scientific << std::setprecision(6);
 
-    for (const ResidualPrintItem& item : residualsToPrint) {
-        if (!item.enabled) continue;
+    for (auto& [name, configResidual] : configResiduals) {
+        if (!configResidual.enabled) continue;
 
-        line << "  " << item.name << ": " << item.coeff->resVal;
+        line << "  " << name << ": " << configResidual.coeff.resVal;
 
     }
 
@@ -56,9 +56,33 @@ Solver::Solver(Config& config) :
     varUnits(config.varUnits){
 
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
+
+    //initCoefficients();
+    initConfigResiduals();
     //setDefault();
 }
 
+//void Solver::initCoefficients() {
+//
+//
+//
+//}
+
+void Solver::initConfigResiduals() {
+
+    configResiduals.clear();
+
+    configResiduals.emplace("U", ConfigResidual(uCoeff));
+    configResiduals.emplace("V", ConfigResidual(vCoeff));
+    configResiduals.emplace("Continuity", ConfigResidual(massFluxCoeff));
+    configResiduals.emplace("Temperature", ConfigResidual(tempCoeff));
+    configResiduals.emplace("Concentration", ConfigResidual(concCoeff));
+
+    configResiduals.at("U").enabled = true;
+    configResiduals.at("V").enabled = true;
+    configResiduals.at("Continuity").enabled = true;
+
+}
 
 void Solver::setDefault() {
 
@@ -82,7 +106,6 @@ void Solver::run(const Mesh& mesh) {
 
     shutdown();                 // end any previous solver threads
     addFieldType();             // add all solving field
-    createResidualPrintItems(); // must be called before residualPlot->setName
 
     solverRunning = true;
 
@@ -93,24 +116,9 @@ void Solver::run(const Mesh& mesh) {
 
 }
 
-
-void Solver::createResidualPrintItems() {
-
-    residualsToPrint.clear();
-
-    residualsToPrint.push_back({ "U", enabledResiduals.plotU, &uCoeff });
-    residualsToPrint.push_back({ "V", enabledResiduals.plotV, &vCoeff });
-    residualsToPrint.push_back({ "Continuity", enabledResiduals.plotCont, &massFluxCoeff});
-
-    if (enabledResiduals.plotTemp) {
-        residualsToPrint.push_back({ "Temperature", enabledResiduals.plotTemp, &tempCoeff });
-    }
-
-    if (enabledResiduals.plotConc) {
-        residualsToPrint.push_back({ "Concentration", enabledResiduals.plotConc, &concCoeff});
-    }
-}
-
+//void Solver::createResidualConfig(int N) {
+//
+//}
 
 void Solver::createSolutions(int N) {
 
@@ -664,7 +672,6 @@ void Solver::runSimple(const Mesh& mesh) {
 
     // create configs for solver and residual
     Config config{ f, g, itr, varUnits };
-    ConfigResidual configResidual{ currentResidual, currentResidualNorm, currentResidualScaling };
 
     const bool isStructuredMesh = mesh.currentMeshType == MeshType::Structured;
     const bool useFaceCoefficients = !isStructuredMesh;
@@ -725,7 +732,7 @@ void Solver::runSimple(const Mesh& mesh) {
 
     if (needsAllocation) {
 
-        residualPlot->setName(residualsToPrint);
+        residualPlot->setName(configResiduals);
 
         uCoeff.free();
         vCoeff.free();
@@ -904,9 +911,6 @@ void Solver::runSimple(const Mesh& mesh) {
             cudaMemsetAsync(simple.ppTemp, 0, N * sizeof(double), stream);
 
 
-
-
-
             for (int corr = 0; corr <= nNonOrth; corr++) {
                 computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
                 createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, applyNonOrtho);
@@ -962,8 +966,7 @@ void Solver::runSimple(const Mesh& mesh) {
             // ======================================================================
             // check for convergence and print residual to console
             if (k % configSimple.checkConv == 0) {
-                CUDA_CHECK(cudaGetLastError());
-                CUDA_CHECK(cudaStreamSynchronize(stream));
+
                 residualAll << <blocks, threadsPerBlock, 0, stream >> > (
                     fvMeshDevice.cells.active,
                     false,
@@ -972,27 +975,32 @@ void Solver::runSimple(const Mesh& mesh) {
                     ResidualPairs{ tempCoeff, simple.temp},
                     ResidualPairs{ concCoeff, simple.conc}
                     );
-                CUDA_CHECK(cudaGetLastError());
-                CUDA_CHECK(cudaStreamSynchronize(stream));
+
                 if (cudaError_t errResidualAll = cudaGetLastError(); errResidualAll != cudaSuccess) {
                     printf("residualAll launch error: %s\n", cudaGetErrorString(errResidualAll));
                 }
-
+                CUDA_CHECK(cudaGetLastError());
+                CUDA_CHECK(cudaStreamSynchronize(stream));
                 continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (
                     fvMeshDevice,
                     massFluxCoeff,
                     simple
                     );
-                CUDA_CHECK(cudaGetLastError());
-                CUDA_CHECK(cudaStreamSynchronize(stream));
+
                 if (cudaError_t errContinuity = cudaGetLastError(); errContinuity != cudaSuccess) {
                     printf("continuityResidual launch error: %s\n", cudaGetErrorString(errContinuity));
                 }
                 CUDA_CHECK(cudaGetLastError());
                 CUDA_CHECK(cudaStreamSynchronize(stream));
-                residualAllHost(configResidual, uCoeff, vCoeff, massFluxCoeff, tempCoeff, concCoeff);
-                residualPlot->add(currentIteration, residualsToPrint);
-                printResidualConsole(currentIteration, residualsToPrint, console);
+                for (auto& [name, configResidual] : configResiduals) {
+                    if (configResidual.enabled) {
+                        residualAllHost(configResidual, configResidual.coeff);
+                    }
+                }
+                residualPlot->add(currentIteration, configResiduals);
+                printResidualConsole(currentIteration, configResiduals, console);
+                CUDA_CHECK(cudaGetLastError());
+                CUDA_CHECK(cudaStreamSynchronize(stream));
                 //if (contRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
             }
             currentIteration++;

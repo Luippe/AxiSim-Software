@@ -263,7 +263,7 @@ void allocateCoefficients(Coefficients& coeff, int nr, int nz) {
 	coeff.AC = deviceAlloc<double>(N);
 	coeff.b = deviceAlloc<double>(N);
 	coeff.res = deviceAlloc<double>(N);
-	coeff.initRes = deviceAlloc<double>(N);
+	coeff.scale = deviceAlloc<double>(N);
 
 	CUDA_CHECK(cudaMemset(coeff.AE, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.AW, 0, N * sizeof(double)));
@@ -272,7 +272,7 @@ void allocateCoefficients(Coefficients& coeff, int nr, int nz) {
 	CUDA_CHECK(cudaMemset(coeff.AC, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.b, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.res, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.initRes, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.scale, 0, N * sizeof(double)));
 
 
 }
@@ -292,7 +292,7 @@ void allocateCoefficients(Coefficients& coeff, const FVMesh& mesh) {
 	coeff.AC = deviceAlloc<double>(N);
 	coeff.b = deviceAlloc<double>(N);
 	coeff.res = deviceAlloc<double>(N);
-	coeff.initRes = deviceAlloc<double>(N);
+	coeff.scale = deviceAlloc<double>(N);
 
 	CUDA_CHECK(cudaMemset(coeff.AE, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.AW, 0, N * sizeof(double)));
@@ -301,7 +301,7 @@ void allocateCoefficients(Coefficients& coeff, const FVMesh& mesh) {
 	CUDA_CHECK(cudaMemset(coeff.AC, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.b, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.res, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.initRes, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.scale, 0, N * sizeof(double)));
 
 	std::vector<int> faceStart(N + 1, 0);
 	std::vector<int> faceNeighbor;

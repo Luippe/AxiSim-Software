@@ -54,7 +54,9 @@ std::string wStringToString(std::wstring path) {
 
 namespace {
 	constexpr std::uint32_t solverFileMagic = 0x53585641u; // "AXVS" little-endian
-	constexpr std::uint32_t solverFileVersion = 1u;
+	// v2: residual display settings (type/norm/scaling/enabled) are stored per-residual
+	// instead of as three global values. v1 files are still read and migrated.
+	constexpr std::uint32_t solverFileVersion = 2u;
 
 	struct LegacyConfigSimple {
 		int maxIter = 50;
@@ -118,6 +120,94 @@ namespace {
 			sizeof(ConfigSimple);
 	}
 
+	// Fixed on-disk order of the named residuals for the v2 payload. Do NOT reorder:
+	// the file format depends on it. Each name must match a key inserted by
+	// Solver::initConfigResiduals so the loaded settings land on the right entry.
+	static const char* const kResidualOrder[] = {
+		"U", "V", "Continuity", "Temperature", "Concentration"
+	};
+
+	void clampResidualSettings(ResidualType& type, ResidualNormType& norm, ResidualScalingType& scale) {
+		if ((int)type < (int)RESIDUAL_RAW || (int)type > (int)RESIDUAL_RMS) {
+			type = RESIDUAL_RAW;
+		}
+		if ((int)norm < (int)RESIDUAL_L1 || (int)norm > (int)RESIDUAL_LINF) {
+			norm = RESIDUAL_LINF;
+		}
+		if ((int)scale < (int)RESIDUAL_SCALING_NONE || (int)scale > (int)RESIDUAL_SCALING_SQRT_N) {
+			scale = RESIDUAL_SCALING_NONE;
+		}
+	}
+
+	// Write one residual's settings into its live map entry, if present. The map is
+	// rebuilt with every name by Solver::initConfigResiduals before a load, and the
+	// coeff reference each entry holds must stay bound, so we only touch value fields.
+	void applyResidualSettings(Solver& solver, const char* name,
+		ResidualType type, ResidualNormType norm, ResidualScalingType scale, bool enabled) {
+
+		clampResidualSettings(type, norm, scale);
+
+		auto it = solver.configResiduals.find(name);
+		if (it == solver.configResiduals.end()) {
+			return;
+		}
+
+		it->second.residualType = type;
+		it->second.residualNormType = norm;
+		it->second.residualScaleType = scale;
+		it->second.enabled = enabled;
+	}
+
+	// Migrate an old single global residual setting onto every residual, taking each
+	// residual's enabled flag from the matching plot toggle in enabledResiduals.
+	void applyGlobalResidualToAll(Solver& solver,
+		ResidualType type, ResidualNormType norm, ResidualScalingType scale) {
+
+		const EnabledResiduals& en = solver.enabledResiduals;
+		applyResidualSettings(solver, "U",             type, norm, scale, en.plotU);
+		applyResidualSettings(solver, "V",             type, norm, scale, en.plotV);
+		applyResidualSettings(solver, "Continuity",    type, norm, scale, en.plotCont);
+		applyResidualSettings(solver, "Temperature",   type, norm, scale, en.plotTemp);
+		applyResidualSettings(solver, "Concentration", type, norm, scale, en.plotConc);
+	}
+
+	// v2 residual block: type / norm / scaling / enabled for each residual, in kResidualOrder.
+	void writeResidualConfigs(std::ofstream& out, const Solver& solver) {
+		for (const char* name : kResidualOrder) {
+			ResidualType        type    = RESIDUAL_RAW;
+			ResidualNormType    norm    = RESIDUAL_LINF;
+			ResidualScalingType scale   = RESIDUAL_SCALING_NONE;
+			bool                enabled = false;
+
+			auto it = solver.configResiduals.find(name);
+			if (it != solver.configResiduals.end()) {
+				type    = it->second.residualType;
+				norm    = it->second.residualNormType;
+				scale   = it->second.residualScaleType;
+				enabled = it->second.enabled;
+			}
+
+			writeAll(out, type, norm, scale, enabled);
+		}
+	}
+
+	bool readResidualConfigs(std::ifstream& in, Solver& solver) {
+		for (const char* name : kResidualOrder) {
+			ResidualType        type    = RESIDUAL_RAW;
+			ResidualNormType    norm    = RESIDUAL_LINF;
+			ResidualScalingType scale   = RESIDUAL_SCALING_NONE;
+			bool                enabled = false;
+
+			if (!readAll(in, type, norm, scale, enabled)) {
+				return false;
+			}
+
+			applyResidualSettings(solver, name, type, norm, scale, enabled);
+		}
+
+		return true;
+	}
+
 	void sanitizeSolverConfig(Solver& solver) {
 		if (solver.configSolver.maxIter < 1) {
 			solver.configSolver.maxIter = 20;
@@ -158,19 +248,10 @@ namespace {
 			solver.currentVelocitySolver = SOLVER_SIMPLE;
 		}
 
-		if ((int)solver.currentResidual < (int)RESIDUAL_RAW ||
-			(int)solver.currentResidual > (int)RESIDUAL_RMS) {
-			solver.currentResidual = RESIDUAL_RAW;
-		}
-
-		if ((int)solver.currentResidualNorm < (int)RESIDUAL_L1 ||
-			(int)solver.currentResidualNorm > (int)RESIDUAL_LINF) {
-			solver.currentResidualNorm = RESIDUAL_LINF;
-		}
-
-		if ((int)solver.currentResidualScaling < (int)RESIDUAL_SCALING_NONE ||
-			(int)solver.currentResidualScaling > (int)RESIDUAL_SCALING_SQRT_N) {
-			solver.currentResidualScaling = RESIDUAL_SCALING_NONE;
+		// residual display settings are now per-residual; clamp each entry in place
+		for (auto& entry : solver.configResiduals) {
+			ConfigResidual& cfg = entry.second;
+			clampResidualSettings(cfg.residualType, cfg.residualNormType, cfg.residualScaleType);
 		}
 
 		if ((int)solver.convectionScheme < (int)CONV_UPWIND ||
@@ -191,26 +272,34 @@ namespace {
 		}
 	}
 
+	// v2: per-residual display settings follow the common block (see writeResidualConfigs).
 	bool readCurrentSolverPayload(std::ifstream& in, Solver& solver) {
-		return readAll(
+		bool ok = readAll(
 			in,
 			solver.varUnits,
 			solver.fieldOption,
 			solver.enabledResiduals,
 			solver.configSolver,
 			solver.currentVelocitySolver,
-			solver.currentResidual,
-			solver.currentResidualNorm,
-			solver.currentResidualScaling,
 			solver.convectionScheme,
 			solver.saveKeyFrameIter,
 			solver.f,
 			solver.configSimple
 		);
+
+		if (!ok) {
+			return false;
+		}
+
+		return readResidualConfigs(in, solver);
 	}
 
-	bool readLegacySolverPayload(std::ifstream& in, Solver& solver) {
-		LegacyConfigSimple legacySimple;
+	// v1 (and pre-magic files of the same shape): a single global residual
+	// type/norm/scaling. Read it into temporaries and migrate onto the per-residual map.
+	bool readV1SolverPayload(std::ifstream& in, Solver& solver) {
+		ResidualType        type  = RESIDUAL_RAW;
+		ResidualNormType    norm  = RESIDUAL_LINF;
+		ResidualScalingType scale = RESIDUAL_SCALING_NONE;
 
 		bool ok = readAll(
 			in,
@@ -219,9 +308,40 @@ namespace {
 			solver.enabledResiduals,
 			solver.configSolver,
 			solver.currentVelocitySolver,
-			solver.currentResidual,
-			solver.currentResidualNorm,
-			solver.currentResidualScaling,
+			type,
+			norm,
+			scale,
+			solver.convectionScheme,
+			solver.saveKeyFrameIter,
+			solver.f,
+			solver.configSimple
+		);
+
+		if (!ok) {
+			return false;
+		}
+
+		applyGlobalResidualToAll(solver, type, norm, scale);
+		return true;
+	}
+
+	bool readLegacySolverPayload(std::ifstream& in, Solver& solver) {
+		LegacyConfigSimple legacySimple;
+
+		ResidualType        type  = RESIDUAL_RAW;
+		ResidualNormType    norm  = RESIDUAL_LINF;
+		ResidualScalingType scale = RESIDUAL_SCALING_NONE;
+
+		bool ok = readAll(
+			in,
+			solver.varUnits,
+			solver.fieldOption,
+			solver.enabledResiduals,
+			solver.configSolver,
+			solver.currentVelocitySolver,
+			type,
+			norm,
+			scale,
 			solver.saveKeyFrameIter,
 			legacySimple
 		);
@@ -229,6 +349,8 @@ namespace {
 		if (!ok) {
 			return false;
 		}
+
+		applyGlobalResidualToAll(solver, type, norm, scale);
 
 		solver.convectionScheme = CONV_UPWIND;
 		solver.configSimple.maxIter = legacySimple.maxIter;
@@ -757,14 +879,14 @@ void saveFromPathSolver(std::ofstream& out, Solver& solver) {
 		solver.enabledResiduals,
 		solver.configSolver,
 		solver.currentVelocitySolver,
-		solver.currentResidual,
-		solver.currentResidualNorm,
-		solver.currentResidualScaling,
 		solver.convectionScheme,
 		solver.saveKeyFrameIter,
 		solver.f,
 		solver.configSimple
 	);
+
+	// per-residual display settings (v2): type / norm / scaling / enabled for each
+	writeResidualConfigs(out, solver);
 
 }
 
@@ -799,8 +921,13 @@ void loadFromPathSolver(std::ifstream& in, Solver& solver) {
 
 	if (magic == solverFileMagic) {
 		std::uint32_t version = 0;
-		if (readVar(in, version) && version == solverFileVersion) {
-			ok = readCurrentSolverPayload(in, solver);
+		if (readVar(in, version)) {
+			if (version == solverFileVersion) {
+				ok = readCurrentSolverPayload(in, solver);   // v2: per-residual settings
+			}
+			else if (version == 1u) {
+				ok = readV1SolverPayload(in, solver);        // v1: global residual, migrated
+			}
 		}
 	}
 	else {
@@ -809,8 +936,9 @@ void loadFromPathSolver(std::ifstream& in, Solver& solver) {
 
 		const std::streamoff bytesLeft = remainingBytes(in);
 
+		// pre-magic files use the v1 (single global residual) layout
 		if (bytesLeft == currentSolverPayloadSize()) {
-			ok = readCurrentSolverPayload(in, solver);
+			ok = readV1SolverPayload(in, solver);
 		}
 		else if (bytesLeft >= legacySolverPayloadSize()) {
 			ok = readLegacySolverPayload(in, solver);

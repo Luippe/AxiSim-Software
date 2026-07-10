@@ -36,16 +36,28 @@ public:
 
 	MultigridSolver(MemoryConfig& mem, GridLevel& grid);
 
+	std::vector<GridLevel> grids;
+	std::vector<MultigridLevel> levels;
+
+	// run multigrid. this will be called in the solver
+	void run(Coefficients& coeff, cudaStream_t& stream, double* x);
+
+	MemoryConfig& mem;
+
+private:
+
+	double jacobiWeight = 0.6;
+	int jacobiSweep = 75;
+	int jacobiPrePostSweep = 3;
+
+
 	// coarsen the grid by halve. this assumes the canCoarsen(grid) return true
 	GridLevel coarsenGrid(const GridLevel& grid);
 
 	void computeResidual(MultigridLevel& level, cudaStream_t& stream);
 
-	std::vector<GridLevel> grids;
-	std::vector<MultigridLevel> levels;
-
 	// smoothen the field
-	void smoothen(MultigridLevel& level, cudaStream_t& stream);
+	void smoothen(MultigridLevel& level, cudaStream_t& stream, int iteration);
 
 	void buildHierarchy(GridLevel grid);
 
@@ -58,26 +70,13 @@ public:
 	// populate levels
 	void buildLevels();
 
-	MultigridLevel createMultigridLevel(GridLevel& grid);
-
 	// Route A coarse operator: build the coarse level's 5-point stencil by
 	// averaging the fine level's face coefficients (which already carry d = A/aP)
 	void buildCoarseOperator(const MultigridLevel& fine, MultigridLevel& coarse, cudaStream_t& stream);
 
+	// create multigrid level
+	MultigridLevel createMultigridLevel(GridLevel& grid);
+
 	// two grid cycles
 	void twoGridCycle(cudaStream_t& stream);
-
-	// run vcycle
-	void vCycle();
-
-	// run multigrid. this will be called in the solver
-	void run(Coefficients& coeff, cudaStream_t& stream, double* x);
-
-	MemoryConfig& mem;
-
-private:
-
-	double jacobiWeight = 0.6;
-	int jacobiSweep = 10;
-
 };

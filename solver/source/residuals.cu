@@ -136,7 +136,7 @@ void residualL2Host(Coefficients& coeff) {
 	coeff.resVal = sqrt(sum);
 }
 
-// get maximum absolute value of a residual vector
+
 void residualLInfHost(Coefficients& coeff) {
 
 	std::vector<double> h_vec(coeff.N);
@@ -150,3 +150,6 @@ void residualLInfHost(Coefficients& coeff) {
 	coeff.resVal = *std::max_element(h_vec.begin(), h_vec.end());
 }
 
+void residualScaled() {
+
+}

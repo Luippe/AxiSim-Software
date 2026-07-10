@@ -97,24 +97,7 @@ void MultigridSolver::buildHierarchy(GridLevel fine) {
 	}
 }
 
-void MultigridSolver::run(Coefficients& coeff, cudaStream_t& stream, double* x) {
 
-	cudaMemcpyAsync(levels[0].x, x, coeff.N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-
-	// load the fine operator's DATA into level 0's own buffers (not `= coeff`,
-	// which would leak level 0's buffers and alias the solver's arrays)
-	copyCoefficients(levels[0].coeff, coeff, levels[0].grid.N, stream);
-
-	// start at index 1, as the 0th index contains the fine level
-	for (int l = 1; l < levels.size(); l++) {
-		buildCoarseOperator(levels[l - 1], levels[l], stream);
-	}
-
-	twoGridCycle(stream);
-
-	cudaMemcpyAsync(x, levels[0].x, coeff.N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-	cudaStreamSynchronize(stream);
-}
 
 // ============================================================================
 // Route A coarse operator: build A_H by AVERAGING the fine face coefficients.
@@ -261,25 +244,41 @@ void MultigridSolver::twoGridCycle(cudaStream_t& stream) {
 	MultigridLevel& fine = levels[0];
 	MultigridLevel& coarse = levels[1];
 
-	smoothen(fine, stream);
+	smoothen(fine, stream, jacobiPrePostSweep);
 	computeResidual(fine, stream);
 	buildRestriction(fine, coarse, stream);
 	cudaMemsetAsync(coarse.x, 0, coarse.grid.N * sizeof(double), stream);
-	smoothen(coarse, stream);
+	smoothen(coarse, stream, jacobiSweep);
 	buildProlongation(fine, coarse, stream);
-	smoothen(fine, stream);
+	smoothen(fine, stream, jacobiPrePostSweep);
 }
 
-void MultigridSolver::vCycle() {
 
-}
-
-void MultigridSolver::smoothen(MultigridLevel& level, cudaStream_t& stream) {
+void MultigridSolver::smoothen(MultigridLevel& level, cudaStream_t& stream, int iteration) {
 
 	int blocks = (level.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
 
-	for (int n = 0; n < jacobiSweep; n++) {
+	for (int n = 0; n < iteration; n++) {
 		computeResidual(level, stream);
 		jacobiSmoother << <blocks, mem.threadsPerBlock, 0, stream >> > (level.coeff, level.x, level.d_active, jacobiWeight);
 	}
+}
+
+void MultigridSolver::run(Coefficients& coeff, cudaStream_t& stream, double* x) {
+
+	cudaMemcpyAsync(levels[0].x, x, coeff.N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+
+	// load the fine operator's DATA into level 0's own buffers (not `= coeff`,
+	// which would leak level 0's buffers and alias the solver's arrays)
+	copyCoefficients(levels[0].coeff, coeff, levels[0].grid.N, stream);
+
+	// start at index 1, as the 0th index contains the fine level
+	for (int l = 1; l < levels.size(); l++) {
+		buildCoarseOperator(levels[l - 1], levels[l], stream);
+	}
+
+	twoGridCycle(stream);
+
+	cudaMemcpyAsync(x, levels[0].x, coeff.N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+	cudaStreamSynchronize(stream);
 }

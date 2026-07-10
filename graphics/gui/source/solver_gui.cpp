@@ -29,15 +29,16 @@ SolverGUI::SolverGUI(Project& project, AppConfig& appConfig) :
 // ======================================================================
 // -----------------------HELPER FUNCTIONS-------------------------------
 // ======================================================================
-void SolverGUI::setResidualDefault() {
-	switch (solver.currentResidual) {
+// set default values for residual settings based on the current residual type
+void setResidualDefault(ConfigResidual& configRes) {
+	switch (configRes.residualType) {
 	case RESIDUAL_RAW:
-		solver.currentResidualNorm = RESIDUAL_LINF;
-		solver.currentResidualScaling = RESIDUAL_SCALING_NONE;
+		configRes.residualNormType = RESIDUAL_LINF;
+		configRes.residualScaleType = RESIDUAL_SCALING_NONE;
 		break;
 	case RESIDUAL_RMS:
-		solver.currentResidualNorm = RESIDUAL_L2;
-		solver.currentResidualScaling = RESIDUAL_SCALING_SQRT_N;
+		configRes.residualNormType = RESIDUAL_L2;
+		configRes.residualScaleType = RESIDUAL_SCALING_SQRT_N;
 		break;
 	}
 }
@@ -499,8 +500,12 @@ void SolverGUI::drawPropertiesPanel() {
 			);
 
 			labelRow("Residual Type");
-			if (createSimpleCombo("##ResidualType", solver.residualType, (int&)solver.currentResidual, IM_ARRAYSIZE(solver.residualType))) {
-				setResidualDefault();
+			for (const char*& name : solver.residualPlotType) {
+				ImGui::PushID(name);   // unique ImGui ID per residual, else the combos collide
+				if (createSimpleCombo("##ResidualType", solver.residualType, (int&)solver.configResiduals.at(name).residualType, IM_ARRAYSIZE(solver.residualType))) {
+					setResidualDefault(solver.configResiduals.at(name));
+				}
+				ImGui::PopID();
 			}
 
 			tableNextColumn();
@@ -516,12 +521,17 @@ void SolverGUI::drawPropertiesPanel() {
 						column("Value", 100.0f)
 					);
 
-					labelRow("Residual Norm Type");
-					createSimpleCombo("##ResidualNorm", solver.residualNormType, (int&)solver.currentResidualNorm, IM_ARRAYSIZE(solver.residualNormType));
+					for (const char*& name : solver.residualPlotType) {
+						ImGui::PushID(name);   // unique ImGui ID per residual, else the combos collide
 
-					labelRow("Residual Scaling");
-					createSimpleCombo("##ResidualScaling", solver.residualScalingType, (int&)solver.currentResidualScaling, IM_ARRAYSIZE(solver.residualScalingType));
+						labelRow(name);
+						createSimpleCombo("##ResidualNorm", solver.residualNormType, (int&)solver.configResiduals.at(name).residualNormType, IM_ARRAYSIZE(solver.residualNormType));
 
+						labelRow(name);
+						createSimpleCombo("##ResidualScaling", solver.residualScalingType, (int&)solver.configResiduals.at(name).residualScaleType, IM_ARRAYSIZE(solver.residualScalingType));
+
+						ImGui::PopID();
+					}
 					ImGui::EndTable();
 				}
 				ImGui::EndPopup();
@@ -531,16 +541,10 @@ void SolverGUI::drawPropertiesPanel() {
 
 		ImGui::TextDisabled("Plot residuals");
 
-		ImGui::Checkbox("U", &solver.enabledResiduals.plotU);
-		ImGui::Checkbox("V", &solver.enabledResiduals.plotV);
-		ImGui::Checkbox("Continuity", &solver.enabledResiduals.plotCont);
+		for (const char*& name : solver.residualPlotType) {
 
-		if (solver.fieldOption.solveEnergy) {
-			ImGui::Checkbox("Temperature", &solver.enabledResiduals.plotTemp);
-		}
-
-		if (solver.fieldOption.solveConcentration) {
-			ImGui::Checkbox("Concentration", &solver.enabledResiduals.plotConc);
+			ImGui::Checkbox(name, &solver.configResiduals.at(name).enabled);
+			
 		}
 
 		sectionHeader("Tolerance");

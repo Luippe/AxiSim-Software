@@ -14,9 +14,6 @@ public:
 
 private:
 
-	// set default values for residual settings based on the current residual type
-	void setResidualDefault();
-
 	// draw properties panel when a tree node is clicked on
 	void drawPropertiesPanel();
 
