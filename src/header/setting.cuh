@@ -96,17 +96,17 @@ struct FluidPropertyConfig {
 
 
 
-	double Vmax = 2e-4;
-	double Km = 5e-4;
+	double Vmax = 200;
+	double Km = 00.5;
 	double n = 1.0;
 	double m = 1.0;
-	double K2 = 0.4907382388;
+	double K2 = 0.1;
 	double V2 = 0.0;
-	double d = 0.313;
+	double d = 1e-6;
 
-	double D_isf = 1e-4;
+	double D_isf = 1e-10;
 	double D = 3.0277e-9;
-	double Umax = 8.444199e-2;
+	double Umax = 8.444199e-5;
 
 };
 

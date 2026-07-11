@@ -142,12 +142,18 @@ void addUTransientCoefficient(Config config, Coefficients uCoeff, VariablesSimpl
 __global__
 void addVTransientCoefficient(Config config, Coefficients vCoeff, VariablesSimple simple, double dt);
 
+// fluxScale multiplies the face MASS flux (mDot = rho*u*area) before it is used
+// as the convecting flux F. Momentum convects mass, so it passes 1.0. A passive
+// scalar (species concentration) convects with the VOLUMETRIC flux u*area, so it
+// passes 1/rho to divide the density out and stay consistent with the kinematic
+// diffusivity (f.D) used by addDiffusionCoefficient.
 __global__
 void addConvectionCoefficient(
 	FVMeshDevice mesh,
 	VariablesSimple simple,
 	Coefficients coeff,
-	BoundaryFieldDevice bc
+	BoundaryFieldDevice bc,
+	double fluxScale
 );
 
 // One-shot post-solve diagnostic for reactive (Michaelis-Menten / Hill) walls.

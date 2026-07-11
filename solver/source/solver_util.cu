@@ -1072,7 +1072,8 @@ void addConvectionCoefficient(
 	FVMeshDevice mesh,
 	VariablesSimple simple,
 	Coefficients coeff,
-	BoundaryFieldDevice bc
+	BoundaryFieldDevice bc,
+	double fluxScale
 ) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -1094,8 +1095,10 @@ void addConvectionCoefficient(
 		int owner = mesh.faces.owner[faceID];
 		int neighbor = mesh.faces.neighbor[faceID];
 
-		// mDot is stored positive outward from owner.
-		double Fowner = simple.mDot[faceID];
+		// mDot is stored positive outward from owner. It is a MASS flux
+		// (rho*u*area); fluxScale converts it to the flux this field actually
+		// convects (1.0 for momentum, 1/rho for a passive scalar -> volumetric).
+		double Fowner = simple.mDot[faceID] * fluxScale;
 
 		double F = 0.0;
 

@@ -886,11 +886,6 @@ void Solver::runSimple(const Mesh& mesh) {
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (concCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (massFluxCoeff);
 
-            // Cell-centered velocity gradients for the momentum non-orthogonal
-            // (cross-diffusion) correction, recomputed once per iteration with the
-            // user-selected scheme so the correction uses the same gradient as the
-            // rest of the solver instead of hard-wired Green-Gauss. Same stream as
-            // the assembly below, so they are ready before it reads them.
             if (applyNonOrtho) {
                 computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, gradientScheme);
                 computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, gradientScheme);
@@ -898,22 +893,19 @@ void Solver::runSimple(const Mesh& mesh) {
 
             // create coeffs for velocity and pressure correction equations
             addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, bcDevice.u, simple.v, simple.gradUZ, simple.gradUR, applyNonOrtho, f.mu);
-            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, bcDevice.v,  simple.u, simple.gradVZ, simple.gradVR, applyNonOrtho, f.mu);
-            
+            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, bcDevice.v, simple.u, simple.gradVZ, simple.gradVR, applyNonOrtho, f.mu);
+
             //addRadialMomentumCylindricalSource << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, vCoeff);
-            if (configSolver.addConvectionTerm) {
-                addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, uCoeff, bcDevice.u);
-                addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, vCoeff, bcDevice.v);
+            if (addConvectionTerm) {
+                addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, uCoeff, bcDevice.u, 1.0);
+                addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, vCoeff, bcDevice.v, 1.0);
             }
 
-    //        if (config.transient) {
-				//addUTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (config, uCoeff, simple);
-				//addVTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (config, vCoeff, simple);
-    //        }
+            //        if (config.transient) {
+                        //addUTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (config, uCoeff, simple);
+                        //addVTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (config, vCoeff, simple);
+            //        }
 
-            // grad(p) for the momentum body force AND Rhie-Chow, computed once
-            // with the selected scheme. Held in gradPZ/gradPR until the p'
-            // correctors overwrite it.
             computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.p, simple.p, simple.gradPZ, simple.gradPR, gradientScheme);
 
             createMomentumPressureRhs << <blocks, threadsPerBlock, 0, stream >> > (
@@ -967,9 +959,8 @@ void Solver::runSimple(const Mesh& mesh) {
 
             // update field variables
             updateVelocity << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, bcDevice.p);
-			updateMassFlux << <faceBlocks, faceThreads, 0, stream >> > (config, fvMeshDevice, simple, bcDevice.p, applyNonOrtho);
+            updateMassFlux << <faceBlocks, faceThreads, 0, stream >> > (config, fvMeshDevice, simple, bcDevice.p, applyNonOrtho);
             updatePressure << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple);
-
 
             // ======================================================================
             // -----------------------ENERGY EQUATION--------------------------------
@@ -980,7 +971,11 @@ void Solver::runSimple(const Mesh& mesh) {
                 }
                 addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, applyNonOrtho, thermDiffusivity);
                 if (addConvectionTerm) {
-                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, tempCoeff, bcDevice.temp);
+                    // NOTE: temperature has the same rho issue. With thermDiffusivity
+                    // = k/(rho*cp), the energy equation should also convect volumetrically
+                    // (1/rho). Left at 1.0 to preserve current behavior; change to
+                    // (1.0 / f.rho) to make temperature consistent too.
+                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, tempCoeff, bcDevice.temp, 1.0);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.temp, simple.momentumRelaxation);
                 solveLinearSystem(tempCoeff, configSolver, stream, simple.temp, simple.tempTemp, activeCells, threadsPerBlock);
@@ -990,12 +985,18 @@ void Solver::runSimple(const Mesh& mesh) {
             // -----------------------CONCENTRATION EQUATION-------------------------
             // ======================================================================
             if (solveConcentration) {
+
                 if (applyNonOrtho) {
                     computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, gradientScheme);
                 }
                 addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, applyNonOrtho, f.D);
                 if (addConvectionTerm) {
-                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, concCoeff, bcDevice.conc);
+                    // Species concentration convects with the VOLUMETRIC flux u*area,
+                    // not the mass flux rho*u*area, so divide rho out of mDot. This
+                    // matches the kinematic diffusivity f.D used above and the mm-unit
+                    // reference solver (me = Az*u, no density). f.rho > 0 is enforced
+                    // in runCheck.
+                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, concCoeff, bcDevice.conc, 1.0 / f.rho);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.conc, 1.0);
                 solveLinearSystem(concCoeff, configSolver, stream, simple.conc, simple.concTemp, activeCells, threadsPerBlock);
