@@ -45,9 +45,13 @@ void Menu::drawOpen() {
 
 }
 
-void Menu::drawOpenAtLaunch() {
+void Menu::drawView() {
 
+	if (ImGui::MenuItem("Simple View", nullptr, project.simpleView)) {
+		project.simpleView = !project.simpleView;
+	}
 }
+
 
 void Menu::drawSave() {
 
@@ -363,13 +367,18 @@ void Menu::render() {
 	if (ImGui::BeginMainMenuBar()) {
 		if (ImGui::BeginMenu("File")) {
 			drawOpen();
-			drawOpenAtLaunch();
 			drawSave();
 			ImGui::EndMenu();
 		}
 
 		if (ImGui::BeginMenu("Edit")) {
 			drawEditShortcut();
+			ImGui::EndMenu();
+		}
+
+		if (ImGui::BeginMenu("View")) {
+
+			drawView();
 			ImGui::EndMenu();
 		}
 		ImGui::EndMainMenuBar();

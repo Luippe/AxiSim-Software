@@ -2,6 +2,7 @@
 
 #include "imgui.h"
 #include "project.h"
+#include "app_struct.h"	// AppSettings member below
 
 class GUI;
 
@@ -17,14 +18,15 @@ private:
 	bool openShortcutModal = false;
 	bool openUnitsModal = false;
 
+
 	AppSettings settings;
 	Project& project;
 
 	// open selected file
 	void drawOpen();
 
-	// open selected files at launch
-	void drawOpenAtLaunch();
+	// draw the view menu
+	void drawView();
 	
 	// save selected object as .bin file
 	void drawSave();

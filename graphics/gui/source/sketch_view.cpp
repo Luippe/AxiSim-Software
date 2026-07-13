@@ -227,10 +227,13 @@ std::optional<SnapResult> SketchView::findSnap(ImVec2 mouse) {
 
 	// snap to lines / edges
 	for (const SketchLine& line : geometry.sketch.lines) {
-		const SketchPoint& p0 = geometry.sketch.points[line.p0];
-		const SketchPoint& p1 = geometry.sketch.points[line.p1];
+		const SketchPoint* p0 = geometry.sketch.findPoint(line.p0);
+		const SketchPoint* p1 = geometry.sketch.findPoint(line.p1);
+		if (!p0 || !p1) {
+			continue;
+		}
 
-		Vec2 closest = closestPointOnSegment(mouseWorld, p0.pos, p1.pos);
+		Vec2 closest = closestPointOnSegment(mouseWorld, p0->pos, p1->pos);
 		tryCandidate(SnapType::Line, closest, line.id);
 	}
 
@@ -544,8 +547,9 @@ void SketchView::drawToolBar() {
 
 	addToolbarSeparator(toolbarHeight);
 
-	std::string gridText = shortcutText("Display Grid", circleToolShortcut);
-	if (addImageButtonToggle("DisplayGrid", gridText.c_str(), assets.gridIcon, buttonSize, toggleGrid)) {
+	// no keyboard shortcut is wired for the grid toggle, so the tooltip carries
+	// no key chord (it previously showed the Circle tool's shortcut by mistake)
+	if (addImageButtonToggle("DisplayGrid", "Display Grid", assets.gridIcon, buttonSize, toggleGrid)) {
 
 	}
 	ImGui::SameLine();
@@ -1201,14 +1205,18 @@ void SketchView::drawSketchEntities(ImDrawList* drawList) {
 
 	for (const SketchLine& line : geometry.sketch.lines) {
 
-		const SketchPoint& p0 = geometry.sketch.points[line.p0];
-		const SketchPoint& p1 = geometry.sketch.points[line.p1];
+		const SketchPoint* p0 = geometry.sketch.findPoint(line.p0);
+		const SketchPoint* p1 = geometry.sketch.findPoint(line.p1);
+		if (!p0 || !p1) {
+			continue;
+		}
+
 		bool highlight =
 			line.selected || isEraseHovered(SketchEntityType::Line, line.id);
 
 		drawList->AddLine(
-			camera.worldToScreen(p0.pos),
-			camera.worldToScreen(p1.pos),
+			camera.worldToScreen(p0->pos),
+			camera.worldToScreen(p1->pos),
 			highlight ? hoverLineColor : sketchLineColor,
 			highlight ? hoverLineThickness : sketchLineThickness
 		);

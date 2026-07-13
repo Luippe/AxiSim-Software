@@ -871,6 +871,7 @@ void Solver::runSimple(const Mesh& mesh) {
         CUDA_CHECK(cudaGetLastError());
         CUDA_CHECK(cudaStreamSynchronize(stream));
     }
+
     //print(Nface, N, threadsPerBlock, blocks);
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
@@ -942,6 +943,7 @@ void Solver::runSimple(const Mesh& mesh) {
             cudaMemsetAsync(simple.ppTemp, 0, N * sizeof(double), stream);
             CUDA_CHECK(cudaGetLastError());
             CUDA_CHECK(cudaStreamSynchronize(stream));
+
             for (int corr = 0; corr <= nNonOrth; corr++) {
                 computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
                 createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, applyNonOrtho);
@@ -952,8 +954,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     solveLinearSystem(ppCoeff, configSolver, stream, simple.pp, simple.ppTemp, activeCells, threadsPerBlock);
                 }
             }
-            CUDA_CHECK(cudaGetLastError());
-            CUDA_CHECK(cudaStreamSynchronize(stream));
+
             // final grad(p') (with p' BCs) for the velocity and mass-flux corrections
             computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
 

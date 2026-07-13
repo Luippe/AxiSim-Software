@@ -12,9 +12,11 @@
 #include "buffer_manager.h"
 #include "camera.h"
 #include "core_struct.h"
-#include "graphics_struct.h"
+#include "graphics_struct.h"	// SurfacePoint / Vertex used below
 #include "solver_struct.h"
 #include "boundary_struct.h"
+#include "app_struct.h"
+
 
 class Mesh;
 class Geometry;

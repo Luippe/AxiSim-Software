@@ -148,7 +148,12 @@ struct ConfigSimple {
 	int nNonOrthCorrectors = 0;
 };
 
+struct ConfigMultigrid {
+	
+	int maxIter = 50;
 
+
+};
 
 struct ConfigSolver {
 

@@ -32,6 +32,13 @@ MultigridSolver::MultigridSolver(MemoryConfig& mem, GridLevel& grid) :
 	CUDA_CHECK(cudaGetLastError());
 
 }
+
+MultigridSolver::~MultigridSolver() {
+	for (MultigridLevel& level : levels) {
+		freeMultigridLevel(level);
+	}
+}
+
 bool canCoarsen(const GridLevel& grid) {
 	return grid.nr % 2 == 0 && grid.nz % 2 == 0		// make sure grid size is divisible by 2
 		&& grid.nr / 2 >= 4 && grid.nz / 2 >= 4;		// make sure grid size does not go below 4x4
@@ -86,7 +93,6 @@ MultigridLevel MultigridSolver::createMultigridLevel(GridLevel& grid) {
 	MultigridLevel level;
 	level.grid = grid;
 	allocateMultigridLevel(level);
-	CUDA_CHECK(cudaGetLastError());
 	return level;
 
 }
@@ -98,7 +104,6 @@ void MultigridSolver::buildLevels() {
 		levels.push_back(createMultigridLevel(grid));
 
 	}
-	CUDA_CHECK(cudaGetLastError());
 }
 
 void MultigridSolver::buildHierarchy(GridLevel fine) {
@@ -263,6 +268,7 @@ void MultigridSolver::twoGridCycle(cudaStream_t& stream) {
 	smoothen(coarse, stream, jacobiSweep);
 	buildProlongation(fine, coarse, stream);
 	smoothen(fine, stream, jacobiPrePostSweep);
+
 }
 
 
@@ -292,5 +298,5 @@ void MultigridSolver::run(Coefficients& coeff, cudaStream_t& stream, double* x) 
 	twoGridCycle(stream);
 
 	cudaMemcpyAsync(x, levels[0].x, coeff.N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-	cudaStreamSynchronize(stream);
+
 }

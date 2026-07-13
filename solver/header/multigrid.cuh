@@ -40,6 +40,13 @@ class MultigridSolver {
 public:
 
 	MultigridSolver(MemoryConfig& mem, GridLevel& grid);
+	~MultigridSolver();
+
+	// each level owns raw device pointers freed in the destructor; a copy would
+	// alias then double-free them. non-copyable (emplaced into std::optional, so
+	// no copy/move is needed anyway).
+	MultigridSolver(const MultigridSolver&) = delete;
+	MultigridSolver& operator=(const MultigridSolver&) = delete;
 
 	std::vector<GridLevel> grids;
 	std::vector<MultigridLevel> levels;

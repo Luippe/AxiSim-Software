@@ -1,40 +1,8 @@
 #pragma once
 #include <glm/vec3.hpp>
 #include <glm/vec2.hpp>
-#include "imgui.h"
-#include "buffer_manager.h"
+#include "imgui.h"		// ImVec2 used by SurfacePoint below
 
-// assets for gui icons
-struct AppAssets {
-	TextureBuffer houseIcon;
-	TextureBuffer clearIcon;
-	TextureBuffer plusIcon;
-	TextureBuffer copyIcon;
-	TextureBuffer selectRegionIcon;
-	TextureBuffer connectIcon;
-	TextureBuffer eraseIcon;
-	TextureBuffer rulerIcon;
-	TextureBuffer fillCellIcon;
-	TextureBuffer drawRectangleIcon;
-	TextureBuffer drawCircleIcon;
-	TextureBuffer drawLineIcon;
-	TextureBuffer selectIcon;
-	TextureBuffer trimIcon;
-	TextureBuffer crossArrowIcon;
-	TextureBuffer gridIcon;
-};
-
-struct AppFonts {
-	ImFont* defaultFont = nullptr;
-	ImFont* uiFontSmall = nullptr;
-	ImFont* uiFontNormal = nullptr;
-	ImFont* uiFontLarge = nullptr;
-};
-
-struct AppConfig {
-	AppAssets assets;
-	AppFonts fonts;
-};
 
 enum class CompareType {
 	LessThan,

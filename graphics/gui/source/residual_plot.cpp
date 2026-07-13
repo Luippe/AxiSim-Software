@@ -9,7 +9,7 @@
 
 #include "solver.h"
 
-#include "graphics_struct.h"
+#include "app_struct.h"
 
 #include "flag_manager.h"
 #include "printer.h"

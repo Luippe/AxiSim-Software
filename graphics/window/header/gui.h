@@ -1,5 +1,6 @@
 #pragma once
 
+#include "app_struct.h"	// AppConfig member below
 #include "console.h"
 #include "inspector.h"
 #include "geometry_gui.h"

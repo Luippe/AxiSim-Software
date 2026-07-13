@@ -89,14 +89,14 @@ void gaussSeidelRB(Coefficients coeff, uint8_t* active, double* x, int color) {
 	int j = n % nz;
 	int i = n / nz;
 
+	if ((i + j) % 2 != color) return;
+
 	double* AC = coeff.AC;
 	double* AE = coeff.AE;
 	double* AW = coeff.AW;
 	double* AN = coeff.AN;
 	double* AS = coeff.AS;
 	double* b = coeff.b;
-
-	if ((i + j) % 2 != color) return;
 
 	double val = b[n];
 

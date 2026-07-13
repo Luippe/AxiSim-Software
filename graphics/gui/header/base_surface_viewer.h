@@ -7,6 +7,7 @@
 
 #include "graphics_struct.h"
 #include "core_struct.h"
+#include "buffer_manager.h"	// TextureBuffer / FrameBuffer members and params below
 
 #include "camera.h"
 #include "shader.h"

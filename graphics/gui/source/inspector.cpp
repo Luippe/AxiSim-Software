@@ -12,6 +12,7 @@
 #include "colormap.h"
 #include "colorbar.h"
 #include "console.h"
+#include "app_struct.h"
 
 #include "flag_manager.h"
 #include "printer.h"

@@ -94,8 +94,6 @@ struct FluidPropertyConfig {
 	double cp = 4180.0;
 	double k = 0.6;
 
-
-
 	double Vmax = 200;
 	double Km = 00.5;
 	double n = 1.0;

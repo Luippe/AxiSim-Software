@@ -26,13 +26,11 @@ public:
 	// to recenter/re-zoom every surface inspector to the loaded project's units.
 	bool resetInspectorViews = false;
 
+	// enable/disable simple view
+	bool simpleView = false;
+
+	// path and name of current project
 	std::wstring path;
 	std::string name;
-
-};
-
-struct AppSettings {
-
-	std::wstring quickLaunch;
 
 };

@@ -29,6 +29,9 @@ void copyCoefficients(Coefficients& dst, const Coefficients& src, int N, cudaStr
 // allocate variables used for the multigrid method
 void allocateMultigridLevel(MultigridLevel& level);
 
+// free the device memory owned by a multigrid level (mirror of allocateMultigridLevel)
+void freeMultigridLevel(MultigridLevel& level);
+
 void free_GridConfig(GridConfig& g);
 
 FVMeshDevice createFVMeshDevice(const FVMesh& fvMesh);

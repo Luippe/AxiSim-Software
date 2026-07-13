@@ -11,6 +11,7 @@
 
 class Solver;
 struct AppConfig;
+struct AppAssets;
 
 struct Plot {
     std::string name;

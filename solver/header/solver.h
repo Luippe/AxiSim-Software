@@ -99,6 +99,9 @@ public:
 	// config for each solver
 	ConfigSolver configSolver;
 
+	// config for multigrid
+	ConfigMultigrid configMultigrid;
+
 	// variable configs
 	VariablesSimple simple;
 

@@ -7,6 +7,7 @@
 
 #include "graphics_struct.h"
 #include "solver_struct.h"
+#include "app_struct.h"
 
 #include "boundary_func.h"
 
@@ -643,6 +644,17 @@ void SolverGUI::drawPropertiesPanel() {
 				if (project.solver.configSolver.maxIter < 1) {
 					project.solver.configSolver.maxIter = 1;
 				}
+
+				//if (solver.useMultigrid) {
+
+				//	labelRow("Maximum Multigrid Solve");
+				//	inputInt("##MultigridSolve", &project.solver.configSolver.maxIter);
+				//	if (project.solver.configSolver.maxIter < 1) {
+				//		project.solver.configSolver.maxIter = 1;
+				//	}
+
+				//}
+
 
 			}
 			ImGui::EndTable();

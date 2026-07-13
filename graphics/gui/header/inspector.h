@@ -17,6 +17,8 @@ class SceneView;
 class Console;
 struct GridConfig;
 struct SolutionField;
+struct AppConfig;	// used only by reference below
+struct AppAssets;
 
 // The Inspector renders solved fields over the finite-volume mesh using the
 // same 2D ImDrawList + Camera2D approach as the Mesh Inspector and the

@@ -24,6 +24,7 @@
 
 #include "solver_struct.h"
 #include "boundary_struct.h"
+#include "app_struct.h"		// AppSettings (complete type for serialization)
 
 #include "keyboard_manager.h"
 #include "memory_manager.h"

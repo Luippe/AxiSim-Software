@@ -999,6 +999,17 @@ void allocateMultigridLevel(MultigridLevel& level) {
 
 }
 
+void freeMultigridLevel(MultigridLevel& level) {
+
+	// coeff owns its own AE/AW/AN/AS/AC/b (and face arrays when used)
+	level.coeff.free();
+
+	// the per-level buffers allocated above; freeAllDev nulls each pointer
+	freeAllDev(level.x, level.xTemp, level.res, level.d_active, level.d_rFace, level.d_zFace);
+	CUDA_CHECK(cudaGetLastError());
+
+}
+
 void free_GridConfig(GridConfig& g) {
 
 	// Device arrays
