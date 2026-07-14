@@ -138,7 +138,7 @@ void BaseSurfaceViewer::resetView() {
 
 	// recenter, then match the zoom to the project's current display unit so one
 	// grid cell reads exactly one unit
-	camera.home();
+	camera.initPosition();
 	camera.setZoom(zoomForUnitGrid(lastLengthScale));
 }
 

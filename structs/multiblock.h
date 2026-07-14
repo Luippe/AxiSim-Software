@@ -161,6 +161,45 @@ inline Block makeTransfiniteBlock(int id, int nr, int nz,
     return b;
 }
 
+// Straight-edged quad block from 4 corners given in CCW order:
+//   A = node(0,0), B = node(0,nz), C = node(nr,nz), D = node(nr,0).
+// Bilinear map of the corners (a transfinite block whose 4 edges are straight);
+// used for blocks defined by a closed 4-line loop in the sketch.
+inline Block makeQuadBlock(int id, const MBNode& A, const MBNode& B,
+                           const MBNode& C, const MBNode& D, int nr, int nz) {
+    Block b;
+    b.id = id; b.nr = nr; b.nz = nz;
+    b.nodes.resize((nr + 1) * (nz + 1));
+    for (int I = 0; I <= nr; I++) {
+        const double t = (double)I / nr;                // radial param
+        for (int J = 0; J <= nz; J++) {
+            const double s = (double)J / nz;            // axial param
+            b.node(I, J) = MBNode{
+                (1 - t) * (1 - s) * A.z + (1 - t) * s * B.z + t * s * C.z + t * (1 - s) * D.z,
+                (1 - t) * (1 - s) * A.r + (1 - t) * s * B.r + t * s * C.r + t * (1 - s) * D.r
+            };
+        }
+    }
+    b.active.assign(nr * nz, 1);
+    return b;
+}
+
+// Visit every interior/boundary grid-line segment of a block, calling
+// emit(a, b) with the two endpoint nodes of each segment: first the lines
+// running along j (nr+1 of them), then those running along i. Shared by the
+// GL line-vertex builder and the inspector overlay so their traversals can't
+// drift. Per-segment (not full-span) so it stays correct for curvilinear
+// blocks (makeTransfiniteBlock/makeQuadBlock), not just axis-aligned ones.
+template <class Fn>
+inline void forEachBlockGridSegment(const Block& b, Fn&& emit) {
+    for (int I = 0; I <= b.nr; I++)
+        for (int J = 0; J < b.nz; J++)
+            emit(b.node(I, J), b.node(I, J + 1));
+    for (int J = 0; J <= b.nz; J++)
+        for (int I = 0; I < b.nr; I++)
+            emit(b.node(I, J), b.node(I + 1, J));
+}
+
 // ---------------------------------------------------------------------------
 // Interfaces (conformal) + halo map.
 // ---------------------------------------------------------------------------
@@ -278,6 +317,49 @@ inline bool detectReversed(const Block& A, Edge ea, const Block& B, Edge eb,
     return d2(as, bs) > d2(as, be);   // A.start closer to B.end => reversed
 }
 
+// Cell counts for one structured block. Keyed by sketch-rectangle id in the Mesh
+// and edited per block in the Mesh tab's Edit panel (one block per rectangle).
+struct BlockResolution {
+    int nr = 20;   // radial (i) cells
+    int nz = 20;   // axial  (j) cells
+};
+
+// Auto-detect conformal interfaces by matching fully-coincident block edges (both
+// endpoints coincide within tol). Appends to m.interfaces. Returns false + reason
+// on the first matched edge pair whose cell counts differ (non-conformal seam).
+inline bool autoDetectInterfaces(MultiBlockMesh& m, std::string& reason,
+                                 double tol = 1e-9) {
+    const Edge edges[4] = { Edge::West, Edge::East, Edge::South, Edge::North };
+    const double tol2 = tol * tol;
+    auto coincide = [&](const MBNode& p, const MBNode& q) {
+        const double dz = p.z - q.z, dr = p.r - q.r;
+        return dz * dz + dr * dr <= tol2;
+    };
+    for (int a = 0; a < (int)m.blocks.size(); a++) {
+        for (int b = a + 1; b < (int)m.blocks.size(); b++) {
+            for (Edge ea : edges) {
+                for (Edge eb : edges) {
+                    MBNode as, ae, bs, be;
+                    edgeCorners(m.blocks[a], ea, as, ae);
+                    edgeCorners(m.blocks[b], eb, bs, be);
+                    const bool aligned  = coincide(as, bs) && coincide(ae, be);
+                    const bool reversed = coincide(as, be) && coincide(ae, bs);
+                    if (!aligned && !reversed) continue;
+                    if (edgeCellCount(m.blocks[a], ea) != edgeCellCount(m.blocks[b], eb)) {
+                        reason = "non-conformal seam between blocks "
+                               + std::to_string(m.blocks[a].id) + " and "
+                               + std::to_string(m.blocks[b].id)
+                               + " (shared edge has unequal cell counts)";
+                        return false;
+                    }
+                    m.interfaces.push_back(Interface{ a, b, ea, eb, reversed });
+                }
+            }
+        }
+    }
+    return true;
+}
+
 // Every external edge (one not claimed by an interface) must carry a boundary
 // group, or its faces would have no boundary condition. Throws on the first
 // untagged external edge. Call after interfaces + edgeGroups are set.
@@ -360,6 +442,22 @@ inline MultiBlockMesh buildFiveBlockExample() {
     m.validate();               // throws if any interface is non-conformal
     validateBoundaryTags(m);    // throws if any external edge is untagged
     return m;
+}
+
+// Rescale a mesh anchored at the origin so its extent fills [0,L] x [0,R]. Lets a
+// fixed-coordinate demo (buildFiveBlockExample: 10 x 5) land in the project's real
+// domain, so it frames like the old uniform grid. Topology/cell counts unchanged.
+inline void fitMultiBlockToBox(MultiBlockMesh& m, double L, double R) {
+    double zMax = 0.0, rMax = 0.0;
+    for (const Block& b : m.blocks)
+        for (const MBNode& n : b.nodes) {
+            if (n.z > zMax) zMax = n.z;
+            if (n.r > rMax) rMax = n.r;
+        }
+    const double sz = (zMax > 0.0) ? L / zMax : 1.0;
+    const double sr = (rMax > 0.0) ? R / rMax : 1.0;
+    for (Block& b : m.blocks)
+        for (MBNode& n : b.nodes) { n.z *= sz; n.r *= sr; }
 }
 
 // ---------------------------------------------------------------------------

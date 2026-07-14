@@ -98,10 +98,26 @@ std::string Console::getWord(const std::vector<std::string>& words, size_t index
 
 void Console::registerCommands() {
 	registerSetCommands();
+	registerShowCommands();
 	registerGetCommands();
 	registerCopyCommands();
 	registerSaveAndLoadCommands();
 	registerUtilityCommands();
+}
+
+void Console::registerShowCommands() {
+
+	//addCommand("show", [this](const std::vector<std::string>& words) {
+
+	//	std::string object = getWord(words, 1);
+
+
+	//	if (object == "show") {
+
+	//	}
+	//	});
+
+
 }
 
 void Console::registerSetCommands() {
@@ -115,9 +131,6 @@ void Console::registerSetCommands() {
 		std::string object = getWord(words, 1);
 		std::string value = getWord(words, 2);
 
-		// set shading
-		
-		// set precision
 
 		// check which colormap to set
 		if (object == "colormap" || object == "cmap") {
@@ -303,6 +316,7 @@ void Console::registerUtilityCommands() {
 		clear();
 	};
 
+
 	addCommand("clear", clearCommand, "clear", "Clears the console");
 	addCommand("clr", clearCommand, "clear", "Clears the console");
 
@@ -315,6 +329,13 @@ void Console::registerUtilityCommands() {
 		},
 		"help",
 		"Shows all available commands"
+	);
+
+	addCommand("tutorial", [this](const std::vector<std::string>& words) {
+		gui.showingTutorial = !gui.showingTutorial;
+		},
+		"show tutorial",
+		"Shows tutorial for AxiSim"
 	);
 
 	addCommand("ping", [this](const std::vector<std::string>& words) {
@@ -720,12 +741,17 @@ void Console::draw() {
 		scrollToBottom = false;
 	}
 
-	// clicking anywhere in the output region focuses the input box
-	if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-		refocusInput = true;
-	}
-
 	ImGui::EndChild();
+
+	// clicking anywhere in the console (output area, padding, or dead space)
+	// focuses the input box; skip clicks on the input line itself so those
+	// place the caret where clicked instead of snapping it to the end
+	if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+		ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+		!ImGui::IsMouseHoveringRect(lastInputMin, lastInputMax)) {
+		refocusInput = true;
+		resetInputCursor = true;
+	}
 
 	// re-focus the input after an accept that had to reset the widget
 	if (refocusInput) {
@@ -746,6 +772,10 @@ void Console::draw() {
 	ImVec2 inputMin = ImGui::GetItemRectMin();
 	ImVec2 inputMax = ImGui::GetItemRectMax();
 	bool inputActive = ImGui::IsItemActive();
+
+	// remember the input box rect so next frame's click-to-focus can exclude it
+	lastInputMin = inputMin;
+	lastInputMax = inputMax;
 
 	// reset the highlight whenever the text actually changes
 	if (lastInput != inputBuffer) {

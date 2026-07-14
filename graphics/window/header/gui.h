@@ -54,9 +54,12 @@ public:
 	// render the entire UI
 	void render();
 
+	bool showingTutorial = false;
+
 private:
 
 	const float statusBarHeight = 26.0f;
+
 
 	// main context
 	ImGuiContext* mainImGuiContext = nullptr;
@@ -76,7 +79,8 @@ private:
 	// draw status bar at the bottom of screen
 	void drawStatusBar();
 
-
+	// draw tutorial when the showingTutorial is set to true
+	void drawTutorial();
 };
 
 

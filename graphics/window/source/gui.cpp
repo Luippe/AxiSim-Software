@@ -188,6 +188,11 @@ GUI::GUI(Project& project, Display& disp) :
 // ======================================================================
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
+void GUI::drawTutorial() {
+	if (!showingTutorial) return;
+
+}
+
 void GUI::drawStatusBar() {
 
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -359,6 +364,7 @@ void GUI::render() {
 	handleKeyInput();
 
 	drawStatusBar();
+	drawTutorial();
 
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

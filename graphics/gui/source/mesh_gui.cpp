@@ -321,9 +321,56 @@ void MeshGUI::drawPropertiesPanel() {
 		}
 	}
 	else if (selectedItem == "Edit") {
+		sectionHeader("Grid Bands");
 
+		const SketchModel& sketch = project.geometry.sketch;
 
+		std::vector<double> zL, rL;
+		mesh.computeTrellisLines(sketch, zL, rL);
 
+		if (zL.size() >= 2 && rL.size() >= 2) {
+			mesh.ensureBandSizes(zL.size() - 1, rL.size() - 1);
+
+			if (ImGui::BeginTable("BandTable", 2, UIFlags::TableSimpleFlags)) {
+				setupTableColumns(
+					column("Band", 180.0f),
+					column("Cells", 100.0f, ImGuiTableColumnFlags_WidthStretch)
+				);
+
+				for (size_t i = 0; i + 1 < zL.size(); i++) {
+					ImGui::PushID(static_cast<int>(i));
+					char label[64];
+					snprintf(label, sizeof(label), "z: %.4g - %.4g", zL[i], zL[i + 1]);
+					labelRow(label);
+					if (inputInt("##zband", &mesh.zBandCells[i]) && mesh.zBandCells[i] < 1) {
+						mesh.zBandCells[i] = 1;
+					}
+					ImGui::PopID();
+				}
+
+				for (size_t j = 0; j + 1 < rL.size(); j++) {
+					ImGui::PushID(1000000 + static_cast<int>(j));
+					char label[64];
+					snprintf(label, sizeof(label), "r: %.4g - %.4g", rL[j], rL[j + 1]);
+					labelRow(label);
+					if (inputInt("##rband", &mesh.rBandCells[j]) && mesh.rBandCells[j] < 1) {
+						mesh.rBandCells[j] = 1;
+					}
+					ImGui::PopID();
+				}
+
+				ImGui::EndTable();
+			}
+
+			ImGui::TextWrapped(
+				"Axial cells per z-band and radial cells per r-band. "
+				"Applies on the next Generate Mesh.");
+		}
+		else {
+			ImGui::TextWrapped(
+				"Draw a rectangle or a closed rectilinear outline in the sketch "
+				"to define grid bands.");
+		}
 	}
 	else if (selectedItem == "Region of Influence") {
 		drawRegionOfInfluenceGUI();
@@ -354,6 +401,7 @@ void MeshGUI::draw() {
 		if (drawTree("Edit", editOpen)) {
 			selectedBoundaryGroupID = -1;
 			mesh.highlightedBoundarySegmentIDs.clear();
+			selectedItem = "Edit";
 		}
 
 		if (editOpen) {
@@ -410,8 +458,19 @@ void MeshGUI::draw() {
 			}
 			else if (mesh.currentMeshType == MeshType::Structured &&
 				hasSketchGeometry) {
-				if (!mesh.convertSketchToStructuredMesh(sketch)) {
+				std::string reason;
+				if (!mesh.sketchSupportsStructured(sketch, reason)) {
+					if (mesh.console) {
+						mesh.console->addLine(
+							("Cannot generate structured grid: " + reason + "\n").c_str());
+					}
 					shouldGenerate = false;
+				}
+				else if (!mesh.convertSketchToStructuredMesh(sketch)) {
+					shouldGenerate = false;
+				}
+				else {
+					mesh.buildStructuredMultiBlock(sketch);
 				}
 			}
 			else if (mesh.currentMeshType == MeshType::Structured) {
@@ -423,6 +482,7 @@ void MeshGUI::draw() {
 					static_cast<size_t>(mesh.g.nr) * mesh.g.nz,
 					1
 				);
+				mesh.buildStructuredMultiBlock(sketch);   // single domain-spanning block
 			}
 			else {
 
@@ -444,6 +504,7 @@ void MeshGUI::draw() {
 			if (shouldGenerate) {
 				mesh.generate();
 				gui.meshInspector.createGridBuffer();
+				gui.meshInspector.markMeshChanged();
 			}
 		}
 

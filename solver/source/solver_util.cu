@@ -828,7 +828,6 @@ double secondOrderUpwindCorrection(double F, double phiLL, double phiL, double p
 		if (!hasRR) return 0.0;
 		return 0.5 * F * (phiR - phiRR);
 	}
-	
 }
 
 // ==============================================================

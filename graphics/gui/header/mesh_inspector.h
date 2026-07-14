@@ -57,6 +57,9 @@ public:
 	// create buffer using mesh.gridVertices
 	void createGridBuffer();
 
+	// mark the inspect-cell snapshot stale (call after the mesh is regenerated)
+	void markMeshChanged() { inspectMeshDirty = true; selectedCell = -1; }
+
 	// remove boundary group
 	bool deleteBoundaryGroupByID(int groupID);
 
@@ -98,6 +101,10 @@ private:
 	int selectedCell = -1;			// FV cell pinned by a left click (-1 = none)
 	FVMesh inspectFVMesh;			// snapshot rebuilt when inspect mode turns on
 	bool inspectMeshDirty = true;	// rebuild the snapshot on the next render
+
+	// multiblock only: 4 corner vertices per inspect cell (index-aligned with
+	// inspectFVMesh.cells) for point-in-cell picking and highlight drawing
+	std::vector<std::array<Vec2, 4>> inspectCellQuads;
 
 	int cellIndex(int i, int j) const;
 	bool isInsideCellGrid(int i, int j) const;

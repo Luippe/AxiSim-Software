@@ -1,12 +1,16 @@
 #pragma once
 
 #include <optional>
+#include <array>
+
+#include "multiblock.h"
 
 #include "setting.cuh"
 #include "buffer_manager.h"
 #include "boundary_struct.h"
 #include "graphics_struct.h"
 #include "sketch_struct.h"
+
 
 class Console;
 class Config;
@@ -73,6 +77,18 @@ public:
 	// current grid type
 	MeshType currentMeshType = MeshType::Unstructured;
 
+	// multiblock variables
+	MultiBlockMesh multiBlock;
+	bool isMultiBlock = false;   // routes the inspector to the segment renderer
+
+	// Structured trellis resolution: axial cells per z-band and radial cells per
+	// r-band. Bands are the gaps between the distinct z/r coordinates of the sketch
+	// geometry; every block seam stays conformal because neighbouring blocks share a
+	// band's cell count. Indexed left->right (z) and bottom->top (r).
+	std::vector<int> zBandCells;
+	std::vector<int> rBandCells;
+
+
 	// grid vertices and indices
 	std::vector<Vertex> vertices;
 	std::vector<float> gridLineVertices;
@@ -107,6 +123,33 @@ public:
 	void generate();
 
 	bool convertSketchToUnstructuredMesh(const SketchModel& sketch);
+
+	void createMultiBlockLineVertices(const MultiBlockMesh& mb);
+
+	// Build an inspectable host FVMesh from the multiblock (cells + faces via
+	// toPackedMesh) plus the 4 corner vertices of each cell (same global order), so
+	// the Mesh Inspector can pick/highlight/report multiblock cells.
+	void buildMultiBlockInspectMesh(FVMesh& out,
+		std::vector<std::array<Vec2, 4>>& quads) const;
+
+	// Returns false (with a user-facing reason) if the sketch has geometry the
+	// rectilinear structured/multiblock code can't represent: circles, arcs, skewed
+	// (non-axis-aligned) outline edges, open line loops, or degenerate rectangles.
+	bool sketchSupportsStructured(const SketchModel& sketch, std::string& reason) const;
+
+	// Build the multi-block structured grid by trellis decomposition: every distinct
+	// z/r coordinate of the geometry becomes a grid line, and each interior cell
+	// (center inside the domain) becomes a conformal block. Sets multiBlock +
+	// isMultiBlock; falls back to a single domain block when the sketch is empty.
+	void buildStructuredMultiBlock(const SketchModel& sketch);
+
+	// Distinct sorted z/r coordinates of the sketch geometry = the trellis lines.
+	void computeTrellisLines(const SketchModel& sketch,
+		std::vector<double>& zLines, std::vector<double>& rLines) const;
+
+	// Resize the per-band cell-count vectors to match the current trellis, keeping
+	// existing entries; new bands default to a sensible cell count.
+	void ensureBandSizes(size_t nZBands, size_t nRBands);
 
 	// rasterize the sketched geometry onto a structured grid: cells whose center
 	// falls outside the domain (or inside an obstacle) become solid. The grid

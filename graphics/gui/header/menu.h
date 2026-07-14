@@ -33,6 +33,8 @@ private:
 
 	void drawEditShortcut();
 
+	void drawExportImport();
+
 	// open popup when edit shortcut is pressed
 	void drawShortcutModal();
 

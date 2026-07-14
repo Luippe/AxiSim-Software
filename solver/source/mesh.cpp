@@ -1804,10 +1804,19 @@ void Mesh::generate() {
 	if (currentMeshType == MeshType::Structured) {
 		createGrid();
 		createGridVertices();
-		createGridLineVertices();
+
+		// multiBlock is assembled from geometry in buildStructuredMultiBlock (called
+		// from the Generate path). Draw its edges when present, else the plain grid.
+		if (isMultiBlock && !multiBlock.blocks.empty())
+			createMultiBlockLineVertices(multiBlock);
+		else
+			createGridLineVertices();
+
 		createCylinderVertices();
 	}
 	else {
+		isMultiBlock = false;
+
 		rebuildBoundaryDiscretization();
 
 		runGmshTriangulation();
@@ -2535,4 +2544,213 @@ void Mesh::createCylinderVertices() {
 
 		}
 	}
+}
+
+// ======================================================================
+// -----------------------MULTIBLOCK-------------------------------------
+// ======================================================================
+void Mesh::createMultiBlockLineVertices(const MultiBlockMesh& mb) {
+	gridLineVertices.clear();
+
+	auto pushSeg = [&](const MBNode& a, const MBNode& b) {
+		gridLineVertices.push_back(displayZ(a.z));  gridLineVertices.push_back(displayR(a.r));
+		gridLineVertices.push_back(displayZ(b.z));  gridLineVertices.push_back(displayR(b.r));
+		};
+
+	for (const Block& blk : mb.blocks) {
+		forEachBlockGridSegment(blk, pushSeg);
+	}
+}
+
+void Mesh::buildMultiBlockInspectMesh(FVMesh& out,
+	std::vector<std::array<Vec2, 4>>& quads) const {
+
+	out = FVMesh{};
+	quads.clear();
+	if (multiBlock.blocks.empty()) return;
+
+	// Cells + faces (centers, volumes, normals, connectivity) come from the same
+	// packer the solver upload uses, so inspector geometry matches the real mesh.
+	FVMeshHostPacked packed{};
+	toPackedMesh(multiBlock, packed);
+
+	out.cells.resize(packed.nCells);
+	for (int c = 0; c < packed.nCells; c++) {
+		FVCell& cell = out.cells[c];
+		cell.center = Vec2{ packed.cellCenterZ[c], packed.cellCenterR[c] };
+		cell.volume = packed.cellVolume[c];
+		cell.active = packed.cellActive[c] != 0;
+		cell.solid  = packed.cellSolid[c] != 0;
+		cell.faceIDs.reserve(packed.cellFaceStart[c + 1] - packed.cellFaceStart[c]);
+		for (int k = packed.cellFaceStart[c]; k < packed.cellFaceStart[c + 1]; k++)
+			cell.faceIDs.push_back(packed.cellFaceIDs[k]);
+	}
+
+	out.faces.resize(packed.nFaces);
+	for (int f = 0; f < packed.nFaces; f++) {
+		FVFace& face = out.faces[f];
+		face.owner = packed.faceOwner[f];
+		face.neighbor = packed.faceNeighbor[f];
+		face.normal = Vec2{ packed.faceNormalZ[f], packed.faceNormalR[f] };
+		face.center = Vec2{ packed.faceCenterZ[f], packed.faceCenterR[f] };
+		face.area = packed.faceArea[f];
+		face.boundaryGroupID = packed.faceBoundaryGroupID[f];
+	}
+
+	// Corner vertices per cell, in the same global order toPackedMesh assigns
+	// (block.cellGlobal(i,j)), for point-in-cell picking and highlight drawing.
+	quads.assign(packed.nCells, std::array<Vec2, 4>{});
+	for (const Block& b : multiBlock.blocks) {
+		for (int i = 0; i < b.nr; i++) {
+			for (int j = 0; j < b.nz; j++) {
+				const int gc = b.cellGlobal(i, j);
+				auto V = [&](int I, int J) { const MBNode& n = b.node(I, J); return Vec2{ n.z, n.r }; };
+				quads[gc] = { V(i, j), V(i, j + 1), V(i + 1, j + 1), V(i + 1, j) };
+			}
+		}
+	}
+}
+
+void Mesh::computeTrellisLines(const SketchModel& sketch,
+	std::vector<double>& zLines, std::vector<double>& rLines) const {
+
+	std::vector<double> zs, rs;
+
+	for (const SketchRectangle& rc : sketch.rectangles) {
+		if (rc.construction) continue;
+		zs.push_back(rc.min.z); zs.push_back(rc.max.z);
+		rs.push_back(rc.min.r); rs.push_back(rc.max.r);
+	}
+	for (const SketchLine& ln : sketch.lines) {
+		if (ln.construction) continue;
+		const SketchPoint* p0 = sketch.findPoint(ln.p0);
+		const SketchPoint* p1 = sketch.findPoint(ln.p1);
+		if (!p0 || !p1) continue;
+		zs.push_back(p0->pos.z); zs.push_back(p1->pos.z);
+		rs.push_back(p0->pos.r); rs.push_back(p1->pos.r);
+	}
+
+	const double tol = std::max(g.L, g.R) * 1e-6;
+	auto uniqueSorted = [tol](std::vector<double>& v, std::vector<double>& out) {
+		std::sort(v.begin(), v.end());
+		out.clear();
+		for (double x : v)
+			if (out.empty() || x - out.back() > tol) out.push_back(x);
+	};
+
+	uniqueSorted(zs, zLines);
+	uniqueSorted(rs, rLines);
+}
+
+void Mesh::ensureBandSizes(size_t nZBands, size_t nRBands) {
+	if (zBandCells.size() != nZBands) zBandCells.resize(nZBands, 20);
+	if (rBandCells.size() != nRBands) rBandCells.resize(nRBands, 20);
+}
+
+bool Mesh::sketchSupportsStructured(const SketchModel& sketch, std::string& reason) const {
+	auto anyReal = [](const auto& items) {
+		for (const auto& it : items) if (!it.construction) return true;
+		return false;
+	};
+
+	if (anyReal(sketch.circles)) {
+		reason = "Structured grid can't represent circles - remove them or switch to an unstructured mesh.";
+		return false;
+	}
+	if (anyReal(sketch.arcs)) {
+		reason = "Structured grid can't represent arcs - remove them or switch to an unstructured mesh.";
+		return false;
+	}
+
+	// Non-construction lines must be axis-aligned (rectilinear) so trellis blocks
+	// conform to them. Domain membership (closed loops, axis-bounded edges,
+	// obstacles) is left to pointInsideDomain, exactly like the raster path -- so an
+	// edge that lies on the r=0 axis need not be drawn.
+	const double tol = std::max(g.L, g.R) * 1e-9;
+	bool hasLine = false;
+	for (const SketchLine& ln : sketch.lines) {
+		if (ln.construction) continue;
+		hasLine = true;
+		const SketchPoint* p0 = sketch.findPoint(ln.p0);
+		const SketchPoint* p1 = sketch.findPoint(ln.p1);
+		if (!p0 || !p1) {
+			reason = "A line references a missing point.";
+			return false;
+		}
+		const double dz = std::fabs(p1->pos.z - p0->pos.z);
+		const double dr = std::fabs(p1->pos.r - p0->pos.r);
+		if (dz > tol && dr > tol) {
+			reason = "Outline edges must be horizontal or vertical (rectilinear).";
+			return false;
+		}
+	}
+
+	for (const SketchRectangle& rc : sketch.rectangles) {
+		if (rc.construction) continue;
+		if (rc.max.z - rc.min.z <= 0.0 || rc.max.r - rc.min.r <= 0.0) {
+			reason = "A rectangle has zero width or height.";
+			return false;
+		}
+	}
+
+	if (!anyReal(sketch.rectangles) && !hasLine) {
+		reason = "Draw a rectangle or a closed rectilinear outline to build a structured grid.";
+		return false;
+	}
+	return true;
+}
+
+void Mesh::buildStructuredMultiBlock(const SketchModel& sketch) {
+	MultiBlockMesh m;
+
+	std::vector<double> zL, rL;
+	computeTrellisLines(sketch, zL, rL);
+
+	int total = 0, kept = 0;
+	if (zL.size() >= 2 && rL.size() >= 2) {
+		ensureBandSizes(zL.size() - 1, rL.size() - 1);
+		total = static_cast<int>((zL.size() - 1) * (rL.size() - 1));
+
+		int id = 1;
+		for (size_t i = 0; i + 1 < zL.size(); i++) {
+			for (size_t j = 0; j + 1 < rL.size(); j++) {
+				// Keep this trellis cell only if its center lies inside the domain,
+				// so notches / holes drop out (their cells fall outside the outline).
+				const Vec2 center{ 0.5 * (zL[i] + zL[i + 1]), 0.5 * (rL[j] + rL[j + 1]) };
+				if (!pointInsideDomain(center)) continue;
+				kept++;
+
+				const std::vector<MeshZone> ax  = { { zL[i + 1] - zL[i], std::max(zBandCells[i], 1), Grading::Uniform } };
+				const std::vector<MeshZone> rad = { { rL[j + 1] - rL[j], std::max(rBandCells[j], 1), Grading::Uniform } };
+				m.blocks.push_back(makeRectBlock(id++, zL[i], rL[j], ax, rad));
+			}
+		}
+	}
+
+	// TEMP diagnostic: shows whether the trellis saw the geometry and dropped holes.
+	if (console) {
+		console->addLine(("Trellis: zlines=" + std::to_string(zL.size())
+			+ " rlines=" + std::to_string(rL.size())
+			+ " kept=" + std::to_string(kept) + "/" + std::to_string(total)
+			+ " blocks (boundaryVerts=" + std::to_string(boundaryVertices.size()) + ")\n").c_str());
+	}
+
+	if (m.blocks.empty()) {
+		// No geometry: one block spanning the whole domain [0,L] x [0,R].
+		const std::vector<MeshZone> ax  = { { g.L, std::max(g.nz, 1), Grading::Uniform } };
+		const std::vector<MeshZone> rad = { { g.R, std::max(g.nr, 1), Grading::Uniform } };
+		m.blocks.push_back(makeRectBlock(1, 0.0, 0.0, ax, rad));
+	}
+
+	// Trellis blocks share full edges, so every seam is conformal by construction.
+	std::string reason;
+	const double tol = std::max(g.L, g.R) * 1e-6;
+	if (!autoDetectInterfaces(m, reason, tol)) {
+		if (console) console->addLine(("Multiblock warning: " + reason + "\n").c_str());
+		m.interfaces.clear();
+	}
+
+	m.assignGlobalNumbering();
+	multiBlock = std::move(m);
+	isMultiBlock = true;
 }

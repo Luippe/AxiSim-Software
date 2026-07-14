@@ -359,7 +359,7 @@ void Inspector::drawToolBar() {
 
 	// view
 	if (addImageButton("Reset", "Reset view", assets.houseIcon, buttonSize)) {
-		camera.home();
+		camera.initPosition();
 		pendingFrame = true;
 	}
 

@@ -258,7 +258,3 @@ void Camera2D::setZoom(double newUnitsPerPixel) {
 		maxUnitsPerPixel
 	);
 }
-
-void Camera2D::home() {
-	initPosition();
-}

@@ -94,15 +94,14 @@ public:
 	// range. Used to snap to a specific zoom, e.g. a 1-unit grid spacing.
 	void setZoom(double newUnitsPerPixel);
 
-	void home();
-
 	// set width, height, and top-left position of the 2D viewport
 	void setDimensions(int w, int h, ImVec2 pos);
 
 	Vec2 center = Vec2{ 0.0, 0.0 };
 	double unitsPerPixel = 0.001;
 
-
+	// initialize position and angle of camera when constructing class
+	void initPosition();
 
 private:
 
@@ -113,7 +112,6 @@ private:
 	double minUnitsPerPixel = 1e-9;
 	double maxUnitsPerPixel = 1.0;
 
-	// initialize position and angle of camera when constructing class
-	void initPosition();
+
 
 };

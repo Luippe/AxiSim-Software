@@ -1144,8 +1144,8 @@ void SketchView::drawSketchEntities(ImDrawList* drawList) {
 			eraseHover->entityID == entityID;
 	};
 
-	const ImU32 sketchLineColor = IM_COL32(65, 150, 255, 255);
-	const ImU32 hoverLineColor = IM_COL32(255, 225, 80, 255);
+	const ImU32 sketchLineColor = IM_COL32(28, 28, 30, 255);
+	const ImU32 hoverLineColor = IM_COL32(50, 145, 255, 255);
 	const float sketchLineThickness = 2.0f;
 	const float hoverLineThickness = 3.5f;
 

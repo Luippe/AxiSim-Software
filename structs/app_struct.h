@@ -1,5 +1,6 @@
 #pragma once
 #include <string>			// std::wstring in AppSettings
+#include <stdexcept>
 #include "imgui.h"			// ImFont in AppFonts
 #include "buffer_manager.h"	// TextureBuffer in AppAssets
 
@@ -36,10 +37,10 @@ struct AppConfig {
 };
 
 struct AppSettings {
-
 	std::wstring quickLaunch;
-
 };
 
 
-//struct AppError : std::runtime_error {};
+struct AppError : std::runtime_error {
+	using std::runtime_error::runtime_error;
+};

@@ -795,7 +795,26 @@ static double cellPickSign(const Vec2& p, const Vec2& a, const Vec2& b) {
 	return (p.z - b.z) * (a.r - b.r) - (a.z - b.z) * (p.r - b.r);
 }
 
+// Point-in-(convex)-quad: inside when the point is on the same side of all 4 edges.
+static bool pointInQuad(const Vec2& p, const std::array<Vec2, 4>& q) {
+	bool hasNeg = false, hasPos = false;
+	for (int k = 0; k < 4; k++) {
+		double d = cellPickSign(p, q[k], q[(k + 1) & 3]);
+		if (d < 0.0) hasNeg = true;
+		if (d > 0.0) hasPos = true;
+	}
+	return !(hasNeg && hasPos);
+}
+
 void MeshInspector::buildInspectMesh() {
+	if (mesh.isMultiBlock && !mesh.multiBlock.blocks.empty()) {
+		mesh.buildMultiBlockInspectMesh(inspectFVMesh, inspectCellQuads);
+		inspectMeshDirty = false;
+		return;
+	}
+
+	inspectCellQuads.clear();
+
 	if (mesh.currentMeshType == MeshType::Structured) {
 		int nCells = std::max(g.nr * g.nz, 0);
 
@@ -819,6 +838,15 @@ void MeshInspector::buildInspectMesh() {
 }
 
 int MeshInspector::pickCell(const Vec2& world) const {
+	if (mesh.isMultiBlock && !inspectCellQuads.empty()) {
+		for (int c = 0; c < (int)inspectCellQuads.size(); c++) {
+			if (pointInQuad(world, inspectCellQuads[c])) {
+				return c;
+			}
+		}
+		return -1;
+	}
+
 	if (mesh.currentMeshType == MeshType::Structured) {
 		if (g.zFace.size() < 2 || g.rFace.size() < 2) {
 			return -1;
@@ -1388,6 +1416,7 @@ void MeshInspector::drawMeshLines(ImDrawList* drawList) {
 	const ImU32 lineColor = IM_COL32(190, 205, 225, 155);
 
 	if (mesh.currentMeshType == MeshType::Structured &&
+		!mesh.isMultiBlock &&
 		!g.zFace.empty() &&
 		!g.rFace.empty()) {
 		double rMin = g.rFace.front();
@@ -1411,6 +1440,23 @@ void MeshInspector::drawMeshLines(ImDrawList* drawList) {
 				lineColor,
 				1.0f
 			);
+		}
+	}
+	else if (mesh.isMultiBlock) {
+		// Draw straight from the block node coordinates (real world r-z) through the
+		// same camera transform the geometry outline uses, so mesh and geometry line
+		// up exactly -- no displayZ/g.L normalize-and-recover round-trip.
+		auto worldLine = [&](const MBNode& a, const MBNode& b) {
+			drawList->AddLine(
+				camera.worldToScreen(Vec2{ a.z, a.r }),
+				camera.worldToScreen(Vec2{ b.z, b.r }),
+				lineColor,
+				1.0f
+			);
+		};
+
+		for (const Block& b : mesh.multiBlock.blocks) {
+			forEachBlockGridSegment(b, worldLine);
 		}
 	}
 	else {
@@ -1477,6 +1523,12 @@ void MeshInspector::drawUnstructuredSolidBodies(ImDrawList* drawList) {
 void MeshInspector::drawHighlightedCells2D(ImDrawList* drawList) {
 	if (mesh.currentMeshType != MeshType::Structured) {
 		drawUnstructuredSolidBodies(drawList);
+		return;
+	}
+
+	// Multiblock represents holes as absent blocks, so there is no raster obstacle
+	// fill to draw -- and drawing it would use the misaligned raster grid.
+	if (mesh.isMultiBlock) {
 		return;
 	}
 
@@ -2136,7 +2188,16 @@ void MeshInspector::drawCellInfo(ImDrawList* drawList) {
 
 	drawList->PushClipRect(canvasMin, canvasMax, true);
 
-	if (mesh.currentMeshType == MeshType::Structured) {
+	if (mesh.isMultiBlock && selectedCell < (int)inspectCellQuads.size()) {
+		const std::array<Vec2, 4>& q = inspectCellQuads[selectedCell];
+		ImVec2 pts[4];
+		for (int k = 0; k < 4; k++) {
+			pts[k] = camera.worldToScreen(q[k]);
+		}
+		drawList->AddConvexPolyFilled(pts, 4, fillCol);
+		drawList->AddPolyline(pts, 4, lineCol, ImDrawFlags_Closed, 2.0f);
+	}
+	else if (mesh.currentMeshType == MeshType::Structured) {
 		int i = selectedCell / std::max(g.nz, 1);
 		int j = selectedCell % std::max(g.nz, 1);
 
@@ -2202,8 +2263,13 @@ void MeshInspector::render() {
 	// recenter/re-zoom to the loaded project's units if a reset was requested
 	applyPendingResetView();
 
-	// Build current segments before hover/mouse logic
-	if (mesh.currentMeshType == MeshType::Structured) {
+	// Build current segments before hover/mouse logic.
+	// Multiblock is excluded: buildSegments() rebuilds the outline from the uniform
+	// raster grid (g.rFace/g.zFace), which does NOT coincide with the trellis block
+	// nodes drawMeshLines() draws from -- so the outline would snap to a staircase
+	// offset from the mesh lines. For multiblock we keep the exact sketch-derived
+	// boundary from convertSketchToStructuredMesh, which shares the trellis coords.
+	if (mesh.currentMeshType == MeshType::Structured && !mesh.isMultiBlock) {
 		buildSegments();
 	}
 
