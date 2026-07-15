@@ -147,6 +147,17 @@ namespace {
 		discriminant = std::max(0.0, discriminant);
 		double root = std::sqrt(discriminant);
 
+		// A tangent contact touches the circle at a single point without crossing
+		// it, so it is not a real cut for trimming -- injecting a split there
+		// spuriously divides the circle at the touch point. root / sqrt(a) is the
+		// world-space chord between the two candidate hits; when it collapses to
+		// ~0 the line is (near-)tangent, so skip it and only split genuine
+		// two-point crossings.
+		double chord = root / std::sqrt(a);
+		if (chord <= circleTolerance(circle.radius, circle.radius)) {
+			return;
+		}
+
 		addUniqueParameter(values, (-b - root) / (2.0 * a));
 		addUniqueParameter(values, (-b + root) / (2.0 * a));
 	}
@@ -214,6 +225,14 @@ namespace {
 
 		h2 = std::max(0.0, h2);
 		double h = std::sqrt(h2);
+
+		// Tangent circles touch at a single point without crossing, which is not a
+		// real cut -- skip it rather than injecting a phantom split (2h is the
+		// chord between the two intersection points).
+		if (2.0 * h <= tolerance) {
+			return;
+		}
+
 		Vec2 dir{
 			(cutter.center.z - target.center.z) / d,
 			(cutter.center.r - target.center.r) / d
@@ -575,12 +594,21 @@ namespace {
 		double startAngle,
 		double endAngle
 	) {
-		startAngle = normalizeAngle(startAngle);
+		// Bring endAngle ahead of startAngle first (handles the circle-trim
+		// wraparound case where endAngle < startAngle), capture the span, then
+		// normalize startAngle and re-derive endAngle from that span. Normalizing
+		// startAngle on its own would drop it below endAngle and inflate the span
+		// whenever startAngle >= 2*pi (e.g. arcs that cross 0 degrees), turning a
+		// small kept piece into a near-full circle.
 		while (endAngle < startAngle) {
 			endAngle += twoPi;
 		}
 
-		if ((endAngle - startAngle) * radius > 1e-9) {
+		double span = endAngle - startAngle;
+		startAngle = normalizeAngle(startAngle);
+		endAngle = startAngle + span;
+
+		if (span * radius > 1e-9) {
 			sketch.addArc(center, radius, startAngle, endAngle);
 		}
 	}
@@ -1573,13 +1601,20 @@ bool SketchView::moveSelectedTrimSegments(Vec2 delta) {
 				break;
 			}
 
-			double startAngle = normalizeAngle(segment.startAngle);
+			// normalize startAngle and endAngle together so the span is preserved
+			// even when the segment's startAngle wrapped past 2*pi (otherwise a
+			// moved arc balloons into a near-full circle)
+			double startAngle = segment.startAngle;
 			double endAngle = segment.endAngle;
 			while (endAngle < startAngle) {
 				endAngle += twoPi;
 			}
 
-			if ((endAngle - startAngle) * segment.radius <= 1e-9) {
+			double span = endAngle - startAngle;
+			startAngle = normalizeAngle(startAngle);
+			endAngle = startAngle + span;
+
+			if (span * segment.radius <= 1e-9) {
 				break;
 			}
 

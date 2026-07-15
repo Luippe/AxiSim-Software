@@ -180,24 +180,10 @@ std::optional<SnapResult> SketchView::findSnap(ImVec2 mouse) {
 		}
 	};
 
-	{
-		Vec2 origin{
-			0.0,
-			0.0
-		};
-
-		ImVec2 originScreen = camera.worldToScreen(origin);
-		float originDistancePx = pixelDistance(originScreen, mouse);
-		if (originDistancePx <= snapRadiusPx) {
-			return SnapResult{
-				SnapType::Vertex,
-				origin,
-				originScreen,
-				originDistancePx,
-				-102
-			};
-		}
-	}
+	// origin (0,0) as a snappable vertex -- routed through tryCandidate so a
+	// strictly closer sketch vertex or point still wins, instead of the origin
+	// always taking priority via an early return
+	tryCandidate(SnapType::Vertex, Vec2{ 0.0, 0.0 }, -102);
 
 	// snap to axis
 	// snap to x-axis: r = 0
@@ -1459,7 +1445,11 @@ void SketchView::drawTemporarySketch(ImDrawList* drawList) {
 
 void SketchView::handleOpenPopup() {
 
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+	// only open the context menu for a right-click over the canvas image; without
+	// the hover gate a right-click anywhere (the toolbar, or another panel) would
+	// pop the sketch menu, since IsMouseClicked is global
+	if (ImGui::IsItemHovered() &&
+		ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
 
 		openPopUp = true;
 
