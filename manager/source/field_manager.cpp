@@ -44,12 +44,32 @@ void Field::generate(
 	this->fvMesh = &fvMesh;
 	this->boundaryGroups = &boundaryGroups;
 
-	unProcessedData = solution.field;
-
-	boundaryVariable = solution.boundaryVariable;
-
 	nr = fvMesh.nr;
 	nz = fvMesh.nz;
+
+	buildFromSolution(solution);
+
+}
+
+void Field::generateRaster(const SolutionField& solution, int nrRaster, int nzRaster) {
+
+	// No source FVMesh: the data is already a dense raster (a resampled multiblock
+	// solution), so sampleBoundary falls back to copying the nearest interior cell
+	// (fvMesh == nullptr), giving a flat boundary-layer extrapolation for the view.
+	fvMesh = nullptr;
+	boundaryGroups = nullptr;
+
+	nr = nrRaster;
+	nz = nzRaster;
+
+	buildFromSolution(solution);
+
+}
+
+void Field::buildFromSolution(const SolutionField& solution) {
+
+	unProcessedData = solution.field;
+	boundaryVariable = solution.boundaryVariable;
 
 	dr = solution.dr;
 	dz = solution.dz;
@@ -62,7 +82,7 @@ void Field::generate(
 
 	dataR = rCell;
 	dataZ = zCell;
-	
+
 	buildExtendedCoordinates();
 	buildExtendedData();
 

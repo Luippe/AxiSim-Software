@@ -1,6 +1,7 @@
 #pragma once
 #include "pch.h"
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -68,7 +69,28 @@ private:
 	std::vector<float> vertexValues;
 	std::vector<int> vertexCounts;
 
+	// Real multiblock cell quads (world r-z corners), in block/cellGlobal order --
+	// the same cells the Mesh Inspector draws. For a multiblock mesh the results view
+	// colors these directly by the exact per-cell solver value, instead of the
+	// resampled uniform raster. Rebuilt from the mesh in generate().
+	std::vector<std::array<Vec2, 4>> blockQuads;
+
+	// Shared-vertex topology for interpolated (smooth) shading of the block quads:
+	// the 4 unique vertex ids of each quad (corners shared between adjacent cells --
+	// and across block seams -- collapse to one id), plus the total vertex count.
+	// Built alongside blockQuads; lets smooth shading average cell values onto shared
+	// corners exactly like the raster path, with no seam discontinuities.
+	std::vector<std::array<int, 4>> blockQuadVertexIds;
+	int blockVertexCount = 0;
+
 	// ----------helpers-----------
+
+	// true when the current mesh is multiblock and its cell quads are cached, so the
+	// results view should draw the true conformal blocks rather than the raster grid
+	bool hasMultiBlockCells() const;
+
+	// (re)build blockQuads from the current multiblock mesh (no-op otherwise)
+	void rebuildMultiBlockCells();
 
 	// resolve the raw per-cell solution for the currently selected field
 	const SolutionField* getCurrentSolution() const;
@@ -90,6 +112,10 @@ private:
 
 	// fit the camera so the whole mesh is visible
 	void frameToMesh();
+
+	// center + zoom the camera on a z/r bounding box (the shared tail of frameToMesh's
+	// multiblock / structured / unstructured branches)
+	void frameToBounds(double zMin, double zMax, double rMin, double rMax);
 
 	// pick the triangle/cell under a world-space point (-1 if none)
 	int pickCell(const Vec2& world) const;

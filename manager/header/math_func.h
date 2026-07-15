@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <array>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/quaternion.hpp>
 #include <glm/fwd.hpp>
@@ -43,3 +44,11 @@ double biasedT(double s, double bias);
 bool edgeInRange(const BoundaryEdge& e, std::size_t n);
 
 Vec2 closestPointOnSegment(Vec2 p, Vec2 a, Vec2 b);
+
+// Signed side of point p relative to the directed edge a->b in the z-r plane
+// (>0 / <0 either side, 0 on the line). Building block for point-in-cell picking.
+double pickSign(const Vec2& p, const Vec2& a, const Vec2& b);
+
+// Point inside a convex quad, corners given in ring order. Inside when p is on the
+// same side of all 4 edges. Shared by the mesh and results 2D cell pickers.
+bool pointInQuad(const Vec2& p, const std::array<Vec2, 4>& q);

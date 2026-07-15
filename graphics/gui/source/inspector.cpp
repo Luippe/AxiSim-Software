@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <unordered_map>
 
 #include "scene_view.h"
 #include "project.h"
@@ -17,6 +18,7 @@
 #include "flag_manager.h"
 #include "printer.h"
 #include "unit_manager.h"
+#include "math_func.h"
 
 using namespace UITabBarFlags;
 
@@ -42,6 +44,79 @@ void Inspector::generate() {
 
 	// a freshly generated mesh re-indexes the cells, so drop any pinned cell
 	selectedCell = -1;
+
+	// cache the true multiblock cell quads so the field draws on the real blocks
+	rebuildMultiBlockCells();
+}
+
+void Inspector::rebuildMultiBlockCells() {
+	blockQuads.clear();
+	blockQuadVertexIds.clear();
+	blockVertexCount = 0;
+
+	if (!mesh.isMultiBlock) {
+		return;
+	}
+
+	// buildMultiBlockInspectMesh fills quads in block/cellGlobal order -- the same
+	// order solutions[].field is stored in -- so quad c and field[c] are the same cell.
+	FVMesh scratch;
+	mesh.buildMultiBlockInspectMesh(scratch, blockQuads);
+
+	if (blockQuads.empty()) {
+		return;
+	}
+
+	// Assign each quad corner a shared vertex id for smooth shading. Block seam nodes
+	// from neighbouring blocks are computed independently (possible float drift), so
+	// dedup by a geometry-scale-quantized (z,r) key rather than exact equality.
+	struct VKey {
+		long long z, r;
+		bool operator==(const VKey& o) const { return z == o.z && r == o.r; }
+	};
+	struct VKeyHash {
+		size_t operator()(const VKey& k) const {
+			return std::hash<long long>()(k.z * 73856093LL ^ (k.r * 19349663LL));
+		}
+	};
+
+	const double scale = std::max(g.L, g.R);
+	const double tol = (scale > 0.0 ? scale : 1.0) * 1.0e-6;
+	const double inv = 1.0 / tol;
+
+	auto keyOf = [&](const Vec2& p) {
+		return VKey{
+			(long long)std::llround(p.z * inv),
+			(long long)std::llround(p.r * inv)
+		};
+	};
+
+	std::unordered_map<VKey, int, VKeyHash> vertexLookup;
+	vertexLookup.reserve(blockQuads.size() * 4);
+
+	blockQuadVertexIds.resize(blockQuads.size());
+
+	for (size_t c = 0; c < blockQuads.size(); c++) {
+		for (int k = 0; k < 4; k++) {
+			VKey key = keyOf(blockQuads[c][k]);
+			auto it = vertexLookup.find(key);
+			int id;
+			if (it == vertexLookup.end()) {
+				id = (int)vertexLookup.size();
+				vertexLookup.emplace(key, id);
+			}
+			else {
+				id = it->second;
+			}
+			blockQuadVertexIds[c][k] = id;
+		}
+	}
+
+	blockVertexCount = (int)vertexLookup.size();
+}
+
+bool Inspector::hasMultiBlockCells() const {
+	return mesh.isMultiBlock && !blockQuads.empty();
 }
 
 const SolutionField* Inspector::getCurrentSolution() const {
@@ -132,11 +207,10 @@ bool Inspector::isStructuredCellActive(int cellID) const {
 		return false;
 	}
 
-	const FVMesh& fv = project.solver.fvMesh;
-	if (cellID < (int)fv.cells.size()) {
-		return fv.cells[cellID].active && !fv.cells[cellID].solid;
-	}
-
+	// Structured results are presented on the raster grid, so cellID is a raster
+	// index (i*nz+j) and g.activeCell is its fluid/solid mask. The solver's fvMesh is
+	// in multiblock cell order (fvMesh.nr/nz == 0), so it must NOT be indexed by a
+	// raster id here -- doing so mismatched every cell for a multiblock mesh.
 	if (cellID < (int)g.activeCell.size()) {
 		return g.activeCell[cellID] != 0;
 	}
@@ -148,6 +222,13 @@ bool Inspector::isDrawableCell(int cellID, int fieldSize) const {
 
 	if (cellID < 0 || cellID >= fieldSize) {
 		return false;
+	}
+
+	// Multiblock: field is block/cellGlobal ordered and every block cell is fluid
+	// (obstacles are absent blocks), so a valid quad index is drawable. Must be tested
+	// before the structured branch, which would (wrongly) index the raster mask.
+	if (hasMultiBlockCells()) {
+		return cellID < (int)blockQuads.size();
 	}
 
 	if (mesh.currentMeshType == MeshType::Structured) {
@@ -162,7 +243,51 @@ bool Inspector::isDrawableCell(int cellID, int fieldSize) const {
 	return true;
 }
 
+void Inspector::frameToBounds(double zMin, double zMax, double rMin, double rMax) {
+
+	camera.center = Vec2{ 0.5 * (zMin + zMax), 0.5 * (rMin + rMax) };
+
+	double w = zMax - zMin;
+	double h = rMax - rMin;
+
+	double uppZ = (w > 1.0e-12) ? w / (double)canvasRect.size.x : camera.unitsPerPixel;
+	double uppR = (h > 1.0e-12) ? h / (double)canvasRect.size.y : camera.unitsPerPixel;
+
+	double upp = std::max(uppZ, uppR);
+	if (upp <= 1.0e-30) {
+		upp = 0.001;
+	}
+
+	// add a small margin so the mesh does not touch the canvas edges
+	camera.unitsPerPixel = upp * 1.15;
+}
+
 void Inspector::frameToMesh() {
+
+	if (canvasRect.size.x <= 1.0f || canvasRect.size.y <= 1.0f) {
+		return;
+	}
+
+	// Multiblock: frame to the real block extent (tight even for L-shapes / notches),
+	// not the [0,L]x[0,R] raster bounding box.
+	if (hasMultiBlockCells()) {
+		double zMin = std::numeric_limits<double>::max();
+		double zMax = std::numeric_limits<double>::lowest();
+		double rMin = std::numeric_limits<double>::max();
+		double rMax = std::numeric_limits<double>::lowest();
+
+		for (const std::array<Vec2, 4>& q : blockQuads) {
+			for (int k = 0; k < 4; k++) {
+				zMin = std::min(zMin, q[k].z);
+				zMax = std::max(zMax, q[k].z);
+				rMin = std::min(rMin, q[k].r);
+				rMax = std::max(rMax, q[k].r);
+			}
+		}
+
+		frameToBounds(zMin, zMax, rMin, rMax);
+		return;
+	}
 
 	if (hasStructuredGrid()) {
 		double zMin = std::numeric_limits<double>::max();
@@ -193,26 +318,13 @@ void Inspector::frameToMesh() {
 			rMax = g.rFace.back();
 		}
 
-		camera.center = Vec2{ 0.5 * (zMin + zMax), 0.5 * (rMin + rMax) };
-
-		double w = zMax - zMin;
-		double h = rMax - rMin;
-
-		double uppZ = (w > 1.0e-12) ? w / (double)canvasRect.size.x : camera.unitsPerPixel;
-		double uppR = (h > 1.0e-12) ? h / (double)canvasRect.size.y : camera.unitsPerPixel;
-
-		double upp = std::max(uppZ, uppR);
-		if (upp <= 1.0e-30) {
-			upp = 0.001;
-		}
-
-		camera.unitsPerPixel = upp * 1.15;
+		frameToBounds(zMin, zMax, rMin, rMax);
 		return;
 	}
 
 	const std::vector<Vec2>& pts = mesh.unstructuredPoints;
 
-	if (pts.empty() || canvasRect.size.x <= 1.0f || canvasRect.size.y <= 1.0f) {
+	if (pts.empty()) {
 		return;
 	}
 
@@ -228,26 +340,7 @@ void Inspector::frameToMesh() {
 		rMax = std::max(rMax, p.r);
 	}
 
-	camera.center = Vec2{ 0.5 * (zMin + zMax), 0.5 * (rMin + rMax) };
-
-	double w = zMax - zMin;
-	double h = rMax - rMin;
-
-	double uppZ = (w > 1.0e-12) ? w / (double)canvasRect.size.x : camera.unitsPerPixel;
-	double uppR = (h > 1.0e-12) ? h / (double)canvasRect.size.y : camera.unitsPerPixel;
-
-	double upp = std::max(uppZ, uppR);
-
-	if (upp <= 1.0e-30) {
-		upp = 0.001;
-	}
-
-	// add a small margin so the mesh does not touch the canvas edges
-	camera.unitsPerPixel = upp * 1.15;
-}
-
-static double pickSign(const Vec2& p, const Vec2& a, const Vec2& b) {
-	return (p.z - b.z) * (a.r - b.r) - (a.z - b.z) * (p.r - b.r);
+	frameToBounds(zMin, zMax, rMin, rMax);
 }
 
 static int inspectorCellIndexAt(const std::vector<double>& faces, double x) {
@@ -266,6 +359,17 @@ static int inspectorCellIndexAt(const std::vector<double>& faces, double x) {
 }
 
 int Inspector::pickCell(const Vec2& world) const {
+
+	// Multiblock: point-in-quad against the real block cells (block/cellGlobal order),
+	// so a picked index maps straight into solutions[].field.
+	if (hasMultiBlockCells()) {
+		for (int c = 0; c < (int)blockQuads.size(); c++) {
+			if (pointInQuad(world, blockQuads[c])) {
+				return c;
+			}
+		}
+		return -1;
+	}
 
 	if (hasStructuredGrid()) {
 		int j = inspectorCellIndexAt(g.zFace, world.z);
@@ -353,12 +457,12 @@ void Inspector::handleSelection(ImGuiIO& io) {
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
 void Inspector::drawToolBar() {
-	float toolbarHeight = 40.0f;
+	float toolbarHeight = 60.0f;
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
 	// view
-	if (addImageButton("Reset", "Reset view", assets.houseIcon, buttonSize)) {
+	if (addImageButton("Reset", "Reset", "Reset view", assets.houseIcon, buttonSize)) {
 		camera.initPosition();
 		pendingFrame = true;
 	}
@@ -366,12 +470,12 @@ void Inspector::drawToolBar() {
 	addToolbarSeparator();
 
 	// display
-	addImageButtonToggle("ToggleMesh", "Toggle mesh overlay", assets.gridIcon, buttonSize, showMesh);
+	addImageButtonToggle("ToggleMesh", "Mesh", "Toggle mesh overlay", assets.gridIcon, buttonSize, showMesh);
 
 	addToolbarSeparator();
 
 	// export
-	if (addImageButton("Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
+	if (addImageButton("Copy", "Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
 		pendingCopyWidth = frameBuffer.width;
 		pendingCopyHeight = frameBuffer.height;
 		pendingCopy = true;
@@ -468,6 +572,94 @@ void Inspector::drawField(ImDrawList* drawList) {
 	bool smooth = (results.currentShadingType == ShadingType::Interp);
 
 	const ImVec2 uv = drawList->_Data->TexUvWhitePixel;
+
+	// Multiblock: color each real block cell by its exact solver value (block order).
+	// Flat = one color per cell; Interp = average cell values onto shared corners
+	// (blockQuadVertexIds) and gouraud-fill each quad, matching the raster path.
+	if (hasMultiBlockCells()) {
+
+		// hasMultiBlockCells() guarantees blockQuadVertexIds is sized to blockQuads and
+		// blockVertexCount >= 1, so the shading mode alone decides smooth vs flat.
+		bool mbSmooth = smooth;
+
+		if (mbSmooth) {
+			vertexValues.assign(blockVertexCount, 0.0f);
+			vertexCounts.assign(blockVertexCount, 0);
+
+			for (int c = 0; c < (int)blockQuads.size(); c++) {
+				if (!isDrawableCell(c, (int)field.size())) {
+					continue;
+				}
+
+				double raw = field[c];
+				if (!std::isfinite(raw)) {
+					continue;
+				}
+
+				float v = (float)raw;
+				for (int k = 0; k < 4; k++) {
+					int id = blockQuadVertexIds[c][k];
+					if (id < 0 || id >= blockVertexCount) continue;
+					vertexValues[id] += v;
+					vertexCounts[id] += 1;
+				}
+			}
+
+			for (size_t i = 0; i < vertexValues.size(); i++) {
+				if (vertexCounts[i] > 0) {
+					vertexValues[i] /= (float)vertexCounts[i];
+				}
+			}
+		}
+
+		for (int c = 0; c < (int)blockQuads.size(); c++) {
+			if (!isDrawableCell(c, (int)field.size())) {
+				continue;
+			}
+
+			double v = field[c];
+			if (!std::isfinite(v)) {
+				continue;
+			}
+
+			const std::array<Vec2, 4>& q = blockQuads[c];
+			ImVec2 p0 = camera.worldToScreen(q[0]);
+			ImVec2 p1 = camera.worldToScreen(q[1]);
+			ImVec2 p2 = camera.worldToScreen(q[2]);
+			ImVec2 p3 = camera.worldToScreen(q[3]);
+
+			if (mbSmooth) {
+				float fallback = (float)v;
+				auto cornerValue = [&](int k) {
+					int id = blockQuadVertexIds[c][k];
+					if (id >= 0 && id < blockVertexCount && vertexCounts[id] > 0) {
+						return vertexValues[id];
+					}
+					return fallback;
+				};
+
+				ImU32 c0 = valueToColor(cornerValue(0), vmin, vmax);
+				ImU32 c1 = valueToColor(cornerValue(1), vmin, vmax);
+				ImU32 c2 = valueToColor(cornerValue(2), vmin, vmax);
+				ImU32 c3 = valueToColor(cornerValue(3), vmin, vmax);
+
+				// two triangles (p0,p1,p2) + (p0,p2,p3) over the convex quad
+				drawList->PrimReserve(6, 6);
+				drawList->PrimVtx(p0, uv, c0);
+				drawList->PrimVtx(p1, uv, c1);
+				drawList->PrimVtx(p2, uv, c2);
+				drawList->PrimVtx(p0, uv, c0);
+				drawList->PrimVtx(p2, uv, c2);
+				drawList->PrimVtx(p3, uv, c3);
+			}
+			else {
+				ImU32 col = valueToColor(v, vmin, vmax);
+				drawList->AddQuadFilled(p0, p1, p2, p3, col);
+			}
+		}
+
+		return;
+	}
 
 	if (hasStructuredGrid()) {
 		const int nr = g.nr;
@@ -664,6 +856,21 @@ void Inspector::drawMeshOverlay(ImDrawList* drawList) {
 		return;
 	}
 
+	// Multiblock: outline the real block cells, matching the Mesh Inspector.
+	if (hasMultiBlockCells()) {
+		const ImU32 lineColor = IM_COL32(25, 35, 45, 140);
+
+		for (const std::array<Vec2, 4>& q : blockQuads) {
+			ImVec2 p0 = camera.worldToScreen(q[0]);
+			ImVec2 p1 = camera.worldToScreen(q[1]);
+			ImVec2 p2 = camera.worldToScreen(q[2]);
+			ImVec2 p3 = camera.worldToScreen(q[3]);
+			drawList->AddQuad(p0, p1, p2, p3, lineColor, 1.0f);
+		}
+
+		return;
+	}
+
 	if (hasStructuredGrid()) {
 		const ImU32 lineColor = IM_COL32(25, 35, 45, 140);
 		const int nr = g.nr;
@@ -822,6 +1029,27 @@ void Inspector::drawCellInfo(ImDrawList* drawList) {
 
 	drawList->PushClipRect(canvasMin, canvasMax, true);
 
+	// Multiblock: highlight the picked block cell quad (block/cellGlobal order).
+	if (hasMultiBlockCells()) {
+		if (selectedCell >= (int)blockQuads.size()) {
+			selectedCell = -1;
+			drawList->PopClipRect();
+			return;
+		}
+
+		const std::array<Vec2, 4>& q = blockQuads[selectedCell];
+		ImVec2 pts[4];
+		for (int k = 0; k < 4; k++) {
+			pts[k] = camera.worldToScreen(q[k]);
+		}
+
+		drawList->AddConvexPolyFilled(pts, 4, IM_COL32(255, 235, 60, 70));
+		drawList->AddPolyline(pts, 4, IM_COL32(255, 235, 60, 255), ImDrawFlags_Closed, 2.0f);
+
+		drawList->PopClipRect();
+		return;
+	}
+
 	if (hasStructuredGrid()) {
 		int nCells = g.nr * g.nz;
 		if (selectedCell >= nCells || !isStructuredCellActive(selectedCell)) {
@@ -926,6 +1154,10 @@ void Inspector::copyActiveSurfaceToClipboard() {
 	drawCellInfo(drawList);
 	drawValueProbe(drawList);
 	drawEmptyMessage(drawList);
+
+	// bake the colorbar into the exported image at the same relative position it
+	// occupies in the live panel
+	colorbar.draw(drawList, canvasRect.min, canvasRect.max);
 	drawList->PopClipRect();
 
 	ImGui::End();
@@ -956,21 +1188,11 @@ void Inspector::render() {
 	// space left below the strip
 	drawFieldTabs();
 
-	// size the colorbar strip to the current tick values + label so nothing is
-	// clipped, before we reserve that width out of the canvas
-	colorbar.updateLayout();
-
 	ImVec2 pos = ImGui::GetCursorScreenPos();
 	ImVec2 size = ImGui::GetContentRegionAvail();
 
-	canvasRect = makePaddedRect(
-		pos,
-		size,
-		0.0f,
-		colorbar.width,
-		0.0f,
-		0.0f
-	);
+	// the colorbar now floats inside the canvas, so the canvas fills the whole panel
+	canvasRect = makePaddedRect(pos, size);
 
 	resizeImage();
 
@@ -992,8 +1214,15 @@ void Inspector::render() {
 	updateCurrentMousePos();
 
 	ImGuiIO io = ImGui::GetIO();
-	handleMouse(io);
-	handleSelection(io);
+
+	// let the floating colorbar consume the pointer first, so dragging it doesn't
+	// also pan/select the field underneath it
+	bool overColorbar = colorbar.interact(canvasRect.min, canvasRect.max);
+
+	if (!overColorbar) {
+		handleMouse(io);
+		handleSelection(io);
+	}
 
 	drawCanvas(drawList, canvasRect, 5.0f);
 
@@ -1002,14 +1231,15 @@ void Inspector::render() {
 	drawMeshOverlay(drawList);
 	drawAxes(drawList);
 	drawCellInfo(drawList);
-	drawValueProbe(drawList);
+	if (!overColorbar) {
+		drawValueProbe(drawList);
+	}
 	drawEmptyMessage(drawList);
-	drawList->PopClipRect();
 
-	// place the colorbar in the strip reserved on the right of the canvas
-	// (the field is drawn via the draw list, so there's no item for SameLine to follow)
-	ImGui::SetCursorScreenPos(ImVec2(canvasRect.max.x, canvasRect.min.y));
-	colorbar.render();
+	// draw the colorbar on top of the field, inside the canvas, so it belongs to
+	// the same image (and is included when copying to the clipboard)
+	colorbar.draw(drawList, canvasRect.min, canvasRect.max);
+	drawList->PopClipRect();
 
 	ImGui::End();
 }

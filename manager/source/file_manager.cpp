@@ -509,6 +509,16 @@ void saveEtc(std::ofstream& out, const Project& project) {
 		project.path,
 		project.lengthScale
 	);
+
+	// Multiblock per-band resolution. The blocks themselves are rebuilt from the
+	// sketch on load, but these cell counts are user-edited state, so persist them.
+	// Appended at the very end of the file (nothing follows), so the guarded read in
+	// loadEtc lets older saves that lack it still load.
+	writeAll(
+		out,
+		project.mesh.zBandCells,
+		project.mesh.rBandCells
+	);
 }
 
 void loadEtc(std::ifstream& in, Project& project) {
@@ -523,6 +533,16 @@ void loadEtc(std::ifstream& in, Project& project) {
 	// units are now known: ask the GUI to reset every inspector's view so the
 	// grid/zoom matches the loaded project's length unit.
 	project.resetInspectorViews = true;
+
+	// Multiblock per-band resolution (appended after lengthScale; guard so older
+	// saves without it still load -- empty vectors let ensureBandSizes default to 20).
+	if (remainingBytes(in) >= static_cast<std::streamoff>(2 * sizeof(size_t))) {
+		readAll(in, project.mesh.zBandCells, project.mesh.rBandCells);
+	}
+	else {
+		project.mesh.zBandCells.clear();
+		project.mesh.rBandCells.clear();
+	}
 }
 
 bool saveHotkeyPressed(Project& project) {
@@ -577,6 +597,11 @@ void loadFromPathProject(std::ifstream& in, Project& project) {
 	loadFromPathSolver(in, project.solver);
 	loadEtc(in, project);
 
+	// Reconstruct the (non-serialized) multiblock from the now-loaded sketch and
+	// per-band cell counts (loadEtc), so the inspector and solver see the multiblock
+	// instead of falling back to the raster grid. Must run after loadEtc, which loads
+	// the band cells buildStructuredMultiBlock consumes.
+	project.mesh.rebuildMultiBlockAfterLoad(project.geometry.sketch);
 }
 
 void loadFromExplorerProject(Project& project) {

@@ -290,17 +290,23 @@ bool Solver::buildContinuationState(
     }
 
     const bool isStructuredMesh = mesh.currentMeshType == MeshType::Structured;
+    // A multiblock structured mesh is a collection of conformal blocks with general
+    // face connectivity (no single nr x nz grid), so it rides the face-based path
+    // like an unstructured mesh -- not the index-based structured path.
+    const bool isMultiBlock = mesh.isMultiBlock;
     std::vector<uint8_t> activeCell;
     std::vector<uint8_t> emptyActiveCell;
 
-    if (isStructuredMesh) {
+    if (isStructuredMesh && !isMultiBlock) {
         activeCell = buildStructuredActiveCells(mesh, reason);
         if (activeCell.empty()) {
             return false;
         }
     }
 
-    FVMesh candidate = mesh.createFVMesh(isStructuredMesh ? activeCell : emptyActiveCell);
+    FVMesh candidate = isMultiBlock
+        ? mesh.createMultiBlockFVMesh()
+        : mesh.createFVMesh(isStructuredMesh ? activeCell : emptyActiveCell);
 
     if (candidate.numCells() <= 0 || candidate.numFaces() <= 0) {
         setContinuationReason(reason, "Generate a valid mesh first.");
@@ -318,7 +324,7 @@ bool Solver::buildContinuationState(
     state.faceRefs = faceRefs;
     state.nr = candidate.nr;
     state.nz = candidate.nz;
-    state.useFaceCoefficients = !isStructuredMesh;
+    state.useFaceCoefficients = !isStructuredMesh || isMultiBlock;
     state.solveEnergy = fieldOption.solveEnergy;
     state.solveConcentration = fieldOption.solveConcentration;
 
@@ -695,15 +701,20 @@ void Solver::runSimple(const Mesh& mesh) {
     Config config{ f, g, itr, varUnits };
 
     const bool isStructuredMesh = mesh.currentMeshType == MeshType::Structured;
-    const bool useFaceCoefficients = !isStructuredMesh;
+    // Multiblock is structured-typed but has general face connectivity (no single
+    // nr x nz grid), so it uses the face-based coefficient path like unstructured.
+    const bool isMultiBlock = mesh.isMultiBlock;
+    const bool useFaceCoefficients = !isStructuredMesh || isMultiBlock;
 
     std::vector<uint8_t> emptyActiveCell;
 
-    if (isStructuredMesh) {
+    if (isStructuredMesh && !isMultiBlock) {
         allocateGridConfig(config.g, config.f);
     }
 
-    fvMesh = mesh.createFVMesh(isStructuredMesh ? config.g.activeCell : emptyActiveCell);
+    fvMesh = isMultiBlock
+        ? mesh.createMultiBlockFVMesh()
+        : mesh.createFVMesh(isStructuredMesh ? config.g.activeCell : emptyActiveCell);
     int N = fvMesh.numCells();
     int Nface = fvMesh.numFaces();
     config.g.N = N;
@@ -826,9 +837,11 @@ void Solver::runSimple(const Mesh& mesh) {
 
     // open file if transient is turned on
     std::ofstream out;
-    const bool canSaveStructuredTransient = transient && isStructuredMesh;
-    if (transient && !isStructuredMesh && console) {
-        console->addLine("Transient binary export is only supported for structured meshes; continuing without export.\n");
+    // Binary export writes a single nr x nz raster block, which a multiblock mesh
+    // doesn't have -- treat it like unstructured and skip the export.
+    const bool canSaveStructuredTransient = transient && isStructuredMesh && !isMultiBlock;
+    if (transient && !canSaveStructuredTransient && console) {
+        console->addLine("Transient binary export is only supported for single-block structured meshes; continuing without export.\n");
     }
 
     if (canSaveStructuredTransient) {
@@ -865,7 +878,7 @@ void Solver::runSimple(const Mesh& mesh) {
     // from empty host vectors and raises a CUDA error. Build it only when it can
     // actually run; the pp solve falls back to solveLinearSystem otherwise.
     std::optional<MultigridSolver> multigrid;
-    if (useMultigrid && mesh.currentMeshType == MeshType::Structured) {
+    if (useMultigrid && isStructuredMesh && !isMultiBlock) {
         GridLevel grid{ fvMesh.nr, fvMesh.nz, N, config.g.rFace, config.g.zFace, config.g.activeCell };
         multigrid.emplace(mem, grid);
         CUDA_CHECK(cudaGetLastError());

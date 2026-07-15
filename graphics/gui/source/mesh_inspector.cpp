@@ -791,21 +791,6 @@ int meshInspectorCellIndexAt(const std::vector<double>& faces, double x) {
 // ======================================================================
 // -----------------------CELL INSPECTION--------------------------------
 // ======================================================================
-static double cellPickSign(const Vec2& p, const Vec2& a, const Vec2& b) {
-	return (p.z - b.z) * (a.r - b.r) - (a.z - b.z) * (p.r - b.r);
-}
-
-// Point-in-(convex)-quad: inside when the point is on the same side of all 4 edges.
-static bool pointInQuad(const Vec2& p, const std::array<Vec2, 4>& q) {
-	bool hasNeg = false, hasPos = false;
-	for (int k = 0; k < 4; k++) {
-		double d = cellPickSign(p, q[k], q[(k + 1) & 3]);
-		if (d < 0.0) hasNeg = true;
-		if (d > 0.0) hasPos = true;
-	}
-	return !(hasNeg && hasPos);
-}
-
 void MeshInspector::buildInspectMesh() {
 	if (mesh.isMultiBlock && !mesh.multiBlock.blocks.empty()) {
 		mesh.buildMultiBlockInspectMesh(inspectFVMesh, inspectCellQuads);
@@ -883,9 +868,9 @@ int MeshInspector::pickCell(const Vec2& world) const {
 			continue;
 		}
 
-		double d1 = cellPickSign(world, pts[t.v0], pts[t.v1]);
-		double d2 = cellPickSign(world, pts[t.v1], pts[t.v2]);
-		double d3 = cellPickSign(world, pts[t.v2], pts[t.v0]);
+		double d1 = pickSign(world, pts[t.v0], pts[t.v1]);
+		double d2 = pickSign(world, pts[t.v1], pts[t.v2]);
+		double d3 = pickSign(world, pts[t.v2], pts[t.v0]);
 
 		bool hasNeg = (d1 < 0.0) || (d2 < 0.0) || (d3 < 0.0);
 		bool hasPos = (d1 > 0.0) || (d2 > 0.0) || (d3 > 0.0);
@@ -1625,12 +1610,12 @@ void MeshInspector::drawBoundarySegments(
 }
 
 void MeshInspector::drawToolBar() {
-	float toolbarHeight = 40.0f;
+	float toolbarHeight = 60.0f;
 
 	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
 	// view
-	if (addImageButton("Reset", "Reset view", assets.houseIcon, buttonSize)) {
+	if (addImageButton("Reset", "Reset", "Reset view", assets.houseIcon, buttonSize)) {
 		resetView();
 	}
 
@@ -1639,6 +1624,7 @@ void MeshInspector::drawToolBar() {
 	// tools
 	if (addImageButtonToggle(
 		"ROICircle",
+		"Circle",
 		"Draw circular region of influence",
 		assets.drawCircleIcon,
 		buttonSize,
@@ -1651,6 +1637,7 @@ void MeshInspector::drawToolBar() {
 
 	if (addImageButtonToggle(
 		"ROIRect",
+		"Rectangle",
 		"Draw rectangular region of influence",
 		assets.selectRegionIcon,
 		buttonSize,
@@ -1663,6 +1650,7 @@ void MeshInspector::drawToolBar() {
 
 	if (addImageButtonToggle(
 		"InspectCell",
+		"Inspect",
 		"Inspect cell mesh data (click a cell)",
 		assets.selectIcon,
 		buttonSize,
@@ -1680,6 +1668,7 @@ void MeshInspector::drawToolBar() {
 	// display
 	addImageButtonToggle(
 		"ToggleMesh",
+		"Mesh",
 		"Toggle mesh",
 		assets.fillCellIcon,
 		buttonSize,
@@ -1689,7 +1678,7 @@ void MeshInspector::drawToolBar() {
 	addToolbarSeparator();
 
 	// export
-	if (addImageButton("Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
+	if (addImageButton("Copy", "Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
 		pendingCopyWidth = frameBuffer.width;
 		pendingCopyHeight = frameBuffer.height;
 		pendingCopy = true;

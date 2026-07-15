@@ -462,7 +462,7 @@ protected:
 		float bottom = 0.0
 	);
 
-	void addToolbarSeparator(float height = 24.0f);
+	void addToolbarSeparator(float height = 40.0f);
 
 	// update initLeftMouse when the user clicks. relative to the last drawn ImGui item
 	void updateInitialLeftClick(ImGuiIO& io);
@@ -511,11 +511,23 @@ protected:
 	// ======================================================================
 	// -----------------------IMAGE BUTTONS----------------------------------
 	// ======================================================================
-	bool addImageButton(const char* id, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize);
+	// Toolbar buttons render the icon with a short caption centered underneath
+	// so the button reads as the tool it represents. `label` is that caption
+	// (keep it short, e.g. "Ruler"); `tooltip` is the fuller hover description.
+	bool addImageButton(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize);
 
-	bool addImageButtonToggle(const char* id, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle);
+	bool addImageButtonToggle(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle);
 
 private:
 
+	// draws the icon button plus its centered caption as one vertical group.
+	// Assumes the caller has already pushed the button id, frame rounding, and
+	// button colors. `active` brightens the caption for a toggled-on tool.
+	bool drawImageButtonWithCaption(const char* buttonID, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool active);
+
 	const float imageButtonRounding = 6.0f;
+
+	// caption font size (px) under toolbar icons; smaller than the 18px UI font
+	// so the label stays subordinate to the icon.
+	static constexpr float captionFontSize = 13.0f;
 };

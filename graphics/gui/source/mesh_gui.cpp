@@ -278,14 +278,26 @@ void MeshGUI::drawPropertiesPanel() {
 				column("Value", 100.0f, ImGuiTableColumnFlags_WidthStretch)
 			);
 
-			// cells/nodes come from different data depending on the mesh type:
-			// a structured grid is nr x nz cells with (nr+1)(nz+1) nodes, while an
-			// unstructured mesh is counted from its triangles and points. Both are
-			// read live, so they refresh after each Generate Mesh.
+			// cells/nodes come from different data depending on the mesh type, and are
+			// read live so they refresh after each Generate Mesh:
+			//  - multiblock: the real totals live on the blocks, NOT the raster g.nr x
+			//    g.nz (which is only the resample grid the results view samples). Cells
+			//    sum each block's cell count; nodes sum each block's grid points (blocks
+			//    own their nodes, so shared seam nodes are counted once per block).
+			//  - single-block structured: nr x nz cells, (nr+1)(nz+1) nodes.
+			//  - unstructured: counted from its triangles and points.
 			std::string numCells;
 			std::string numNodes;
 
-			if (mesh.currentMeshType == MeshType::Structured) {
+			if (mesh.isMultiBlock) {
+				size_t nodes = 0;
+				for (const Block& b : mesh.multiBlock.blocks) {
+					nodes += b.nodes.size();
+				}
+				numCells = std::to_string(mesh.multiBlock.totalCells);
+				numNodes = std::to_string(nodes);
+			}
+			else if (mesh.currentMeshType == MeshType::Structured) {
 				numCells = std::to_string(mesh.g.nr * mesh.g.nz);
 				numNodes = std::to_string((mesh.g.nr + 1) * (mesh.g.nz + 1));
 			}

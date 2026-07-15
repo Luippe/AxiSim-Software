@@ -168,3 +168,17 @@ Vec2 closestPointOnSegment(Vec2 p, Vec2 a, Vec2 b) {
 		a.r + t * abR
 	};
 }
+
+double pickSign(const Vec2& p, const Vec2& a, const Vec2& b) {
+	return (p.z - b.z) * (a.r - b.r) - (a.z - b.z) * (p.r - b.r);
+}
+
+bool pointInQuad(const Vec2& p, const std::array<Vec2, 4>& q) {
+	bool hasNeg = false, hasPos = false;
+	for (int k = 0; k < 4; k++) {
+		double d = pickSign(p, q[k], q[(k + 1) & 3]);
+		if (d < 0.0) hasNeg = true;
+		if (d > 0.0) hasPos = true;
+	}
+	return !(hasNeg && hasPos);
+}

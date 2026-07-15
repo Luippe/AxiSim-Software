@@ -426,7 +426,70 @@ void BaseSurfaceViewer::addMenuItemCopyToClipboard(const char* text) {
 // ======================================================================
 // -----------------------IMAGE BUTTON HANDLES---------------------------
 // ======================================================================
-bool BaseSurfaceViewer::addImageButton(const char* id, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize) {
+bool BaseSurfaceViewer::drawImageButtonWithCaption(
+	const char* buttonID,
+	const char* label,
+	const char* tooltip,
+	TextureBuffer& icon,
+	ImVec2 buttonSize,
+	bool active
+) {
+	const bool hasLabel = (label != nullptr && label[0] != '\0');
+
+	// measure the caption in the (smaller) caption font so the icon and text can
+	// be centered within a shared cell that is as wide as the wider of the two.
+	ImVec2 textSize(0.0f, 0.0f);
+	if (hasLabel) {
+		ImGui::PushFont(nullptr, captionFontSize);
+		textSize = ImGui::CalcTextSize(label);
+		ImGui::PopFont();
+	}
+
+	// an ImageButton's clickable footprint is the image plus FramePadding on each
+	// side, so center against that full width (not just the image) or the caption
+	// ends up shifted by FramePadding.x relative to the button.
+	const float buttonWidth = buttonSize.x + ImGui::GetStyle().FramePadding.x * 2.0f;
+	const float cellWidth = std::max(buttonWidth, textSize.x);
+
+	// stack the icon and its caption vertically as one item so callers can lay
+	// buttons out in a row with SameLine().
+	ImGui::BeginGroup();
+
+	const float cellStartX = ImGui::GetCursorPosX();
+
+	// icon centered within the cell
+	ImGui::SetCursorPosX(cellStartX + (cellWidth - buttonWidth) * 0.5f);
+	bool pressed = ImGui::ImageButton(
+		buttonID,
+		(ImTextureID)(intptr_t)icon.getTextureID(),
+		buttonSize
+	);
+
+	// tooltip must be sampled while the button is still the most-recent item
+	setToolTip(tooltip);
+
+	// caption centered directly beneath the icon
+	if (hasLabel) {
+		ImGui::PushFont(nullptr, captionFontSize);
+		ImGui::PushStyleColor(
+			ImGuiCol_Text,
+			active ? ImVec4(0.92f, 0.95f, 1.00f, 1.0f)                 // bright for the active tool
+			       : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled)  // muted otherwise
+		);
+
+		ImGui::SetCursorPosX(cellStartX + (cellWidth - textSize.x) * 0.5f);
+		ImGui::TextUnformatted(label);
+
+		ImGui::PopStyleColor();
+		ImGui::PopFont();
+	}
+
+	ImGui::EndGroup();
+
+	return pressed;
+}
+
+bool BaseSurfaceViewer::addImageButton(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize) {
 	ImGui::PushID(id);
 	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, imageButtonRounding);
 
@@ -436,9 +499,7 @@ bool BaseSurfaceViewer::addImageButton(const char* id, const char* tooltip, Text
 	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(255, 255, 255, 30));
 	ImGui::PushStyleColor(ImGuiCol_ButtonActive,  IM_COL32(255, 255, 255, 48));
 
-	bool clicked = ImGui::ImageButton("##addImageButton", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize);
-
-	setToolTip(tooltip);
+	bool clicked = drawImageButtonWithCaption("##addImageButton", label, tooltip, icon, buttonSize, false);
 
 	ImGui::PopStyleColor(3);
 	ImGui::PopID();
@@ -446,11 +507,10 @@ bool BaseSurfaceViewer::addImageButton(const char* id, const char* tooltip, Text
 	return clicked;
 }
 
-bool BaseSurfaceViewer::addImageButtonToggle(const char* id, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle) {
+bool BaseSurfaceViewer::addImageButtonToggle(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle) {
 
 	ImGui::PushID(id);
 	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, imageButtonRounding);
-	bool pushed = false;
 
 	// transparent by default so the button blends into the toolbar; highlight on hover.
 	ImGui::PushStyleColor(ImGuiCol_Button,        IM_COL32(0, 0, 0, 0));
@@ -466,14 +526,12 @@ bool BaseSurfaceViewer::addImageButtonToggle(const char* id, const char* tooltip
 		styleColorCount += 3;
 	}
 
-	if (ImGui::ImageButton("##toggleDrawCell", (ImTextureID)(intptr_t)icon.getTextureID(), buttonSize)) {
+	bool pushed = drawImageButtonWithCaption("##toggleImageButton", label, tooltip, icon, buttonSize, toggle);
+	if (pushed) {
 		toggle = !toggle;
-		pushed = true;
 	}
 
 	ImGui::PopStyleColor(styleColorCount);
-
-	setToolTip(tooltip);
 
 	ImGui::PopID();
 	ImGui::PopStyleVar();

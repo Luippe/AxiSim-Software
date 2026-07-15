@@ -96,6 +96,10 @@ public:
 	// generate all fields
 	void createFields(const Mesh& mesh, const Solver& solver);
 
+	// resample a multiblock solution onto the raster grid (mesh.g) and build the
+	// raster-based fields the results/inspector renderers expect
+	void createFieldsMultiBlock(const Mesh& mesh);
+
 	void generate(Mesh& mesh, Solver& solver);
 
 private:

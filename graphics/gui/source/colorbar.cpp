@@ -32,25 +32,6 @@ void Colorbar::formatTickValue(char* buf, size_t bufSize, double value, int prec
 	}
 }
 
-// ======================================================================
-// -----------------------DRAW CALLS-------------------------------------
-// ======================================================================
-void Colorbar::drawBar() {
-
-	ImVec2 avail = ImGui::GetContentRegionAvail();
-	float yCenter = (avail.y - barHeight) * 0.5f;
-
-	// barLeftPad is chosen by updateLayout() so the label and tick values fit
-	ImGui::SetCursorPosX(ImGui::GetCursorPosX() + barLeftPad);
-	ImGui::SetCursorPosY(ImGui::GetCursorPosY() + yCenter);
-
-	ImGui::Image((ImTextureID)(intptr_t)colormap.getTextureID(), ImVec2(barWidth, barHeight), ImVec2(0.0f, 1.0f), ImVec2(1.0f,0.0f));
-}
-
-void Colorbar::drawOutline() {
-	drawList->AddRect(posMin, posMax, IM_COL32(255, 255, 255, 255), 0.0f, 0, 1.0f);
-}
-
 // A field can sit on a large baseline with only a small fractional variation
 // across the domain (e.g. an inlet-dominated concentration field with a thin
 // depletion layer). At the user's chosen precision, adjacent ticks can then
@@ -109,30 +90,87 @@ float Colorbar::maxLabelLineWidth() {
 	return maxW;
 }
 
-void Colorbar::updateLayout() {
+int Colorbar::labelLineCount() {
 
-	const float minLeftPad = 8.0f;
-	const float rightPad = 8.0f;
+	std::string text = results.fieldType[results.currentItem];
+	std::stringstream ss(text);
+	std::string word;
 
-	// keep the centered label from spilling left onto the canvas: push the bar
-	// right by however far the label overhangs the bar on each side
-	float labelHalf = maxLabelLineWidth() * 0.5f;
-	barLeftPad = std::max(minLeftPad, labelHalf - barWidth * 0.5f);
+	int n = 0;
+	while (ss >> word) {
+		n++;
+	}
+
+	return std::max(n, 1);
+}
+
+// ======================================================================
+// -----------------------LAYOUT-----------------------------------------
+// ======================================================================
+Colorbar::Layout Colorbar::computeLayout(const ImVec2& canvasMin, const ImVec2& canvasMax) {
 
 	int precision = computeTickPrecision();
+	float tickTextW = maxTickTextWidth(precision);
+	float labelHalf = maxLabelLineWidth() * 0.5f;
 
-	// right edge of the tick numbers, and of the centered label
-	float valueRight =
-		barLeftPad + barWidth + tickLen + textOffset + maxTickTextWidth(precision);
-	float labelRight = barLeftPad + barWidth * 0.5f + labelHalf;
+	float lineHeight = ImGui::GetTextLineHeight();
+	float labelHeight = labelLineCount() * lineHeight;
 
-	width = std::max(valueRight, labelRight) + rightPad;
-	width = std::max(width, 60.0f);
+	// distances from the bar's top-left corner to each edge of the bounding box
+	float leftExtent = std::max(0.0f, labelHalf - barWidth * 0.5f);	// centered label overhang
+	float rightExtent = barWidth + tickLen + textOffset + tickTextW;	// ticks + values
+	float topExtent = labelHeight + labelGap;						// label block above
+	float bottomExtent = barHeight;								// bar itself
+
+	float canvasW = std::max(1.0f, canvasMax.x - canvasMin.x);
+	float canvasH = std::max(1.0f, canvasMax.y - canvasMin.y);
+
+	float barX = canvasMin.x + normPos.x * canvasW;
+	float barY = canvasMin.y + normPos.y * canvasH;
+
+	// clamp so the whole bounding box stays inside the canvas
+	float minX = canvasMin.x + leftExtent;
+	float maxX = canvasMax.x - rightExtent;
+	float minY = canvasMin.y + topExtent;
+	float maxY = canvasMax.y - bottomExtent;
+	if (maxX < minX) maxX = minX;
+	if (maxY < minY) maxY = minY;
+
+	barX = std::clamp(barX, minX, maxX);
+	barY = std::clamp(barY, minY, maxY);
+
+	Layout L;
+	L.barMin = ImVec2(barX, barY);
+	L.barMax = ImVec2(barX + barWidth, barY + barHeight);
+	L.boxMin = ImVec2(barX - leftExtent, barY - topExtent);
+	L.boxMax = ImVec2(barX + rightExtent, barY + bottomExtent);
+	return L;
+}
+
+// ======================================================================
+// -----------------------DRAW CALLS-------------------------------------
+// ======================================================================
+void Colorbar::drawBar() {
+
+	// draw the gradient straight into the draw list so the colorbar is part of the
+	// same image as the field (no separate ImGui::Image widget). uv is flipped
+	// vertically so the maximum value sits at the top of the bar.
+	drawList->AddImage(
+		(ImTextureID)(intptr_t)colormap.getTextureID(),
+		posMin,
+		posMax,
+		ImVec2(0.0f, 1.0f),
+		ImVec2(1.0f, 0.0f)
+	);
+}
+
+void Colorbar::drawOutline() {
+	drawList->AddRect(posMin, posMax, IM_COL32(255, 255, 255, 255), 0.0f, 0, 1.0f);
 }
 
 void Colorbar::drawTickValue() {
 
-	float dval = (results.currentField->vmax - results.currentField->vmin) / numTicks;	// maybe fix this since it calculates this every frame
+	float dval = (results.currentField->vmax - results.currentField->vmin) / numTicks;
 
 	int precision = computeTickPrecision();
 
@@ -160,6 +198,18 @@ float Colorbar::getValueAtY(float localY) {
 	return results.currentField->vmin + t * (results.currentField->vmax - results.currentField->vmin);
 }
 
+float Colorbar::yForValue(double value) {
+
+	double vmin = results.currentField->vmin;
+	double vmax = results.currentField->vmax;
+
+	double t = (vmax > vmin) ? (value - vmin) / (vmax - vmin) : 0.5;
+	t = std::clamp(t, 0.0, 1.0);
+
+	// value == vmax -> top (posMin.y); value == vmin -> bottom (posMin.y + barHeight)
+	return posMin.y + (float)((1.0 - t) * barHeight);
+}
+
 void Colorbar::drawLabel() {
 
 	std::string text = results.fieldType[results.currentItem];
@@ -176,14 +226,14 @@ void Colorbar::drawLabel() {
 	float totalHeight = lines.size() * lineHeight;	// total text height
 
 	float centerX = posMin.x + barWidth * 0.5f;
-	float y = posMin.y - totalHeight - 5.0f;
+	float y = posMin.y - totalHeight - labelGap;
 
 	for (const std::string& line : lines) {
 
 		ImVec2 lineSize = ImGui::CalcTextSize(line.c_str());
 		ImVec2 linePos(centerX - lineSize.x * 0.5f, y);
 
-		drawList->AddText(linePos, IM_COL32(255, 255, 255, 255),line.c_str());
+		drawList->AddText(linePos, IM_COL32(255, 255, 255, 255), line.c_str());
 
 		y += lineHeight;
 
@@ -201,85 +251,60 @@ void Colorbar::drawTicks() {
 
 void Colorbar::drawFilterTicks() {
 
-	if (filterValueAt.has_value()) {
-		drawList->AddLine(
-			ImVec2(posMin.x, filterValueAt->mouseY),
-			ImVec2(posMax.x, filterValueAt->mouseY),
-			IM_COL32(255, 255, 255, 255),
-			5.0f);
-	}
+	auto drawTick = [&](const std::optional<FilterTickData>& f) {
+		if (!f.has_value()) return;
+		float y = yForValue(f->value);
+		drawList->AddLine(ImVec2(posMin.x, y), ImVec2(posMax.x, y), IM_COL32(255, 255, 255, 255), 5.0f);
+	};
 
-	if (filterValueLower.has_value()) {
-		drawList->AddLine(
-			ImVec2(posMin.x, filterValueLower->mouseY),
-			ImVec2(posMax.x, filterValueLower->mouseY),
-			IM_COL32(255, 255, 255, 255),
-			5.0f);
-	}
-
-	if (filterValueUpper.has_value()) {
-		drawList->AddLine(
-			ImVec2(posMin.x, filterValueUpper->mouseY),
-			ImVec2(posMax.x, filterValueUpper->mouseY),
-			IM_COL32(255, 255, 255, 255),
-			5.0f);
-	}
+	drawTick(filterValueAt);
+	drawTick(filterValueLower);
+	drawTick(filterValueUpper);
 }
 
 // ======================================================================
 // -----------------------EVENT HANDLE-----------------------------------
 // ======================================================================
-void Colorbar::handleMouseEvent() {
+void Colorbar::applyFilterClick(float localY) {
 
-	if (!ImGui::IsItemHovered()) return;
+	float value = getValueAtY(localY);
 
-	// set filter value at
-	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+	if (results.currentCompareType == CompareType::Between || results.currentCompareType == CompareType::Exclude) {
+		filterValueAt.reset();
 
-		// get local mouse pos and value at that position
-		ImVec2 mousePos = ImGui::GetIO().MousePos;
-		ImVec2 localPos = ImVec2(mousePos.x - posMin.x, mousePos.y - posMin.y);
-		float value = getValueAtY(localPos.y);
-
-		if (results.currentCompareType == CompareType::Between || results.currentCompareType == CompareType::Exclude) {
-			filterValueAt.reset();
-
-			if (!filterValueLower.has_value()) {
-				results.filterValues.valueLower= value;
-				filterValueLower = FilterTickData{ mousePos.y, value };
-			}
-			else if (!filterValueUpper.has_value()) {
-				results.filterValues.valueUpper = value;
-				filterValueUpper = FilterTickData{ mousePos.y, value };
-			}
-			else {
-				//check();
-				// if both are already set, set the tick that is most closest to the mouse
-				double distToLower = std::abs(mousePos.y - filterValueLower->mouseY);
-				double distToUpper = std::abs(mousePos.y - filterValueUpper->mouseY);
-
-
-				if (distToLower < distToUpper) {
-					results.filterValues.valueLower = value;
-					filterValueLower = FilterTickData{ mousePos.y, value };
-				}
-				else {
-					results.filterValues.valueUpper = value;
-					filterValueUpper = FilterTickData{ mousePos.y, value };
-				}
-			}
-
-			// check which one is upper and which is lower. reorganize if needed
-			if (filterValueLower->value > filterValueUpper->value) {
-				//check();
-				std::swap(filterValueLower, filterValueUpper);
-				std::swap(results.filterValues.valueLower, results.filterValues.valueUpper);
-			}
+		if (!filterValueLower.has_value()) {
+			results.filterValues.valueLower = value;
+			filterValueLower = FilterTickData{ value };
+		}
+		else if (!filterValueUpper.has_value()) {
+			results.filterValues.valueUpper = value;
+			filterValueUpper = FilterTickData{ value };
 		}
 		else {
-			results.filterValues.valueAt = value;
-			filterValueAt = FilterTickData{ mousePos.y, value };
+			// both already set: replace whichever tick is closest to the click
+			float clickY = posMin.y + localY;
+			double distToLower = std::abs(clickY - yForValue(filterValueLower->value));
+			double distToUpper = std::abs(clickY - yForValue(filterValueUpper->value));
+
+			if (distToLower < distToUpper) {
+				results.filterValues.valueLower = value;
+				filterValueLower = FilterTickData{ value };
+			}
+			else {
+				results.filterValues.valueUpper = value;
+				filterValueUpper = FilterTickData{ value };
+			}
 		}
+
+		// keep lower <= upper
+		if (filterValueLower->value > filterValueUpper->value) {
+			std::swap(filterValueLower, filterValueUpper);
+			std::swap(results.filterValues.valueLower, results.filterValues.valueUpper);
+		}
+	}
+	else {
+		results.filterValues.valueAt = value;
+		filterValueAt = FilterTickData{ value };
 	}
 }
 
@@ -294,24 +319,95 @@ void Colorbar::resetFilterValues() {
 }
 
 // ======================================================================
-// -----------------------MAIN RENDER LOOP-------------------------------
+// -----------------------INTERACTION------------------------------------
 // ======================================================================
-void Colorbar::render() { 
+bool Colorbar::interact(const ImVec2& canvasMin, const ImVec2& canvasMax) {
 
-	drawBar();
-
-	posMin = ImGui::GetItemRectMin();
-	posMax = ImGui::GetItemRectMax();
-	drawList = ImGui::GetWindowDrawList();
+	if (results.fieldType.empty() ||
+		results.currentItem < 0 ||
+		results.currentItem >= (int)results.fieldType.size() ||
+		!results.currentField) {
+		return false;
+	}
 
 	resetFilterValues();
 
-	handleMouseEvent();
+	Layout L = computeLayout(canvasMin, canvasMax);
 
+	ImVec2 boxSize(L.boxMax.x - L.boxMin.x, L.boxMax.y - L.boxMin.y);
+
+	// invisible hit target over the whole colorbar: grab anywhere to drag it
+	ImGui::SetCursorScreenPos(L.boxMin);
+	ImGui::InvisibleButton("##colorbarDrag", boxSize);
+
+	bool hovered = ImGui::IsItemHovered();
+	bool active = ImGui::IsItemActive();
+
+	ImGuiIO& io = ImGui::GetIO();
+
+	if (ImGui::IsItemActivated()) {
+		pressMouse = io.MousePos;
+		dragging = false;
+	}
+
+	if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+		dragging = true;
+
+		float canvasW = std::max(1.0f, canvasMax.x - canvasMin.x);
+		float canvasH = std::max(1.0f, canvasMax.y - canvasMin.y);
+
+		// move the bar by the pointer delta, then snap the stored normalized
+		// position back to the clamped, actually-drawn position so it can never
+		// drift outside the canvas (no edge dead-zone).
+		float newBarX = L.barMin.x + io.MouseDelta.x;
+		float newBarY = L.barMin.y + io.MouseDelta.y;
+
+		normPos.x = (newBarX - canvasMin.x) / canvasW;
+		normPos.y = (newBarY - canvasMin.y) / canvasH;
+
+		Layout clamped = computeLayout(canvasMin, canvasMax);
+		normPos.x = (clamped.barMin.x - canvasMin.x) / canvasW;
+		normPos.y = (clamped.barMin.y - canvasMin.y) / canvasH;
+	}
+
+	// a click with no drag sets a filter tick, but only if it landed on the bar
+	if (ImGui::IsItemDeactivated() && !dragging) {
+		if (pressMouse.x >= L.barMin.x && pressMouse.x <= L.barMax.x &&
+			pressMouse.y >= L.barMin.y && pressMouse.y <= L.barMax.y) {
+			applyFilterClick(pressMouse.y - L.barMin.y);
+		}
+	}
+
+	if (hovered || active) {
+		ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+	}
+
+	return hovered || active;
+}
+
+// ======================================================================
+// -----------------------MAIN DRAW--------------------------------------
+// ======================================================================
+void Colorbar::draw(ImDrawList* dl, const ImVec2& canvasMin, const ImVec2& canvasMax) {
+
+	if (results.fieldType.empty() ||
+		results.currentItem < 0 ||
+		results.currentItem >= (int)results.fieldType.size() ||
+		!results.currentField) {
+		return;
+	}
+
+	Layout L = computeLayout(canvasMin, canvasMax);
+
+	posMin = L.barMin;
+	posMax = L.barMax;
+	drawList = dl;
+	dy = barHeight / numTicks;
+
+	drawBar();
 	drawOutline();
 	drawLabel();
 	drawTicks();
 	drawTickValue();
 	drawFilterTicks();
-
 }

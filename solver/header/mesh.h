@@ -126,11 +126,26 @@ public:
 
 	void createMultiBlockLineVertices(const MultiBlockMesh& mb);
 
-	// Build an inspectable host FVMesh from the multiblock (cells + faces via
-	// toPackedMesh) plus the 4 corner vertices of each cell (same global order), so
-	// the Mesh Inspector can pick/highlight/report multiblock cells.
+	// Build a solver-ready host FVMesh from the multiblock (cells + faces via
+	// toPackedMesh). External faces are classified into boundary groups by geometric
+	// match against the sketch-derived boundaryEdges -- the same scheme the
+	// unstructured createFVMesh uses -- since toPackedMesh leaves them at the block
+	// edgeGroup (-1 for trellis blocks). Consumed through the face-based solver path.
+	FVMesh createMultiBlockFVMesh() const;
+
+	// Build an inspectable host FVMesh from the multiblock (via createMultiBlockFVMesh)
+	// plus the 4 corner vertices of each cell (same global order), so the Mesh
+	// Inspector can pick/highlight/report multiblock cells.
 	void buildMultiBlockInspectMesh(FVMesh& out,
 		std::vector<std::array<Vec2, 4>>& quads) const;
+
+	// Map each raster cell (g.nr x g.nz, row-major i*nz+j) to the global index of the
+	// multiblock cell covering its center, or -1 if none (obstacles / outside domain).
+	// The results pipeline is raster-based (it revolves g.zFace/g.rFace and samples a
+	// raster texture), so a multiblock solution -- which is stored per multiblock cell,
+	// not on the raster -- must be resampled onto the raster grid before display. Built
+	// once from the axis-aligned block rectangles and reused across all fields.
+	std::vector<int> buildMultiBlockRasterMap() const;
 
 	// Returns false (with a user-facing reason) if the sketch has geometry the
 	// rectilinear structured/multiblock code can't represent: circles, arcs, skewed
@@ -142,6 +157,13 @@ public:
 	// (center inside the domain) becomes a conformal block. Sets multiBlock +
 	// isMultiBlock; falls back to a single domain block when the sketch is empty.
 	void buildStructuredMultiBlock(const SketchModel& sketch);
+
+	// multiBlock / isMultiBlock are derived from the sketch and not serialized, so
+	// reconstruct them after a project load (mirroring the Generate path) -- else a
+	// loaded structured project reverts to the raster grid in both the inspector and
+	// the solver until re-Generate. Clears the flag for non-structured meshes so a
+	// reused Mesh object doesn't carry a stale multiblock from a prior project.
+	void rebuildMultiBlockAfterLoad(const SketchModel& sketch);
 
 	// Distinct sorted z/r coordinates of the sketch geometry = the trellis lines.
 	void computeTrellisLines(const SketchModel& sketch,

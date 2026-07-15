@@ -169,9 +169,16 @@ void Results::generate(Mesh& mesh, Solver& solver) {
 
 void Results::createFields(const Mesh& mesh, const Solver& solver) {
 
-	for (const std::string& name : fieldType) {
+	// A multiblock mesh has no single nr x nz raster: its FVMesh cells are numbered
+	// per block, and fvMesh.nr/nz are 0. The results renderer (3D cylinders + the 2D
+	// inspector) is raster-based and indexes fields as i*nz+j, so the per-cell
+	// multiblock solution must first be resampled onto the raster grid (mesh.g).
+	if (mesh.isMultiBlock) {
+		createFieldsMultiBlock(mesh);
+		return;
+	}
 
-		SolutionField& field = solutions[name];
+	for (const std::string& name : fieldType) {
 
 		// generate new field
 		Field newField;
@@ -180,6 +187,45 @@ void Results::createFields(const Mesh& mesh, const Solver& solver) {
 		// insert new field
 		fields[name] = newField;
 
+	}
+}
+
+void Results::createFieldsMultiBlock(const Mesh& mesh) {
+
+	const GridConfig& grid = mesh.g;
+	const int nrRaster = grid.nr;
+	const int nzRaster = grid.nz;
+	const int nRasterCells = nrRaster * nzRaster;
+
+	// One raster -> multiblock-cell map, shared by every field this generate.
+	const std::vector<int> rasterToCell = mesh.buildMultiBlockRasterMap();
+
+	for (const std::string& name : fieldType) {
+
+		const SolutionField& sol = solutions[name];
+
+		// Resample the multiblock solution onto the raster grid for the 3D cylinder
+		// view only, which is raster-based (Field::generateRaster indexes i*nz+j).
+		// Build it into a LOCAL copy and DO NOT write it back to solutions[] -- the 2D
+		// inspector renders the real block cells and indexes solutions[].field in
+		// block/cellGlobal order (the exact solver values). Cells with no covering
+		// block (obstacles / outside the domain) read 0 in the raster.
+		SolutionField rasterSol = sol;
+		std::vector<double> raster(static_cast<size_t>(std::max(nRasterCells, 0)), 0.0);
+		for (int n = 0; n < nRasterCells; n++) {
+			const int c = rasterToCell[n];
+			if (c >= 0 && c < (int)sol.field.size()) {
+				raster[n] = sol.field[c];
+			}
+		}
+
+		rasterSol.field = std::move(raster);
+		rasterSol.dr = grid.dr;
+		rasterSol.dz = grid.dz;
+
+		Field newField;
+		newField.generateRaster(rasterSol, nrRaster, nzRaster);
+		fields[name] = std::move(newField);
 	}
 }
 

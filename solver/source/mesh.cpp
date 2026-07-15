@@ -1009,18 +1009,22 @@ bool Mesh::convertSketchToUnstructuredMesh(const SketchModel& sketch) {
 }
 
 bool Mesh::convertSketchToStructuredMesh(const SketchModel& sketch) {
-	const bool preserveStructuredGroups =
-		currentMeshType == MeshType::Structured;
-	std::vector<BoundarySegmentGroup> preservedStructuredGroups;
-
-	if (preserveStructuredGroups) {
-		preservedStructuredGroups = boundaryGroups;
-	}
-
 	// Reuse the shared sketch -> boundary pipeline. It builds the boundary
-	// segments / vertices / edges and boundary groups (used for BCs) and sets
-	// g.L / g.R from the sketch's extent. It flips currentMeshType to
-	// Unstructured as a side effect, so restore it afterwards.
+	// segments / vertices / edges and the segment-based boundary groups -- carrying
+	// their BC values and group IDs, remapped onto the rebuilt segments, with
+	// boundaryEdges' groupIDs set from their segment -- and sets g.L / g.R from the
+	// sketch's extent. It flips currentMeshType to Unstructured as a side effect, so
+	// restore it afterwards.
+	//
+	// These segment-based groups are what the face-based multiblock solver consumes:
+	// createMultiBlockFVMesh classifies each boundary face against boundaryEdges'
+	// groupIDs, and createBoundarySolverDevice reads the groups' BC values. We
+	// deliberately DO NOT rebuild the groups from raster MeshEdges below -- that
+	// served the old index-based structured solver (now dead; every structured mesh
+	// is multiblock/face-based), and it dropped any group whose MeshEdge list was
+	// empty. Groups named on sketch segments have empty MeshEdge lists (sketch
+	// BoundaryEdges have hasMeshEdge == false), so that path silently deleted every
+	// boundary group -> zero BCs -> an all-zero solve.
 	if (!convertSketchToUnstructuredMesh(sketch)) {
 		return false;
 	}
@@ -1055,70 +1059,6 @@ bool Mesh::convertSketchToStructuredMesh(const SketchModel& sketch) {
 	// fluid/solid interface faces. Without this the rasterized walls (any wall not
 	// on the outer grid border) can't be shown or picked in the inspector.
 	rebuildSelectableObstacleEdges();
-
-	if (preserveStructuredGroups) {
-		auto isFluid = [&](int i, int j) {
-			if (i < 0 || i >= nr || j < 0 || j >= nz) {
-				return false;
-			}
-
-			return g.activeCell[i * nz + j] != 0;
-			};
-
-		auto isCurrentBoundaryEdge = [&](const MeshEdge& edge) {
-			if (edge.orient == EdgeOrient::Horizontal) {
-				if (edge.j < 0 || edge.j >= nz || edge.i < 0 || edge.i > nr) {
-					return false;
-				}
-
-				if (edge.i == 0) {
-					return isFluid(0, edge.j);
-				}
-
-				if (edge.i == nr) {
-					return isFluid(nr - 1, edge.j);
-				}
-
-				return isFluid(edge.i - 1, edge.j) != isFluid(edge.i, edge.j);
-			}
-
-			if (edge.i < 0 || edge.i >= nr || edge.j < 0 || edge.j > nz) {
-				return false;
-			}
-
-			if (edge.j == 0) {
-				return isFluid(edge.i, 0);
-			}
-
-			if (edge.j == nz) {
-				return isFluid(edge.i, nz - 1);
-			}
-
-			return isFluid(edge.i, edge.j - 1) != isFluid(edge.i, edge.j);
-			};
-
-		boundaryGroups.clear();
-
-		for (BoundarySegmentGroup group : preservedStructuredGroups) {
-			group.segmentIDs.clear();
-			group.totalLength = 0.0f;
-
-			group.edges.erase(
-				std::remove_if(
-					group.edges.begin(),
-					group.edges.end(),
-					[&](const MeshEdge& edge) {
-						return !isCurrentBoundaryEdge(edge);
-					}
-				),
-				group.edges.end()
-			);
-
-			if (!group.edges.empty()) {
-				boundaryGroups.push_back(std::move(group));
-			}
-		}
-	}
 
 	isReady = true;
 
@@ -2562,15 +2502,12 @@ void Mesh::createMultiBlockLineVertices(const MultiBlockMesh& mb) {
 	}
 }
 
-void Mesh::buildMultiBlockInspectMesh(FVMesh& out,
-	std::vector<std::array<Vec2, 4>>& quads) const {
-
-	out = FVMesh{};
-	quads.clear();
-	if (multiBlock.blocks.empty()) return;
+FVMesh Mesh::createMultiBlockFVMesh() const {
+	FVMesh out;
+	if (multiBlock.blocks.empty()) return out;
 
 	// Cells + faces (centers, volumes, normals, connectivity) come from the same
-	// packer the solver upload uses, so inspector geometry matches the real mesh.
+	// packer the solver upload uses, so inspector/solver geometry matches exactly.
 	FVMeshHostPacked packed{};
 	toPackedMesh(multiBlock, packed);
 
@@ -2597,9 +2534,98 @@ void Mesh::buildMultiBlockInspectMesh(FVMesh& out,
 		face.boundaryGroupID = packed.faceBoundaryGroupID[f];
 	}
 
+	// Tag external faces (neighbor < 0) with the BC group of the nearest sketch
+	// boundary edge -- the same geometric classification the unstructured
+	// createFVMesh uses (step 3). toPackedMesh leaves these at the block edgeGroup,
+	// which is -1 for trellis blocks, so without this no inlet/wall/outlet BC would
+	// ever be applied. Boundary faces lie exactly on the sketch edges, so the match
+	// is tight; the tolerance only guards floating-point drift.
+	const double matchTol = 1e-4 * std::max(std::max(g.L, g.R), 1.0);
+	for (FVFace& face : out.faces) {
+		if (face.neighbor >= 0) continue; // interior/interface face
+
+		int bestGroup = -1;
+		double bestDist = matchTol;
+
+		for (const BoundaryEdge& edge : boundaryEdges) {
+			if (edge.groupID < 0) continue;
+			if (!edgeInRange(edge, boundaryVertices.size())) continue;
+
+			Vec2 a = boundaryVertices[edge.v0].pos;
+			Vec2 b = boundaryVertices[edge.v1].pos;
+
+			double d = distancePointToSegment(face.center, a, b);
+			if (d < bestDist) {
+				bestDist = d;
+				bestGroup = edge.groupID;
+			}
+		}
+
+		face.boundaryGroupID = bestGroup;
+	}
+
+	return out;
+}
+
+std::vector<int> Mesh::buildMultiBlockRasterMap() const {
+
+	const int nr = g.nr;
+	const int nz = g.nz;
+
+	std::vector<int> rasterToCell(static_cast<size_t>(std::max(nr, 0)) * std::max(nz, 0), -1);
+
+	if (!isMultiBlock || nr <= 0 || nz <= 0) {
+		return rasterToCell;
+	}
+
+	// g.z / g.r are the ascending raster cell-center coordinates, so the raster
+	// columns/rows a block sub-cell covers are a contiguous index range found by
+	// binary search -- total stamping work is ~O(nr*nz), not per-cell rescans.
+	for (const Block& b : multiBlock.blocks) {
+		for (int i = 0; i < b.nr; i++) {
+			for (int j = 0; j < b.nz; j++) {
+
+				// Axis-aligned extent of this sub-cell from its 4 corner nodes
+				// (trellis blocks are rectangular; min/max also covers skew safely).
+				const MBNode& n00 = b.node(i, j);
+				const MBNode& n01 = b.node(i, j + 1);
+				const MBNode& n10 = b.node(i + 1, j);
+				const MBNode& n11 = b.node(i + 1, j + 1);
+
+				const double z0 = std::min({ n00.z, n01.z, n10.z, n11.z });
+				const double z1 = std::max({ n00.z, n01.z, n10.z, n11.z });
+				const double r0 = std::min({ n00.r, n01.r, n10.r, n11.r });
+				const double r1 = std::max({ n00.r, n01.r, n10.r, n11.r });
+
+				const int gc = b.cellGlobal(i, j);
+
+				const int jLo = (int)(std::lower_bound(g.z.begin(), g.z.end(), z0) - g.z.begin());
+				const int jHi = (int)(std::upper_bound(g.z.begin(), g.z.end(), z1) - g.z.begin());
+				const int iLo = (int)(std::lower_bound(g.r.begin(), g.r.end(), r0) - g.r.begin());
+				const int iHi = (int)(std::upper_bound(g.r.begin(), g.r.end(), r1) - g.r.begin());
+
+				for (int ii = iLo; ii < iHi && ii < nr; ii++) {
+					for (int jj = jLo; jj < jHi && jj < nz; jj++) {
+						rasterToCell[static_cast<size_t>(ii) * nz + jj] = gc;
+					}
+				}
+			}
+		}
+	}
+
+	return rasterToCell;
+}
+
+void Mesh::buildMultiBlockInspectMesh(FVMesh& out,
+	std::vector<std::array<Vec2, 4>>& quads) const {
+
+	out = createMultiBlockFVMesh();
+	quads.clear();
+	if (multiBlock.blocks.empty()) return;
+
 	// Corner vertices per cell, in the same global order toPackedMesh assigns
 	// (block.cellGlobal(i,j)), for point-in-cell picking and highlight drawing.
-	quads.assign(packed.nCells, std::array<Vec2, 4>{});
+	quads.assign(out.numCells(), std::array<Vec2, 4>{});
 	for (const Block& b : multiBlock.blocks) {
 		for (int i = 0; i < b.nr; i++) {
 			for (int j = 0; j < b.nz; j++) {
@@ -2706,10 +2732,8 @@ void Mesh::buildStructuredMultiBlock(const SketchModel& sketch) {
 	std::vector<double> zL, rL;
 	computeTrellisLines(sketch, zL, rL);
 
-	int total = 0, kept = 0;
 	if (zL.size() >= 2 && rL.size() >= 2) {
 		ensureBandSizes(zL.size() - 1, rL.size() - 1);
-		total = static_cast<int>((zL.size() - 1) * (rL.size() - 1));
 
 		int id = 1;
 		for (size_t i = 0; i + 1 < zL.size(); i++) {
@@ -2718,21 +2742,12 @@ void Mesh::buildStructuredMultiBlock(const SketchModel& sketch) {
 				// so notches / holes drop out (their cells fall outside the outline).
 				const Vec2 center{ 0.5 * (zL[i] + zL[i + 1]), 0.5 * (rL[j] + rL[j + 1]) };
 				if (!pointInsideDomain(center)) continue;
-				kept++;
 
 				const std::vector<MeshZone> ax  = { { zL[i + 1] - zL[i], std::max(zBandCells[i], 1), Grading::Uniform } };
 				const std::vector<MeshZone> rad = { { rL[j + 1] - rL[j], std::max(rBandCells[j], 1), Grading::Uniform } };
 				m.blocks.push_back(makeRectBlock(id++, zL[i], rL[j], ax, rad));
 			}
 		}
-	}
-
-	// TEMP diagnostic: shows whether the trellis saw the geometry and dropped holes.
-	if (console) {
-		console->addLine(("Trellis: zlines=" + std::to_string(zL.size())
-			+ " rlines=" + std::to_string(rL.size())
-			+ " kept=" + std::to_string(kept) + "/" + std::to_string(total)
-			+ " blocks (boundaryVerts=" + std::to_string(boundaryVertices.size()) + ")\n").c_str());
 	}
 
 	if (m.blocks.empty()) {
@@ -2753,4 +2768,20 @@ void Mesh::buildStructuredMultiBlock(const SketchModel& sketch) {
 	m.assignGlobalNumbering();
 	multiBlock = std::move(m);
 	isMultiBlock = true;
+}
+
+void Mesh::rebuildMultiBlockAfterLoad(const SketchModel& sketch) {
+	// The Generate path always routes a structured mesh through buildStructuredMultiBlock,
+	// so every saved structured mesh was multiblock. Reconstruct it from the loaded
+	// sketch (trellis lines) + loaded boundary (pointInsideDomain) + persisted band
+	// cell counts, which reproduces the same blocks the mesh was generated with.
+	if (currentMeshType == MeshType::Structured) {
+		buildStructuredMultiBlock(sketch);
+	}
+	else {
+		// Non-structured: make sure a reused Mesh object doesn't keep a stale
+		// multiblock from a previously loaded structured project.
+		isMultiBlock = false;
+		multiBlock = MultiBlockMesh{};
+	}
 }

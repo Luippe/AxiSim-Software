@@ -743,17 +743,18 @@ void Console::draw() {
 
 	ImGui::EndChild();
 
-	// clicking anywhere in the console (output area, padding, or dead space)
-	// focuses the input box; skip clicks on the input line itself so those
-	// place the caret where clicked instead of snapping it to the end
-	if (ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+	// clicking anywhere in the console (output area, padding, or dead space) reclaims
+	// keyboard focus for the input so you can type immediately; skip clicks on the
+	// input line itself so those place the caret where clicked instead of at the end.
+	// The focus request is deferred to just after the InputText below, where
+	// SetKeyboardFocusHere(-1) reliably wins over the child window that captured the
+	// click -- focusing before the widget (as this used to) loses that race.
+	bool clickToFocusInput =
+		ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
 		ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-		!ImGui::IsMouseHoveringRect(lastInputMin, lastInputMax)) {
-		refocusInput = true;
-		resetInputCursor = true;
-	}
+		!ImGui::IsMouseHoveringRect(lastInputMin, lastInputMax);
 
-	// re-focus the input after an accept that had to reset the widget
+	// re-focus the input after a completion accept that had to reset the widget
 	if (refocusInput) {
 		ImGui::SetKeyboardFocusHere();
 		refocusInput = false;
@@ -776,6 +777,13 @@ void Console::draw() {
 	// remember the input box rect so next frame's click-to-focus can exclude it
 	lastInputMin = inputMin;
 	lastInputMax = inputMax;
+
+	// apply the click-to-focus detected above, now that the InputText item exists.
+	// SetKeyboardFocusHere(-1) targets the item submitted just above (the input).
+	if (clickToFocusInput) {
+		ImGui::SetKeyboardFocusHere(-1);
+		resetInputCursor = true;	// snap the caret to the end on the reclaimed focus
+	}
 
 	// reset the highlight whenever the text actually changes
 	if (lastInput != inputBuffer) {

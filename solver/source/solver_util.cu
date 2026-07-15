@@ -508,11 +508,32 @@ void phiGradientGreenGauss(
 	gradZ = 0.0;
 	gradR = 0.0;
 
+	// The stored face areas and cell volumes are the *revolved* (axisymmetric)
+	// metrics: area = 2*pi*rf*L2D and volume = 2*pi*rc*A2D. Green-Gauss for the
+	// meridional-plane gradient (d/dz, d/dr) is a purely 2D operation, so it must
+	// use the planar face length L2D and cell area A2D -- feeding the revolved
+	// area/volume in directly biases the radial gradient (a constant field would
+	// give grad_r = c/rc, worst near the axis). Recover the planar metrics from
+	// the revolved ones: L2D = area/(2*pi*rf), A2D = volume/(2*pi*rc).
 	double volume = mesh.cells.volume[cellID];
-	if (volume <= 1.0e-30) return;
+	double rc = mesh.cells.centerR[cellID];
+	if (volume <= 1.0e-30 || rc <= 1.0e-30) return;
+
+	const double twoPi = 6.28318530717958647692;
 
 	int start = mesh.cells.faceStart[cellID];
 	int end = mesh.cells.faceStart[cellID + 1];
+
+	// A face lying on the axis has rf = 0 (revolved area = 0), so its L2D cannot be
+	// recovered by the area/(2*pi*rf) division. Instead use the fact that the cell's
+	// 2D face polygon closes -- sum(n * L2D) = 0 -- so the axis face's (n * L2D)
+	// equals minus the running sum over all the other faces. A cell touches the
+	// axis on at most one face.
+	double closureZ = 0.0;
+	double closureR = 0.0;
+
+	bool hasAxisFace = false;
+	double axisPhiF = 0.0;
 
 	for (int k = start; k < end; k++) {
 		int faceID = mesh.cells.faceIDs[k];
@@ -529,13 +550,34 @@ void phiGradientGreenGauss(
 			phi
 		);
 
-		double area = mesh.faces.area[faceID];
-		gradZ += phiF * normalZ * area;
-		gradR += phiF * normalR * area;
+		double rf = mesh.faces.centerR[faceID];
+
+		if (rf > 1.0e-30) {
+			double length2D = mesh.faces.area[faceID] / (twoPi * rf);
+
+			gradZ += phiF * normalZ * length2D;
+			gradR += phiF * normalR * length2D;
+
+			closureZ += normalZ * length2D;
+			closureR += normalR * length2D;
+		}
+		else {
+			// axis face: resolve its n * L2D from polygon closure below
+			hasAxisFace = true;
+			axisPhiF = phiF;
+		}
 	}
 
-	gradZ /= volume;
-	gradR /= volume;
+	if (hasAxisFace) {
+		// n_axis * L2D_axis = -(sum over the other faces)
+		gradZ += axisPhiF * (-closureZ);
+		gradR += axisPhiF * (-closureR);
+	}
+
+	// divide by the planar cell area A2D = volume / (2*pi*rc)
+	double invA2D = twoPi * rc / volume;
+	gradZ *= invA2D;
+	gradR *= invA2D;
 }
 
 __device__
