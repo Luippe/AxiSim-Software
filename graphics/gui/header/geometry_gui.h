@@ -5,11 +5,12 @@
 #include "graphics_struct.h"
 
 class Project;
+struct AppAssets;
 
 class GeometryGUI : public BaseGUI {
 
 public:
-	GeometryGUI(Project& project);
+	GeometryGUI(Project& project, AppAssets& assets);
 
 	void drawPropertiesPanel();
 	void draw();
@@ -17,4 +18,5 @@ public:
 private:
 
 	Project& project;
+	AppAssets& assets;
 };

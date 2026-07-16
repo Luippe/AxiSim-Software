@@ -7,6 +7,7 @@ class Results;
 class Colormap;
 class Colorbar;
 class Project;
+struct AppAssets;
 
 class ResultsGUI : public BaseGUI {
 public:
@@ -24,6 +25,7 @@ private:
 	Project& project;
 	SceneView& scene;
 	GUI& gui;
+	AppAssets& assets;
 	Results& results;
 	Colormap& colormap;
 	Colorbar& colorbar;

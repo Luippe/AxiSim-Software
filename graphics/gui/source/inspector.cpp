@@ -459,7 +459,7 @@ void Inspector::handleSelection(ImGuiIO& io) {
 void Inspector::drawToolBar() {
 	// icon-only, CFD-style toolbar: view | display, screenshot on the far right.
 	// names are hidden on the buttons and shown via tooltip.
-	const ImVec2 iconSize(22.0f, 22.0f);
+	const ImVec2 iconSize(toolbarIconSize, toolbarIconSize);
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 4.0f));
 	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 2.0f));

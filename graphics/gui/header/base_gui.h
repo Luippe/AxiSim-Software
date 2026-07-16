@@ -181,6 +181,8 @@ public:
 private:
 	void drawIconTreeLabel(const char* label, TextureBuffer* icon, ImGuiTreeNodeFlags flags);
 
-	static constexpr float treeIconScale = 0.9f;
+	// icon size relative to the text line height in the setup trees. >1 makes the
+	// icon larger than the label so the (busy, multi-color) icons stay legible.
+	static constexpr float treeIconScale = 1.25f;
 
 };

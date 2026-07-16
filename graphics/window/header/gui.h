@@ -26,14 +26,14 @@ enum class ViewTab;
 // class for managing GUI
 class GUI {
 public:
-	Menu menu;			// menu must come before anything else since it loads the mesh/solver/results when constructed
+	AppConfig appConfig;
+	Menu menu;			// loads mesh/solver/results before the view objects are constructed
 	
 	SketchView sketch;
 	SceneView scene;
 	Inspector inspector;
 	MeshInspector meshInspector;
 	Console console;
-	AppConfig appConfig;
 	ResidualPlot residualPlot;
 
 	Project& project;

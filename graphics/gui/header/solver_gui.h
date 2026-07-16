@@ -6,6 +6,7 @@ class Project;
 class Solver;
 class Mesh;
 struct AppConfig;
+struct AppAssets;
 
 class SolverGUI : public BaseGUI  {
 public:
@@ -52,6 +53,7 @@ private:
 	VariableUnits& varUnits;
 	Mesh& mesh;
 	AppConfig& appConfig;
+	AppAssets& assets;
 
 
 };

@@ -518,6 +518,10 @@ protected:
 
 	bool addImageButtonToggle(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle);
 
+	// Default square size (px) of a toolbar icon button. Single knob for every
+	// inspector/sketch toolbar — bump to enlarge all of them.
+	static constexpr float toolbarIconSize = 30.0f;
+
 private:
 
 	// draws the icon button plus its centered caption as one vertical group.

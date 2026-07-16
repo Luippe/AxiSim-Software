@@ -20,11 +20,27 @@
 using namespace BoundaryDefaults;
 using namespace BoundaryGet;
 
+namespace {
+	// Icon shown next to a boundary group in the setup tree, keyed by its type.
+	// A missing PNG is safe: AppAssets::icon warns once and returns a blank
+	// texture, and drawLeaf skips the image when the texture id is 0.
+	TextureBuffer* boundaryTypeIcon(AppAssets& assets, BoundaryType type) {
+		switch (type) {
+			case BoundaryType::WALL:            return &assets.icon("wall");
+			case BoundaryType::VELOCITY_INLET:  return &assets.icon("inlet");
+			case BoundaryType::PRESSURE_OUTLET: return &assets.icon("outlet");
+			case BoundaryType::SYMMETRY:        return &assets.icon("symmetry");
+		}
+		return nullptr;
+	}
+}
+
 SolverGUI::SolverGUI(Project& project, AppConfig& appConfig) :
 	project(project),
 	mesh(project.mesh),
 	solver(project.solver),
 	appConfig(appConfig),
+	assets(appConfig.assets),
 	varUnits(project.solver.varUnits) {
 }
 
@@ -716,16 +732,16 @@ void SolverGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() - 30.0f), true);
 
-		if (drawLeaf("General")) {
+		if (drawLeaf("General", &assets.icon("general"))) {
 			selectedBoundaryGroupID = -1;
 		}
 
 		// draw solver tree node
-		drawLeaf("Solver");
+		drawLeaf("Solver", &assets.icon("solver"));
 
 		// draw boundary tree node
 		bool boundariesOpen = false;
-		if (drawTree("Boundary", boundariesOpen)) {
+		if (drawTree("Boundary", boundariesOpen, &assets.icon("boundary"))) {
 			selectedBoundaryGroupID = -1;
 			mesh.highlightedBoundarySegmentIDs.clear();
 		}
@@ -734,7 +750,7 @@ void SolverGUI::draw() {
 			for (BoundarySegmentGroup& group : mesh.boundaryGroups) {
 				ImGui::PushID(group.id);
 
-				if (drawLeaf(group.name.c_str())) {
+				if (drawLeaf(group.name.c_str(), boundaryTypeIcon(assets, group.type))) {
 					selectedBoundaryGroupID = group.id;
 					mesh.highlightSegmentsInGroup(group);
 					selectedItem = "Boundary Group";
@@ -746,9 +762,9 @@ void SolverGUI::draw() {
 			ImGui::TreePop();
 		}
 
-		drawLeaf("Convergence");
+		drawLeaf("Convergence", &assets.icon("residuals"));
 
-		drawLeaf("Fluid Properties");
+		drawLeaf("Fluid Properties", &assets.icon("fluid_properties"));
 
 		if (solver.configSolver.transient) {
 			if (treeHeader("Transient")) {

@@ -1,9 +1,11 @@
 #include "geometry_gui.h"
 
 #include "project.h"
+#include "app_struct.h"
 
-GeometryGUI::GeometryGUI(Project& project) :
-	project(project) {
+GeometryGUI::GeometryGUI(Project& project, AppAssets& assets) :
+	project(project),
+	assets(assets) {
 
 }
 
@@ -41,7 +43,7 @@ void GeometryGUI::draw() {
 		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), true);
 
 		bool geometryOpen = false;
-		drawLeaf("Geometry");
+		drawLeaf("Geometry", &assets.icon("geometry"));
 
 		if (geometryOpen) {
 			ImGui::TreePop();

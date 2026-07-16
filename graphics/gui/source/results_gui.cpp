@@ -16,6 +16,7 @@
 ResultsGUI::ResultsGUI(Project& project, GUI& gui) :
 	project(project),
 	gui(gui),
+	assets(gui.appConfig.assets),
 	scene(gui.scene),
 	results(project.results),
 	colormap(gui.scene.colormap),
@@ -204,11 +205,11 @@ void ResultsGUI::draw() {
 
 		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), true);
 
-		drawLeaf("General");
+		drawLeaf("General", &assets.icon("general"));
 
-		drawLeaf("Colormap");
+		drawLeaf("Colormap", &assets.icon("colormap"));
 
-		drawLeaf("Graphics");
+		drawLeaf("Graphics", &assets.icon("graphics"));
 
 		ImGui::EndChild();
 

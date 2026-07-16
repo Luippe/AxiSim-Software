@@ -411,14 +411,14 @@ void MeshGUI::draw() {
 
 		// draw edit tree node
 		bool editOpen = false;
-		if (drawTree("Edit", editOpen)) {
+		if (drawTree("Edit", editOpen, &assets.icon("edit"))) {
 			selectedBoundaryGroupID = -1;
 			mesh.highlightedBoundarySegmentIDs.clear();
 			selectedItem = "Edit";
 		}
 
 		if (editOpen) {
-			if (drawLeaf("Region of Influence")) {
+			if (drawLeaf("Region of Influence", &assets.icon("region_of_influence"))) {
 				selectedBoundaryGroupID = -1;
 				mesh.highlightedBoundarySegmentIDs.clear();
 				selectedItem = "Region of Influence";

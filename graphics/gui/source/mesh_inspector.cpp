@@ -1613,7 +1613,7 @@ void MeshInspector::drawToolBar() {
 	// icon-only, CFD-style toolbar: tools grouped by workflow
 	// (view | region tools | display) with the screenshot pushed to the far
 	// right. names are hidden on the buttons and shown via tooltip.
-	const ImVec2 iconSize(22.0f, 22.0f);
+	const ImVec2 iconSize(toolbarIconSize, toolbarIconSize);
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 4.0f));
 	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 2.0f));
@@ -1652,7 +1652,7 @@ void MeshInspector::drawToolBar() {
 		toggleInspectCell = false;
 	}
 	ImGui::SameLine();
-	if (addImageButtonToggle("ROIRect", "", "Draw rectangular region of influence", assets.icon("select-area"), iconSize, toggleDrawRect)) {
+	if (addImageButtonToggle("ROIRect", "", "Draw rectangular region of influence", assets.icon("draw-rectangle"), iconSize, toggleDrawRect)) {
 		toggleDrawCircle = false;
 		toggleInspectCell = false;
 	}

@@ -46,6 +46,16 @@ void applyTextColors() {
 	colors[ImGuiCol_PopupBg] = ImVec4(0.11f, 0.11f, 0.12f, 1.00f);
 }
 
+// UI font sizes (px). One scale knob drives all text and the font-sized tree/
+// header icons; bump kUiScale to enlarge the whole UI. kUiFontNormal also sizes
+// the tree indent (see initContext) so each branch icon aligns over its children.
+namespace {
+	constexpr float kUiScale      = 1.3f;
+	constexpr float kUiFontSmall  = 14.0f * kUiScale;
+	constexpr float kUiFontNormal = 18.0f * kUiScale;
+	constexpr float kUiFontLarge  = 24.0f * kUiScale;
+}
+
 void initImGuiFonts(AppFonts& fonts) {
 
 
@@ -53,9 +63,9 @@ void initImGuiFonts(AppFonts& fonts) {
 	io.Fonts->Clear();
 
 	fonts.defaultFont = io.Fonts->AddFontDefault();
-	fonts.uiFontSmall = io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf", 14.0f);
-	fonts.uiFontNormal = io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf", 18.0f);
-	fonts.uiFontLarge = io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf",	24.0f);
+	fonts.uiFontSmall = io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf", kUiFontSmall);
+	fonts.uiFontNormal = io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf", kUiFontNormal);
+	fonts.uiFontLarge = io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf",	kUiFontLarge);
 
     IM_ASSERT(fonts.uiFontNormal != nullptr);
 
@@ -75,6 +85,12 @@ void initContext(ImGuiContext*& imguiContext, ImPlotContext*& implotContext, GLF
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 	io.ConfigWindowsMoveFromTitleBarOnly = true;
 	ImGui::StyleColorsDark();
+
+	// Indent tree children by the node's arrow width (fontSize + 2*FramePadding.x)
+	// so a branch's icon lines up directly above its child-leaf icons. ImGui's
+	// default IndentSpacing (21px) assumes the ~13px default font; the larger UI
+	// font needs a wider indent to stay aligned.
+	ImGui::GetStyle().IndentSpacing = kUiFontNormal + ImGui::GetStyle().FramePadding.x * 2.0f;
 
 	if (window) {
 		ImGui_ImplGlfw_InitForOpenGL(window, true);
@@ -164,14 +180,14 @@ GUI::GUI(Project& project, Display& disp) :
 	project(project),
 	sketch(project, *this),
 	scene(project, *this),
-	menu(project),
+	menu(project, *this),
 	inspector(project, scene, appConfig),
 	meshInspector(project, appConfig),
 	console(*this, project),
 	mesh(project.mesh),
 	solver(project.solver),
 	results(project.results),
-	geometryGUI(project),
+	geometryGUI(project, appConfig.assets),
 	meshGUI(project, *this),
 	solverGUI(project, appConfig),
 	resultsGUI(project, *this),

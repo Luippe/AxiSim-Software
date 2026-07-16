@@ -5,11 +5,13 @@
 #include "app_struct.h"	// AppSettings member below
 
 class GUI;
+struct ImGuiWindow;
 
 
 class Menu {
 public:
-	Menu(Project& project);
+	Menu(Project& project, GUI& gui);
+
 
 	void render();
 
@@ -18,8 +20,11 @@ private:
 	bool openShortcutModal = false;
 	bool openUnitsModal = false;
 
+	static constexpr float menuIconScale = 1.0f;
+	static constexpr const char* menuIconPlaceholder = "    ";
 
 	AppSettings settings;
+	AppAssets& assets;
 	Project& project;
 
 	// open selected file
@@ -40,5 +45,26 @@ private:
 
 	// open popup to edit display units
 	void drawUnitsModal();
+
+	bool beginMenu(const char* label, TextureBuffer& icon, bool enabled = true);
+
+	bool beginMenu(const char* label, bool enabled = true);
+
+	bool menuItem(
+		const char* label,
+		TextureBuffer& icon,
+		const char* shortcut = nullptr,
+		bool selected = false,
+		bool enabled = true
+	);
+
+	bool menuItem(
+		const char* label,
+		const char* shortcut = nullptr,
+		bool selected = false,
+		bool enabled = true
+	);
+
+	void drawLastMenuIcon(TextureBuffer& icon, ImGuiWindow* itemWindow);
 
 };

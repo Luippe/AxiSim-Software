@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "gui.h"
 #include "imgui_internal.h"
 
 #include "file_manager.h"
@@ -10,20 +11,106 @@
 
 using namespace Shortcuts;
 
-Menu::Menu(Project& project) :
-	project(project) {
+Menu::Menu(Project& project, GUI& gui) :
+	project(project),
+	assets(gui.appConfig.assets) {
 	loadAtLaunch(project, settings);
 };
 
+bool Menu::beginMenu(const char* label, TextureBuffer& icon, bool enabled) {
+
+	ImGuiWindow* itemWindow = ImGui::GetCurrentWindow();
+	bool isMenuBar = itemWindow->DC.LayoutType == ImGuiLayoutType_Horizontal;
+	std::string menuLabel = label;
+	if (isMenuBar) {
+		menuLabel = std::string(menuIconPlaceholder) + label + "##" + label;
+	}
+
+	bool isOpen = ImGui::BeginMenuEx(
+		menuLabel.c_str(),
+		isMenuBar ? nullptr : menuIconPlaceholder,
+		enabled
+	);
+	drawLastMenuIcon(icon, itemWindow);
+	return isOpen;
+}
+
+bool Menu::beginMenu(const char* label, bool enabled) {
+	return ImGui::BeginMenu(label, enabled);
+}
+
+bool Menu::menuItem(
+	const char* label,
+	TextureBuffer& icon,
+	const char* shortcut,
+	bool selected,
+	bool enabled
+) {
+
+	ImGuiWindow* itemWindow = ImGui::GetCurrentWindow();
+	bool isMenuBar = itemWindow->DC.LayoutType == ImGuiLayoutType_Horizontal;
+	std::string itemLabel = label;
+	if (isMenuBar) {
+		itemLabel = std::string(menuIconPlaceholder) + label + "##" + label;
+	}
+
+	bool clicked = ImGui::MenuItemEx(
+		itemLabel.c_str(),
+		isMenuBar ? nullptr : menuIconPlaceholder,
+		shortcut,
+		selected,
+		enabled
+	);
+	drawLastMenuIcon(icon, itemWindow);
+	return clicked;
+}
+
+bool Menu::menuItem(
+	const char* label,
+	const char* shortcut,
+	bool selected,
+	bool enabled
+) {
+	return ImGui::MenuItem(label, shortcut, selected, enabled);
+}
+
+void Menu::drawLastMenuIcon(TextureBuffer& icon, ImGuiWindow* itemWindow) {
+	if (!itemWindow || !ImGui::IsItemVisible()) {
+		return;
+	}
+
+	const unsigned int textureID = icon.getTextureID();
+	if (textureID == 0) {
+		return;
+	}
+
+	const ImGuiStyle& style = ImGui::GetStyle();
+	const ImVec2 itemMin = ImGui::GetItemRectMin();
+	const ImVec2 itemMax = ImGui::GetItemRectMax();
+	const float iconSize = ImGui::GetFontSize() * menuIconScale;
+
+	float iconX = itemMin.x + style.FramePadding.x;
+	if (itemWindow->DC.LayoutType != ImGuiLayoutType_Horizontal) {
+		iconX = itemMin.x + itemWindow->DC.MenuColumns.OffsetIcon;
+	}
+
+	const float iconY = itemMin.y + (itemMax.y - itemMin.y - iconSize) * 0.5f;
+	itemWindow->DrawList->AddImage(
+		(ImTextureID)(intptr_t)textureID,
+		ImVec2(iconX, iconY),
+		ImVec2(iconX + iconSize, iconY + iconSize)
+	);
+}
+
 
 void Menu::drawOpen() {
-	if (ImGui::BeginMenu("Open")) {
+	if (beginMenu("Open", assets.icon("open"))) {
 
-		if (ImGui::MenuItem("Project")) {
+		if (menuItem("Project")) {
 			loadFromExplorerProject(project);
 		}
 
-		if (ImGui::BeginMenu("Presets")) {
+		if (beginMenu("Presets")) {
 
 			if (ImGui::MenuItem("Concentration Demo 1")) {
 				loadPresetProject("concentration_demo_preset_1.bin", project);
@@ -36,7 +123,7 @@ void Menu::drawOpen() {
 			ImGui::EndMenu();
 		}
 
-		if (ImGui::MenuItem("Open Current Project At Startup")) {
+		if (menuItem("Open Current Project At Startup", assets.icon("house"))) {
 			saveSettings(project, settings);
 		}
 
@@ -51,15 +138,12 @@ void Menu::drawExportImport() {
 
 void Menu::drawView() {
 
-	if (ImGui::MenuItem("Simple View", nullptr, project.simpleView)) {
-		project.simpleView = !project.simpleView;
-	}
 }
 
 
 void Menu::drawSave() {
 
-	if (ImGui::MenuItem("Save")) {
+	if (menuItem("Save", assets.icon("save"))) {
 		if (!project.name.empty()) {
 			saveFromPathProject(project.path, project);
 		}
@@ -68,7 +152,7 @@ void Menu::drawSave() {
 		}
 	}
 
-	if (ImGui::MenuItem("Save As")) {
+	if (menuItem("Save As", assets.icon("save_as"))) {
 		saveFromExplorerProject(project);
 	}
 }
@@ -119,11 +203,11 @@ std::string shortcutButtonLabel(
 
 void Menu::drawEditShortcut() {
 
-	if (ImGui::MenuItem("Keyboard Shortcuts")) {
+	if (menuItem("Keyboard Shortcuts")) {
 		openShortcutModal = true;
 	}
 
-	if (ImGui::MenuItem("Units")) {
+	if (menuItem("Units", assets.icon("units"))) {
 		openUnitsModal = true;
 	}
 }
