@@ -1,6 +1,58 @@
 #include "base_gui.h"
+#include "buffer_manager.h"
 #include "flag_manager.h"
 #include "printer.h"
+
+void BaseGUI::drawIconTreeLabel(const char* label, TextureBuffer* icon, ImGuiTreeNodeFlags flags) {
+	if (!ImGui::IsItemVisible()) {
+		return;
+	}
+
+	const ImGuiStyle& style = ImGui::GetStyle();
+	const ImVec2 itemMin = ImGui::GetItemRectMin();
+	const ImVec2 itemMax = ImGui::GetItemRectMax();
+	const float fontSize = ImGui::GetFontSize();
+	const bool displayFrame = (flags & ImGuiTreeNodeFlags_Framed) != 0;
+	const bool isLeaf = (flags & ImGuiTreeNodeFlags_Leaf) != 0;
+	const bool hasBullet = (flags & ImGuiTreeNodeFlags_Bullet) != 0;
+
+	float labelX = itemMin.x;
+	if (displayFrame || !isLeaf || hasBullet) {
+		labelX += fontSize + (displayFrame ? style.FramePadding.x * 3.0f : style.FramePadding.x * 2.0f);
+	}
+
+	float textX = labelX;
+	const float rowHeight = itemMax.y - itemMin.y;
+
+	if (icon) {
+		const unsigned int textureID = icon->getTextureID();
+		if (textureID != 0) {
+			const float iconSize = fontSize * treeIconScale;
+			const float iconY = itemMin.y + (rowHeight - iconSize) * 0.5f;
+			const ImVec2 iconMin(labelX, iconY);
+			const ImVec2 iconMax(labelX + iconSize, iconY + iconSize);
+
+			ImGui::GetWindowDrawList()->AddImage(
+				(ImTextureID)(intptr_t)textureID,
+				iconMin,
+				iconMax
+			);
+
+			textX = iconMax.x + style.ItemInnerSpacing.x;
+		}
+	}
+
+	const char* labelEnd = ImGui::FindRenderedTextEnd(label);
+	if (label != labelEnd) {
+		const float textY = itemMin.y + (rowHeight - fontSize) * 0.5f;
+		ImGui::GetWindowDrawList()->AddText(
+			ImVec2(textX, textY),
+			ImGui::GetColorU32(ImGuiCol_Text),
+			label,
+			labelEnd
+		);
+	}
+}
 
 void BaseGUI::changeCursorOnHover() {
 	if (ImGui::IsItemHovered()) {
@@ -109,11 +161,18 @@ void BaseGUI::drawTableProperty(const char* label, const char* value) {
 	ImGui::TextUnformatted(value);
 }
 
-bool BaseGUI::drawLeaf(const char* label) {
+bool BaseGUI::drawLeaf(const char* label, TextureBuffer* icon) {
 
 	bool selected = selectedItem == label;
+	ImGuiTreeNodeFlags flags = UITreeFlags::LeafFlags | (selected ? ImGuiTreeNodeFlags_Selected : 0);
 
-	ImGui::TreeNodeEx(label, UITreeFlags::LeafFlags | (selected ? ImGuiTreeNodeFlags_Selected : 0));
+	if (icon) {
+		ImGui::TreeNodeEx(label, flags, " ");
+		drawIconTreeLabel(label, icon, flags);
+	}
+	else {
+		ImGui::TreeNodeEx(label, flags);
+	}
 
 	bool clicked = ImGui::IsItemClicked();
 
@@ -132,11 +191,33 @@ bool BaseGUI::treeHeader(const char* label, ImGuiTreeNodeFlags flags) {
 	return isOpen;
 }
 
+bool BaseGUI::treeHeader(const char* label, TextureBuffer* icon, ImGuiTreeNodeFlags flags) {
+	if (icon) {
+		bool isOpen = ImGui::TreeNodeEx(label, flags, " ");
+		drawIconTreeLabel(label, icon, flags);
+		changeCursorOnHover();
+		return isOpen;
+	}
+
+	return treeHeader(label, flags);
+}
+
 bool BaseGUI::drawTree(const char* label, bool& isOpen, ImGuiTreeNodeFlags flags) {
+	return drawTree(label, isOpen, nullptr, flags);
+}
+
+bool BaseGUI::drawTree(const char* label, bool& isOpen, TextureBuffer* icon, ImGuiTreeNodeFlags flags) {
 
 	bool selected = selectedItem == label;
+	ImGuiTreeNodeFlags nodeFlags = flags | (selected ? ImGuiTreeNodeFlags_Selected : 0);
 
-	isOpen = ImGui::TreeNodeEx(label, flags | (selected ? ImGuiTreeNodeFlags_Selected : 0));
+	if (icon) {
+		isOpen = ImGui::TreeNodeEx(label, nodeFlags, " ");
+		drawIconTreeLabel(label, icon, nodeFlags);
+	}
+	else {
+		isOpen = ImGui::TreeNodeEx(label, nodeFlags);
+	}
 
 	bool clicked = ImGui::IsItemClicked();
 
@@ -147,5 +228,4 @@ bool BaseGUI::drawTree(const char* label, bool& isOpen, ImGuiTreeNodeFlags flags
 	changeCursorOnHover();
 
 	return clicked;
-
 }

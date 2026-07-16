@@ -88,9 +88,8 @@ public:
 	// create texture buffer using pixel data
 	void createBuffer(GLenum target, int nx, int ny, GLenum format, GLenum type, const void* data);
 
-	// create texture buffer using PNG images. whiten forces RGB to white while
-	// keeping alpha as the shape mask, so monochrome icons render white.
-	void createBuffer(const char* path, bool whiten = true);
+	// create texture buffer using PNG images (loaded with their own colors)
+	void createBuffer(const char* path);
 
 	// update texture buffer, mostly used to update it with new data
 	void updateBuffer(int nx, int ny, GLenum format, GLenum type, const void* data);

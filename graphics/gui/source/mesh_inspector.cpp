@@ -1610,83 +1610,82 @@ void MeshInspector::drawBoundarySegments(
 }
 
 void MeshInspector::drawToolBar() {
-	float toolbarHeight = 60.0f;
+	// icon-only, CFD-style toolbar: tools grouped by workflow
+	// (view | region tools | display) with the screenshot pushed to the far
+	// right. names are hidden on the buttons and shown via tooltip.
+	const ImVec2 iconSize(22.0f, 22.0f);
 
-	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 4.0f));
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 2.0f));
+	ImGui::PushStyleVarY(ImGuiStyleVar_ItemSpacing, 2.0f);
 
-	// view
-	if (addImageButton("Reset", "Reset", "Reset view", assets.houseIcon, buttonSize)) {
+	// the region-tool cluster is two rows tall; the toolbar and single-row tools
+	// are sized around that band so everything lines up.
+	const float singleH = iconSize.y + ImGui::GetStyle().FramePadding.y * 2.0f;
+	const float bandH = singleH * 2.0f + ImGui::GetStyle().ItemSpacing.y;
+	const float toolbarHeight = bandH + ImGui::GetStyle().WindowPadding.y * 2.0f;
+
+	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false,
+		ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+	// vertically center a single-row tool within the two-row band.
+	const float singlePadY = (bandH - singleH) * 0.5f;
+	auto beginCentered = [&]() {
+		ImGui::BeginGroup();
+		ImGui::Dummy(ImVec2(0.0f, singlePadY));
+	};
+	auto endCentered = [&]() { ImGui::EndGroup(); };
+
+	// --- view ---
+	beginCentered();
+	if (addImageButton("Reset", "", "Reset view", assets.icon("house"), iconSize)) {
 		resetView();
 	}
+	endCentered();
 
-	addToolbarSeparator();
+	addToolbarSeparator(bandH - 8.0f);
 
-	// tools
-	if (addImageButtonToggle(
-		"ROICircle",
-		"Circle",
-		"Draw circular region of influence",
-		assets.drawCircleIcon,
-		buttonSize,
-		toggleDrawCircle
-	)) {
+	// --- region tools (two-row cluster: circle, rectangle / inspect) ---
+	ImGui::BeginGroup();
+	if (addImageButtonToggle("ROICircle", "", "Draw circular region of influence", assets.icon("draw-circle"), iconSize, toggleDrawCircle)) {
 		toggleDrawRect = false;
 		toggleInspectCell = false;
 	}
 	ImGui::SameLine();
-
-	if (addImageButtonToggle(
-		"ROIRect",
-		"Rectangle",
-		"Draw rectangular region of influence",
-		assets.selectRegionIcon,
-		buttonSize,
-		toggleDrawRect
-	)) {
+	if (addImageButtonToggle("ROIRect", "", "Draw rectangular region of influence", assets.icon("select-area"), iconSize, toggleDrawRect)) {
 		toggleDrawCircle = false;
 		toggleInspectCell = false;
 	}
-	ImGui::SameLine();
-
-	if (addImageButtonToggle(
-		"InspectCell",
-		"Inspect",
-		"Inspect cell mesh data (click a cell)",
-		assets.selectIcon,
-		buttonSize,
-		toggleInspectCell
-	)) {
+	if (addImageButtonToggle("InspectCell", "", "Inspect cell mesh data (click a cell)", assets.icon("select"), iconSize, toggleInspectCell)) {
 		toggleDrawCircle = false;
 		toggleDrawRect = false;
 		toggleRuler = false;
 		selectedCell = -1;
 		inspectMeshDirty = true;
 	}
+	ImGui::EndGroup();
 
-	addToolbarSeparator();
+	addToolbarSeparator(bandH - 8.0f);
 
-	// display
-	addImageButtonToggle(
-		"ToggleMesh",
-		"Mesh",
-		"Toggle mesh",
-		assets.fillCellIcon,
-		buttonSize,
-		toggleMesh
-	);
+	// --- display ---
+	beginCentered();
+	addImageButtonToggle("ToggleMesh", "", "Toggle mesh", assets.icon("fill-cell"), iconSize, toggleMesh);
+	endCentered();
 
-	addToolbarSeparator();
-
-	// export
-	if (addImageButton("Copy", "Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
+	// --- screenshot (pushed to the far right) ---
+	const float copyWidth = iconSize.x + ImGui::GetStyle().FramePadding.x * 2.0f;
+	ImGui::SameLine(ImGui::GetContentRegionMax().x - copyWidth);
+	beginCentered();
+	if (addImageButton("Copy", "", "Copy to clipboard", assets.icon("clipboard"), iconSize) || consoleCopy) {
 		pendingCopyWidth = frameBuffer.width;
 		pendingCopyHeight = frameBuffer.height;
 		pendingCopy = true;
 		consoleCopy = false;
 	}
-
+	endCentered();
 
 	ImGui::EndChild();
+	ImGui::PopStyleVar(3);
 }
 
 void MeshInspector::drawTextAtSurfacePoint(ImDrawList* drawList) {

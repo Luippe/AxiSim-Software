@@ -480,76 +480,111 @@ void SketchView::copyActiveSurfaceToClipboard() {
 
 void SketchView::drawToolBar() {
 
-	float toolbarHeight = 60.0f;
+	// icon-only, CFD-style toolbar: tools grouped by workflow
+	// (view | sketch | modify | measure | display) with the screenshot pushed to
+	// the far right. names are hidden on the buttons and shown via tooltip.
+	const ImVec2 iconSize(22.0f, 22.0f);
 
-	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 4.0f));
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 2.0f));
+	ImGui::PushStyleVarY(ImGuiStyleVar_ItemSpacing, 2.0f);
 
+	// the shape / modify clusters are two rows tall; the toolbar and single-row
+	// tools are sized around that band so everything lines up.
+	const float singleH = iconSize.y + ImGui::GetStyle().FramePadding.y * 2.0f;
+	const float bandH = singleH * 2.0f + ImGui::GetStyle().ItemSpacing.y;
+	const float toolbarHeight = bandH + ImGui::GetStyle().WindowPadding.y * 2.0f;
+
+	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false,
+		ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+	// vertically center a single-row tool within the two-row band. wrapping it in a
+	// group with a leading spacer keeps the group's top at the band top, so the
+	// separators still span the full height consistently.
+	const float singlePadY = (bandH - singleH) * 0.5f;
+	auto beginCentered = [&]() {
+		ImGui::BeginGroup();
+		ImGui::Dummy(ImVec2(0.0f, singlePadY));
+	};
+	auto endCentered = [&]() { ImGui::EndGroup(); };
+
+	// --- view ---
+	beginCentered();
 	std::string resetViewText = shortcutText("Reset View", resetViewShortcut);
-	if (addImageButton("Reset", "Reset", resetViewText.c_str(), assets.houseIcon, buttonSize)) {
+	if (addImageButton("Reset", "", resetViewText.c_str(), assets.icon("house"), iconSize)) {
 		resetView();
 	}
-	ImGui::SameLine();
+	endCentered();
 
-	addToolbarSeparator();
+	addToolbarSeparator(bandH - 8.0f);
 
-	std::string rulerText = shortcutText("Ruler", rulerToolShortcut);
-	if (addImageButtonToggle("Ruler", "Ruler", rulerText.c_str(), assets.rulerIcon, buttonSize, toggleRuler)) {
-		setActiveSketchTool(toggleRuler ? SketchTool::Dimension : SketchTool::Select);
-	}
-	ImGui::SameLine();
-
-	std::string trimText = shortcutText("Trim", trimToolShortcut);
-	if (addImageButtonToggle("Trim", "Trim", trimText.c_str(), assets.trimIcon, buttonSize, toggleTrim)) {
-		setActiveSketchTool(toggleTrim ? SketchTool::Trim : SketchTool::Select);
-	}
-	ImGui::SameLine();
-
-	std::string eraseText = shortcutText("Erase", eraseToolShortcut);
-	if (addImageButtonToggle("Erase", "Erase", eraseText.c_str(), assets.eraseIcon, buttonSize, toggleEraser)) {
-		setActiveSketchTool(toggleEraser ? SketchTool::Erase : SketchTool::Select);
-	}
-	ImGui::SameLine();
-
-
-	addToolbarSeparator();
-
+	// --- sketch (two-row cluster: line, rectangle / circle) ---
+	ImGui::BeginGroup();
 	std::string lineText = shortcutText("Draw Straight Line", lineToolShortcut);
-	if (addImageButtonToggle("DrawLine", "Line", lineText.c_str(), assets.drawLineIcon, buttonSize, toggleDrawLine)) {
+	if (addImageButtonToggle("DrawLine", "", lineText.c_str(), assets.icon("draw-line"), iconSize, toggleDrawLine)) {
 		setActiveSketchTool(toggleDrawLine ? SketchTool::Line : SketchTool::Select);
 	}
 	ImGui::SameLine();
-
 	std::string rectangleText = shortcutText("Draw Rectangle", rectangleToolShortcut);
-	if (addImageButtonToggle("DrawRect", "Rectangle", rectangleText.c_str(), assets.selectRegionIcon, buttonSize, toggleDrawRect)) {
+	if (addImageButtonToggle("DrawRect", "", rectangleText.c_str(), assets.icon("draw-rectangle"), iconSize, toggleDrawRect)) {
 		setActiveSketchTool(toggleDrawRect ? SketchTool::Rectangle : SketchTool::Select);
 	}
-	ImGui::SameLine();
-
 	std::string circleText = shortcutText("Draw Circle", circleToolShortcut);
-	if (addImageButtonToggle("DrawCircle", "Circle", circleText.c_str(), assets.drawCircleIcon, buttonSize, toggleDrawCircle)) {
+	if (addImageButtonToggle("DrawCircle", "", circleText.c_str(), assets.icon("draw-circle"), iconSize, toggleDrawCircle)) {
 		setActiveSketchTool(toggleDrawCircle ? SketchTool::Circle : SketchTool::Select);
 	}
-	ImGui::SameLine();
+	ImGui::EndGroup();
 
-	addToolbarSeparator();
+	addToolbarSeparator(bandH - 8.0f);
 
+	// --- modify (two-row column: trim / erase) ---
+	ImGui::BeginGroup();
+	std::string trimText = shortcutText("Trim", trimToolShortcut);
+	if (addImageButtonToggle("Trim", "", trimText.c_str(), assets.icon("trim"), iconSize, toggleTrim)) {
+		setActiveSketchTool(toggleTrim ? SketchTool::Trim : SketchTool::Select);
+	}
+	std::string eraseText = shortcutText("Erase", eraseToolShortcut);
+	if (addImageButtonToggle("Erase", "", eraseText.c_str(), assets.icon("eraser"), iconSize, toggleEraser)) {
+		setActiveSketchTool(toggleEraser ? SketchTool::Erase : SketchTool::Select);
+	}
+	ImGui::EndGroup();
+
+	addToolbarSeparator(bandH - 8.0f);
+
+	// --- measure ---
+	beginCentered();
+	std::string rulerText = shortcutText("Ruler", rulerToolShortcut);
+	if (addImageButtonToggle("Ruler", "", rulerText.c_str(), assets.icon("ruler"), iconSize, toggleRuler)) {
+		setActiveSketchTool(toggleRuler ? SketchTool::Dimension : SketchTool::Select);
+	}
+	endCentered();
+
+	addToolbarSeparator(bandH - 8.0f);
+
+	// --- display ---
 	// no keyboard shortcut is wired for the grid toggle, so the tooltip carries
 	// no key chord (it previously showed the Circle tool's shortcut by mistake)
-	if (addImageButtonToggle("DisplayGrid", "Grid", "Display Grid", assets.gridIcon, buttonSize, toggleGrid)) {
+	beginCentered();
+	if (addImageButtonToggle("DisplayGrid", "", "Display Grid", assets.icon("grid"), iconSize, toggleGrid)) {
 
 	}
-	ImGui::SameLine();
+	endCentered();
 
-	if (addImageButton("Copy", "Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
+	// --- screenshot (pushed to the far right) ---
+	const float copyWidth = iconSize.x + ImGui::GetStyle().FramePadding.x * 2.0f;
+	ImGui::SameLine(ImGui::GetContentRegionMax().x - copyWidth);
+	beginCentered();
+	if (addImageButton("Copy", "", "Copy to clipboard", assets.icon("clipboard"), iconSize) || consoleCopy) {
 		pendingCopyWidth = frameBuffer.width;
 		pendingCopyHeight = frameBuffer.height;
 		pendingCopy = true;
 		consoleCopy = false;
 	}
-
-	ImGui::SameLine();
+	endCentered();
 
 	ImGui::EndChild();
+
+	ImGui::PopStyleVar(3);
 }
 
 std::optional<SnapResult> SketchView::resolveSnap(ImVec2 mouse) {

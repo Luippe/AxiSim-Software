@@ -1,6 +1,10 @@
 #include "pch.h"
 #include "gui.h"
 
+#include <filesystem>
+#include <iostream>
+#include <unordered_set>
+
 #include "implot.h"
 
 #include "display.h"
@@ -80,25 +84,44 @@ void initContext(ImGuiContext*& imguiContext, ImPlotContext*& implotContext, GLF
 
 }
 
+TextureBuffer& AppAssets::icon(const std::string& name) {
+	auto it = icons.find(name);
+	if (it != icons.end()) return it->second;
+
+	// unknown name: warn once and hand back a blank texture (id 0 draws a plain
+	// quad) so a typo is visible but never crashes.
+	static std::unordered_set<std::string> warned;
+	if (warned.insert(name).second) {
+		std::cerr << "[icons] missing icon '" << name
+			<< "' (no '" << name << ".png' under assets/icons)\n";
+	}
+	static TextureBuffer blank;
+	return blank;
+}
+
+// load every PNG under assets/icons (recursively, so image_buttons/, headers/,
+// and any future subfolder are all included), keyed by file name without the
+// extension. drop a PNG anywhere in that tree to add an icon — no code change.
 void initAssetBuffers(AppAssets& assets) {
 
-	assets.houseIcon.createBuffer("assets/icons/house.png");
-	assets.clearIcon.createBuffer("assets/icons/circle-x.png");
-	assets.plusIcon.createBuffer("assets/icons/plus.png");
-	assets.copyIcon.createBuffer("assets/icons/clipboard.png");
-	assets.selectRegionIcon.createBuffer("assets/icons/select-area.png");
-	assets.connectIcon.createBuffer("assets/icons/connect-line.png");
-	assets.eraseIcon.createBuffer("assets/icons/eraser.png");
-	assets.rulerIcon.createBuffer("assets/icons/ruler.png");
-	assets.fillCellIcon.createBuffer("assets/icons/fill-cell.png");
-	assets.drawRectangleIcon.createBuffer("assets/icons/draw-rectangle.png");
-	assets.drawCircleIcon.createBuffer("assets/icons/draw-circle.png");
-	assets.drawLineIcon.createBuffer("assets/icons/draw-line.png");
-	assets.selectIcon.createBuffer("assets/icons/select.png");
-	assets.trimIcon.createBuffer("assets/icons/trim.png");
-	assets.crossArrowIcon.createBuffer("assets/icons/cross-arrow.png");
-	assets.gridIcon.createBuffer("assets/icons/grid.png");
+	namespace fs = std::filesystem;
+	const std::string dir = "assets/icons";
 
+	std::error_code ec;
+	for (const auto& entry : fs::recursive_directory_iterator(dir, ec)) {
+		const fs::path& path = entry.path();
+		if (path.extension() != ".png") continue;
+
+		std::string name = path.stem().string();
+		if (assets.icons.count(name)) {
+			std::cerr << "[icons] duplicate icon name '" << name << "' ("
+				<< path.string() << ") overrides an earlier one\n";
+		}
+		assets.icons[name].createBuffer(path.string().c_str());
+	}
+	if (ec) {
+		std::cerr << "[icons] could not read '" << dir << "': " << ec.message() << "\n";
+	}
 }
 
 void GUI::newFrame() {

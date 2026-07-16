@@ -386,21 +386,10 @@ void TextureBuffer::createBuffer(GLenum internalFormat, int nx, int ny,  GLenum 
 	glBindTexture(GL_TEXTURE_2D, 0);
 }
 
-void TextureBuffer::createBuffer(const char* path, bool whiten) {
+void TextureBuffer::createBuffer(const char* path) {
 
 	int width, height, channels;
 	unsigned char* data = stbi_load(path, &width, &height, &channels, 4);
-
-	// Monochrome icons store their shape in the alpha channel with black RGB, so
-	// they render black. Force RGB to white (keeping alpha as the mask) so the icon
-	// draws white; a draw-time tint can then recolor it if needed.
-	if (whiten && data) {
-		for (int i = 0; i < width * height; i++) {
-			data[i * 4 + 0] = 255;
-			data[i * 4 + 1] = 255;
-			data[i * 4 + 2] = 255;
-		}
-	}
 
 	if (TBO) {
 		deleteBuffer();
@@ -410,7 +399,10 @@ void TextureBuffer::createBuffer(const char* path, bool whiten) {
 	bind();
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	// icons are ~128px but drawn small (~30px), so minify with mipmaps to avoid
+	// aliasing thin strokes into jagged edges.
+	glGenerateMipmap(GL_TEXTURE_2D);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);

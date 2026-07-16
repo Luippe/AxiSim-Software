@@ -5,6 +5,8 @@
 #include "unit_manager.h"
 #include "flag_manager.h"
 
+class TextureBuffer;
+
 class BaseGUI {
 public:
 
@@ -48,14 +50,16 @@ public:
 	// create checkbox in table
 	void checkBox(const char* label, bool* value);
 
-	// draw leaf for tree node
-	bool drawLeaf(const char* label);
+	// draw leaf for tree node.
+	bool drawLeaf(const char* label, TextureBuffer* icon = nullptr);
 
 	bool drawTree(const char* label, bool& isOpen, ImGuiTreeNodeFlags flags = UITreeFlags::BranchOpenedFlags);
+	bool drawTree(const char* label, bool& isOpen, TextureBuffer* icon, ImGuiTreeNodeFlags flags = UITreeFlags::BranchOpenedFlags);
 
 	// grouping tree node that only holds child leaves: shows the nav hover cursor
 	// but does NOT change selectedItem. returns whether the node is expanded.
 	bool treeHeader(const char* label, ImGuiTreeNodeFlags flags = UITreeFlags::BranchOpenedFlags);
+	bool treeHeader(const char* label, TextureBuffer* icon, ImGuiTreeNodeFlags flags = UITreeFlags::BranchOpenedFlags);
 
 	// ---- shared panel design helpers (used by every setup tab) ----
 
@@ -175,5 +179,8 @@ public:
 	}
 
 private:
+	void drawIconTreeLabel(const char* label, TextureBuffer* icon, ImGuiTreeNodeFlags flags);
+
+	static constexpr float treeIconScale = 0.9f;
 
 };

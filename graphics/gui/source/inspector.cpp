@@ -457,25 +457,34 @@ void Inspector::handleSelection(ImGuiIO& io) {
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
 void Inspector::drawToolBar() {
-	float toolbarHeight = 60.0f;
+	// icon-only, CFD-style toolbar: view | display, screenshot on the far right.
+	// names are hidden on the buttons and shown via tooltip.
+	const ImVec2 iconSize(22.0f, 22.0f);
 
-	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 4.0f));
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 2.0f));
 
-	// view
-	if (addImageButton("Reset", "Reset", "Reset view", assets.houseIcon, buttonSize)) {
+	const float rowH = iconSize.y + ImGui::GetStyle().FramePadding.y * 2.0f;
+	const float toolbarHeight = rowH + ImGui::GetStyle().WindowPadding.y * 2.0f;
+
+	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false,
+		ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+	// --- view ---
+	if (addImageButton("Reset", "", "Reset view", assets.icon("house"), iconSize)) {
 		camera.initPosition();
 		pendingFrame = true;
 	}
 
-	addToolbarSeparator();
+	addToolbarSeparator(rowH - 8.0f);
 
-	// display
-	addImageButtonToggle("ToggleMesh", "Mesh", "Toggle mesh overlay", assets.gridIcon, buttonSize, showMesh);
+	// --- display ---
+	addImageButtonToggle("ToggleMesh", "", "Toggle mesh overlay", assets.icon("grid"), iconSize, showMesh);
 
-	addToolbarSeparator();
-
-	// export
-	if (addImageButton("Copy", "Copy", "Copy to clipboard", assets.copyIcon, buttonSize) || consoleCopy) {
+	// --- screenshot (pushed to the far right) ---
+	const float copyWidth = iconSize.x + ImGui::GetStyle().FramePadding.x * 2.0f;
+	ImGui::SameLine(ImGui::GetContentRegionMax().x - copyWidth);
+	if (addImageButton("Copy", "", "Copy to clipboard", assets.icon("clipboard"), iconSize) || consoleCopy) {
 		pendingCopyWidth = frameBuffer.width;
 		pendingCopyHeight = frameBuffer.height;
 		pendingCopy = true;
@@ -483,6 +492,7 @@ void Inspector::drawToolBar() {
 	}
 
 	ImGui::EndChild();
+	ImGui::PopStyleVar(2);
 }
 
 void Inspector::drawFieldTabs() {

@@ -29,3 +29,7 @@ imgui.ini
 /CLAUDE.md
 CLAUDE.local.md
 .claude/settings.local.json
+
+# Local icon pipeline (not shared): raw exports + helper scripts
+/assets/raw icons/
+/tools/

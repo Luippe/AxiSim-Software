@@ -6,6 +6,8 @@ class Project;
 class GUI;
 class Mesh;
 class Config;
+struct AppAssets;
+
 
 class MeshGUI : public BaseGUI {
 public:
@@ -28,6 +30,7 @@ private:
 	Project& project;
 	GUI& gui;
 
+	AppAssets& assets;
 	Mesh& mesh;
 	Config& config;
 };

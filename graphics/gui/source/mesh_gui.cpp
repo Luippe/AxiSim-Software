@@ -19,6 +19,7 @@ MeshGUI::MeshGUI(Project& project, GUI& gui) :
 	project(project),
 	gui(gui),
 	mesh(project.mesh),
+	assets(gui.appConfig.assets),
 	config(project.config){
 }
 
@@ -403,7 +404,7 @@ void MeshGUI::draw() {
 
 		// draw general as a childless leaf; clicking it shows mesh statistics in
 		// the overview (drawLeaf sets selectedItem and handles the hover cursor)
-		if (drawLeaf("General")) {
+		if (drawLeaf("General", &assets.icon("general"))) {
 			selectedBoundaryGroupID = -1;
 			mesh.highlightedBoundarySegmentIDs.clear();
 		}

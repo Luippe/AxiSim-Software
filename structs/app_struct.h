@@ -1,27 +1,19 @@
 #pragma once
 #include <string>			// std::wstring in AppSettings
+#include <unordered_map>	// icon registry in AppAssets
 #include <stdexcept>
 #include "imgui.h"			// ImFont in AppFonts
 #include "buffer_manager.h"	// TextureBuffer in AppAssets
 
-// assets for gui icons
+// GUI icons, loaded recursively from assets/icons at startup (image_buttons/,
+// headers/, and any future subfolder) and keyed by file name without extension
+// (e.g. "house", "draw-circle"). Add an icon by dropping a PNG under that folder.
 struct AppAssets {
-	TextureBuffer houseIcon;
-	TextureBuffer clearIcon;
-	TextureBuffer plusIcon;
-	TextureBuffer copyIcon;
-	TextureBuffer selectRegionIcon;
-	TextureBuffer connectIcon;
-	TextureBuffer eraseIcon;
-	TextureBuffer rulerIcon;
-	TextureBuffer fillCellIcon;
-	TextureBuffer drawRectangleIcon;
-	TextureBuffer drawCircleIcon;
-	TextureBuffer drawLineIcon;
-	TextureBuffer selectIcon;
-	TextureBuffer trimIcon;
-	TextureBuffer crossArrowIcon;
-	TextureBuffer gridIcon;
+	std::unordered_map<std::string, TextureBuffer> icons;
+
+	// look up an icon by name; returns a blank, non-crashing placeholder (and
+	// warns once) if no icon with that name was loaded.
+	TextureBuffer& icon(const std::string& name);
 };
 
 struct AppFonts {

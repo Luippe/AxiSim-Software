@@ -283,28 +283,28 @@ void ResidualPlot::drawToolBar(ResidualPlotTab& tab, int i, ImGuiID currentDockI
 
     ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
 
-    if (ImGui::ImageButton("##AddTab", (ImTextureID)(intptr_t)assets.plusIcon.getTextureID(), ImVec2(iconSize, iconSize))) {
+    if (ImGui::ImageButton("##AddTab", (ImTextureID)(intptr_t)assets.icon("plus").getTextureID(), ImVec2(iconSize, iconSize))) {
         pendingAddDockID = currentDockID != 0 ? currentDockID : dockspaceID;
     }
 
     setToolTip("Add new tab");
     ImGui::SameLine();
 
-    if (ImGui::ImageButton("##ResetView", (ImTextureID)(intptr_t)assets.houseIcon.getTextureID(), ImVec2(iconSize, iconSize))) {
+    if (ImGui::ImageButton("##ResetView", (ImTextureID)(intptr_t)assets.icon("house").getTextureID(), ImVec2(iconSize, iconSize))) {
         tab.resetView = true;
     }
 
     setToolTip("Reset view");
     ImGui::SameLine();
 
-    if (ImGui::ImageButton("##ClearPoints", (ImTextureID)(intptr_t)assets.clearIcon.getTextureID(), ImVec2(iconSize, iconSize))) {
+    if (ImGui::ImageButton("##ClearPoints", (ImTextureID)(intptr_t)assets.icon("circle-x").getTextureID(), ImVec2(iconSize, iconSize))) {
         clearPlot(i);
     }
 
     setToolTip("Clear all selected points");
     ImGui::SameLine();
 
-    if (ImGui::ImageButton("##CopyToClipboard", (ImTextureID)(intptr_t)assets.copyIcon.getTextureID(), ImVec2(iconSize, iconSize)) || consoleCopy) {
+    if (ImGui::ImageButton("##CopyToClipboard", (ImTextureID)(intptr_t)assets.icon("clipboard").getTextureID(), ImVec2(iconSize, iconSize)) || consoleCopy) {
         tab.copyImageNextFrame = true;
         pendingCopy = true;
         consoleCopy = false;
