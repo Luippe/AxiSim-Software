@@ -73,8 +73,26 @@ private:
 	// handle key inputs
 	void handleKeyInput();
 
+	// App-wide toolbar strip, in its own window pinned across the top of the
+	// viewport. Only one view is live at a time (see render()'s currentTab
+	// dispatch), so this just forwards to that view's toolbar. Call it from
+	// render() AFTER drawUI(), which is what sets currentTab; newFrame() has
+	// already reserved the space by shrinking the dockspace.
+	void drawAppToolbar();
+
 	// draw main ui on screen
 	void drawUI();
+
+	// Owns the shared viewport window (see UIViewport) while the Results tab is live,
+	// and hosts the scene/inspector split in a dockspace of its own. That split must
+	// NOT be nodes of the main dockspace: those are updated every frame, so a panel
+	// that only exists on one tab drops out a frame late and makes the viewport above
+	// it jump on the way in and out. An inner dockspace goes dormant while its host
+	// window is unsubmitted, so the split survives untouched between visits and comes
+	// back already laid out. Submitted even with no results so the window is never
+	// missing for a frame.
+	void drawResultsViewport();
+	ImGuiWindowClass viewportWindowClass;
 
 	// draw status bar at the bottom of screen
 	void drawStatusBar();

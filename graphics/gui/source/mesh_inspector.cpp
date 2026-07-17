@@ -1368,7 +1368,7 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 	);
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	drawCanvas(drawList, canvasRect, 5.0f);
+	drawCanvas(drawList, canvasRect, 0.0f);
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
@@ -1570,22 +1570,24 @@ void MeshInspector::drawBoundarySegments(
 			mesh.highlightedBoundarySegmentIDs.find(seg.id) !=
 			mesh.highlightedBoundarySegmentIDs.end();
 
-		ImU32 color = drawingColor;
-		float thickness = 3.0f;
+		ImU32 color = sketchLineColor;
+		float thickness = sketchLineThickness;
 
 		if (hovered) {
-			color = IM_COL32(255, 255, 0, 255);
-			thickness = 4.0f;
+			color = hoverLineColor;
+			thickness = hoverLineThickness;
 		}
 
+		// GUI-driven boundary-group highlight — a distinct state from hover/select,
+		// so it keeps its own color
 		if (highlighted) {
 			color = IM_COL32(255, 80, 80, 255);
-			thickness = 4.0f;
+			thickness = hoverLineThickness;
 		}
 
 		if (selected) {
-			color = IM_COL32(0, 180, 255, 255);
-			thickness = 4.0f;
+			color = hoverLineColor;
+			thickness = hoverLineThickness;
 		}
 
 		for (int edgeID : seg.edgeIDs) {
@@ -1610,82 +1612,52 @@ void MeshInspector::drawBoundarySegments(
 }
 
 void MeshInspector::drawToolBar() {
-	// icon-only, CFD-style toolbar: tools grouped by workflow
-	// (view | region tools | display) with the screenshot pushed to the far
-	// right. names are hidden on the buttons and shown via tooltip.
-	const ImVec2 iconSize(toolbarIconSize, toolbarIconSize);
+	// CFD-style ribbon: tools grouped by workflow into named sections
+	// (home | region of influence | view). The region tools trade their captions
+	// for their section name; the tooltip holds the fuller description.
+	beginToolbar();
 
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 4.0f));
-	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 2.0f));
-	ImGui::PushStyleVarY(ImGuiStyleVar_ItemSpacing, 2.0f);
-
-	// the region-tool cluster is two rows tall; the toolbar and single-row tools
-	// are sized around that band so everything lines up.
-	const float singleH = iconSize.y + ImGui::GetStyle().FramePadding.y * 2.0f;
-	const float bandH = singleH * 2.0f + ImGui::GetStyle().ItemSpacing.y;
-	const float toolbarHeight = bandH + ImGui::GetStyle().WindowPadding.y * 2.0f;
-
-	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false,
-		ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-
-	// vertically center a single-row tool within the two-row band.
-	const float singlePadY = (bandH - singleH) * 0.5f;
-	auto beginCentered = [&]() {
-		ImGui::BeginGroup();
-		ImGui::Dummy(ImVec2(0.0f, singlePadY));
-	};
-	auto endCentered = [&]() { ImGui::EndGroup(); };
-
-	// --- view ---
-	beginCentered();
-	if (addImageButton("Reset", "", "Reset view", assets.icon("house"), iconSize)) {
+	// --- home ---
+	beginSection();
+	if (addImageButton("Reset", "Home", "Reset view", assets.icon("house"))) {
 		resetView();
 	}
-	endCentered();
+	ImGui::SameLine();
+	if (addImageButton("Copy", "Copy", "Copy to clipboard", assets.icon("clipboard")) || consoleCopy) {
+		pendingCopyWidth = frameBuffer.width;
+		pendingCopyHeight = frameBuffer.height;
+		pendingCopy = true;
+		consoleCopy = false;
+	}
+	endSection("Home");
 
-	addToolbarSeparator(bandH - 8.0f);
-
-	// --- region tools (two-row cluster: circle, rectangle / inspect) ---
-	ImGui::BeginGroup();
-	if (addImageButtonToggle("ROICircle", "", "Draw circular region of influence", assets.icon("draw-circle"), iconSize, toggleDrawCircle)) {
+	// --- region of influence ---
+	beginSection();
+	if (addImageButtonToggle("ROICircle", nullptr, "Draw circular region of influence", assets.icon("draw-circle"), toggleDrawCircle)) {
 		toggleDrawRect = false;
 		toggleInspectCell = false;
 	}
 	ImGui::SameLine();
-	if (addImageButtonToggle("ROIRect", "", "Draw rectangular region of influence", assets.icon("draw-rectangle"), iconSize, toggleDrawRect)) {
+	if (addImageButtonToggle("ROIRect", nullptr, "Draw rectangular region of influence", assets.icon("draw-rectangle"), toggleDrawRect)) {
 		toggleDrawCircle = false;
 		toggleInspectCell = false;
 	}
-	if (addImageButtonToggle("InspectCell", "", "Inspect cell mesh data (click a cell)", assets.icon("select"), iconSize, toggleInspectCell)) {
+	endSection("Region of Influence");
+
+	// --- view ---
+	beginSection();
+	if (addImageButtonToggle("InspectCell", "Inspect", "Inspect cell mesh data (click a cell)", assets.icon("select"), toggleInspectCell)) {
 		toggleDrawCircle = false;
 		toggleDrawRect = false;
 		toggleRuler = false;
 		selectedCell = -1;
 		inspectMeshDirty = true;
 	}
-	ImGui::EndGroup();
+	ImGui::SameLine();
+	addImageButtonToggle("ToggleMesh", "Mesh", "Toggle mesh", assets.icon("mesh"), toggleMesh);
+	endSection("View");
 
-	addToolbarSeparator(bandH - 8.0f);
-
-	// --- display ---
-	beginCentered();
-	addImageButtonToggle("ToggleMesh", "", "Toggle mesh", assets.icon("fill-cell"), iconSize, toggleMesh);
-	endCentered();
-
-	// --- screenshot (pushed to the far right) ---
-	const float copyWidth = iconSize.x + ImGui::GetStyle().FramePadding.x * 2.0f;
-	ImGui::SameLine(ImGui::GetContentRegionMax().x - copyWidth);
-	beginCentered();
-	if (addImageButton("Copy", "", "Copy to clipboard", assets.icon("clipboard"), iconSize) || consoleCopy) {
-		pendingCopyWidth = frameBuffer.width;
-		pendingCopyHeight = frameBuffer.height;
-		pendingCopy = true;
-		consoleCopy = false;
-	}
-	endCentered();
-
-	ImGui::EndChild();
-	ImGui::PopStyleVar(3);
+	endToolbar();
 }
 
 void MeshInspector::drawTextAtSurfacePoint(ImDrawList* drawList) {
@@ -2230,11 +2202,11 @@ void MeshInspector::render() {
 	);
 
 	ImGui::SetNextWindowClass(&windowClass);
-	ImGui::Begin("Mesh Inspector");
+	ImGui::Begin(UIViewport::MeshInspectorTitle);
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-	drawToolBar();
+	// toolbar lives in the app-wide strip above the dockspace (GUI::drawAppToolbar)
 
 	ImVec2 pos = ImGui::GetCursorScreenPos();
 	ImVec2 size = ImGui::GetContentRegionAvail();
@@ -2281,7 +2253,8 @@ void MeshInspector::render() {
 	handleMouse();
 
 
-	drawCanvas(drawList, canvasRect, 5.0f);
+	// same fill/border as the sketch view so the two 2D canvases match
+	drawCanvas(drawList, canvasRect, 0.0f, canvasBgColor, canvasOutlineColor);
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);

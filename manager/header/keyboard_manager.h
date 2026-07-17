@@ -31,10 +31,16 @@ namespace Shortcuts {
 		ImGuiMod_Ctrl | ImGuiKey_W;
 
 	inline constexpr ImGuiKeyChord defaultCircleToolShortcut =
-		ImGuiMod_Ctrl | ImGuiKey_C;
+		ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_C;
 
 	inline constexpr ImGuiKeyChord defaultSaveProjectShortcut =
 		ImGuiMod_Ctrl | ImGuiKey_S;
+
+	inline constexpr ImGuiKeyChord defaultCopyShortcut =
+		ImGuiMod_Ctrl | ImGuiKey_C;
+
+	inline constexpr ImGuiKeyChord defaultPasteShortcut =
+		ImGuiMod_Ctrl | ImGuiKey_V;
 
 	inline ImGuiKeyChord undoShortcut = defaultUndoShortcut;
 
@@ -58,6 +64,10 @@ namespace Shortcuts {
 
 	inline ImGuiKeyChord saveProjectShortcut = defaultSaveProjectShortcut;
 
+	inline ImGuiKeyChord copyShortcut = defaultCopyShortcut;
+
+	inline ImGuiKeyChord pasteShortcut = defaultPasteShortcut;
+
 	inline ImGuiKeyChord* allShortcuts[] = {
 		&selectToolShortcut,
 		&rulerToolShortcut,
@@ -69,7 +79,9 @@ namespace Shortcuts {
 		&resetViewShortcut,
 		&undoShortcut,
 		&redoShortcut,
-		&saveProjectShortcut
+		&saveProjectShortcut,
+		&copyShortcut,
+		&pasteShortcut
 	};
 
 	inline void resetShortcutsToDefault() {
@@ -84,6 +96,8 @@ namespace Shortcuts {
 		rectangleToolShortcut = defaultRectangleToolShortcut;
 		circleToolShortcut = defaultCircleToolShortcut;
 		saveProjectShortcut = defaultSaveProjectShortcut;
+		copyShortcut = defaultCopyShortcut;
+		pasteShortcut = defaultPasteShortcut;
 	}
 
 }

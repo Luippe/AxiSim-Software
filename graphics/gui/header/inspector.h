@@ -33,8 +33,11 @@ public:
 	// re-frame the camera onto the mesh the next time we render
 	void generate();
 
-	// toolbar is drawn first, then the 2D field is rendered using the remaining space
 	void render();
+
+	// Drawn by GUI into the app-wide toolbar strip above the dockspace, not by
+	// render(), so the band can span the whole window instead of this panel.
+	void drawToolBar();
 
 	// copy active surface to clipboard
 	void copyActiveSurfaceToClipboard();
@@ -127,7 +130,6 @@ private:
 	void handleSelection(ImGuiIO& io);
 
 	// ----------draw calls-----------
-	void drawToolBar();
 
 	// tab strip for switching the displayed field in place; each tab maps to an
 	// entry in results.fieldType and drives results.currentItem

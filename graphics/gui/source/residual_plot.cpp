@@ -39,11 +39,13 @@ void ResidualPlot::resetState() {
     marker.Marker = ImPlotMarker_Circle;
     marker.MarkerSize = 5.0f;
     marker.LineWeight = 0.0f;
-    int activeTabID = residualDockSpace.getActiveTabID();
 
-    tabs[activeTabID].plots.clear();
-    tabs[activeTabID].clickedPos.clear();
-    tabs[activeTabID].iterations.clear();
+    const int i = activeTabIndex();
+    if (i < 0) return;
+
+    tabs[i].plots.clear();
+    tabs[i].clickedPos.clear();
+    tabs[i].iterations.clear();
 
 }
 
@@ -110,20 +112,28 @@ int closestPlotY(std::vector<Plot>& plots, int idx, double mouseY) {
 
 void ResidualPlot::add(int currentIteration, const std::unordered_map<std::string, ConfigResidual>& configResiduals) {
     std::lock_guard<std::mutex> lock(mutex);
-    size_t idx = 0;
-    int activeTabID = residualDockSpace.getActiveTabID();
 
-    tabs[activeTabID].iterations.push_back((double)currentIteration);
+    const int i = activeTabIndex();
+    if (i < 0) return;
+
+    size_t idx = 0;
+    ResidualPlotTab& tab = tabs[i];
+
+    tab.iterations.push_back((double)currentIteration);
     for (const auto& [name, configResidual] : configResiduals) {
         if (!configResidual.enabled) continue;
 
-        tabs[activeTabID].plots[idx++].y.push_back(
+        tab.plots[idx++].y.push_back(
             residualValueForPlot(configResidual.resVal)
         );
     }
 }
 
 bool ResidualPlot::copyActivePlotToClipboard() {
+
+    // the copy is consumed a frame after it was requested, so the tab may be gone
+    const int i = tabIndexFromID(pendingCopyTabID);
+    if (i < 0) return false;
 
     GLint oldFBO, oldViewport[4];
     ImVec2 oldDisplaySize, oldFramebufferSize;
@@ -136,16 +146,16 @@ bool ResidualPlot::copyActivePlotToClipboard() {
 
     // draw the plot which will be copied. but first set the axes to the correct limits
     ImPlot::SetNextAxesLimits(
-        tabs[pendingCopyTabID].currentLimits.X.Min,
-        tabs[pendingCopyTabID].currentLimits.X.Max,
-        tabs[pendingCopyTabID].currentLimits.Y.Min,
-        tabs[pendingCopyTabID].currentLimits.Y.Max,
+        tabs[i].currentLimits.X.Min,
+        tabs[i].currentLimits.X.Max,
+        tabs[i].currentLimits.Y.Min,
+        tabs[i].currentLimits.Y.Max,
         ImGuiCond_Always
     );
 
     if (ImPlot::BeginPlot("Solver Residuals", ImVec2((float)pendingCopyWidth, (float)pendingCopyHeight), ImPlotFlags_NoMouseText)) {
 
-        drawPlotData(tabs[pendingCopyTabID]);
+        drawPlotData(tabs[i]);
 
         ImPlot::EndPlot();
     }
@@ -178,12 +188,14 @@ void displayTextAtPos(double x, double y, ImPlotSpec& marker) {
 
 
 void ResidualPlot::setName(const std::unordered_map<std::string, ConfigResidual>& residualsToPlot) {
+    const int i = activeTabIndex();
+    if (i < 0) return;
+
     for (const auto& [name, configResidual] : residualsToPlot) {
         if (configResidual.enabled) {
-            int activeTabID = residualDockSpace.getActiveTabID();
             Plot plot;
             plot.name = name;
-            tabs[activeTabID].plots.push_back(std::move(plot));
+            tabs[i].plots.push_back(std::move(plot));
         }
     }
 }
@@ -267,9 +279,10 @@ void ResidualPlot::drawPlot(ResidualPlotTab& tab) {
     if (tab.copyImageNextFrame) {
 
         ImVec2 plotSize = ImGui::GetItemRectSize();
-        int activeTabID = residualDockSpace.getActiveTabID();
 
-        pendingCopyTabID = activeTabID;
+        // `tab` is the one the toolbar flagged, so take its id straight -- no
+        // need to go back through the dockspace's selection
+        pendingCopyTabID = tab.id;
         pendingCopyWidth = (int)plotSize.x;
         pendingCopyHeight = (int)plotSize.y;
         pendingCopy = true;
@@ -279,42 +292,73 @@ void ResidualPlot::drawPlot(ResidualPlotTab& tab) {
     }
 }
 
-void ResidualPlot::drawToolBar(ResidualPlotTab& tab, int i, ImGuiID currentDockID, ImGuiID& pendingAddDockID, ImGuiID dockspaceID) {
-
-    ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false);
-
-    if (ImGui::ImageButton("##AddTab", (ImTextureID)(intptr_t)assets.icon("plus").getTextureID(), ImVec2(iconSize, iconSize))) {
-        pendingAddDockID = currentDockID != 0 ? currentDockID : dockspaceID;
+int ResidualPlot::tabIndexFromID(int id) {
+    for (int i = 0; i < (int)tabs.size(); i++) {
+        if (tabs[i].id == id) {
+            return i;
+        }
     }
 
-    setToolTip("Add new tab");
-    ImGui::SameLine();
+    return -1;
+}
 
-    if (ImGui::ImageButton("##ResetView", (ImTextureID)(intptr_t)assets.icon("house").getTextureID(), ImVec2(iconSize, iconSize))) {
-        tab.resetView = true;
+int ResidualPlot::activeTabIndex() {
+    // getActiveTabID() is a tab's unique id, NOT its slot in `tabs` (closing a
+    // tab shifts the rest), so resolve it to an index rather than indexing by id.
+    return tabIndexFromID(residualDockSpace.getActiveTabID());
+}
+
+void ResidualPlot::drawAppToolBar() {
+
+    beginToolbar();
+
+    // Home leads the strip, matching the sketch/mesh/results toolbars. Every
+    // button except Add acts on the selected plot, so with no tabs open there
+    // is nothing to act on and they disable.
+    const int i = activeTabIndex();
+    const bool hasTab = i >= 0;
+
+    // --- home ---
+    // both buttons here act on the selected plot, so the section name dims with
+    // them rather than heading a group that does nothing
+    beginSection();
+    ImGui::BeginDisabled(!hasTab);
+
+    if (addImageButton("ResetView", "Home", "Reset view", assets.icon("house")) && hasTab) {
+        tabs[i].resetView = true;
     }
 
-    setToolTip("Reset view");
     ImGui::SameLine();
 
-    if (ImGui::ImageButton("##ClearPoints", (ImTextureID)(intptr_t)assets.icon("circle-x").getTextureID(), ImVec2(iconSize, iconSize))) {
-        clearPlot(i);
-    }
-
-    setToolTip("Clear all selected points");
-    ImGui::SameLine();
-
-    if (ImGui::ImageButton("##CopyToClipboard", (ImTextureID)(intptr_t)assets.icon("clipboard").getTextureID(), ImVec2(iconSize, iconSize)) || consoleCopy) {
-        tab.copyImageNextFrame = true;
+    if ((addImageButton("Copy", "Copy", "Copy to clipboard", assets.icon("clipboard")) || consoleCopy) && hasTab) {
+        tabs[i].copyImageNextFrame = true;
         pendingCopy = true;
         consoleCopy = false;
     }
 
-    setToolTip("Copy to clipboard");
+    endSection("Home");
+    ImGui::EndDisabled();
+
+    // --- view ---
+    beginSection();
+    // Add targets whichever dock the selected plot lives in, but that dock id is
+    // only resolved inside drawTabs(), so just park the request for draw().
+    if (addImageButton("AddTab", "Add", "Add new plot tab", assets.icon("plus"))) {
+        pendingAddTab = true;
+    }
+
     ImGui::SameLine();
 
-    ImGui::EndChild();
+    ImGui::BeginDisabled(!hasTab);
 
+    if (addImageButton("ClearPoints", "Clear", "Clear all selected points", assets.icon("circle-x")) && hasTab) {
+        clearPlot(i);
+    }
+
+    ImGui::EndDisabled();
+    endSection("View");
+
+    endToolbar();
 }
 
 // ======================================================================
@@ -335,10 +379,24 @@ void ResidualPlot::draw() {
             ImGuiID& pendingAddDockID,
             ImGuiID dockspaceID
             ) {
-                drawToolBar(tab, i, currentDockID, pendingAddDockID, dockspaceID);
+                // consume an Add parked by the app toolbar; the dock to add into
+                // is only known here. Only the selected tab answers, so the new
+                // tab lands beside the plot the user was looking at.
+                if (pendingAddTab && i == activeTabIndex()) {
+                    pendingAddDockID = currentDockID != 0 ? currentDockID : dockspaceID;
+                    pendingAddTab = false;
+                }
+
                 drawPlot(tab);
         }
     );
+
+    // no tabs open (or none selected), so nothing above consumed it -- add to the
+    // dockspace root instead
+    if (pendingAddTab) {
+        residualDockSpace.addTab(tabs, dockInfo.dockspaceID);
+        pendingAddTab = false;
+    }
 
     handleKeyEvents();
 }

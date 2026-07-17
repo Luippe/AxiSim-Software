@@ -208,6 +208,102 @@ struct SketchModel {
         return true;
     }
 
+    // Drop an entity plus any dimensions that referenced it. Shared by the
+    // eraser tool and the Geometry panel's delete button so both remove the
+    // same things. A line's points are deliberately left in place — other
+    // entities may share them, matching the eraser's long-standing behavior.
+    // Undo is the caller's job (SketchView owns the history).
+    bool removeEntity(SketchEntityType type, int entityID) {
+        switch (type) {
+        case SketchEntityType::Line:
+            if (!findLine(entityID)) {
+                return false;
+            }
+            eraseEntityByID(lines, entityID);
+            eraseDimensionsFor(SketchDimensionType::LineLength, entityID);
+            return true;
+        case SketchEntityType::Rectangle:
+            if (!findRectangle(entityID)) {
+                return false;
+            }
+            eraseEntityByID(rectangles, entityID);
+            eraseDimensionsFor(SketchDimensionType::RectangleWidth, entityID);
+            eraseDimensionsFor(SketchDimensionType::RectangleHeight, entityID);
+            return true;
+        case SketchEntityType::Circle:
+            if (!findCircle(entityID)) {
+                return false;
+            }
+            eraseEntityByID(circles, entityID);
+            eraseDimensionsFor(SketchDimensionType::CircleRadius, entityID);
+            return true;
+        case SketchEntityType::Arc:
+            if (!findArc(entityID)) {
+                return false;
+            }
+            eraseEntityByID(arcs, entityID);
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    // Clear `selected` on every entity. Purely model state — view-local
+    // selection (trim segments, drag state) is the caller's to reset.
+    void clearEntitySelection() {
+        for (SketchPoint& point : points) {
+            point.selected = false;
+        }
+        for (SketchLine& line : lines) {
+            line.selected = false;
+        }
+        for (SketchCircle& circle : circles) {
+            circle.selected = false;
+        }
+        for (SketchArc& arc : arcs) {
+            arc.selected = false;
+        }
+        for (SketchRectangle& rect : rectangles) {
+            rect.selected = false;
+        }
+    }
+
+    // Select exactly one entity, deselecting the rest. The sketch view draws
+    // `selected` entities in the accent color, so this is what makes a pick in
+    // the Geometry panel highlight on the canvas.
+    bool selectOnly(SketchEntityType type, int entityID) {
+        clearEntitySelection();
+
+        switch (type) {
+        case SketchEntityType::Line:
+            if (SketchLine* line = findLine(entityID)) {
+                line->selected = true;
+                return true;
+            }
+            return false;
+        case SketchEntityType::Rectangle:
+            if (SketchRectangle* rect = findRectangle(entityID)) {
+                rect->selected = true;
+                return true;
+            }
+            return false;
+        case SketchEntityType::Circle:
+            if (SketchCircle* circle = findCircle(entityID)) {
+                circle->selected = true;
+                return true;
+            }
+            return false;
+        case SketchEntityType::Arc:
+            if (SketchArc* arc = findArc(entityID)) {
+                arc->selected = true;
+                return true;
+            }
+            return false;
+        default:
+            return false;
+        }
+    }
+
     SketchPoint* findPoint(int id) {
         for (SketchPoint& point : points) {
             if (point.id == id) {
@@ -464,5 +560,33 @@ struct SketchModel {
         }
 
         return makeBound(p0->pos, p1->pos);
+    }
+
+    // --- internals for removeEntity ---
+
+    template <typename T>
+    static void eraseEntityByID(std::vector<T>& items, int id) {
+        items.erase(
+            std::remove_if(
+                items.begin(),
+                items.end(),
+                [&](const T& item) { return item.id == id; }
+            ),
+            items.end()
+        );
+    }
+
+    void eraseDimensionsFor(SketchDimensionType type, int entityID) {
+        dimensions.erase(
+            std::remove_if(
+                dimensions.begin(),
+                dimensions.end(),
+                [&](const SketchDimension& dimension) {
+                    return dimension.type == type &&
+                        dimension.entityID == entityID;
+                }
+            ),
+            dimensions.end()
+        );
     }
 };

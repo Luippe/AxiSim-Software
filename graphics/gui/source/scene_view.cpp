@@ -15,6 +15,7 @@
 
 #include "console.h"
 
+#include "flag_manager.h"
 #include "memory_manager.h"
 #include "unit_manager.h"
 #include "time_manager.h"
@@ -31,6 +32,8 @@ SceneView::SceneView(Project& project, GUI& gui) :
 	project(project),
 	picker(project, *this)
 {
+	windowClass.DockNodeFlagsOverrideSet = UIDockFlags::NoDockWindowFlags;
+
 	frameBuffer.createBuffer(500, 500, samples);
 	createBuffer();
 };
@@ -565,6 +568,7 @@ void SceneView::drawUnstructured3D() {
 void SceneView::render() {
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+	ImGui::SetNextWindowClass(&windowClass);
 	ImGui::Begin("Scene");
 
 	rectSize = ImGui::GetContentRegionAvail();

@@ -172,6 +172,10 @@ public:
 
 	void render();
 
+	// Drawn by GUI into the app-wide toolbar strip above the dockspace, not by
+	// render(), so the band can span the whole window instead of this panel.
+	void drawToolBar();
+
 	void copyActiveSurfaceToClipboard();
 
 private:
@@ -192,9 +196,6 @@ private:
 	bool dimensionDragMoved = false;   // true once the drag actually moved the label
 	SketchModel dimensionDragBefore;   // sketch snapshot taken at grab, for undo
 
-	const ImU32 sketchBgColor = IM_COL32(102, 102, 102, 255);
-	const ImU32 outlineColor = IM_COL32(150, 150, 150, 255);
-
 	Geometry& geometry;
 	AppAssets& assets;
 	GUI& gui;
@@ -205,13 +206,25 @@ private:
 	Vec2 moveStartWorld{};
 	std::vector<TrimPreviewResult> selectedTrimSegments;
 	std::vector<TrimPreviewResult> movingTrimSegments;
+
+	// Copy/paste buffer. Holds resolved geometry (world-space), not entity IDs,
+	// so the copied shapes survive the originals being edited or deleted.
+	// clipboardAnchor is the copy's bounding-box min, used to re-anchor a paste
+	// under the cursor.
+	std::vector<TrimPreviewResult> clipboardSegments;
+	Vec2 clipboardAnchor{};
+
 	std::vector<SketchModel> undoSketchStates;
 	std::vector<SketchModel> redoSketchStates;
 
-	void drawToolBar();
 	void clearToolToggles();
 	void setActiveSketchTool(SketchTool tool);
 	void recordSketchUndoState(const SketchModel& beforeChange);
+
+	// perform a delete parked by the Geometry panel (see Geometry::requestDelete),
+	// recording undo here since this view owns the history
+	void consumePendingDelete();
+
 	void restoreSketchState(const SketchModel& state);
 	bool undoSketchEdit();
 	bool redoSketchEdit();
@@ -277,4 +290,11 @@ private:
 	bool eraseEntityAtMouse(ImVec2 mouse);
 	bool deleteSelectedTrimSegments();
 	bool moveSelectedTrimSegments(Vec2 delta);
+
+	// copy the current selection into clipboardSegments; false if nothing usable
+	bool copySelectedTrimSegments();
+
+	// add a translated copy of clipboardSegments to the sketch and select it,
+	// leaving the originals alone. Undo is the caller's job.
+	bool pasteClipboardSegments(Vec2 delta);
 };

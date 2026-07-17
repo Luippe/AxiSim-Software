@@ -56,6 +56,21 @@ void SketchView::recordSketchUndoState(const SketchModel& beforeChange) {
 	redoSketchStates.clear();
 }
 
+void SketchView::consumePendingDelete() {
+	if (geometry.pendingDeleteID < 0) {
+		return;
+	}
+
+	SketchEntityType type = geometry.pendingDeleteType;
+	int entityID = geometry.pendingDeleteID;
+	geometry.pendingDeleteID = -1;
+
+	SketchModel beforeDelete = geometry.sketch;
+	if (geometry.sketch.removeEntity(type, entityID)) {
+		recordSketchUndoState(beforeDelete);
+	}
+}
+
 void SketchView::restoreSketchState(const SketchModel& state) {
 	SketchTool activeTool = geometry.sketch.activeTool;
 	geometry.sketch = state;
@@ -458,7 +473,7 @@ void SketchView::copyActiveSurfaceToClipboard() {
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 	drawSurface(canvasRect);
-	drawCanvas(drawList, canvasRect, 5.0f);
+	drawCanvas(drawList, canvasRect, 0.0f);
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawGrid(drawList);
@@ -480,111 +495,69 @@ void SketchView::copyActiveSurfaceToClipboard() {
 
 void SketchView::drawToolBar() {
 
-	// icon-only, CFD-style toolbar: tools grouped by workflow
-	// (view | sketch | modify | measure | display) with the screenshot pushed to
-	// the far right. names are hidden on the buttons and shown via tooltip.
-	const ImVec2 iconSize(toolbarIconSize, toolbarIconSize);
+	// CFD-style ribbon: tools grouped by workflow into named sections
+	// (home | create | edit | view). The drawing and editing tools trade their
+	// captions for two compact rows — their section name says what they are, and
+	// the tooltip holds the fuller description and the key chord.
+	beginToolbar();
 
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 4.0f));
-	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 2.0f));
-	ImGui::PushStyleVarY(ImGuiStyleVar_ItemSpacing, 2.0f);
-
-	// the shape / modify clusters are two rows tall; the toolbar and single-row
-	// tools are sized around that band so everything lines up.
-	const float singleH = iconSize.y + ImGui::GetStyle().FramePadding.y * 2.0f;
-	const float bandH = singleH * 2.0f + ImGui::GetStyle().ItemSpacing.y;
-	const float toolbarHeight = bandH + ImGui::GetStyle().WindowPadding.y * 2.0f;
-
-	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false,
-		ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-
-	// vertically center a single-row tool within the two-row band. wrapping it in a
-	// group with a leading spacer keeps the group's top at the band top, so the
-	// separators still span the full height consistently.
-	const float singlePadY = (bandH - singleH) * 0.5f;
-	auto beginCentered = [&]() {
-		ImGui::BeginGroup();
-		ImGui::Dummy(ImVec2(0.0f, singlePadY));
-	};
-	auto endCentered = [&]() { ImGui::EndGroup(); };
-
-	// --- view ---
-	beginCentered();
+	// --- home ---
+	beginSection();
 	std::string resetViewText = shortcutText("Reset View", resetViewShortcut);
-	if (addImageButton("Reset", "", resetViewText.c_str(), assets.icon("house"), iconSize)) {
+	if (addImageButton("Reset", "Home", resetViewText.c_str(), assets.icon("house"))) {
 		resetView();
 	}
-	endCentered();
-
-	addToolbarSeparator(bandH - 8.0f);
-
-	// --- sketch (two-row cluster: line, rectangle / circle) ---
-	ImGui::BeginGroup();
-	std::string lineText = shortcutText("Draw Straight Line", lineToolShortcut);
-	if (addImageButtonToggle("DrawLine", "", lineText.c_str(), assets.icon("draw-line"), iconSize, toggleDrawLine)) {
-		setActiveSketchTool(toggleDrawLine ? SketchTool::Line : SketchTool::Select);
-	}
 	ImGui::SameLine();
-	std::string rectangleText = shortcutText("Draw Rectangle", rectangleToolShortcut);
-	if (addImageButtonToggle("DrawRect", "", rectangleText.c_str(), assets.icon("draw-rectangle"), iconSize, toggleDrawRect)) {
-		setActiveSketchTool(toggleDrawRect ? SketchTool::Rectangle : SketchTool::Select);
-	}
-	std::string circleText = shortcutText("Draw Circle", circleToolShortcut);
-	if (addImageButtonToggle("DrawCircle", "", circleText.c_str(), assets.icon("draw-circle"), iconSize, toggleDrawCircle)) {
-		setActiveSketchTool(toggleDrawCircle ? SketchTool::Circle : SketchTool::Select);
-	}
-	ImGui::EndGroup();
-
-	addToolbarSeparator(bandH - 8.0f);
-
-	// --- modify (two-row column: trim / erase) ---
-	ImGui::BeginGroup();
-	std::string trimText = shortcutText("Trim", trimToolShortcut);
-	if (addImageButtonToggle("Trim", "", trimText.c_str(), assets.icon("trim"), iconSize, toggleTrim)) {
-		setActiveSketchTool(toggleTrim ? SketchTool::Trim : SketchTool::Select);
-	}
-	std::string eraseText = shortcutText("Erase", eraseToolShortcut);
-	if (addImageButtonToggle("Erase", "", eraseText.c_str(), assets.icon("eraser"), iconSize, toggleEraser)) {
-		setActiveSketchTool(toggleEraser ? SketchTool::Erase : SketchTool::Select);
-	}
-	ImGui::EndGroup();
-
-	addToolbarSeparator(bandH - 8.0f);
-
-	// --- measure ---
-	beginCentered();
-	std::string rulerText = shortcutText("Ruler", rulerToolShortcut);
-	if (addImageButtonToggle("Ruler", "", rulerText.c_str(), assets.icon("ruler"), iconSize, toggleRuler)) {
-		setActiveSketchTool(toggleRuler ? SketchTool::Dimension : SketchTool::Select);
-	}
-	endCentered();
-
-	addToolbarSeparator(bandH - 8.0f);
-
-	// --- display ---
-	// no keyboard shortcut is wired for the grid toggle, so the tooltip carries
-	// no key chord (it previously showed the Circle tool's shortcut by mistake)
-	beginCentered();
-	if (addImageButtonToggle("DisplayGrid", "", "Display Grid", assets.icon("grid"), iconSize, toggleGrid)) {
-
-	}
-	endCentered();
-
-	// --- screenshot (pushed to the far right) ---
-	const float copyWidth = iconSize.x + ImGui::GetStyle().FramePadding.x * 2.0f;
-	ImGui::SameLine(ImGui::GetContentRegionMax().x - copyWidth);
-	beginCentered();
-	if (addImageButton("Copy", "", "Copy to clipboard", assets.icon("clipboard"), iconSize) || consoleCopy) {
+	if (addImageButton("Copy", "Copy", "Copy to clipboard", assets.icon("clipboard")) || consoleCopy) {
 		pendingCopyWidth = frameBuffer.width;
 		pendingCopyHeight = frameBuffer.height;
 		pendingCopy = true;
 		consoleCopy = false;
 	}
-	endCentered();
+	endSection("Home");
 
-	ImGui::EndChild();
+	// --- create ---
+	beginSection();
+	std::string lineText = shortcutText("Draw Straight Line", lineToolShortcut);
+	if (addImageButtonToggle("DrawLine", nullptr, lineText.c_str(), assets.icon("draw-line"), toggleDrawLine, smallIconSize())) {
+		setActiveSketchTool(toggleDrawLine ? SketchTool::Line : SketchTool::Select);
+	}
+	ImGui::SameLine();
+	std::string rectangleText = shortcutText("Draw Rectangle", rectangleToolShortcut);
+	if (addImageButtonToggle("DrawRect", nullptr, rectangleText.c_str(), assets.icon("draw-rectangle"), toggleDrawRect, smallIconSize())) {
+		setActiveSketchTool(toggleDrawRect ? SketchTool::Rectangle : SketchTool::Select);
+	}
+	std::string circleText = shortcutText("Draw Circle", circleToolShortcut);
+	if (addImageButtonToggle("DrawCircle", nullptr, circleText.c_str(), assets.icon("draw-circle"), toggleDrawCircle, smallIconSize())) {
+		setActiveSketchTool(toggleDrawCircle ? SketchTool::Circle : SketchTool::Select);
+	}
+	endSection("Create");
 
-	ImGui::PopStyleVar(3);
+	// --- edit ---
+	beginSection();
+	std::string trimText = shortcutText("Trim", trimToolShortcut);
+	if (addImageButtonToggle("Trim", nullptr, trimText.c_str(), assets.icon("trim"), toggleTrim, smallIconSize())) {
+		setActiveSketchTool(toggleTrim ? SketchTool::Trim : SketchTool::Select);
+	}
+	ImGui::SameLine();
+	std::string eraseText = shortcutText("Erase", eraseToolShortcut);
+	if (addImageButtonToggle("Erase", nullptr, eraseText.c_str(), assets.icon("eraser"), toggleEraser, smallIconSize())) {
+		setActiveSketchTool(toggleEraser ? SketchTool::Erase : SketchTool::Select);
+	}
+	std::string rulerText = shortcutText("Ruler", rulerToolShortcut);
+	if (addImageButtonToggle("Ruler", nullptr, rulerText.c_str(), assets.icon("ruler"), toggleRuler, smallIconSize())) {
+		setActiveSketchTool(toggleRuler ? SketchTool::Dimension : SketchTool::Select);
+	}
+	endSection("Edit");
+
+	// --- view ---
+	beginSection();
+	// no keyboard shortcut is wired for the grid toggle, so the tooltip carries
+	// no key chord (it previously showed the Circle tool's shortcut by mistake)
+	addImageButtonToggle("DisplayGrid", "Grid", "Display Grid", assets.icon("grid"), toggleGrid);
+	endSection("View");
+
+	endToolbar();
 }
 
 std::optional<SnapResult> SketchView::resolveSnap(ImVec2 mouse) {
@@ -841,6 +814,49 @@ bool SketchView::handleShortcuts(ImGuiIO& io) {
 	if (ImGui::Shortcut(redoShortcut)) {
 		clearInteraction();
 		redoSketchEdit();
+		return true;
+	}
+
+	// Copy reads the Select tool's segment selection, so it stays gated on that
+	// tool. Both chords test their preconditions before ImGui::Shortcut so the
+	// chord is only claimed when it would actually do something.
+	if (geometry.sketch.activeTool == SketchTool::Select &&
+		!selectedTrimSegments.empty() &&
+		ImGui::Shortcut(copyShortcut)) {
+		copySelectedTrimSegments();
+		return true;
+	}
+
+	// Paste works from any tool and drops you into Select, since the paste comes
+	// out selected and dragging or deleting it only works there. Any half-drawn
+	// entity on the old tool is abandoned.
+	if (!clipboardSegments.empty() &&
+		ImGui::Shortcut(pasteShortcut)) {
+		setActiveSketchTool(SketchTool::Select);
+		clearInteraction();
+
+		// Land the copy's lower-left corner on the cursor. Ctrl is still down from
+		// the chord itself, so snapping is live and the corner lands on a vertex or
+		// grid point when one is in range. With the cursor off the canvas there is
+		// nothing to anchor to, so nudge the copy off the original instead.
+		Vec2 pasteTarget;
+		if (ImGui::IsItemHovered()) {
+			pasteTarget = getSnappedWorld(currentMousePos);
+		}
+		else {
+			constexpr float fallbackOffsetPx = 20.0f;
+			double offset = fallbackOffsetPx * camera.unitsPerPixel;
+			pasteTarget = Vec2{
+				clipboardAnchor.z + offset,
+				clipboardAnchor.r - offset
+			};
+		}
+
+		SketchModel beforePaste = geometry.sketch;
+		if (pasteClipboardSegments(subtract(pasteTarget, clipboardAnchor))) {
+			recordSketchUndoState(beforePaste);
+		}
+
 		return true;
 	}
 
@@ -1165,10 +1181,8 @@ void SketchView::drawSketchEntities(ImDrawList* drawList) {
 			eraseHover->entityID == entityID;
 	};
 
-	const ImU32 sketchLineColor = IM_COL32(28, 28, 30, 255);
-	const ImU32 hoverLineColor = IM_COL32(50, 145, 255, 255);
-	const float sketchLineThickness = 2.0f;
-	const float hoverLineThickness = 3.5f;
+	// sketchLineColor / hoverLineColor / *Thickness come from BaseSurfaceViewer —
+	// shared with the mesh inspector so both canvases highlight the same way
 
 	auto drawSegment = [&](const TrimPreviewResult& segment) {
 		switch (segment.geometry) {
@@ -1625,14 +1639,16 @@ void SketchView::render() {
 		Units::lengthUnits[gui.project.lengthScale.index].name
 	);
 
+	consumePendingDelete();
+
 
 	ImGui::SetNextWindowClass(&windowClass);
-	ImGui::Begin("Sketch View");
+	ImGui::Begin(UIViewport::SketchTitle);
 
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-	drawToolBar();
+	// toolbar lives in the app-wide strip above the dockspace (GUI::drawAppToolbar)
 
 	ImVec2 pos = ImGui::GetCursorScreenPos();
 	ImVec2 size = ImGui::GetContentRegionAvail();
@@ -1641,7 +1657,7 @@ void SketchView::render() {
 	resizeImage();
 
 	drawSurface(canvasRect);
-	drawCanvas(drawList, canvasRect, 0.0f, sketchBgColor, outlineColor);
+	drawCanvas(drawList, canvasRect, 0.0f, canvasBgColor, canvasOutlineColor);
 
 	camera.setDimensions(
 		static_cast<int>(canvasRect.size.x),

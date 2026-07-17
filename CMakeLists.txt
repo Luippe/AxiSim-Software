@@ -267,7 +267,10 @@ install(TARGETS AxiSim RUNTIME DESTINATION .)
 # Runtime asset folders are loaded via paths relative to the working
 # directory (e.g. "assets/icons/house.png", "graphics/shaders/mesh.vert"),
 # so they must sit alongside the exe with the same layout.
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets"           DESTINATION .)
+# "raw icons" holds the oversized source art that tools/icon128.py downsamples
+# into icons/; it is never read at runtime, so keep it out of the package.
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets"           DESTINATION .
+        PATTERN "raw icons" EXCLUDE)
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/graphics/shaders" DESTINATION graphics)
 
 # Bundled presets, resolved next to the exe by loadPresetProject().

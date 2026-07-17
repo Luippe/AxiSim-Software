@@ -457,42 +457,31 @@ void Inspector::handleSelection(ImGuiIO& io) {
 // -----------------------DRAW CALLS-------------------------------------
 // ======================================================================
 void Inspector::drawToolBar() {
-	// icon-only, CFD-style toolbar: view | display, screenshot on the far right.
-	// names are hidden on the buttons and shown via tooltip.
-	const ImVec2 iconSize(toolbarIconSize, toolbarIconSize);
+	// CFD-style ribbon: tools grouped into named sections (home | view). each
+	// button carries a short caption; the tooltip holds the fuller description.
+	beginToolbar();
 
-	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 4.0f));
-	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 2.0f));
-
-	const float rowH = iconSize.y + ImGui::GetStyle().FramePadding.y * 2.0f;
-	const float toolbarHeight = rowH + ImGui::GetStyle().WindowPadding.y * 2.0f;
-
-	ImGui::BeginChild("##toolbar", ImVec2(0.0f, toolbarHeight), false,
-		ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-
-	// --- view ---
-	if (addImageButton("Reset", "", "Reset view", assets.icon("house"), iconSize)) {
+	// --- home ---
+	beginSection();
+	if (addImageButton("Reset", "Home", "Reset view", assets.icon("house"))) {
 		camera.initPosition();
 		pendingFrame = true;
 	}
-
-	addToolbarSeparator(rowH - 8.0f);
-
-	// --- display ---
-	addImageButtonToggle("ToggleMesh", "", "Toggle mesh overlay", assets.icon("grid"), iconSize, showMesh);
-
-	// --- screenshot (pushed to the far right) ---
-	const float copyWidth = iconSize.x + ImGui::GetStyle().FramePadding.x * 2.0f;
-	ImGui::SameLine(ImGui::GetContentRegionMax().x - copyWidth);
-	if (addImageButton("Copy", "", "Copy to clipboard", assets.icon("clipboard"), iconSize) || consoleCopy) {
+	ImGui::SameLine();
+	if (addImageButton("Copy", "Copy", "Copy to clipboard", assets.icon("clipboard")) || consoleCopy) {
 		pendingCopyWidth = frameBuffer.width;
 		pendingCopyHeight = frameBuffer.height;
 		pendingCopy = true;
 		consoleCopy = false;
 	}
+	endSection("Home");
 
-	ImGui::EndChild();
-	ImGui::PopStyleVar(2);
+	// --- view ---
+	beginSection();
+	addImageButtonToggle("ToggleMesh", "Mesh", "Toggle Mesh", assets.icon("mesh"), showMesh);
+	endSection("View");
+
+	endToolbar();
 }
 
 void Inspector::drawFieldTabs() {
@@ -1155,7 +1144,7 @@ void Inspector::copyActiveSurfaceToClipboard() {
 	);
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	drawCanvas(drawList, canvasRect, 5.0f);
+	drawCanvas(drawList, canvasRect, 0.0f);
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawField(drawList);
@@ -1192,7 +1181,7 @@ void Inspector::render() {
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 
-	drawToolBar();
+	// toolbar lives in the app-wide strip above the dockspace (GUI::drawAppToolbar)
 
 	// field selector tabs - drawn before the canvas is measured so it sizes to the
 	// space left below the strip
@@ -1234,7 +1223,7 @@ void Inspector::render() {
 		handleSelection(io);
 	}
 
-	drawCanvas(drawList, canvasRect, 5.0f);
+	drawCanvas(drawList, canvasRect, 0.0f);
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawField(drawList);

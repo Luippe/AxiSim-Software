@@ -25,6 +25,17 @@ namespace UIFlagsDocking {
 		ImGuiWindowFlags_NoNavFocus |
 		ImGuiWindowFlags_NoBackground;
 
+	// The app-wide toolbar strip above the dockspace. Same as the dockspace host,
+	// minus NoBackground (the strip's band must be opaque) plus NoDocking so it
+	// can't be dragged into the dockspace it sits above.
+	inline constexpr ImGuiWindowFlags AppToolbarWindowFlags =
+		ImGuiWindowFlags_NoDecoration |
+		ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_NoBringToFrontOnFocus |
+		ImGuiWindowFlags_NoNavFocus |
+		ImGuiWindowFlags_NoDocking |
+		ImGuiWindowFlags_NoSavedSettings;
+
 }
 
 namespace UITabBarFlags {
@@ -37,6 +48,24 @@ namespace UITabBarFlags {
 		ImGuiTabBarFlags_Reorderable |			// drag to reorder shown-field tabs
 		ImGuiTabBarFlags_FittingPolicyScroll |	// scroll when the tabs overflow
 		ImGuiTabBarFlags_TabListPopupButton;	// dropdown to jump to any field
+
+}
+
+namespace UIViewport {
+
+	// The four tab viewports share one dock slot and are never submitted on the same
+	// frame. ImGui identifies a window by whatever follows the last "###", so these
+	// titles all resolve to a single window that stays alive across tab switches —
+	// only its label and contents change. Without that, the slot's dock node loses
+	// its only window for the frame after a switch, and an empty central node paints
+	// ImGuiCol_DockingEmptyBg over the whole viewport, which reads as a blink.
+	// Anything drawn under one of these titles must also set a window class with
+	// UIDockFlags::NoDockWindowFlags, since the shared window keeps the last class
+	// it was given.
+	inline constexpr const char* SketchTitle = "Sketch View###Viewport";
+	inline constexpr const char* MeshInspectorTitle = "Mesh Inspector###Viewport";
+	inline constexpr const char* ResidualPlotTitle = "Residual Plot###Viewport";
+	inline constexpr const char* ResultsTitle = "Results###Viewport";
 
 }
 

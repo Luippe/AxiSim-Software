@@ -857,7 +857,6 @@ void Solver::runSimple(const Mesh& mesh) {
 
     }
     CUDA_CHECK(cudaGetLastError());
-    CUDA_CHECK(cudaStreamSynchronize(stream));
 
     cudaProfilerStart();
 
@@ -882,7 +881,6 @@ void Solver::runSimple(const Mesh& mesh) {
         GridLevel grid{ fvMesh.nr, fvMesh.nz, N, config.g.rFace, config.g.zFace, config.g.activeCell };
         multigrid.emplace(mem, grid);
         CUDA_CHECK(cudaGetLastError());
-        CUDA_CHECK(cudaStreamSynchronize(stream));
     }
 
     //print(Nface, N, threadsPerBlock, blocks);
@@ -955,7 +953,6 @@ void Solver::runSimple(const Mesh& mesh) {
             cudaMemsetAsync(simple.pp, 0, N * sizeof(double), stream);
             cudaMemsetAsync(simple.ppTemp, 0, N * sizeof(double), stream);
             CUDA_CHECK(cudaGetLastError());
-            CUDA_CHECK(cudaStreamSynchronize(stream));
 
             for (int corr = 0; corr <= nNonOrth; corr++) {
                 computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
@@ -989,7 +986,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     // = k/(rho*cp), the energy equation should also convect volumetrically
                     // (1/rho). Left at 1.0 to preserve current behavior; change to
                     // (1.0 / f.rho) to make temperature consistent too.
-                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, tempCoeff, bcDevice.temp, 1.0);
+                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, tempCoeff, bcDevice.temp, 1.0 / f.rho);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.temp, simple.momentumRelaxation);
                 solveLinearSystem(tempCoeff, configSolver, stream, simple.temp, simple.tempTemp, activeCells, threadsPerBlock);
@@ -1034,8 +1031,6 @@ void Solver::runSimple(const Mesh& mesh) {
                 if (cudaError_t errResidualAll = cudaGetLastError(); errResidualAll != cudaSuccess) {
                     printf("residualAll launch error: %s\n", cudaGetErrorString(errResidualAll));
                 }
-                CUDA_CHECK(cudaGetLastError());
-                CUDA_CHECK(cudaStreamSynchronize(stream));
                 continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (
                     fvMeshDevice,
                     simple,
@@ -1045,14 +1040,16 @@ void Solver::runSimple(const Mesh& mesh) {
                 if (cudaError_t errContinuity = cudaGetLastError(); errContinuity != cudaSuccess) {
                     printf("continuityResidual launch error: %s\n", cudaGetErrorString(errContinuity));
                 }
-                CUDA_CHECK(cudaGetLastError());
+
+                // residualAllHost reads cfg.res with a blocking cudaMemcpy on the null
+                // stream, and stream is cudaStreamNonBlocking, so the copy does not wait
+                // for the two kernels above. Without this sync it reads stale residuals.
                 CUDA_CHECK(cudaStreamSynchronize(stream));
 
                 residualAllHost(cfg, N, currentIteration);
                 residualPlot->add(currentIteration, cfg);
                 printResidualConsole(currentIteration, cfg, console);
                 CUDA_CHECK(cudaGetLastError());
-                CUDA_CHECK(cudaStreamSynchronize(stream));
                 //if (contRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
             }
             currentIteration++;
@@ -1081,7 +1078,6 @@ void Solver::runSimple(const Mesh& mesh) {
     console->addCompletionTime("Solver", ms);
 
     // copy all necessary variables back to host
-    CUDA_CHECK(cudaStreamSynchronize(stream));
 
     // Pressure gradient for inspector probing, computed two ways from the final
     // pressure field. gradPZ/gradPR are free to reuse here (they held grad(p')

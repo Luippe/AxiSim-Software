@@ -13,6 +13,12 @@ Sketch a geometry, mesh it, run the solver on your GPU, and explore the results 
 ![C++](https://img.shields.io/badge/C%2B%2B-20-00599C)
 ![license](https://img.shields.io/badge/license-MIT-green)
 
+<a href="https://github.com/Luippe/AxiSim-Software/releases/latest/download/AxiSim-win64.zip">
+  <img src="https://img.shields.io/badge/Download-Windows%20x64-blue?style=for-the-badge&logo=windows" alt="Download the latest AxiSim release for Windows x64">
+</a>
+
+<sub>Requires an NVIDIA GPU (compute capability 7.5+) — see <a href="#requirements">Requirements</a></sub>
+
 <img src="docs/images/v1.04-alpha%20screenshots/Picture5.png" alt="AxiSim v1.04-alpha solver view with concentration boundary settings and live residual plots" width="780">
 
 </div>
@@ -75,6 +81,19 @@ problems without stitching together separate CAD, meshing, solver, and visualiza
 - *To build from source:* CUDA Toolkit 13.0, a C++20 compiler (Visual Studio 2022), CMake ≥ 3.24, and [vcpkg](https://vcpkg.io)
 
 > **Note:** AxiSim runs its solver on the GPU and requires a compatible NVIDIA card. It will not run on machines without one.
+
+## Download
+
+**[⬇ Download AxiSim for Windows x64](https://github.com/Luippe/AxiSim-Software/releases/latest/download/AxiSim-win64.zip)** — always the latest release.
+
+Unzip anywhere and run `AxiSim.exe`. Everything needed is bundled; no installer, no separate runtime to
+install. Keep the folder contents together — the exe loads `assets/` and `graphics/shaders/` from
+alongside itself.
+
+> Windows SmartScreen may warn about an unknown publisher, since the build is not code-signed.
+> Choose **More info → Run anyway**.
+
+All releases, with notes, are on the [Releases page](https://github.com/Luippe/AxiSim-Software/releases).
 
 ## Building from source
 

@@ -902,6 +902,130 @@ namespace {
 		}
 	}
 
+	// Drop segments whose source entity is gone, and collapse exact duplicates.
+	std::vector<TrimPreviewResult> uniqueLiveSegments(
+		const SketchModel& sketch,
+		const std::vector<TrimPreviewResult>& segments
+	) {
+		std::vector<TrimPreviewResult> unique;
+
+		for (const TrimPreviewResult& segment : segments) {
+			if (!trimSourceExists(sketch, segment)) {
+				continue;
+			}
+
+			bool duplicate = std::any_of(
+				unique.begin(),
+				unique.end(),
+				[&](const TrimPreviewResult& existing) {
+					return sameTrimSegment(existing, segment);
+				}
+			);
+
+			if (!duplicate) {
+				unique.push_back(segment);
+			}
+		}
+
+		return unique;
+	}
+
+	// Add delta-translated copies of `segments` to the sketch as standalone
+	// entities, returning a preview of each addition pointing at its new entity.
+	// Reads only the resolved geometry of each segment, never its source ID, so
+	// the input may reference entities that no longer exist (a stale clipboard).
+	std::vector<TrimPreviewResult> addTranslatedSegments(
+		SketchModel& sketch,
+		const std::vector<TrimPreviewResult>& segments,
+		Vec2 delta
+	) {
+		std::vector<TrimPreviewResult> added;
+
+		for (const TrimPreviewResult& segment : segments) {
+			switch (segment.geometry) {
+			case TrimPreviewGeometry::Line: {
+				Vec2 a = translatePoint(segment.a, delta);
+				Vec2 b = translatePoint(segment.b, delta);
+				if (distance(a, b) <= 1e-9) {
+					break;
+				}
+
+				int lineID = sketch.addLine(a, b);
+				added.push_back(
+					linePreview(
+						a,
+						b,
+						SketchEntityType::Line,
+						lineID,
+						-1,
+						0.0,
+						1.0
+					)
+				);
+				break;
+			}
+			case TrimPreviewGeometry::Circle: {
+				if (segment.radius <= 1e-9) {
+					break;
+				}
+
+				Vec2 center = translatePoint(segment.center, delta);
+				int circleID = sketch.addCircle(center, segment.radius);
+				added.push_back(circlePreview(center, segment.radius, circleID));
+				break;
+			}
+			case TrimPreviewGeometry::Arc: {
+				if (segment.radius <= 1e-9) {
+					break;
+				}
+
+				// normalize startAngle and endAngle together so the span is preserved
+				// even when the segment's startAngle wrapped past 2*pi (otherwise a
+				// moved arc balloons into a near-full circle)
+				double startAngle = segment.startAngle;
+				double endAngle = segment.endAngle;
+				while (endAngle < startAngle) {
+					endAngle += twoPi;
+				}
+
+				double span = endAngle - startAngle;
+				startAngle = normalizeAngle(startAngle);
+				endAngle = startAngle + span;
+
+				if (span * segment.radius <= 1e-9) {
+					break;
+				}
+
+				Vec2 center = translatePoint(segment.center, delta);
+				int arcID = sketch.addArc(
+					center,
+					segment.radius,
+					startAngle,
+					endAngle
+				);
+				added.push_back(
+					arcPreview(
+						center,
+						segment.radius,
+						startAngle,
+						endAngle,
+						SketchEntityType::Arc,
+						arcID,
+						-1,
+						0.0,
+						1.0
+					)
+				);
+				break;
+			}
+			default:
+				break;
+			}
+		}
+
+		return added;
+	}
+
 	double positiveArcSpan(const SketchArc& arc) {
 		double endAngle = arc.endAngle;
 		while (endAngle < arc.startAngle) {
@@ -1531,24 +1655,8 @@ bool SketchView::moveSelectedTrimSegments(Vec2 delta) {
 	}
 
 	std::vector<TrimPreviewResult> originalSelection = selectedTrimSegments;
-	std::vector<TrimPreviewResult> selectedSegments;
-	for (const TrimPreviewResult& segment : selectedTrimSegments) {
-		if (!trimSourceExists(geometry.sketch, segment)) {
-			continue;
-		}
-
-		bool duplicate = std::any_of(
-			selectedSegments.begin(),
-			selectedSegments.end(),
-			[&](const TrimPreviewResult& existing) {
-				return sameTrimSegment(existing, segment);
-			}
-		);
-
-		if (!duplicate) {
-			selectedSegments.push_back(segment);
-		}
-	}
+	std::vector<TrimPreviewResult> selectedSegments =
+		uniqueLiveSegments(geometry.sketch, selectedTrimSegments);
 
 	if (selectedSegments.empty()) {
 		return false;
@@ -1560,93 +1668,48 @@ bool SketchView::moveSelectedTrimSegments(Vec2 delta) {
 		return false;
 	}
 
-	std::vector<TrimPreviewResult> movedSegments;
-	for (const TrimPreviewResult& segment : selectedSegments) {
-		switch (segment.geometry) {
-		case TrimPreviewGeometry::Line: {
-			Vec2 a = translatePoint(segment.a, delta);
-			Vec2 b = translatePoint(segment.b, delta);
-			if (distance(a, b) <= 1e-9) {
-				break;
-			}
-
-			int lineID = geometry.sketch.addLine(a, b);
-			movedSegments.push_back(
-				linePreview(
-					a,
-					b,
-					SketchEntityType::Line,
-					lineID,
-					-1,
-					0.0,
-					1.0
-				)
-			);
-			break;
-		}
-		case TrimPreviewGeometry::Circle: {
-			if (segment.radius <= 1e-9) {
-				break;
-			}
-
-			Vec2 center = translatePoint(segment.center, delta);
-			int circleID = geometry.sketch.addCircle(center, segment.radius);
-			movedSegments.push_back(
-				circlePreview(center, segment.radius, circleID)
-			);
-			break;
-		}
-		case TrimPreviewGeometry::Arc: {
-			if (segment.radius <= 1e-9) {
-				break;
-			}
-
-			// normalize startAngle and endAngle together so the span is preserved
-			// even when the segment's startAngle wrapped past 2*pi (otherwise a
-			// moved arc balloons into a near-full circle)
-			double startAngle = segment.startAngle;
-			double endAngle = segment.endAngle;
-			while (endAngle < startAngle) {
-				endAngle += twoPi;
-			}
-
-			double span = endAngle - startAngle;
-			startAngle = normalizeAngle(startAngle);
-			endAngle = startAngle + span;
-
-			if (span * segment.radius <= 1e-9) {
-				break;
-			}
-
-			Vec2 center = translatePoint(segment.center, delta);
-			int arcID = geometry.sketch.addArc(
-				center,
-				segment.radius,
-				startAngle,
-				endAngle
-			);
-			movedSegments.push_back(
-				arcPreview(
-					center,
-					segment.radius,
-					startAngle,
-					endAngle,
-					SketchEntityType::Arc,
-					arcID,
-					-1,
-					0.0,
-					1.0
-				)
-			);
-			break;
-		}
-		default:
-			break;
-		}
-	}
+	std::vector<TrimPreviewResult> movedSegments =
+		addTranslatedSegments(geometry.sketch, selectedSegments, delta);
 
 	selectedTrimSegments = movedSegments;
 	return !movedSegments.empty();
+}
+
+bool SketchView::copySelectedTrimSegments() {
+	std::vector<TrimPreviewResult> copied =
+		uniqueLiveSegments(geometry.sketch, selectedTrimSegments);
+
+	if (copied.empty()) {
+		return false;
+	}
+
+	Vec2 anchor = trimPreviewBound(copied.front()).min;
+	for (const TrimPreviewResult& segment : copied) {
+		SketchBound bound = trimPreviewBound(segment);
+		anchor.z = std::min(anchor.z, bound.min.z);
+		anchor.r = std::min(anchor.r, bound.min.r);
+	}
+
+	clipboardSegments = copied;
+	clipboardAnchor = anchor;
+	return true;
+}
+
+bool SketchView::pasteClipboardSegments(Vec2 delta) {
+	if (clipboardSegments.empty()) {
+		return false;
+	}
+
+	std::vector<TrimPreviewResult> pastedSegments =
+		addTranslatedSegments(geometry.sketch, clipboardSegments, delta);
+
+	if (pastedSegments.empty()) {
+		return false;
+	}
+
+	// select the paste, not the original, so it can be dragged straight away
+	selectedTrimSegments = pastedSegments;
+	return true;
 }
 
 bool SketchView::trimLineAtMouse(ImVec2 mouse) {
@@ -1883,42 +1946,8 @@ bool SketchView::eraseEntityAtMouse(ImVec2 mouse) {
 		return false;
 	}
 
-	switch (target->type) {
-	case SketchEntityType::Line:
-		eraseByID(geometry.sketch.lines, target->entityID);
-		eraseDimensionsForEntity(
-			geometry.sketch,
-			SketchDimensionType::LineLength,
-			target->entityID
-		);
-		return true;
-	case SketchEntityType::Rectangle:
-		eraseByID(geometry.sketch.rectangles, target->entityID);
-		eraseDimensionsForEntity(
-			geometry.sketch,
-			SketchDimensionType::RectangleWidth,
-			target->entityID
-		);
-		eraseDimensionsForEntity(
-			geometry.sketch,
-			SketchDimensionType::RectangleHeight,
-			target->entityID
-		);
-		return true;
-	case SketchEntityType::Circle:
-		eraseByID(geometry.sketch.circles, target->entityID);
-		eraseDimensionsForEntity(
-			geometry.sketch,
-			SketchDimensionType::CircleRadius,
-			target->entityID
-		);
-		return true;
-	case SketchEntityType::Arc:
-		eraseByID(geometry.sketch.arcs, target->entityID);
-		return true;
-	default:
-		return false;
-	}
+	// shared with the Geometry panel's delete button
+	return geometry.sketch.removeEntity(target->type, target->entityID);
 }
 
 void SketchView::drawTrimPreview(ImDrawList* drawList) {

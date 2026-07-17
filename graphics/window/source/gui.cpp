@@ -140,6 +140,50 @@ void initAssetBuffers(AppAssets& assets) {
 	}
 }
 
+void GUI::drawAppToolbar() {
+
+	// Own top-level window pinned across the top of the viewport, directly under
+	// the menu bar. newFrame() has already shrunk the dockspace by exactly
+	// toolbarStripHeight() to leave this room, so the two never overlap.
+	ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+	ImGui::SetNextWindowPos(viewport->WorkPos);
+	ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, ToolbarHost::toolbarStripHeight()));
+	ImGui::SetNextWindowViewport(viewport->ID);
+
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+	// zero padding is what lets the band inside reach both edges
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+
+	ImGui::Begin("##AppToolbar", nullptr, UIFlagsDocking::AppToolbarWindowFlags);
+
+	// mirrors render()'s currentTab dispatch — whichever view is live owns the strip
+	switch (project.currentTab) {
+	case ViewTab::TAB_GEOMETRY:
+		sketch.drawToolBar();
+		break;
+	case ViewTab::TAB_MESH:
+		meshInspector.drawToolBar();
+		break;
+	case ViewTab::TAB_SOLVER:
+		residualPlot.drawAppToolBar();
+		break;
+	case ViewTab::TAB_RESULTS:
+		// The strip always shows so the layout doesn't jump, but with no results
+		// loaded there is no field to act on, so the buttons are inert.
+		ImGui::BeginDisabled(!results.isReady);
+		inspector.drawToolBar();
+		ImGui::EndDisabled();
+		break;
+	default:
+		break;
+	}
+
+	ImGui::End();
+	ImGui::PopStyleVar(3);
+}
+
 void GUI::newFrame() {
 
 	setContext(mainImGuiContext, mainImPlotContext);
@@ -150,9 +194,15 @@ void GUI::newFrame() {
 
 	ImGuiViewport* viewport = ImGui::GetMainViewport();
 
+	// The app toolbar strip owns a fixed band across the top (drawn later, from
+	// render(), once the tab bar has set currentTab), so hand the dockspace what
+	// is left between it and the status bar.
+	const float toolbarHeight = ToolbarHost::toolbarStripHeight();
+
 	ImVec2 dockPos = viewport->WorkPos;
 	ImVec2 dockSize = viewport->WorkSize;
-	dockSize.y -= statusBarHeight;
+	dockPos.y += toolbarHeight;
+	dockSize.y -= statusBarHeight + toolbarHeight;
 
 	ImGui::SetNextWindowPos(dockPos);
 	ImGui::SetNextWindowSize(dockSize);
@@ -206,7 +256,7 @@ GUI::GUI(Project& project, Display& disp) :
 
 	solver.residualPlot = &residualPlot;
 
-
+	viewportWindowClass.DockNodeFlagsOverrideSet = UIDockFlags::NoDockWindowFlags;
 
 	IMGUI_CHECKVERSION();
 
@@ -329,6 +379,45 @@ void GUI::drawStatusBar() {
 	ImGui::PopStyleVar(3);
 }
 
+void GUI::drawResultsViewport() {
+
+	ImGui::SetNextWindowClass(&viewportWindowClass);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+	ImGui::Begin(UIViewport::ResultsTitle);
+	ImGui::PopStyleVar();
+
+	ImGuiID dockspaceID = ImGui::GetID("ResultsDockSpace");
+	ImVec2 dockSize = ImGui::GetContentRegionAvail();
+
+	// First run only — after that the split comes back from imgui.ini, so rebuilding
+	// would throw away wherever the user dragged the splitter. The size floor keeps
+	// the split legal if the panel is degenerate on the frame we happen to build.
+	if (ImGui::DockBuilderGetNode(dockspaceID) == nullptr) {
+		ImGui::DockBuilderAddNode(dockspaceID, ImGuiDockNodeFlags_DockSpace);
+		ImGui::DockBuilderSetNodeSize(
+			dockspaceID,
+			ImVec2(ImMax(dockSize.x, 64.0f), ImMax(dockSize.y, 64.0f))
+		);
+
+		ImGuiID sceneNode = 0;
+		ImGuiID inspectorNode = ImGui::DockBuilderSplitNode(
+			dockspaceID,
+			ImGuiDir_Down,
+			0.5f,
+			nullptr,
+			&sceneNode
+		);
+
+		ImGui::DockBuilderDockWindow("Scene", sceneNode);
+		ImGui::DockBuilderDockWindow("Inspector", inspectorNode);
+		ImGui::DockBuilderFinish(dockspaceID);
+	}
+
+	ImGui::DockSpace(dockspaceID, dockSize, UIDockFlags::BaseDockspaceFlags);
+
+	ImGui::End();
+}
+
 void GUI::drawUI() {
 	ImGui::Begin("Project");
 	if (ImGui::BeginTabBar("Main", TabBarFlags)) {
@@ -376,29 +465,35 @@ void GUI::render() {
 
 	drawUI();
 
+	// After drawUI, since that is where the tab bar sets currentTab — drawing the
+	// strip any earlier would show the previous tab's tools for a frame.
+	drawAppToolbar();
+
 	// mesh GUI render
-	if (project.currentTab == ViewTab::TAB_GEOMETRY) {
+	switch (project.currentTab) {
+	case ViewTab::TAB_GEOMETRY :
 		sketch.render();
-	}
-
-	if (project.currentTab == ViewTab::TAB_MESH) {
+		break;
+	case ViewTab::TAB_MESH :
 		meshInspector.render();
-	}
-
-	// solver GUI render
-	if (project.currentTab == ViewTab::TAB_SOLVER) {
+		break;
+	case ViewTab::TAB_SOLVER :
 		residualPlot.draw();
-	}
+		break;
+	case ViewTab::TAB_RESULTS :
+		drawResultsViewport();
+		// the panes dock into the viewport's own dockspace, so they must follow it
+		if (results.isReady) {
+			scene.render();
+			inspector.render();
 
-	// results GUI render
-	if (project.currentTab == ViewTab::TAB_RESULTS && results.isReady) {
-		scene.render();
-		inspector.render();
-
-		if (project.solver.configSolver.transient) {
-			animationGUI.render();
+			if (project.solver.configSolver.transient) {
+				animationGUI.render();
+			}
 		}
+		break;
 	}
+
 
 	handleKeyInput();
 

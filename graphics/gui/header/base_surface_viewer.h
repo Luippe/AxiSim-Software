@@ -199,8 +199,13 @@ bool drawNamingPopup(const char* label, TypeT& target, std::vector<TypeT>& group
 class DockingSpace {
 public:
 
-	DockingSpace(const char* name);
+	// windowTitle is the ImGui window the dockspace is drawn into; tabBaseName is
+	// what new tabs are named after. They are separate because the host is a shared
+	// viewport window (see UIViewport) while tabs keep their own readable names.
+	DockingSpace(const char* windowTitle, const char* tabBaseName);
 
+	// DockTab::id of the selected tab, 0 if none. Resolve to a slot with a
+	// lookup -- this is an id, not an index.
 	int getActiveTabID();
 
 	// define structs
@@ -233,12 +238,12 @@ public:
 		TabT tab;
 
 		tab.id = nextTabID++;
-		tab.name = dockName + std::to_string(tab.id);
+		tab.name = tabBaseName + std::to_string(tab.id);
 		tab.newlyCreated = true;
 		tab.targetDockID = targetDockID;
 
+		activeTabID = tab.id; // read the id before `tab` is moved from
 		tabs.push_back(std::move(tab));
-		activeTabID = (int)tabs.size() - 1;
 	}
 
 	// draw tabs
@@ -271,7 +276,7 @@ public:
 				ImGui::PushID(tab.id);
 
 				if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)) {
-					activeTabID = i;
+					activeTabID = tab.id;
 				}
 
 				// check double click for renaming tab
@@ -305,8 +310,14 @@ public:
 
 		// remove tabs
 		if (tabToClose != -1) {
+			const int closedID = tabs[tabToClose].id;
 			tabs.erase(tabs.begin() + tabToClose);
-			activeTabID = (int)tabs.size() - 1; // move to the right tab after closing a tab
+
+			// ids survive the erase, so a selection on any other tab still
+			// resolves -- only rehome when the selected tab is the one closed
+			if (activeTabID == closedID) {
+				activeTabID = tabs.empty() ? 0 : tabs.back().id;
+			}
 		}
 
 		// add tab if plus button was pressed
@@ -317,9 +328,15 @@ public:
 
 private:
 
-	std::string dockName;
+	std::string windowTitle;
+	std::string tabBaseName;
+	ImGuiWindowClass hostWindowClass;
 	int nextTabID = 1;
-	int activeTabID = 1;
+
+	// DockTab::id of the selected tab, 0 = none. This is the tab's stable unique
+	// id, NOT its slot in the caller's vector -- ids are 1-based and survive a
+	// close, indices don't. Resolve it with a lookup before indexing.
+	int activeTabID = 0;
 
 	bool isCurrentDockTabDoubleClicked();
 
@@ -346,7 +363,132 @@ private:
 
 
 
-class BaseSurfaceViewer {
+// Everything needed to draw one toolbar strip, split out of BaseSurfaceViewer so
+// the residual plot — which has no camera or framebuffer and so can't be a
+// surface viewer — draws the same strip from the same code.
+class ToolbarHost {
+public:
+
+	// Open/close the toolbar strip. beginToolbar pushes the shared toolbar style
+	// and opens a full-bleed child band (spans the window edge to edge, ignoring
+	// WindowPadding); endToolbar draws the bottom rule and restores everything.
+	// Put the sections between them. Always pair these.
+	void beginToolbar();
+	void endToolbar();
+
+	// A ribbon-style group of related buttons, named by a caption centered beneath
+	// them: submit the buttons between beginSection() and endSection(name). The
+	// rules between sections are drawn for you, and every name shares one baseline
+	// however tall the buttons above it are. Always pair these, inside a toolbar.
+	//
+	// Buttons stack into rows the ImGui way: SameLine() continues the current row,
+	// omitting it starts a new one. A section gets toolbarButtonHeight() of room,
+	// which is one captioned button or two rows of smallIconSize() ones.
+	void beginSection();
+	void endSection(const char* name);
+
+	// add tooltip to image button when hovered
+	void setToolTip(const char* text);
+
+	// Toolbar buttons render the icon with a short caption centered underneath so
+	// the button reads as the tool it represents. `label` is that caption (keep it
+	// short, e.g. "Ruler"), or null for none — which leaves the section name to say
+	// what the buttons are. `tooltip` is the fuller hover description.
+	bool addImageButton(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize = iconSize());
+
+	bool addImageButtonToggle(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, bool& toggle, ImVec2 buttonSize = iconSize());
+
+	// Default square size (px) of a toolbar icon button. Single knob for every
+	// inspector/sketch toolbar — bump to enlarge all of them.
+	static constexpr float toolbarIconSize = 40.0f;
+
+	// Square size (px) of the compact buttons a two-row section uses, trading each
+	// button's caption for a denser grid.
+	static constexpr float toolbarSmallIconSize = 24.0f;
+
+	static constexpr ImVec2 iconSize() { return ImVec2(toolbarIconSize, toolbarIconSize); }
+	static constexpr ImVec2 smallIconSize() { return ImVec2(toolbarSmallIconSize, toolbarSmallIconSize); }
+
+	// The style beginToolbar() pushes. Named so the heights below are derived from
+	// the same numbers rather than duplicating them.
+	static constexpr float toolbarPadX = 8.0f;
+	static constexpr float toolbarPadY = 4.0f;
+	static constexpr float toolbarFramePadX = 6.0f;
+	static constexpr float toolbarFramePadY = 2.0f;
+	static constexpr float toolbarItemSpacingY = 2.0f;
+
+	// Height (px) of one captioned toolbar button — the icon button plus the
+	// caption line under it. Also the height every section's buttons get, since
+	// each section name is parked directly below this.
+	static constexpr float toolbarButtonHeight() {
+		return toolbarIconSize
+			+ toolbarFramePadY * 2.0f
+			+ toolbarItemSpacingY
+			+ captionFontSize;
+	}
+
+	// Total height (px) of the strip: the buttons, the section names under them,
+	// and the band's padding. Constant and known without pushing any style, so a
+	// caller can reserve space for the strip before it is drawn (GUI shrinks the
+	// dockspace by exactly this).
+	static constexpr float toolbarStripHeight() {
+		return toolbarButtonHeight() + sectionNameGap + sectionFontSize + toolbarPadY * 2.0f;
+	}
+
+private:
+
+	// draws the icon button plus its centered caption as one vertical group.
+	// Assumes the caller has already pushed the button id, frame rounding, and
+	// button colors. `active` brightens the caption for a toggled-on tool.
+	bool drawImageButtonWithCaption(const char* buttonID, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool active);
+
+	// vertical rule dividing two sections, drawn at the cursor and spanning the
+	// band; advances the cursor past it.
+	void addSectionRule();
+
+	// Window-space Y of the section names. Fixed rather than "wherever the buttons
+	// ended", so names line up across sections whose buttons differ in height.
+	// beginToolbar's child starts its cursor at WindowPadding, so every section's
+	// buttons start at toolbarPadY.
+	static constexpr float sectionNameY() {
+		return toolbarPadY + toolbarButtonHeight() + sectionNameGap;
+	}
+
+	const float imageButtonRounding = 6.0f;
+
+	// caption font size (px) under toolbar icons; smaller than the 18px UI font
+	// so the label stays subordinate to the icon.
+	static constexpr float captionFontSize = 13.0f;
+
+	// Section name: smaller again than a button caption, and dimmed, so the group
+	// reads as a heading rather than as another tool.
+	static constexpr float sectionFontSize = 12.0f;
+	static constexpr float sectionNameGap = 3.0f;
+
+	// horizontal room (px) one section rule takes, the line itself centered in it
+	static constexpr float sectionRuleWidth = 24.0f;
+
+	// laid out by beginSection/endSection: the open section's left edge, and how
+	// many sections the strip has drawn so far (the first one needs no rule).
+	float sectionStartX = 0.0f;
+	int sectionCount = 0;
+
+	// cursor stashed by beginToolbar so endToolbar can undo the full-bleed shift
+	// and park the next widget flush against the band's bottom edge
+	float toolbarSavedCursorX = 0.0f;
+	float toolbarNextCursorY = 0.0f;
+};
+
+// Two rows of compact buttons have to fit the height a section gets, or they would
+// spill over its name and out of the strip. Out here rather than inside the class,
+// where toolbarButtonHeight() is not defined yet and so can't be called.
+static_assert(
+	2.0f * (ToolbarHost::toolbarSmallIconSize + ToolbarHost::toolbarFramePadY * 2.0f) + ToolbarHost::toolbarItemSpacingY
+		<= ToolbarHost::toolbarButtonHeight(),
+	"toolbarSmallIconSize is too large for a two-row section"
+);
+
+class BaseSurfaceViewer : public ToolbarHost {
 public:
 
 	BaseSurfaceViewer(const char* vertexShaderPath, const char* fragmentShaderPath);
@@ -389,7 +531,6 @@ protected:
 	bool toggleGrid = false;
 
 	ImVec2 currentMousePos = ImVec2(0.0f, 0.0f);
-	ImVec2 buttonSize = ImVec2(30.0f, 30.0f);
 
 	// shader
 	Shader shader;
@@ -462,13 +603,8 @@ protected:
 		float bottom = 0.0
 	);
 
-	void addToolbarSeparator(float height = 40.0f);
-
 	// update initLeftMouse when the user clicks. relative to the last drawn ImGui item
 	void updateInitialLeftClick(ImGuiIO& io);
-
-	// add tooltip to image button when hovered
-	void setToolTip(const char* text);
 
 	void updateCurrentMousePos();
 
@@ -508,30 +644,22 @@ protected:
 	// ======================================================================
 	void addMenuItemCopyToClipboard(const char* text);
 
-	// ======================================================================
-	// -----------------------IMAGE BUTTONS----------------------------------
-	// ======================================================================
-	// Toolbar buttons render the icon with a short caption centered underneath
-	// so the button reads as the tool it represents. `label` is that caption
-	// (keep it short, e.g. "Ruler"); `tooltip` is the fuller hover description.
-	bool addImageButton(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize);
+	// Fill + border of a 2D canvas. Shared by the sketch view and the mesh
+	// inspector so both read as the same drawing surface; pass them to
+	// drawCanvas() (its defaults are the darker 3D/results palette).
+	const ImU32 canvasBgColor = IM_COL32(102, 102, 102, 255);
+	const ImU32 canvasOutlineColor = IM_COL32(150, 150, 150, 255);
 
-	bool addImageButtonToggle(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle);
+	// Sketch geometry as drawn on a 2D canvas: near-black at rest, highlighter
+	// blue when hovered or selected. Shared so the sketch view and the mesh
+	// inspector's boundary segments read as the same lines.
+	const ImU32 sketchLineColor = IM_COL32(28, 28, 30, 255);
+	const ImU32 hoverLineColor = IM_COL32(50, 145, 255, 255);
 
-	// Default square size (px) of a toolbar icon button. Single knob for every
-	// inspector/sketch toolbar — bump to enlarge all of them.
-	static constexpr float toolbarIconSize = 30.0f;
+	// Stroke width (px) for those same lines. Shared for the same reason the
+	// colors are: a mesh boundary segment must read as the sketch entity it
+	// came from, so the two canvases can't drift apart.
+	const float sketchLineThickness = 2.0f;
+	const float hoverLineThickness = 3.5f;
 
-private:
-
-	// draws the icon button plus its centered caption as one vertical group.
-	// Assumes the caller has already pushed the button id, frame rounding, and
-	// button colors. `active` brightens the caption for a toggled-on tool.
-	bool drawImageButtonWithCaption(const char* buttonID, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool active);
-
-	const float imageButtonRounding = 6.0f;
-
-	// caption font size (px) under toolbar icons; smaller than the 18px UI font
-	// so the label stays subordinate to the icon.
-	static constexpr float captionFontSize = 13.0f;
 };

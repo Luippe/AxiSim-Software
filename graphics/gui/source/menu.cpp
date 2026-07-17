@@ -268,6 +268,8 @@ void Menu::drawShortcutModal() {
 		drawShortcutButton("Reset View", resetViewShortcut);
 		drawShortcutButton("Undo", undoShortcut);
 		drawShortcutButton("Redo", redoShortcut);
+		drawShortcutButton("Copy", copyShortcut);
+		drawShortcutButton("Paste", pasteShortcut);
 
 		if (editingShortcut) {
 			ImGuiKeyChord capturedShortcut = 0;

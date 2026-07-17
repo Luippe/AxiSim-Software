@@ -85,8 +85,12 @@ BoundaryCondition& SolverGUI::getOrCreateBC(
 }
 
 void SolverGUI::drawFieldCheckbox() {
-	ImGui::Checkbox("Energy", &solver.fieldOption.solveEnergy);
-	ImGui::Checkbox("Concentration", &solver.fieldOption.solveConcentration);
+	if (ImGui::Checkbox("Energy", &solver.fieldOption.solveEnergy)) {
+		solver.cfg["Energy"].enabled = solver.fieldOption.solveEnergy;
+	}
+	if (ImGui::Checkbox("Concentration", &solver.fieldOption.solveConcentration)) {
+		solver.cfg["Concentration"].enabled = solver.fieldOption.solveConcentration;
+	}
 	ImGui::Checkbox("Multigrid", &solver.useMultigrid);
 }
 
@@ -630,7 +634,7 @@ void SolverGUI::drawPropertiesPanel() {
 		ImGui::PopStyleVar();
 
 	}
-	else if (selectedItem == "Convergence") {
+	else if (selectedItem == "Residual") {
 		drawResidualSettings();
 
 		sectionHeader("Tolerance");
@@ -730,7 +734,7 @@ void SolverGUI::draw() {
 	if (ImGui::BeginTabItem("Solver")) {
 		project.currentTab = ViewTab::TAB_SOLVER;
 
-		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() - 30.0f), true);
+		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() - 40.0f), true);
 
 		if (drawLeaf("General", &assets.icon("general"))) {
 			selectedBoundaryGroupID = -1;
@@ -762,7 +766,7 @@ void SolverGUI::draw() {
 			ImGui::TreePop();
 		}
 
-		drawLeaf("Convergence", &assets.icon("residuals"));
+		drawLeaf("Residual", &assets.icon("residuals"));
 
 		drawLeaf("Fluid Properties", &assets.icon("fluid_properties"));
 

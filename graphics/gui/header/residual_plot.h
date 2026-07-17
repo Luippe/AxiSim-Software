@@ -6,6 +6,7 @@
 #include "implot.h"
 
 #include "base_surface_viewer.h"
+#include "flag_manager.h"
 #include "solver_struct.h"
 #include "buffer_manager.h"
 
@@ -23,13 +24,13 @@ struct TextPos {
     double residual;
 };
 
-class ResidualPlot {
+class ResidualPlot : public ToolbarHost {
 
 public:
 	ResidualPlot(Solver& solver, AppConfig& appConfig);
 
     // create dockspace to have multiple tabs
-    DockingSpace residualDockSpace{ "Residual Plot" };
+    DockingSpace residualDockSpace{ UIViewport::ResidualPlotTitle, "Residual Plot" };
 
     // add structs
     struct ResidualPlotTab : public DockingSpace::DockTab {
@@ -42,7 +43,7 @@ public:
     // copy to clipboard variables
     bool pendingCopy = false;
     bool consoleCopy = false;
-    int pendingCopyTabID = 0;
+    int pendingCopyTabID = 0; // DockTab::id, not a slot in `tabs`
     int pendingCopyWidth = 1600;
     int pendingCopyHeight = 420;
 
@@ -50,6 +51,10 @@ public:
 
     // main draw function
 	void draw();
+
+    // Drawn by GUI into the app-wide toolbar strip above the dockspace. Acts on
+    // whichever plot tab is currently selected (residualDockSpace's active tab).
+    void drawAppToolBar();
 
     // reset state of residual plot before starting to plot
     void resetState();
@@ -71,9 +76,16 @@ private:
     int idx = 0;
     int p = 0;
 
-    // toolbar icon variables
-    float toolbarHeight = 25.0f;
-    float iconSize = 15.0f;
+    // Set by the app toolbar's Add button. The dock to add into is only known
+    // once drawTabs() is running, and the strip is drawn before that, so the
+    // request is parked here and consumed on this frame's draw().
+    bool pendingAddTab = false;
+
+    // slot in `tabs` for a DockTab::id, or -1 if no tab carries that id
+    int tabIndexFromID(int id);
+
+    // index into `tabs` of the plot the app toolbar acts on, or -1 if none
+    int activeTabIndex();
 
 
     ImPlotSpec marker;
@@ -82,9 +94,6 @@ private:
     Solver& solver;
     AppAssets& assets;
     FrameBuffer offScreenFBO;
-
-    // draw toolbar
-    void drawToolBar(ResidualPlotTab& tab, int i, ImGuiID currentDockID, ImGuiID& pendingAddDockID, ImGuiID dockspaceID);
 
     // setup axes
     void setupAxes();

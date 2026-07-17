@@ -46,8 +46,11 @@ public:
 
 	VertexBuffer vertexBuffer;
 
-	// toolbar is drawn first, then the 2D field is rendered using the remaining space
 	void render();
+
+	// Drawn by GUI into the app-wide toolbar strip above the dockspace, not by
+	// render(), so the band can span the whole window instead of this panel.
+	void drawToolBar();
 
 	// copy surface to clipboard
 	void copyActiveSurfaceToClipboard();
@@ -131,9 +134,6 @@ private:
 	std::optional<MeshSnapResult> findSnap(ImVec2 mouse);
 	Vec2 getSnappedWorld(ImVec2 mouse);
 	std::optional<int> findHoveredBoundarySegment();
-
-	// draw toolbar at the top of the mesh analyzer, which can be used for variety of functions
-	void drawToolBar();
 
 	// draw popup menu when right clicked
 	void drawPopup();

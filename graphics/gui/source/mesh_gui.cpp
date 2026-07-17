@@ -319,7 +319,9 @@ void MeshGUI::drawPropertiesPanel() {
 
 		sectionHeader("Statistics");
 
-		if (ImGui::BeginTable("StatsticsTable", 2, UIFlags::TableSimpleFlags, ImVec2(0.0f, 220.0f))) {
+		// auto-height: the table holds exactly two rows, so let it size to them
+		// rather than padding out to a fixed 220px of empty rule
+		if (ImGui::BeginTable("StatsticsTable", 2, UIFlags::TableSimpleFlags)) {
 			setupTableColumns(
 				column("Label", 150.0f),
 				column("Value", 100.0f, ImGuiTableColumnFlags_WidthStretch)

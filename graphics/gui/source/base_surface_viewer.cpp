@@ -9,8 +9,11 @@
 #include "flag_manager.h"
 using namespace UIDockFlags;
 
-DockingSpace::DockingSpace(const char* name) : dockName(name) {
+DockingSpace::DockingSpace(const char* windowTitle, const char* tabBaseName) :
+	windowTitle(windowTitle),
+	tabBaseName(tabBaseName) {
 
+	hostWindowClass.DockNodeFlagsOverrideSet = NoDockWindowFlags;
 
 }
 
@@ -20,7 +23,8 @@ int DockingSpace::getActiveTabID() {
 
 DockingSpace::DockSpaceInfo DockingSpace::renderDockSpace() {
 
-	ImGui::Begin(dockName.c_str());
+	ImGui::SetNextWindowClass(&hostWindowClass);
+	ImGui::Begin(windowTitle.c_str());
 
 	ImGuiID dockspaceID = ImGui::GetID("ResidualPlotDockSpace");
 	ImGuiID classID = ImGui::GetID("ResidualPlotDockClass");
@@ -207,7 +211,7 @@ void BaseSurfaceViewer::updateCurrentMousePos() {
 	currentMousePos = ImGui::GetMousePos();
 }
 
-void BaseSurfaceViewer::setToolTip(const char* text) {
+void ToolbarHost::setToolTip(const char* text) {
 	if (ImGui::IsItemHovered()) {
 		ImGui::SetTooltip("%s", text);
 	}
@@ -241,24 +245,122 @@ void BaseSurfaceViewer::drawCanvas(
 	);
 
 }
-void BaseSurfaceViewer::addToolbarSeparator(float height) {
-	ImGui::SameLine();
+void ToolbarHost::beginToolbar() {
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(toolbarPadX, toolbarPadY));
+	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(toolbarFramePadX, toolbarFramePadY));
+	// tightens the icon-to-caption gap
+	ImGui::PushStyleVarY(ImGuiStyleVar_ItemSpacing, toolbarItemSpacingY);
 
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	ImVec2 pos = ImGui::GetCursorScreenPos();
+	// Chrome continuous with the menu bar directly above. Lifted off the style
+	// rather than hardcoded so it tracks the theme.
+	ImVec4 band = ImGui::GetStyleColorVec4(ImGuiCol_MenuBarBg);
+	band.w = 1.0f;   // the strip must be opaque; the dockspace behind it is not
+	ImGui::PushStyleColor(ImGuiCol_ChildBg, band);
 
-	float y0 = pos.y + 4.0f;
-	float y1 = y0 + height;
+	const float height = toolbarStripHeight();
 
-	drawList->AddLine(
-		ImVec2(pos.x + 6.0f, y0),
-		ImVec2(pos.x + 6.0f, y1),
-		IM_COL32(120, 120, 120, 180),
-		2.0f
+	// Full bleed: the parent window insets its content by WindowPadding, so a
+	// plain child would leave a gap each side. Start at the window's left edge
+	// and span its entire width instead, then put the cursor back in endToolbar
+	// so the canvas below keeps its normal inset.
+	ImVec2 cursor = ImGui::GetCursorPos();
+	toolbarSavedCursorX = cursor.x;
+	toolbarNextCursorY = cursor.y + height;
+	cursor.x = 0.0f;
+	ImGui::SetCursorPos(cursor);
+
+	ImGui::BeginChild(
+		"##toolbar",
+		ImVec2(ImGui::GetWindowWidth(), height),
+		false,
+		ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse
 	);
 
-	ImGui::Dummy(ImVec2(12.0f, height));
-	ImGui::SameLine();
+	// rules divide one section from the next, so the count restarts with the strip
+	sectionCount = 0;
+}
+
+void ToolbarHost::beginSection() {
+
+	if (sectionCount > 0) {
+		addSectionRule();
+	}
+	sectionCount++;
+
+	sectionStartX = ImGui::GetCursorPosX();
+
+	// the buttons alone: endSection measures this group to center the section name
+	// under it and to find where the section ends.
+	ImGui::BeginGroup();
+}
+
+void ToolbarHost::endSection(const char* name) {
+
+	ImGui::EndGroup();
+	const float buttonsWidth = ImGui::GetItemRectSize().x;
+
+	ImGui::PushFont(nullptr, sectionFontSize);
+	const float nameWidth = ImGui::CalcTextSize(name).x;
+
+	// a name wider than its buttons widens the whole section, rather than running
+	// on under the next one
+	const float sectionWidth = std::max(buttonsWidth, nameWidth);
+
+	ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+	ImGui::SetCursorPos(ImVec2(sectionStartX + (sectionWidth - nameWidth) * 0.5f, sectionNameY()));
+	ImGui::TextUnformatted(name);
+	ImGui::PopStyleColor();
+	ImGui::PopFont();
+
+	// Park the cursor at the section's top-right corner, where the next rule starts.
+	// Set outright rather than with SameLine, which would drag it back onto the name
+	// we just wrote.
+	ImGui::SetCursorPos(ImVec2(sectionStartX + sectionWidth, toolbarPadY));
+}
+
+void ToolbarHost::endToolbar() {
+	// bottom rule, drawn while the child is still current so it spans the band
+	ImVec2 bandMin = ImGui::GetWindowPos();
+	float bandW = ImGui::GetWindowWidth();
+	float y = bandMin.y + ImGui::GetWindowHeight() - 1.0f;
+
+	ImGui::GetWindowDrawList()->AddLine(
+		ImVec2(bandMin.x, y),
+		ImVec2(bandMin.x + bandW, y),
+		ImGui::GetColorU32(ImGuiCol_Border),
+		1.0f
+	);
+
+	ImGui::EndChild();
+
+	// Undo the full-bleed cursor shift, and pull the next widget flush against the
+	// band. EndChild leaves ItemSpacing.y below it, and the dockspace host window
+	// is NoBackground, so that gap would show the GL clear color straight through.
+	ImGui::SetCursorPos(ImVec2(toolbarSavedCursorX, toolbarNextCursorY));
+
+	ImGui::PopStyleColor();
+	ImGui::PopStyleVar(3);
+}
+
+void ToolbarHost::addSectionRule() {
+
+	// Drawn from the cursor, which endSection left at the previous section's right
+	// edge. The rule spans the band's whole content, names included, so it reads as
+	// a divider between two groups rather than between two buttons.
+	const ImVec2 pos = ImGui::GetCursorScreenPos();
+	const float x = pos.x + sectionRuleWidth * 0.5f;
+
+	const float y0 = ImGui::GetWindowPos().y + toolbarPadY;
+	const float y1 = y0 + ImGui::GetWindowHeight() - toolbarPadY * 2.0f;
+
+	ImGui::GetWindowDrawList()->AddLine(
+		ImVec2(x, y0),
+		ImVec2(x, y1),
+		IM_COL32(120, 120, 120, 180),
+		1.0f
+	);
+
+	ImGui::SetCursorPosX(ImGui::GetCursorPosX() + sectionRuleWidth);
 }
 
 void BaseSurfaceViewer::drawSurface(const Rect& rect) {
@@ -404,8 +506,15 @@ void BaseSurfaceViewer::drawGrid(ImDrawList* drawList) {
 		currentUnitName
 	);
 
+	// offset by the real line height, not a guessed 20px -- the UI font is taller
+	// than that, so a fixed offset clipped the descenders off the bottom edge
+	const float labelPadding = 8.0f;
+
 	drawList->AddText(
-		ImVec2(canvasMin.x + 8.0f, canvasMax.y - 20.0f),
+		ImVec2(
+			canvasMin.x + labelPadding,
+			canvasMax.y - ImGui::GetTextLineHeight() - labelPadding
+		),
 		IM_COL32(210, 215, 225, 200),
 		label
 	);
@@ -426,7 +535,7 @@ void BaseSurfaceViewer::addMenuItemCopyToClipboard(const char* text) {
 // ======================================================================
 // -----------------------IMAGE BUTTON HANDLES---------------------------
 // ======================================================================
-bool BaseSurfaceViewer::drawImageButtonWithCaption(
+bool ToolbarHost::drawImageButtonWithCaption(
 	const char* buttonID,
 	const char* label,
 	const char* tooltip,
@@ -489,7 +598,7 @@ bool BaseSurfaceViewer::drawImageButtonWithCaption(
 	return pressed;
 }
 
-bool BaseSurfaceViewer::addImageButton(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize) {
+bool ToolbarHost::addImageButton(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize) {
 	ImGui::PushID(id);
 	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, imageButtonRounding);
 
@@ -507,7 +616,7 @@ bool BaseSurfaceViewer::addImageButton(const char* id, const char* label, const 
 	return clicked;
 }
 
-bool BaseSurfaceViewer::addImageButtonToggle(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, ImVec2 buttonSize, bool& toggle) {
+bool ToolbarHost::addImageButtonToggle(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, bool& toggle, ImVec2 buttonSize) {
 
 	ImGui::PushID(id);
 	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, imageButtonRounding);

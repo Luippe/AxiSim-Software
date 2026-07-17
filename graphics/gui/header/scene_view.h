@@ -47,6 +47,10 @@ public:
 
 private:
 
+	// the scene is a pane of the Results dockspace (GUI::drawResultsViewport); the
+	// class keeps its node free of a tab bar, matching the other viewers
+	ImGuiWindowClass windowClass;
+
 	bool hovered = false;
 	bool focused = false;
 	bool dragging = false;
