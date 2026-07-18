@@ -40,7 +40,7 @@ problems without stitching together separate CAD, meshing, solver, and visualiza
 **🎨 Model & mesh**
 - Interactive geometry sketching — lines, rectangles, circles, and arcs with live dimensions
 - **Structured** (Cartesian) and **unstructured** (Gmsh triangulation) meshing
-- Region-of-influence controls for local mesh refinement
+- Region-of-influence controls for local mesh refinement, with optional boundary-spacing override
 - Boundary groups with per-group sizing (edge count, target spacing, bias)
 - Structured boundary groups are preserved across mesh regeneration where possible
 

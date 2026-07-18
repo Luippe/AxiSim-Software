@@ -18,7 +18,7 @@ public:
 
 	Solver(Config& config);
 	
-	const char* boundaryType[4] = { "Wall", "Velocity Inlet", "Pressure Outlet", "Symmetry"};
+	const char* boundaryType[5] = { "Wall", "Velocity Inlet", "Pressure Outlet", "Symmetry", "Far Field" };
 	const char* residualType[4] = { "Scaled", "Raw Residual", "RMS", "Custom Residual"};
 	const char* residualNormType[3] = { "L1 Norm", "L2 Norm", "Linf Norm" };
 	const char* residualScalingType[4] = { "None", "N", "sqrt(N)", "Diagonal"};
@@ -61,7 +61,6 @@ public:
 	Config& config;
 	GridConfig& g;
 	FluidPropertyConfig& f;
-	IterationConfig& itr;
 	VariableUnits& varUnits;
 
 	// struct to determine which fields to solve for

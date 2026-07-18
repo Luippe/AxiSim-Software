@@ -31,6 +31,7 @@ namespace {
 			case BoundaryType::VELOCITY_INLET:  return &assets.icon("inlet");
 			case BoundaryType::PRESSURE_OUTLET: return &assets.icon("outlet");
 			case BoundaryType::SYMMETRY:        return &assets.icon("symmetry");
+			case BoundaryType::FAR_FIELD:       return &assets.icon("boundary");
 		}
 		return nullptr;
 	}
@@ -221,6 +222,15 @@ bool createBCTypeCombo(
 	if (!currentAllowed) {
 		bc.setType(allowedBCTypes[0]);
 		changed = true;
+	}
+
+	// Far Field exposes its freestream velocity values, but its mathematical
+	// condition is fixed: U/V are always Dirichlet. Show the type as read-only
+	// text instead of presenting a one-choice combo that implies it is editable.
+	if (group.type == BoundaryType::FAR_FIELD) {
+		ImGui::AlignTextToFramePadding();
+		ImGui::TextUnformatted(bcTypeToString(bc.type()));
+		return changed;
 	}
 
 	ImGui::SetNextItemWidth(-FLT_MIN);
@@ -639,6 +649,12 @@ void SolverGUI::drawPropertiesPanel() {
 				++it;
 			}
 		}
+
+		//if (group->type == BoundaryType::FAR_FIELD) {
+		//	ImGui::TextDisabled("U and V use fixed Dirichlet conditions with editable values.");
+		//	ImGui::TextDisabled("Pressure and scalars remain fixed at zero gradient (Neumann = 0).");
+		//	ImGui::Dummy(ImVec2(0.0f, 6.0f));
+		//}
 
 		if (ImGui::BeginTable("Boundary Variable Editor", 4)) {
 			setupTableColumns(

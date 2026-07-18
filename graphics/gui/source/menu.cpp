@@ -138,13 +138,13 @@ void Menu::drawOpen() {
 
 		if (beginMenu("Presets")) {
 
-			if (ImGui::MenuItem("Concentration Demo 1")) {
-				loadPresetProject("concentration_demo_preset_1.bin", project);
-			}
+			//if (ImGui::MenuItem("Concentration Demo 1")) {
+			//	loadPresetProject("concentration_demo_preset_1.bin", project);
+			//}
 
-			if (ImGui::MenuItem("Concentration Demo 2")) {
-				loadPresetProject("concentration_demo_preset_2.bin", project);
-			}
+			//if (ImGui::MenuItem("Concentration Demo 2")) {
+			//	loadPresetProject("concentration_demo_preset_2.bin", project);
+			//}
 
 			ImGui::EndMenu();
 		}

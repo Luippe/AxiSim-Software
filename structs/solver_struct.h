@@ -123,18 +123,6 @@ struct Coefficients {
 	}
 };
 
-struct IterationConfig {
-
-	double outer_tol = 1e-8;
-	double inner_tol = 1e-10;
-	double cs_tol = 1e-10;
-	int outer_iter = 250;
-	int inner_iter = 250;
-	int cs_iter = 150;
-	int check_iter = 15;
-
-};
-
 struct ConfigSimple {
 	int maxIter = 50;
 	int checkConv = 1;
@@ -160,7 +148,7 @@ struct ConfigSolver {
 	LinearSolverType type = LINEAR_JACOBI;
 	int maxIter = 20;
 
-	bool addConvectionTerm = false;
+	bool addConvectionTerm = true;
 	bool transient = false;
 
 	double dt = 0.1;
@@ -169,10 +157,10 @@ struct ConfigSolver {
 
 struct ConfigResidual {
 
-	ResidualType type				= RESIDUAL_RAW;
+	ResidualType type				= RESIDUAL_SCALED;
 
 	ResidualNormType normType		= RESIDUAL_LINF;
-	ResidualScalingType scaleType	= RESIDUAL_SCALING_NONE;
+	ResidualScalingType scaleType	= RESIDUAL_SCALING_DIAGONAL;
 
 	bool enabled = false;
 
@@ -324,7 +312,6 @@ struct Config {
 
 	FluidPropertyConfig f;
 	GridConfig g;
-	IterationConfig itr;
 	VariableUnits varUnits;
 
 };

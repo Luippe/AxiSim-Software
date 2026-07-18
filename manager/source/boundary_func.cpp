@@ -42,6 +42,9 @@ namespace BoundaryGet {
 		case BoundaryType::SYMMETRY:
 			return "Symmetry";
 
+		case BoundaryType::FAR_FIELD:
+			return "Far Field";
+
 		default:
 			return "Wall";
 		}
@@ -156,6 +159,21 @@ namespace BoundaryDefaults {
 				return BCType::DIRICHLET; // normal velocity = 0, depending on orientation
 
 			case BoundaryVariable::UVelocity:
+			case BoundaryVariable::Pressure:
+			case BoundaryVariable::StaticTemperature:
+			case BoundaryVariable::Concentration:
+				return BCType::NEUMANN;
+
+			default:
+				return BCType::NONE;
+			}
+
+		case BoundaryType::FAR_FIELD:
+			switch (var) {
+			case BoundaryVariable::UVelocity:
+			case BoundaryVariable::VVelocity:
+				return BCType::DIRICHLET;
+
 			case BoundaryVariable::Pressure:
 			case BoundaryVariable::StaticTemperature:
 			case BoundaryVariable::Concentration:
@@ -280,6 +298,21 @@ namespace BoundaryDefaults {
 			default:
 				return { BCType::NONE };
 			}
+
+		case BoundaryType::FAR_FIELD:
+			switch (var) {
+			case BoundaryVariable::UVelocity:
+			case BoundaryVariable::VVelocity:
+				return { BCType::DIRICHLET };
+
+			case BoundaryVariable::Pressure:
+			case BoundaryVariable::StaticTemperature:
+			case BoundaryVariable::Concentration:
+				return { BCType::NEUMANN };
+
+			default:
+				return { BCType::NONE };
+			}
 		}
 		return { BCType::NONE };
 	}
@@ -299,7 +332,15 @@ namespace BoundaryDefaults {
 			}
 
 		case BoundaryType::SYMMETRY:
+			// Locked presets use their generated defaults rather than storing
+			// user-editable per-variable boundary conditions.
 			return false;
+
+		case BoundaryType::FAR_FIELD:
+			// Far-field velocity values are user-specified Dirichlet data. Pressure
+			// and scalars remain locked to their generated zero-gradient defaults.
+			return variable == BoundaryVariable::UVelocity ||
+				variable == BoundaryVariable::VVelocity;
 
 		case BoundaryType::VELOCITY_INLET:
 			switch (variable) {
@@ -351,6 +392,11 @@ namespace BoundaryDefaults {
 			break;
 
 		case BoundaryType::SYMMETRY:
+			break;
+
+		case BoundaryType::FAR_FIELD:
+			variables.push_back(BoundaryVariable::UVelocity);
+			variables.push_back(BoundaryVariable::VVelocity);
 			break;
 
 		case BoundaryType::VELOCITY_INLET:

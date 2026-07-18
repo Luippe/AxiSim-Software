@@ -7,6 +7,7 @@
 #include "printer.h"
 #include <glm/trigonometric.hpp>
 #include <algorithm>
+#include <limits>
 #include <numeric>
 #include <queue>
 #include <unordered_set>
@@ -48,6 +49,132 @@ static double distancePointToSegment(Vec2 p, Vec2 a, Vec2 b) {
 
 namespace {
 	constexpr double sketchMeshTwoPi = 6.28318530717958647692;
+
+	double regionOutsideDistance(
+		const MeshRegionOfInfluence& region,
+		Vec2 point
+	) {
+		if (region.shape == MeshRegionShape::Circle) {
+			return std::max(0.0, distance(region.center, point) - region.radius);
+		}
+
+		double zMin = std::min(region.min.z, region.max.z);
+		double zMax = std::max(region.min.z, region.max.z);
+		double rMin = std::min(region.min.r, region.max.r);
+		double rMax = std::max(region.min.r, region.max.r);
+
+		double dz = std::max({ zMin - point.z, 0.0, point.z - zMax });
+		double dr = std::max({ rMin - point.r, 0.0, point.r - rMax });
+		return std::sqrt(dz * dz + dr * dr);
+	}
+
+	double boundaryOverrideSizeAtPoint(
+		const std::vector<MeshRegionOfInfluence>& regions,
+		Vec2 point,
+		double defaultMeshSize
+	) {
+		double overrideSize = std::numeric_limits<double>::infinity();
+
+		for (const MeshRegionOfInfluence& region : regions) {
+			if (!region.enabled ||
+				!region.overrideBoundarySpacing ||
+				region.targetSpacing <= 1e-30) {
+				continue;
+			}
+
+			double outsideDistance = regionOutsideDistance(region, point);
+			double thickness = std::max(region.transitionThickness, 0.0);
+
+			if (outsideDistance > 0.0 &&
+				(thickness <= 1e-30 || outsideDistance > thickness)) {
+				continue;
+			}
+
+			double regionSize = region.targetSpacing;
+			if (outsideDistance > 0.0) {
+				double outsideSize = region.outsideSpacing > 1e-30 ?
+					region.outsideSpacing : defaultMeshSize;
+				double blend = std::min(outsideDistance / thickness, 1.0);
+				regionSize += (outsideSize - regionSize) * blend;
+			}
+
+			overrideSize = std::min(overrideSize, regionSize);
+		}
+
+		return std::isfinite(overrideSize) ? overrideSize : -1.0;
+	}
+
+	bool segmentIntersectsBox(
+		Vec2 a,
+		Vec2 b,
+		double zMin,
+		double zMax,
+		double rMin,
+		double rMax
+	) {
+		double tMin = 0.0;
+		double tMax = 1.0;
+
+		auto clip = [&](double origin, double delta, double minValue, double maxValue) {
+			if (std::abs(delta) <= 1e-30) {
+				return origin >= minValue && origin <= maxValue;
+			}
+
+			double t0 = (minValue - origin) / delta;
+			double t1 = (maxValue - origin) / delta;
+			if (t0 > t1) {
+				std::swap(t0, t1);
+			}
+
+			tMin = std::max(tMin, t0);
+			tMax = std::min(tMax, t1);
+			return tMin <= tMax;
+		};
+
+		return clip(a.z, b.z - a.z, zMin, zMax) &&
+			clip(a.r, b.r - a.r, rMin, rMax);
+	}
+
+	bool regionOverridesBoundaryEdge(
+		const MeshRegionOfInfluence& region,
+		Vec2 a,
+		Vec2 b
+	) {
+		if (!region.enabled ||
+			!region.overrideBoundarySpacing ||
+			region.targetSpacing <= 1e-30) {
+			return false;
+		}
+
+		double thickness = std::max(region.transitionThickness, 0.0);
+
+		if (region.shape == MeshRegionShape::Circle) {
+			double influenceRadius = region.radius + thickness;
+			return influenceRadius > 1e-30 &&
+				distancePointToSegment(region.center, a, b) <= influenceRadius;
+		}
+
+		double zMin = std::min(region.min.z, region.max.z) - thickness;
+		double zMax = std::max(region.min.z, region.max.z) + thickness;
+		double rMin = std::min(region.min.r, region.max.r) - thickness;
+		double rMax = std::max(region.min.r, region.max.r) + thickness;
+
+		return segmentIntersectsBox(a, b, zMin, zMax, rMin, rMax);
+	}
+
+	bool boundaryEdgeUsesRegionSizing(
+		const std::vector<MeshRegionOfInfluence>& regions,
+		Vec2 a,
+		Vec2 b
+	) {
+		return std::any_of(
+			regions.begin(),
+			regions.end(),
+			[&](const MeshRegionOfInfluence& region) {
+				return regionOverridesBoundaryEdge(region, a, b);
+			}
+		);
+	}
 
 	struct SketchSegmentDraft {
 		std::vector<Vec2> controlPoints;
@@ -1204,6 +1331,15 @@ void Mesh::runGmshTriangulation() {
 			lc = boundaryVertexSize[v.id];
 		}
 
+		double overrideSize = boundaryOverrideSizeAtPoint(
+			regionsOfInfluence,
+			v.pos,
+			defaultMeshSize
+		);
+		if (overrideSize > 1e-30) {
+			lc = overrideSize;
+		}
+
 		gmsh::model::geo::addPoint(v.pos.z, v.pos.r, 0.0, lc, tag);
 		pointTagByBoundaryVertex[v.id] = tag;
 	}
@@ -1220,16 +1356,20 @@ void Mesh::runGmshTriangulation() {
 	for (const BoundaryEdge& edge : boundaryEdges) {
 		int lineTag = edge.id + 1;
 
-		int p0 = pointTagByBoundaryVertex[edge.v0];
-		int p1 = pointTagByBoundaryVertex[edge.v1];
+		int p0Tag = pointTagByBoundaryVertex[edge.v0];
+		int p1Tag = pointTagByBoundaryVertex[edge.v1];
 
-		gmsh::model::geo::addLine(p0, p1, lineTag);
+		gmsh::model::geo::addLine(p0Tag, p1Tag, lineTag);
 
-		// Keep exactly the boundary discretization we prescribed: one mesh
-		// element per boundary edge. Without this gmsh re-subdivides each line
-		// to the background mesh size, so a wall set to 20 edges comes back
-		// with 60+ boundary faces.
-		gmsh::model::geo::mesh::setTransfiniteCurve(lineTag, 2);
+		const Vec2& p0Pos = boundaryVertices[edge.v0].pos;
+		const Vec2& p1Pos = boundaryVertices[edge.v1].pos;
+
+		// Keep exactly the prescribed boundary discretization unless an ROI is
+		// explicitly allowed to override it. An overridden curve remains a normal
+		// gmsh curve so the background field can subdivide it locally.
+		if (!boundaryEdgeUsesRegionSizing(regionsOfInfluence, p0Pos, p1Pos)) {
+			gmsh::model::geo::mesh::setTransfiniteCurve(lineTag, 2);
+		}
 
 		if (edge.source == BoundarySource::Domain) {
 			outerLines.push_back(lineTag);
@@ -1407,6 +1547,11 @@ void Mesh::applyRegionOfInfluenceFields(double defaultMeshSize) {
 	}
 
 	gmsh::model::mesh::field::setAsBackgroundMesh(backgroundFieldTag);
+
+	// Boundary point sizes are already enforced by the explicitly discretized
+	// curves. Letting gmsh extend them across the surface can mask the background
+	// field completely, making an ROI appear to have no effect.
+	gmsh::option::setNumber("Mesh.MeshSizeExtendFromBoundary", 0);
 }
 
 float Mesh::displayZ(double z) const {

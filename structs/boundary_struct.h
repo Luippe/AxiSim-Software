@@ -320,7 +320,8 @@ enum class BoundaryType {
 	WALL,
 	VELOCITY_INLET,
 	PRESSURE_OUTLET,
-	SYMMETRY
+	SYMMETRY,
+	FAR_FIELD
 };
 
 enum class BoundarySource {
@@ -383,6 +384,7 @@ struct MeshRegionOfInfluence {
 	double targetSpacing = 0.01;
 	double outsideSpacing = 0.0;
 	double transitionThickness = 0.0;
+	bool overrideBoundarySpacing = false;
 };
 
 struct BoundaryEdge {

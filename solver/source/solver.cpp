@@ -50,6 +50,34 @@ void printResidualConsole(int currentIteration, const std::unordered_map<std::st
 }
 
 
+// True once every enabled residual sits at or below its own tolerance.
+//
+// Disabled residuals are skipped on purpose: residualAllHost only refreshes the
+// ones that are enabled, so a disabled field keeps a stale resVal (0.0 until the
+// first solve) and would pass the test for free. If nothing is enabled there is
+// no convergence criterion at all, so report false and let the solver run out
+// its iteration budget.
+//
+// The comparison is written as !(res <= tol) rather than (res > tol) so that a
+// NaN residual counts as NOT converged. A diverged solve produces NaN, and
+// NaN > tol is false -- the naive form would report convergence on a blown-up
+// solution.
+bool residualsConverged(const std::unordered_map<std::string, ConfigResidual>& cfg) {
+
+    bool anyEnabled = false;
+
+    for (auto& [name, configResidual] : cfg) {
+        if (!configResidual.enabled) continue;
+
+        anyEnabled = true;
+
+        if (!(configResidual.resVal <= configResidual.tol)) return false;
+    }
+
+    return anyEnabled;
+}
+
+
 void initCoefficients(std::unordered_map<std::string, Coefficients>& coeffs) {
 
     coeffs.emplace("U", Coefficients{});
@@ -82,7 +110,6 @@ Solver::Solver(Config& config) :
     config(config),
     g(config.g),
     f(config.f),
-    itr(config.itr),
     varUnits(config.varUnits){
 
     cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
@@ -544,14 +571,15 @@ static void printBoundaryDiagnostics(
         case BoundaryType::VELOCITY_INLET:  return "VelocityInlet";
         case BoundaryType::PRESSURE_OUTLET: return "PressureOutlet";
         case BoundaryType::SYMMETRY:        return "Symmetry";
+        case BoundaryType::FAR_FIELD:       return "FarField";
         default:                            return "Unknown";
         }
     };
 
     // Resolve the BC the solver actually uses for a variable, mirroring
     // createBoundaryFieldHost: stored value only when the variable belongs to
-    // the boundary type, otherwise the type's default. (Symmetry has no stored
-    // variables, so its U/P resolve to Neumann and V to Dirichlet 0 here.)
+    // the boundary type, otherwise the type's default. Locked presets such as
+    // Symmetry and Far Field therefore always resolve from their definitions.
     auto effectiveBC = [](const BoundarySegmentGroup& group, BoundaryVariable var) -> BoundaryCondition {
         BoundaryCondition bc = BoundaryDefaults::makeDefaultBC(group, var);
         auto it = group.bcs.find(var);
@@ -619,7 +647,7 @@ void Solver::runSimple(const Mesh& mesh) {
     Coefficients& concCoeff     = coeffs.at("Concentration");
 
     // create configs for solver and residual
-    Config config{ f, g, itr, varUnits };
+    Config config{ f, g, varUnits };
 
     const bool isStructuredMesh = mesh.currentMeshType == MeshType::Structured;
     // Multiblock is structured-typed but has general face connectivity (no single
@@ -810,6 +838,10 @@ void Solver::runSimple(const Mesh& mesh) {
         cudaMemcpyAsync(simple.uOld, simple.u, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
         cudaMemcpyAsync(simple.vOld, simple.v, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
 
+        // Reset per time step: a transient run drives each step to convergence
+        // on its own before advancing time.
+        bool converged = false;
+
         for (int k = 0; k < configSimple.maxIter; k++) {
 
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (uCoeff);
@@ -971,9 +1003,19 @@ void Solver::runSimple(const Mesh& mesh) {
                 residualPlot->add(currentIteration, cfg);
                 printResidualConsole(currentIteration, cfg, console);
                 CUDA_CHECK(cudaGetLastError());
-                //if (contRes < configSimple.ppTol && uRes < configSimple.momTol && vRes < configSimple.momTol) break;
+
+                converged = residualsConverged(cfg);
             }
             currentIteration++;
+
+            // Exit once the tolerances are met. Tested after the increment so the
+            // reported iteration count matches the residual line just printed.
+            if (converged) {
+                std::ostringstream msg;
+                msg << "Converged: all residuals below tolerance at iteration " << currentIteration << "\n";
+                console->addLine(msg.str());
+                break;
+            }
         }
 
         if (canSaveStructuredTransient && tCount % saveKeyFrameIter == 0) {

@@ -58,6 +58,25 @@ namespace {
 	// v3: residual display settings (type/norm/scaling/enabled) are stored per-residual.
 	// Only the current version is loaded; legacy (v1/v2/pre-magic) loaders were removed.
 	constexpr std::uint32_t solverFileVersion = 3u;
+	constexpr std::uint32_t meshRegionFileMagic = 0x494F5241u; // "AROI" little-endian
+	constexpr std::uint32_t meshRegionFileVersion = 1u;
+
+	// Region vectors were originally raw-copied, including this struct's padding.
+	// Keep the old layout available so existing project files can be upgraded to
+	// the field-wise format that stores overrideBoundarySpacing explicitly.
+	struct LegacyMeshRegionOfInfluence {
+		int id = -1;
+		bool enabled = true;
+		MeshRegionShape shape = MeshRegionShape::Circle;
+		Vec2 center{ 0.0, 0.0 };
+		double radius = 0.1;
+		Vec2 min{ 0.0, 0.0 };
+		Vec2 max{ 0.0, 0.0 };
+		double targetSpacing = 0.01;
+		double outsideSpacing = 0.0;
+		double transitionThickness = 0.0;
+	};
+	static_assert(sizeof(LegacyMeshRegionOfInfluence) == 96);
 
 	// Directory that holds the running executable. Bundled resources (presets) are
 	// resolved against this rather than the current working directory, so loading
@@ -434,6 +453,145 @@ void readBoundarySegments(std::ifstream& in, std::vector<BoundarySegment>& segme
 	}
 }
 
+void writeMeshRegions(
+	std::ofstream& out,
+	int nextRegionID,
+	const std::vector<MeshRegionOfInfluence>& regions
+) {
+	writeAll(
+		out,
+		nextRegionID,
+		meshRegionFileMagic,
+		meshRegionFileVersion
+	);
+
+	size_t size = regions.size();
+	writeVar(out, size);
+
+	for (const MeshRegionOfInfluence& region : regions) {
+		writeAll(
+			out,
+			region.id,
+			region.enabled,
+			region.shape,
+			region.center,
+			region.radius,
+			region.min,
+			region.max,
+			region.targetSpacing,
+			region.outsideSpacing,
+			region.transitionThickness,
+			region.overrideBoundarySpacing
+		);
+	}
+}
+
+bool readMeshRegions(
+	std::ifstream& in,
+	int& nextRegionID,
+	std::vector<MeshRegionOfInfluence>& regions
+) {
+	std::streampos start = in.tellg();
+	std::uint32_t storedNextRegionID = 0;
+
+	if (!readVar(in, storedNextRegionID)) {
+		nextRegionID = 0;
+		regions.clear();
+		return false;
+	}
+
+	// Projects from before ROI persistence continue directly with the solver
+	// payload. Leave its magic untouched for loadFromPathSolver.
+	if (storedNextRegionID == solverFileMagic) {
+		in.clear();
+		in.seekg(start);
+		nextRegionID = 0;
+		regions.clear();
+		return true;
+	}
+
+	nextRegionID = static_cast<int>(storedNextRegionID);
+	std::streampos payloadStart = in.tellg();
+	std::uint32_t marker = 0;
+
+	if (!readVar(in, marker)) {
+		regions.clear();
+		return false;
+	}
+
+	if (marker == meshRegionFileMagic) {
+		std::uint32_t version = 0;
+		size_t size = 0;
+
+		if (!readAll(in, version, size) ||
+			version != meshRegionFileVersion ||
+			size > 1000000) {
+			regions.clear();
+			return false;
+		}
+
+		regions.resize(size);
+		for (MeshRegionOfInfluence& region : regions) {
+			if (!readAll(
+				in,
+				region.id,
+				region.enabled,
+				region.shape,
+				region.center,
+				region.radius,
+				region.min,
+				region.max,
+				region.targetSpacing,
+				region.outsideSpacing,
+				region.transitionThickness,
+				region.overrideBoundarySpacing
+			)) {
+				regions.clear();
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	// Legacy format: nextRegionID, vector size, then raw v1 structs.
+	in.clear();
+	in.seekg(payloadStart);
+
+	size_t size = 0;
+	if (!readVar(in, size) || size > 1000000) {
+		regions.clear();
+		return false;
+	}
+
+	regions.clear();
+	regions.reserve(size);
+
+	for (size_t i = 0; i < size; i++) {
+		LegacyMeshRegionOfInfluence legacy{};
+		if (!readVar(in, legacy)) {
+			regions.clear();
+			return false;
+		}
+
+		MeshRegionOfInfluence region{};
+		region.id = legacy.id;
+		region.enabled = legacy.enabled;
+		region.shape = legacy.shape;
+		region.center = legacy.center;
+		region.radius = legacy.radius;
+		region.min = legacy.min;
+		region.max = legacy.max;
+		region.targetSpacing = legacy.targetSpacing;
+		region.outsideSpacing = legacy.outsideSpacing;
+		region.transitionThickness = legacy.transitionThickness;
+		region.overrideBoundarySpacing = false;
+		regions.push_back(region);
+	}
+
+	return true;
+}
+
 void writeString(std::ofstream& out, const std::string& value) {
 	size_t size = value.size();
 	out.write((const char*)(&size), sizeof(size));
@@ -728,7 +886,11 @@ void saveFromPathMesh(std::ofstream& out, Mesh& mesh) {
 	writeBoundarySegments(out, mesh.boundarySegments);
 	writeBoundaryGroups(out, mesh.boundaryGroups);
 
-	writeAll(out, mesh.nextRegionOfInfluenceID, mesh.regionsOfInfluence);
+	writeMeshRegions(
+		out,
+		mesh.nextRegionOfInfluenceID,
+		mesh.regionsOfInfluence
+	);
 }
 
 void loadFromExplorerMesh(Mesh& mesh) {
@@ -774,11 +936,11 @@ void loadFromPathMesh(std::ifstream& in, Mesh& mesh) {
 	readBoundarySegments(in, mesh.boundarySegments);
 	readBoundaryGroups(in, mesh.boundaryGroups);
 
-	if (remainingBytes(in) >=
-		static_cast<std::streamoff>(sizeof(mesh.nextRegionOfInfluenceID) + sizeof(size_t))) {
-		readAll(in, mesh.nextRegionOfInfluenceID, mesh.regionsOfInfluence);
-	}
-	else {
+	if (!readMeshRegions(
+		in,
+		mesh.nextRegionOfInfluenceID,
+		mesh.regionsOfInfluence
+	)) {
 		mesh.nextRegionOfInfluenceID = 0;
 		mesh.regionsOfInfluence.clear();
 	}
@@ -920,4 +1082,3 @@ void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc) {
 std::ofstream openBinaryFile(const char* path) {
 	return std::ofstream(path, std::ios::binary);
 }
-

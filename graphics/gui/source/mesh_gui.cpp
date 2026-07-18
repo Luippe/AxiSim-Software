@@ -135,6 +135,19 @@ void MeshGUI::drawRegionOfInfluenceGUI() {
 				hasChanged = true;
 			}
 
+			if (ImGui::Checkbox(
+				"Override Boundary Spacing",
+				&region.overrideBoundarySpacing
+			)) {
+				hasChanged = true;
+			}
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip(
+					"Let this region's sizing take precedence on boundary edges "
+					"that it intersects."
+				);
+			}
+
 			if (ImGui::BeginTable("RegionFields", 2)) {
 				setupTableColumns(
 					column("Label", 150.0f),

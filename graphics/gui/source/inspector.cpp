@@ -44,6 +44,7 @@ void Inspector::generate() {
 
 	// a freshly generated mesh re-indexes the cells, so drop any pinned cell
 	selectedCell = -1;
+	selectedMirrored = false;
 
 	// cache the true multiblock cell quads so the field draws on the real blocks
 	rebuildMultiBlockCells();
@@ -161,6 +162,15 @@ bool Inspector::computeFieldRange(const SolutionField& sol, float& vmin, float& 
 		return false;
 	}
 
+	// An odd field changes sign on the reflected half, so the displayed range is
+	// the union of the source values and their negatives. Keep that range symmetric
+	// so the colorbar and both halves use the same zero-centered mapping.
+	if (mirrorResult && currentFieldIsOddAcrossAxis()) {
+		double magnitude = std::max({ std::abs(lo), std::abs(hi), 1.0e-30 });
+		lo = -magnitude;
+		hi = magnitude;
+	}
+
 	// avoid a zero-width range so the colormap still resolves
 	if (hi - lo < 1.0e-30) {
 		hi = lo + 1.0e-30;
@@ -187,6 +197,33 @@ ImU32 Inspector::valueToColor(double value, double vmin, double vmax) const {
 	idx = std::clamp(idx, 0, 255);
 
 	return IM_COL32(lut[idx][0], lut[idx][1], lut[idx][2], 255);
+}
+
+ImVec2 Inspector::resultWorldToScreen(Vec2 world, bool mirrored) const {
+	if (mirrored) {
+		world.r = -world.r;
+	}
+	return camera.worldToScreen(world);
+}
+
+bool Inspector::currentFieldIsOddAcrossAxis() const {
+	if (results.fieldType.empty()) {
+		return false;
+	}
+
+	int idx = std::clamp(results.currentItem, 0, (int)results.fieldType.size() - 1);
+	const std::string& name = results.fieldType[idx];
+
+	return name == "Radial Velocity" ||
+		name == "dU/dr" ||
+		name == "dV/dz" ||
+		name == "dP/dr" ||
+		name == "dT/dr" ||
+		name == "dC/dr";
+}
+
+double Inspector::displayedFieldValue(double value, bool mirrored) const {
+	return mirrored && currentFieldIsOddAcrossAxis() ? -value : value;
 }
 
 bool Inspector::hasStructuredGrid() const {
@@ -244,6 +281,12 @@ bool Inspector::isDrawableCell(int cellID, int fieldSize) const {
 }
 
 void Inspector::frameToBounds(double zMin, double zMax, double rMin, double rMax) {
+	if (mirrorResult) {
+		double reflectedMin = -rMax;
+		double reflectedMax = -rMin;
+		rMin = std::min(rMin, reflectedMin);
+		rMax = std::max(rMax, reflectedMax);
+	}
 
 	camera.center = Vec2{ 0.5 * (zMin + zMax), 0.5 * (rMin + rMax) };
 
@@ -359,12 +402,18 @@ static int inspectorCellIndexAt(const std::vector<double>& faces, double x) {
 }
 
 int Inspector::pickCell(const Vec2& world) const {
+	// The reflected half is view-only; map it back to the stored r >= 0 mesh before
+	// running the normal structured/unstructured/multiblock hit tests.
+	Vec2 sourceWorld = world;
+	if (mirrorResult && sourceWorld.r < 0.0) {
+		sourceWorld.r = -sourceWorld.r;
+	}
 
 	// Multiblock: point-in-quad against the real block cells (block/cellGlobal order),
 	// so a picked index maps straight into solutions[].field.
 	if (hasMultiBlockCells()) {
 		for (int c = 0; c < (int)blockQuads.size(); c++) {
-			if (pointInQuad(world, blockQuads[c])) {
+			if (pointInQuad(sourceWorld, blockQuads[c])) {
 				return c;
 			}
 		}
@@ -372,8 +421,8 @@ int Inspector::pickCell(const Vec2& world) const {
 	}
 
 	if (hasStructuredGrid()) {
-		int j = inspectorCellIndexAt(g.zFace, world.z);
-		int i = inspectorCellIndexAt(g.rFace, world.r);
+		int j = inspectorCellIndexAt(g.zFace, sourceWorld.z);
+		int i = inspectorCellIndexAt(g.rFace, sourceWorld.r);
 
 		if (i < 0 || j < 0) {
 			return -1;
@@ -396,9 +445,9 @@ int Inspector::pickCell(const Vec2& world) const {
 			continue;
 		}
 
-		double d1 = pickSign(world, pts[t.v0], pts[t.v1]);
-		double d2 = pickSign(world, pts[t.v1], pts[t.v2]);
-		double d3 = pickSign(world, pts[t.v2], pts[t.v0]);
+		double d1 = pickSign(sourceWorld, pts[t.v0], pts[t.v1]);
+		double d2 = pickSign(sourceWorld, pts[t.v1], pts[t.v2]);
+		double d3 = pickSign(sourceWorld, pts[t.v2], pts[t.v0]);
 
 		bool hasNeg = (d1 < 0.0) || (d2 < 0.0) || (d3 < 0.0);
 		bool hasPos = (d1 > 0.0) || (d2 > 0.0) || (d3 > 0.0);
@@ -447,6 +496,7 @@ void Inspector::handleSelection(ImGuiIO& io) {
 
 	Vec2 world = camera.screenToWorld(ImGui::GetMousePos());
 	selectedCell = pickCell(world); // -1 if the click missed the mesh (deselect)
+	selectedMirrored = selectedCell >= 0 && mirrorResult && world.r < 0.0;
 
 	if (selectedCell >= 0) {
 		logCellInfoToConsole();
@@ -479,6 +529,19 @@ void Inspector::drawToolBar() {
 	// --- view ---
 	beginSection();
 	addImageButtonToggle("ToggleMesh", "Mesh", "Toggle Mesh", assets.icon("mesh"), showMesh);
+	ImGui::SameLine();
+	if (addImageButtonToggle(
+		"MirrorResult",
+		"Mirror",
+		"Mirror the result across the r = 0 symmetry axis",
+		assets.icon("mirror"),
+		mirrorResult
+	)) {
+		pendingFrame = true;
+		if (!mirrorResult) {
+			selectedMirrored = false;
+		}
+	}
 	endSection("View");
 
 	endToolbar();
@@ -543,7 +606,7 @@ void Inspector::drawFieldTabs() {
 	lastFieldItem = results.currentItem;
 }
 
-void Inspector::drawField(ImDrawList* drawList) {
+void Inspector::drawField(ImDrawList* drawList, bool mirrored) {
 
 	const SolutionField* sol = getCurrentSolution();
 	if (!sol) {
@@ -590,7 +653,7 @@ void Inspector::drawField(ImDrawList* drawList) {
 					continue;
 				}
 
-				double raw = field[c];
+				double raw = displayedFieldValue(field[c], mirrored);
 				if (!std::isfinite(raw)) {
 					continue;
 				}
@@ -616,16 +679,16 @@ void Inspector::drawField(ImDrawList* drawList) {
 				continue;
 			}
 
-			double v = field[c];
+			double v = displayedFieldValue(field[c], mirrored);
 			if (!std::isfinite(v)) {
 				continue;
 			}
 
 			const std::array<Vec2, 4>& q = blockQuads[c];
-			ImVec2 p0 = camera.worldToScreen(q[0]);
-			ImVec2 p1 = camera.worldToScreen(q[1]);
-			ImVec2 p2 = camera.worldToScreen(q[2]);
-			ImVec2 p3 = camera.worldToScreen(q[3]);
+			ImVec2 p0 = resultWorldToScreen(q[0], mirrored);
+			ImVec2 p1 = resultWorldToScreen(q[1], mirrored);
+			ImVec2 p2 = resultWorldToScreen(q[2], mirrored);
+			ImVec2 p3 = resultWorldToScreen(q[3], mirrored);
 
 			if (mbSmooth) {
 				float fallback = (float)v;
@@ -680,7 +743,7 @@ void Inspector::drawField(ImDrawList* drawList) {
 						continue;
 					}
 
-					double raw = field[c];
+					double raw = displayedFieldValue(field[c], mirrored);
 					if (!std::isfinite(raw)) {
 						continue;
 					}
@@ -715,15 +778,15 @@ void Inspector::drawField(ImDrawList* drawList) {
 					continue;
 				}
 
-				double v = field[c];
+				double v = displayedFieldValue(field[c], mirrored);
 				if (!std::isfinite(v)) {
 					continue;
 				}
 
-				ImVec2 p00 = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[i] });
-				ImVec2 p10 = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i] });
-				ImVec2 p11 = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i + 1] });
-				ImVec2 p01 = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[i + 1] });
+				ImVec2 p00 = resultWorldToScreen(Vec2{ g.zFace[j], g.rFace[i] }, mirrored);
+				ImVec2 p10 = resultWorldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i] }, mirrored);
+				ImVec2 p11 = resultWorldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i + 1] }, mirrored);
+				ImVec2 p01 = resultWorldToScreen(Vec2{ g.zFace[j], g.rFace[i + 1] }, mirrored);
 
 				if (smooth) {
 					float fallback = (float)v;
@@ -784,7 +847,7 @@ void Inspector::drawField(ImDrawList* drawList) {
 			}
 
 			const Triangle& t = tris[c];
-			double raw = field[c];
+			double raw = displayedFieldValue(field[c], mirrored);
 			if (!std::isfinite(raw)) {
 				continue;
 			}
@@ -826,9 +889,9 @@ void Inspector::drawField(ImDrawList* drawList) {
 			continue;
 		}
 
-		ImVec2 a = camera.worldToScreen(pts[t.v0]);
-		ImVec2 b = camera.worldToScreen(pts[t.v1]);
-		ImVec2 d = camera.worldToScreen(pts[t.v2]);
+		ImVec2 a = resultWorldToScreen(pts[t.v0], mirrored);
+		ImVec2 b = resultWorldToScreen(pts[t.v1], mirrored);
+		ImVec2 d = resultWorldToScreen(pts[t.v2], mirrored);
 
 		if (smooth) {
 			ImU32 ca = valueToColor(vertexValues[t.v0], vmin, vmax);
@@ -841,7 +904,7 @@ void Inspector::drawField(ImDrawList* drawList) {
 			drawList->PrimVtx(d, uv, cd);
 		}
 		else {
-			double v = field[c];
+			double v = displayedFieldValue(field[c], mirrored);
 			ImU32 col = valueToColor(v, vmin, vmax);
 			drawList->AddTriangleFilled(a, b, d, col);
 		}
@@ -849,7 +912,7 @@ void Inspector::drawField(ImDrawList* drawList) {
 
 }
 
-void Inspector::drawMeshOverlay(ImDrawList* drawList) {
+void Inspector::drawMeshOverlay(ImDrawList* drawList, bool mirrored) {
 
 	if (!showMesh) {
 		return;
@@ -860,10 +923,10 @@ void Inspector::drawMeshOverlay(ImDrawList* drawList) {
 		const ImU32 lineColor = IM_COL32(25, 35, 45, 140);
 
 		for (const std::array<Vec2, 4>& q : blockQuads) {
-			ImVec2 p0 = camera.worldToScreen(q[0]);
-			ImVec2 p1 = camera.worldToScreen(q[1]);
-			ImVec2 p2 = camera.worldToScreen(q[2]);
-			ImVec2 p3 = camera.worldToScreen(q[3]);
+			ImVec2 p0 = resultWorldToScreen(q[0], mirrored);
+			ImVec2 p1 = resultWorldToScreen(q[1], mirrored);
+			ImVec2 p2 = resultWorldToScreen(q[2], mirrored);
+			ImVec2 p3 = resultWorldToScreen(q[3], mirrored);
 			drawList->AddQuad(p0, p1, p2, p3, lineColor, 1.0f);
 		}
 
@@ -888,8 +951,8 @@ void Inspector::drawMeshOverlay(ImDrawList* drawList) {
 					continue;
 				}
 
-				ImVec2 a = camera.worldToScreen(Vec2{ g.zFace[jFace], g.rFace[i] });
-				ImVec2 b = camera.worldToScreen(Vec2{ g.zFace[jFace], g.rFace[i + 1] });
+				ImVec2 a = resultWorldToScreen(Vec2{ g.zFace[jFace], g.rFace[i] }, mirrored);
+				ImVec2 b = resultWorldToScreen(Vec2{ g.zFace[jFace], g.rFace[i + 1] }, mirrored);
 				drawList->AddLine(a, b, lineColor, 1.0f);
 			}
 		}
@@ -900,8 +963,8 @@ void Inspector::drawMeshOverlay(ImDrawList* drawList) {
 					continue;
 				}
 
-				ImVec2 a = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[iFace] });
-				ImVec2 b = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[iFace] });
+				ImVec2 a = resultWorldToScreen(Vec2{ g.zFace[j], g.rFace[iFace] }, mirrored);
+				ImVec2 b = resultWorldToScreen(Vec2{ g.zFace[j + 1], g.rFace[iFace] }, mirrored);
 				drawList->AddLine(a, b, lineColor, 1.0f);
 			}
 		}
@@ -926,9 +989,9 @@ void Inspector::drawMeshOverlay(ImDrawList* drawList) {
 			continue;
 		}
 
-		ImVec2 a = camera.worldToScreen(pts[t.v0]);
-		ImVec2 b = camera.worldToScreen(pts[t.v1]);
-		ImVec2 d = camera.worldToScreen(pts[t.v2]);
+		ImVec2 a = resultWorldToScreen(pts[t.v0], mirrored);
+		ImVec2 b = resultWorldToScreen(pts[t.v1], mirrored);
+		ImVec2 d = resultWorldToScreen(pts[t.v2], mirrored);
 
 		drawList->AddTriangle(a, b, d, lineColor, 1.0f);
 	}
@@ -971,7 +1034,7 @@ void Inspector::drawValueProbe(ImDrawList* drawList) {
 		"z: %.4g\nr: %.4g\nvalue: %.5g",
 		world.z,
 		world.r,
-		sol->field[c]
+		displayedFieldValue(sol->field[c], mirrorResult && world.r < 0.0)
 	);
 }
 
@@ -999,7 +1062,9 @@ std::string Inspector::buildCellInfoText(int cellID) const {
 
 	char line[160];
 	std::snprintf(line, sizeof(line), "Cell #%d %s: %.6g",
-		cellID, shortFieldName(name), it->second.field[cellID]);
+		cellID,
+		shortFieldName(name),
+		displayedFieldValue(it->second.field[cellID], selectedMirrored));
 	return line;
 }
 
@@ -1039,7 +1104,7 @@ void Inspector::drawCellInfo(ImDrawList* drawList) {
 		const std::array<Vec2, 4>& q = blockQuads[selectedCell];
 		ImVec2 pts[4];
 		for (int k = 0; k < 4; k++) {
-			pts[k] = camera.worldToScreen(q[k]);
+			pts[k] = resultWorldToScreen(q[k], selectedMirrored);
 		}
 
 		drawList->AddConvexPolyFilled(pts, 4, IM_COL32(255, 235, 60, 70));
@@ -1060,8 +1125,8 @@ void Inspector::drawCellInfo(ImDrawList* drawList) {
 		int i = selectedCell / g.nz;
 		int j = selectedCell % g.nz;
 
-		ImVec2 p00 = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[i] });
-		ImVec2 p11 = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i + 1] });
+		ImVec2 p00 = resultWorldToScreen(Vec2{ g.zFace[j], g.rFace[i] }, selectedMirrored);
+		ImVec2 p11 = resultWorldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i + 1] }, selectedMirrored);
 
 		ImVec2 rmin(std::min(p00.x, p11.x), std::min(p00.y, p11.y));
 		ImVec2 rmax(std::max(p00.x, p11.x), std::max(p00.y, p11.y));
@@ -1088,9 +1153,9 @@ void Inspector::drawCellInfo(ImDrawList* drawList) {
 			return;
 		}
 
-		ImVec2 a = camera.worldToScreen(pts[t.v0]);
-		ImVec2 b = camera.worldToScreen(pts[t.v1]);
-		ImVec2 d = camera.worldToScreen(pts[t.v2]);
+		ImVec2 a = resultWorldToScreen(pts[t.v0], selectedMirrored);
+		ImVec2 b = resultWorldToScreen(pts[t.v1], selectedMirrored);
+		ImVec2 d = resultWorldToScreen(pts[t.v2], selectedMirrored);
 
 		drawList->AddTriangleFilled(a, b, d, IM_COL32(255, 235, 60, 70));
 		drawList->AddTriangle(a, b, d, IM_COL32(255, 235, 60, 255), 2.0f);
@@ -1148,7 +1213,13 @@ void Inspector::copyActiveSurfaceToClipboard() {
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawField(drawList);
+	if (mirrorResult) {
+		drawField(drawList, true);
+	}
 	drawMeshOverlay(drawList);
+	if (mirrorResult) {
+		drawMeshOverlay(drawList, true);
+	}
 	drawAxes(drawList);
 	drawCellInfo(drawList);
 	drawValueProbe(drawList);
@@ -1227,7 +1298,13 @@ void Inspector::render() {
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawField(drawList);
+	if (mirrorResult) {
+		drawField(drawList, true);
+	}
 	drawMeshOverlay(drawList);
+	if (mirrorResult) {
+		drawMeshOverlay(drawList, true);
+	}
 	drawAxes(drawList);
 	drawCellInfo(drawList);
 	if (!overColorbar) {

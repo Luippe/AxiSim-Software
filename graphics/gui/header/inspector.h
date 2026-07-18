@@ -61,8 +61,10 @@ private:
 	// ----------2D view-----------
 	bool pendingFrame = true;	// re-fit the view to the mesh on the next render
 	bool showMesh = false;		// overlay the mesh wireframe
+	bool mirrorResult = false;	// reflect the axisymmetric result across r = 0
 
 	int selectedCell = -1;		// cell pinned by a left click (-1 = none)
+	bool selectedMirrored = false; // selectedCell was picked on the reflected half
 
 	// tracks results.currentItem so the field tab bar can re-select the matching
 	// tab when the field is changed from elsewhere (e.g. the Results panel combo)
@@ -123,6 +125,16 @@ private:
 	// pick the triangle/cell under a world-space point (-1 if none)
 	int pickCell(const Vec2& world) const;
 
+	// Map original axisymmetric geometry to the requested display half. The solver
+	// stores only r >= 0; the mirrored half is a view-only reflection across r = 0.
+	ImVec2 resultWorldToScreen(Vec2 world, bool mirrored) const;
+
+	// Radial vector components and radial derivatives are odd across the symmetry
+	// axis. Scalar/axial fields are even. These helpers keep the reflected colors,
+	// probes, and pinned values physically consistent with the displayed field.
+	bool currentFieldIsOddAcrossAxis() const;
+	double displayedFieldValue(double value, bool mirrored) const;
+
 	// ----------input-----------
 	void handleMouse(ImGuiIO& io);
 
@@ -135,8 +147,8 @@ private:
 	// entry in results.fieldType and drives results.currentItem
 	void drawFieldTabs();
 
-	void drawField(ImDrawList* drawList);
-	void drawMeshOverlay(ImDrawList* drawList);
+	void drawField(ImDrawList* drawList, bool mirrored = false);
+	void drawMeshOverlay(ImDrawList* drawList, bool mirrored = false);
 	void drawValueProbe(ImDrawList* drawList);
 
 	// build the console line for the picked cell's current field value
