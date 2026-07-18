@@ -124,8 +124,8 @@ private:
 	float usValueLower = 0.0f;
 	float usValueUpper = 0.0f;
 
-	// revolution sweep angle (270 degrees) so the cut plane stays visible
-	const float usSweep = 4.71238898038f;
+	// full 360-degree revolution, matching the structured solid-of-revolution view
+	const float usSweep = 6.28318530718f;
 
 	Results& results;
 	Project& project;

@@ -248,8 +248,9 @@ void BaseSurfaceViewer::drawCanvas(
 void ToolbarHost::beginToolbar() {
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(toolbarPadX, toolbarPadY));
 	ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(toolbarFramePadX, toolbarFramePadY));
-	// tightens the icon-to-caption gap
-	ImGui::PushStyleVarY(ImGuiStyleVar_ItemSpacing, toolbarItemSpacingY);
+	// X packs a row's buttons shoulder to shoulder (SameLine between them uses it);
+	// Y tightens the icon-to-caption gap
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(toolbarItemSpacingX, toolbarItemSpacingY));
 
 	// Chrome continuous with the menu bar directly above. Lifted off the style
 	// rather than hardcoded so it tracks the theme.
@@ -646,4 +647,81 @@ bool ToolbarHost::addImageButtonToggle(const char* id, const char* label, const 
 	ImGui::PopStyleVar();
 
 	return pushed;
+}
+
+bool ToolbarHost::addImageButtonRow(
+	const char* id,
+	const char* label,
+	const char* tooltip,
+	TextureBuffer& icon
+) {
+	ImGui::PushID(id);
+
+	const ImGuiStyle& style = ImGui::GetStyle();
+
+	ImGui::PushFont(nullptr, captionFontSize);
+	const ImVec2 textSize = ImGui::CalcTextSize(label);
+	ImGui::PopFont();
+
+	// One item spanning the icon, the gap and the label, drawn by hand. An
+	// ImageButton followed by SameLine + text would leave the label a dead item
+	// beside a button that lights up without it; here the row is the button.
+	const ImVec2 rowSize(
+		style.FramePadding.x * 2.0f + toolbarSmallIconSize + rowLabelGap + textSize.x,
+		style.FramePadding.y * 2.0f + toolbarSmallIconSize
+	);
+
+	const ImVec2 rowMin = ImGui::GetCursorScreenPos();
+	const bool pressed = ImGui::InvisibleButton("##rowImageButton", rowSize);
+
+	// tooltip must be sampled while the row is still the most-recent item
+	setToolTip(tooltip);
+
+	const bool held = ImGui::IsItemActive();
+	const bool hovered = ImGui::IsItemHovered();
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	// transparent at rest, with the same subtle fill on hover/press that the icon
+	// buttons paint — matched to addImageButton's ButtonHovered/ButtonActive
+	if (held || hovered) {
+		drawList->AddRectFilled(
+			rowMin,
+			ImVec2(rowMin.x + rowSize.x, rowMin.y + rowSize.y),
+			held ? IM_COL32(255, 255, 255, 48) : IM_COL32(255, 255, 255, 30),
+			imageButtonRounding
+		);
+	}
+
+	const ImVec2 iconMin(
+		rowMin.x + style.FramePadding.x,
+		rowMin.y + style.FramePadding.y
+	);
+
+	drawList->AddImage(
+		(ImTextureID)(intptr_t)icon.getTextureID(),
+		iconMin,
+		ImVec2(iconMin.x + toolbarSmallIconSize, iconMin.y + toolbarSmallIconSize),
+		ImVec2(0.0f, 0.0f),
+		ImVec2(1.0f, 1.0f),
+		// tint rather than a bare white so the icon dims inside a BeginDisabled,
+		// the way ImageButton's does
+		ImGui::GetColorU32(IM_COL32_WHITE)
+	);
+
+	// label beside the icon and centered against it, muted like the captions under
+	// the tall buttons so the two read as the same kind of label
+	ImGui::PushFont(nullptr, captionFontSize);
+	drawList->AddText(
+		ImVec2(
+			iconMin.x + toolbarSmallIconSize + rowLabelGap,
+			rowMin.y + (rowSize.y - textSize.y) * 0.5f
+		),
+		ImGui::GetColorU32(ImGuiCol_TextDisabled),
+		label
+	);
+	ImGui::PopFont();
+
+	ImGui::PopID();
+	return pressed;
 }

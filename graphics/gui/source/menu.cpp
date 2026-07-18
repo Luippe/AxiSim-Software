@@ -102,6 +102,32 @@ void Menu::drawLastMenuIcon(TextureBuffer& icon, ImGuiWindow* itemWindow) {
 	);
 }
 
+void Menu::drawNew() {
+
+	if (beginMenu("New", assets.icon("new"))) {
+
+		if (menuItem("Project")) {
+
+			// Save the current project before replacing it, so unsaved work isn't lost.
+			// Named project -> overwrite its file; unnamed -> prompt with Save As.
+			if (!project.name.empty()) {
+				saveFromPathProject(project.path, project);
+			}
+			else {
+				saveFromExplorerProject(project);
+			}
+
+			// If the project is still unnamed, the Save As dialog was cancelled; don't
+			// discard the current work by creating a new project.
+			if (!project.name.empty()) {
+				project.createNew();
+			}
+		}
+
+		ImGui::EndMenu();
+	}
+
+}
 
 void Menu::drawOpen() {
 	if (beginMenu("Open", assets.icon("open"))) {
@@ -456,6 +482,7 @@ void Menu::drawUnitsModal() {
 void Menu::render() {
 	if (ImGui::BeginMainMenuBar()) {
 		if (ImGui::BeginMenu("File")) {
+			drawNew();
 			drawOpen();
 			drawSave();
 			ImGui::EndMenu();

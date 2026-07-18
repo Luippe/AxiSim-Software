@@ -398,6 +398,13 @@ public:
 
 	bool addImageButtonToggle(const char* id, const char* label, const char* tooltip, TextureBuffer& icon, bool& toggle, ImVec2 buttonSize = iconSize());
 
+	// A compact button for a two-row section, carrying its label to the RIGHT of a
+	// smallIconSize() icon instead of underneath — which keeps the row short enough
+	// that two of them fit the height a section gets, where two captioned buttons
+	// would not. Icon and label are one item: the whole row is clickable and
+	// highlights together.
+	bool addImageButtonRow(const char* id, const char* label, const char* tooltip, TextureBuffer& icon);
+
 	// Default square size (px) of a toolbar icon button. Single knob for every
 	// inspector/sketch toolbar — bump to enlarge all of them.
 	static constexpr float toolbarIconSize = 40.0f;
@@ -413,8 +420,12 @@ public:
 	// the same numbers rather than duplicating them.
 	static constexpr float toolbarPadX = 8.0f;
 	static constexpr float toolbarPadY = 4.0f;
-	static constexpr float toolbarFramePadX = 6.0f;
+	// Inset between the icon and the edge of the button's hover rect. Equal on both
+	// axes so the icon sits in a snug square and reads as filling the button; a
+	// wider X would frame a 40px icon in a 52x44 rect and leave it looking small.
+	static constexpr float toolbarFramePadX = 2.0f;
 	static constexpr float toolbarFramePadY = 2.0f;
+	static constexpr float toolbarItemSpacingX = 2.0f;
 	static constexpr float toolbarItemSpacingY = 2.0f;
 
 	// Height (px) of one captioned toolbar button — the icon button plus the
@@ -457,16 +468,21 @@ private:
 	const float imageButtonRounding = 6.0f;
 
 	// caption font size (px) under toolbar icons; smaller than the 18px UI font
-	// so the label stays subordinate to the icon.
+	// so the label stays subordinate to the icon. Also sizes the label a row
+	// button carries beside its icon, so the two read as the same kind of caption.
 	static constexpr float captionFontSize = 13.0f;
+
+	// gap (px) between a row button's icon and the label beside it
+	static constexpr float rowLabelGap = 6.0f;
 
 	// Section name: smaller again than a button caption, and dimmed, so the group
 	// reads as a heading rather than as another tool.
 	static constexpr float sectionFontSize = 12.0f;
 	static constexpr float sectionNameGap = 3.0f;
 
-	// horizontal room (px) one section rule takes, the line itself centered in it
-	static constexpr float sectionRuleWidth = 24.0f;
+	// horizontal room (px) one section rule takes, the line itself centered in it —
+	// so half of this is the gap between the rule and the buttons on either side
+	static constexpr float sectionRuleWidth = 12.0f;
 
 	// laid out by beginSection/endSection: the open section's left edge, and how
 	// many sections the strip has drawn so far (the first one needs no rule).

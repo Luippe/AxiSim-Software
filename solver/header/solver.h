@@ -4,7 +4,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "jacobi_pcg.cuh"
 #include "residual_plot.h"
 
 #include "solver_struct.h"
@@ -51,7 +50,6 @@ public:
 	// run solver
 	void run(const Mesh& mesh);
 	void runSimple(const Mesh& mesh);
-	void runBiCGStab();
 
 	// check if solver can be continued
 	bool canContinue(const Mesh& mesh, std::string* reason = nullptr) const;
@@ -108,6 +106,11 @@ public:
 
 	// set all variables to default values
 	void setDefault();
+
+	// Return the solver to constructor defaults for a new project: joins any running
+	// solve, drops solutions/field state, and resets the run/residual config. config-
+	// owned data (g / f / itr / varUnits) is reset separately by Project::createNew.
+	void reset();
 
 private:
 

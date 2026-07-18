@@ -20,6 +20,12 @@ public:
 	Results results{ config };
 
 	ViewTab currentTab = ViewTab::TAB_MESH;
+
+	// Tab key requests a programmatic switch to requestedTab; the matching setup
+	// tab consumes it via ImGuiTabItemFlags_SetSelected, then drawUI clears it.
+	bool tabSwitchRequested = false;
+	ViewTab requestedTab = ViewTab::TAB_GEOMETRY;
+
 	LengthScale lengthScale;
 
 	// set true when a project is loaded (units determined); the GUI consumes it
@@ -32,5 +38,9 @@ public:
 	// path and name of current project
 	std::wstring path;
 	std::string name;
+
+	void createNew();
+
+
 
 };

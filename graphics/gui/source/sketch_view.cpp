@@ -71,6 +71,48 @@ void SketchView::consumePendingDelete() {
 	}
 }
 
+void SketchView::consumePendingMove() {
+	if (geometry.pendingMoveID < 0) {
+		return;
+	}
+
+	SketchEntityType type = geometry.pendingMoveType;
+	int entityID = geometry.pendingMoveID;
+	Vec2 delta = geometry.pendingMoveDelta;
+	geometry.pendingMoveID = -1;
+
+	// a zero move is a no-op; don't push an undo state for it
+	if (std::abs(delta.z) <= 1e-12 && std::abs(delta.r) <= 1e-12) {
+		return;
+	}
+
+	SketchModel beforeMove = geometry.sketch;
+	if (geometry.sketch.moveEntity(type, entityID, delta)) {
+		recordSketchUndoState(beforeMove);
+	}
+}
+
+void SketchView::consumePendingGroupMove() {
+	if (!geometry.pendingGroupMove) {
+		return;
+	}
+
+	Vec2 delta = geometry.pendingGroupMoveDelta;
+	geometry.pendingGroupMove = false;
+
+	// a zero move is a no-op; don't push an undo state for it
+	if (std::abs(delta.z) <= 1e-12 && std::abs(delta.r) <= 1e-12) {
+		return;
+	}
+
+	// moveSelectedTrimSegments translates the whole box-select group (deleting and
+	// re-adding each entity), so it handles lines/rects/circles/arcs uniformly.
+	SketchModel beforeMove = geometry.sketch;
+	if (moveSelectedTrimSegments(delta)) {
+		recordSketchUndoState(beforeMove);
+	}
+}
+
 void SketchView::restoreSketchState(const SketchModel& state) {
 	SketchTool activeTool = geometry.sketch.activeTool;
 	geometry.sketch = state;
@@ -131,12 +173,14 @@ void SketchView::clearToolToggles() {
 	toggleEraser = false;
 	toggleRuler = false;
 	toggleTrim = false;
+	toggleMoveTo = false;
 	toggleDrawLine = false;
 	toggleDrawRect = false;
 	toggleDrawCircle = false;
 	isDrawingEntity = false;
 	isSelecting = false;
 	isMovingSelection = false;
+	hasMoveToBase = false;
 	movingTrimSegments.clear();
 }
 
@@ -145,6 +189,9 @@ void SketchView::setActiveSketchTool(SketchTool tool) {
 	geometry.sketch.activeTool = tool;
 
 	switch (tool) {
+	case SketchTool::MoveTo:
+		toggleMoveTo = true;
+		break;
 	case SketchTool::Erase:
 		toggleEraser = true;
 		break;
@@ -496,23 +543,62 @@ void SketchView::copyActiveSurfaceToClipboard() {
 void SketchView::drawToolBar() {
 
 	// CFD-style ribbon: tools grouped by workflow into named sections
-	// (home | create | edit | view). The drawing and editing tools trade their
-	// captions for two compact rows — their section name says what they are, and
-	// the tooltip holds the fuller description and the key chord.
+	// (clipboard | home | create | edit | view). The drawing and editing tools trade
+	// their captions for two compact rows — their section name says what they are,
+	// and the tooltip holds the fuller description and the key chord.
 	beginToolbar();
+
+	// --- clipboard ---
+	beginSection();
+
+	// Paste is the tall captioned button and the other two stack beside it: it is
+	// the group's primary action, and the shape of the group says so.
+	std::string pasteText = shortcutText("Paste Geometry", pasteShortcut);
+	ImGui::BeginDisabled(clipboardSegments.empty());
+	if (addImageButton("Paste", "Paste", pasteText.c_str(), assets.icon("paste"))) {
+		// the cursor is up here on the button, so there is no canvas point to land
+		// on — unlike the chord, this always pastes off the original
+		pasteClipboardAt(offsetPasteTarget());
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+
+	// a group so the second row lands under the first instead of back at the
+	// band's left edge
+	ImGui::BeginGroup();
+
+	// gated exactly as the copy chord is, so the button and Ctrl+C never disagree
+	// about whether there is anything to copy
+	std::string copyText = shortcutText("Copy Selected Geometry", copyShortcut);
+	ImGui::BeginDisabled(
+		geometry.sketch.activeTool != SketchTool::Select ||
+		selectedTrimSegments.empty()
+	);
+	if (addImageButtonRow("CopyGeometry", "Copy", copyText.c_str(), assets.icon("copy"))) {
+		copySelectedTrimSegments();
+	}
+	ImGui::EndDisabled();
+
+	if (addImageButtonRow(
+		"Screenshot",
+		"Screenshot",
+		"Copy the whole sketch view to the clipboard as an image",
+		assets.icon("screenshot")
+	) || consoleCopy) {
+		pendingCopyWidth = frameBuffer.width;
+		pendingCopyHeight = frameBuffer.height;
+		pendingCopy = true;
+		consoleCopy = false;
+	}
+	ImGui::EndGroup();
+
+	endSection("Clipboard");
 
 	// --- home ---
 	beginSection();
 	std::string resetViewText = shortcutText("Reset View", resetViewShortcut);
 	if (addImageButton("Reset", "Home", resetViewText.c_str(), assets.icon("house"))) {
 		resetView();
-	}
-	ImGui::SameLine();
-	if (addImageButton("Copy", "Copy", "Copy to clipboard", assets.icon("clipboard")) || consoleCopy) {
-		pendingCopyWidth = frameBuffer.width;
-		pendingCopyHeight = frameBuffer.height;
-		pendingCopy = true;
-		consoleCopy = false;
 	}
 	endSection("Home");
 
@@ -548,6 +634,19 @@ void SketchView::drawToolBar() {
 	if (addImageButtonToggle("Ruler", nullptr, rulerText.c_str(), assets.icon("ruler"), toggleRuler, smallIconSize())) {
 		setActiveSketchTool(toggleRuler ? SketchTool::Dimension : SketchTool::Select);
 	}
+	ImGui::SameLine();
+	ImGui::BeginDisabled(selectedTrimSegments.empty());
+	if (addImageButtonToggle(
+		"MoveTo",
+		nullptr,
+		"Move selected geometry: click a base point on the selection, then click its destination",
+		assets.icon("move_to"),
+		toggleMoveTo,
+		smallIconSize()
+	)) {
+		setActiveSketchTool(toggleMoveTo ? SketchTool::MoveTo : SketchTool::Select);
+	}
+	ImGui::EndDisabled();
 	endSection("Edit");
 
 	// --- view ---
@@ -655,6 +754,65 @@ bool SketchView::hoveredSelectedTrimSegment(ImVec2 mouse) {
 	return false;
 }
 
+std::optional<Vec2> SketchView::findSelectedMovePoint(ImVec2 mouse) {
+	constexpr float pickRadiusPx = 10.0f;
+	Vec2 mouseWorld = camera.screenToWorld(mouse);
+	std::optional<Vec2> best;
+	float bestDistancePx = pickRadiusPx;
+
+	auto tryCandidate = [&](Vec2 candidate) {
+		float distancePx = pixelDistance(camera.worldToScreen(candidate), mouse);
+		if (distancePx <= bestDistancePx) {
+			best = candidate;
+			bestDistancePx = distancePx;
+		}
+	};
+
+	for (const TrimPreviewResult& segment : selectedTrimSegments) {
+		switch (segment.geometry) {
+		case TrimPreviewGeometry::Line:
+			tryCandidate(closestPointOnSegment(mouseWorld, segment.a, segment.b));
+			break;
+		case TrimPreviewGeometry::Circle: {
+			double radialDistance = distance(segment.center, mouseWorld);
+			if (radialDistance <= sketchEpsilon) {
+				tryCandidate(pointOnCircle(segment.center, segment.radius, 0.0));
+			}
+			else {
+				double scale = segment.radius / radialDistance;
+				tryCandidate(Vec2{
+					segment.center.z + (mouseWorld.z - segment.center.z) * scale,
+					segment.center.r + (mouseWorld.r - segment.center.r) * scale
+				});
+			}
+			break;
+		}
+		case TrimPreviewGeometry::Arc: {
+			SketchArc arc{
+				-1,
+				segment.center,
+				segment.radius,
+				segment.startAngle,
+				segment.endAngle
+			};
+			double angle = angleOfPoint(segment.center, mouseWorld);
+			if (angleOnArc(angle, arc)) {
+				tryCandidate(pointOnCircle(segment.center, segment.radius, angle));
+			}
+			else {
+				tryCandidate(segment.a);
+				tryCandidate(segment.b);
+			}
+			break;
+		}
+		default:
+			break;
+		}
+	}
+
+	return best;
+}
+
 void SketchView::handleSelect() {
 
 	if (!(geometry.sketch.activeTool == SketchTool::Select)) return;
@@ -749,6 +907,46 @@ void SketchView::handleSelect() {
 	}
 }
 
+void SketchView::handleMoveToTool() {
+	if (geometry.sketch.activeTool != SketchTool::MoveTo) {
+		return;
+	}
+
+	// The selection is made before activating this tool. If an undo or an
+	// external edit removes it, leave the tool instead of accepting orphaned
+	// base/destination clicks.
+	if (selectedTrimSegments.empty()) {
+		setActiveSketchTool(SketchTool::Select);
+		return;
+	}
+
+	if (!ImGui::IsItemHovered() ||
+		!ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+		return;
+	}
+
+	if (!hasMoveToBase) {
+		// The base point belongs to the selected geometry. Resolve it to the exact
+		// selected edge so a near click does not bake a pixel-sized offset into the
+		// move.
+		if (auto base = findSelectedMovePoint(currentMousePos)) {
+			moveToBaseWorld = *base;
+			hasMoveToBase = true;
+		}
+		return;
+	}
+
+	Vec2 delta = subtract(getSnappedWorld(currentMousePos), moveToBaseWorld);
+	SketchModel beforeMove = geometry.sketch;
+	if (moveSelectedTrimSegments(delta)) {
+		recordSketchUndoState(beforeMove);
+	}
+
+	// Keep the tool active and the moved geometry selected so another two-point
+	// move can be made immediately. Escape or the highlighted toolbar button exits.
+	hasMoveToBase = false;
+}
+
 void SketchView::handleTrimTool() {
 	if (geometry.sketch.activeTool != SketchTool::Trim) {
 		return;
@@ -800,6 +998,7 @@ bool SketchView::handleShortcuts(ImGuiIO& io) {
 	auto clearInteraction = [&]() {
 		isSelecting = false;
 		isMovingSelection = false;
+		hasMoveToBase = false;
 		movingTrimSegments.clear();
 		isDrawingEntity = false;
 		draggingDimensionID = -1;
@@ -827,35 +1026,18 @@ bool SketchView::handleShortcuts(ImGuiIO& io) {
 		return true;
 	}
 
-	// Paste works from any tool and drops you into Select, since the paste comes
-	// out selected and dragging or deleting it only works there. Any half-drawn
-	// entity on the old tool is abandoned.
+	// Paste works from any tool. Land the copy's lower-left corner on the cursor:
+	// Ctrl is still down from the chord itself, so snapping is live and the corner
+	// lands on a vertex or grid point when one is in range. With the cursor off the
+	// canvas there is nothing to anchor to, so fall back to nudging it off the
+	// original — the same landing spot the toolbar's Paste button always uses.
 	if (!clipboardSegments.empty() &&
 		ImGui::Shortcut(pasteShortcut)) {
-		setActiveSketchTool(SketchTool::Select);
-		clearInteraction();
-
-		// Land the copy's lower-left corner on the cursor. Ctrl is still down from
-		// the chord itself, so snapping is live and the corner lands on a vertex or
-		// grid point when one is in range. With the cursor off the canvas there is
-		// nothing to anchor to, so nudge the copy off the original instead.
-		Vec2 pasteTarget;
-		if (ImGui::IsItemHovered()) {
-			pasteTarget = getSnappedWorld(currentMousePos);
-		}
-		else {
-			constexpr float fallbackOffsetPx = 20.0f;
-			double offset = fallbackOffsetPx * camera.unitsPerPixel;
-			pasteTarget = Vec2{
-				clipboardAnchor.z + offset,
-				clipboardAnchor.r - offset
-			};
-		}
-
-		SketchModel beforePaste = geometry.sketch;
-		if (pasteClipboardSegments(subtract(pasteTarget, clipboardAnchor))) {
-			recordSketchUndoState(beforePaste);
-		}
+		pasteClipboardAt(
+			ImGui::IsItemHovered() ?
+			getSnappedWorld(currentMousePos) :
+			offsetPasteTarget()
+		);
 
 		return true;
 	}
@@ -973,6 +1155,8 @@ void SketchView::handleMouseAndKey() {
 	handleDimensionLabels();
 
 	handleSelect();
+
+	handleMoveToTool();
 
 	handleDimensionTool();
 
@@ -1316,17 +1500,22 @@ void SketchView::drawSketchEntities(ImDrawList* drawList) {
 	}
 
 	Vec2 selectionDelta{};
+	bool isMoveToPreview =
+		geometry.sketch.activeTool == SketchTool::MoveTo && hasMoveToBase;
 	const std::vector<TrimPreviewResult>& visibleSelectedSegments =
 		isMovingSelection ? movingTrimSegments : selectedTrimSegments;
 	if (isMovingSelection) {
 		selectionDelta = subtract(pendingCurrentWorld, moveStartWorld);
+	}
+	else if (isMoveToPreview) {
+		selectionDelta = subtract(pendingCurrentWorld, moveToBaseWorld);
 	}
 
 	for (const TrimPreviewResult& segment : visibleSelectedSegments) {
 		drawSegment(translatedPreview(segment, selectionDelta));
 	}
 
-	if (hoveredSegment && !isMovingSelection) {
+	if (hoveredSegment && !isMovingSelection && !isMoveToPreview) {
 		drawSegment(*hoveredSegment);
 	}
 }
@@ -1490,6 +1679,25 @@ void SketchView::drawTemporarySketch(ImDrawList* drawList) {
 		drawList->AddRectFilled(rectMin, rectMax, previewFillColor);
 		drawList->AddRect(rectMin, rectMax, previewLineColor, 0.0f, 0, 2.0f);
 	}
+
+	if (tool == SketchTool::MoveTo) {
+		if (hasMoveToBase) {
+			ImVec2 baseScreen = camera.worldToScreen(moveToBaseWorld);
+			ImVec2 targetScreen = camera.worldToScreen(pendingCurrentWorld);
+			drawList->AddLine(baseScreen, targetScreen, previewLineColor, 1.5f);
+			drawList->AddCircleFilled(baseScreen, 4.0f, previewLineColor);
+			drawList->AddCircle(targetScreen, 5.0f, previewLineColor, 16, 2.0f);
+		}
+		else if (ImGui::IsItemHovered()) {
+			if (auto base = findSelectedMovePoint(currentMousePos)) {
+				drawList->AddCircleFilled(
+					camera.worldToScreen(*base),
+					4.0f,
+					previewLineColor
+				);
+			}
+		}
+	}
 }
 
 void SketchView::handleOpenPopup() {
@@ -1640,6 +1848,9 @@ void SketchView::render() {
 	);
 
 	consumePendingDelete();
+	consumePendingMove();
+	consumePendingGroupMove();
+	publishSelectionSummary();
 
 
 	ImGui::SetNextWindowClass(&windowClass);

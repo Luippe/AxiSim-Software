@@ -1675,6 +1675,51 @@ bool SketchView::moveSelectedTrimSegments(Vec2 delta) {
 	return !movedSegments.empty();
 }
 
+void SketchView::publishSelectionSummary() {
+	std::vector<TrimPreviewResult> live =
+		uniqueLiveSegments(geometry.sketch, selectedTrimSegments);
+
+	geometry.selectionCount = (int)live.size();
+
+	if (live.empty()) {
+		geometry.selectionCenter = Vec2{};
+	}
+	else {
+		SketchBound bounds = trimPreviewBound(live.front());
+		for (const TrimPreviewResult& segment : live) {
+			SketchBound b = trimPreviewBound(segment);
+			bounds.min.z = std::min(bounds.min.z, b.min.z);
+			bounds.min.r = std::min(bounds.min.r, b.min.r);
+			bounds.max.z = std::max(bounds.max.z, b.max.z);
+			bounds.max.r = std::max(bounds.max.r, b.max.r);
+		}
+		geometry.selectionCenter = Vec2{
+			(bounds.min.z + bounds.max.z) * 0.5,
+			(bounds.min.r + bounds.max.r) * 0.5
+		};
+	}
+
+	// Signature over the selected SET (entity id + type), so the panel re-reads the
+	// center into its fields only when the selection changes -- not every frame,
+	// which would clobber whatever the user is typing.
+	size_t signature = 1469598103934665603ULL; // 64-bit FNV-1a offset basis
+	auto mix = [&](size_t value) {
+		signature ^= value;
+		signature *= 1099511628211ULL;         // FNV prime
+	};
+	mix((size_t)live.size());
+	for (const TrimPreviewResult& segment : live) {
+		mix((size_t)segment.entityID);
+		mix((size_t)segment.sourceType);
+		mix((size_t)segment.geometry);
+	}
+
+	if (signature != lastSelectionSignature) {
+		lastSelectionSignature = signature;
+		geometry.selectionRevision++;
+	}
+}
+
 bool SketchView::copySelectedTrimSegments() {
 	std::vector<TrimPreviewResult> copied =
 		uniqueLiveSegments(geometry.sketch, selectedTrimSegments);
@@ -1709,6 +1754,36 @@ bool SketchView::pasteClipboardSegments(Vec2 delta) {
 
 	// select the paste, not the original, so it can be dragged straight away
 	selectedTrimSegments = pastedSegments;
+	return true;
+}
+
+Vec2 SketchView::offsetPasteTarget() const {
+	constexpr float offsetPx = 20.0f;
+	double offset = offsetPx * camera.unitsPerPixel;
+
+	// down-right on screen: r grows upward, so it goes down as z goes right
+	return Vec2{
+		clipboardAnchor.z + offset,
+		clipboardAnchor.r - offset
+	};
+}
+
+bool SketchView::pasteClipboardAt(Vec2 target) {
+	if (clipboardSegments.empty()) {
+		return false;
+	}
+
+	// setActiveSketchTool clears the drawing/selection interaction state for us;
+	// a label drag is the one thing it doesn't know about.
+	setActiveSketchTool(SketchTool::Select);
+	draggingDimensionID = -1;
+
+	SketchModel beforePaste = geometry.sketch;
+	if (!pasteClipboardSegments(subtract(target, clipboardAnchor))) {
+		return false;
+	}
+
+	recordSketchUndoState(beforePaste);
 	return true;
 }
 

@@ -5,6 +5,7 @@
 
 
 enum class CompareType {
+	None,
 	LessThan,
 	EqualTo,
 	GreaterThan,
@@ -53,7 +54,8 @@ enum class ViewTab {
 	TAB_GEOMETRY = 0,
 	TAB_MESH = 1,
 	TAB_SOLVER = 2,
-	TAB_RESULTS = 3
+	TAB_RESULTS = 3,
+	TAB_COUNT = 4
 };
 
 struct CylinderInstance {

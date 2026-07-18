@@ -2187,6 +2187,34 @@ void Mesh::updateAfterLoadingFile() {
 
 }
 
+void Mesh::reset() {
+
+	// Mirror the constructor: initializeUnstructuredDomain(2,2) rebuilds the default
+	// 2x2 unstructured domain and clears the unstructured/boundary/render buffers via
+	// clearUnstructuredGeometry. The fields below aren't touched by that helper, so
+	// clear them here too, otherwise a new project keeps stale state from the last one.
+	nseg = 64;
+	showFill = true;
+	isReady = false;
+	currentMeshType = MeshType::Unstructured;
+
+	nextGroupID = 0;
+	nextRegionOfInfluenceID = 0;
+	nextLoopID = 0;
+	regionsOfInfluence.clear();
+
+	selectableOuterEdges.clear();
+	gridVertices.clear();
+
+	zBandCells.clear();
+	rBandCells.clear();
+
+	multiBlock = MultiBlockMesh{};
+	isMultiBlock = false;
+
+	initializeUnstructuredDomain(2, 2);
+}
+
 BoundarySegment* Mesh::getBoundarySegmentByID(int id) {
 
 	for (BoundarySegment& seg : boundarySegments) {

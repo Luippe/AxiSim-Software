@@ -308,7 +308,14 @@ void MeshGUI::drawPropertiesPanel() {
 			}
 
 			labelRow("Mesh Type");
-			createSimpleCombo("##MeshType", mesh.meshType, (int&)mesh.currentMeshType, IM_ARRAYSIZE(mesh.meshType));
+			if (createSimpleCombo("##MeshType", mesh.meshType, (int&)mesh.currentMeshType, IM_ARRAYSIZE(mesh.meshType))) {
+				// Red-Black Gauss-Seidel is structured-only; drop it when switching
+				// to unstructured so a stale selection can't reach the solve.
+				if (mesh.currentMeshType == MeshType::Unstructured &&
+					project.solver.configSolver.type == LINEAR_GS_RB) {
+					project.solver.configSolver.type = LINEAR_JACOBI;
+				}
+			}
 			drawTableProperty("Number of Cells", numCells.c_str());
 			drawTableProperty("Number of Nodes", numNodes.c_str());
 
@@ -397,7 +404,12 @@ void MeshGUI::drawPropertiesPanel() {
 }
 
 void MeshGUI::draw() {
-	if (ImGui::BeginTabItem("Mesh")) {
+	ImGuiTabItemFlags tabFlags = ImGuiTabItemFlags_None;
+	if (project.tabSwitchRequested && project.requestedTab == ViewTab::TAB_MESH) {
+		tabFlags = ImGuiTabItemFlags_SetSelected;
+	}
+
+	if (ImGui::BeginTabItem("Mesh", nullptr, tabFlags)) {
 		project.currentTab = ViewTab::TAB_MESH;
 
 		// fill the available height but leave room for the Generate button below,

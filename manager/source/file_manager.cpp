@@ -568,12 +568,6 @@ void saveFromPathProject(const std::wstring& path, Project& project) {
 	out.close();
 }
 
-void saveLaunchProject(Project& project) {
-	if (project.path.empty()) return;
-
-	std::wstring path = L"openAtLaunchProject.bin";
-	saveFromPathProject(path, project);
-}
 
 void saveFromExplorerProject(Project& project) {
 
@@ -597,10 +591,10 @@ void loadFromPathProject(std::ifstream& in, Project& project) {
 	loadFromPathSolver(in, project.solver);
 	loadEtc(in, project);
 
-	// Reconstruct the (non-serialized) multiblock from the now-loaded sketch and
-	// per-band cell counts (loadEtc), so the inspector and solver see the multiblock
-	// instead of falling back to the raster grid. Must run after loadEtc, which loads
-	// the band cells buildStructuredMultiBlock consumes.
+	//// Reconstruct the (non-serialized) multiblock from the now-loaded sketch and
+	//// per-band cell counts (loadEtc), so the inspector and solver see the multiblock
+	//// instead of falling back to the raster grid. Must run after loadEtc, which loads
+	//// the band cells buildStructuredMultiBlock consumes.
 	project.mesh.rebuildMultiBlockAfterLoad(project.geometry.sketch);
 }
 

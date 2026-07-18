@@ -200,7 +200,12 @@ void ResultsGUI::drawFieldSelector() {
 
 void ResultsGUI::draw() {
 
-	if (ImGui::BeginTabItem("Results")) {
+	ImGuiTabItemFlags tabFlags = ImGuiTabItemFlags_None;
+	if (project.tabSwitchRequested && project.requestedTab == ViewTab::TAB_RESULTS) {
+		tabFlags = ImGuiTabItemFlags_SetSelected;
+	}
+
+	if (ImGui::BeginTabItem("Results", nullptr, tabFlags)) {
 		project.currentTab = ViewTab::TAB_RESULTS;
 
 		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing()), true);

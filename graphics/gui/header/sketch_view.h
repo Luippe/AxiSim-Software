@@ -184,6 +184,7 @@ private:
 	bool toggleSnapping = false;
 	bool toggleTrim = false;
 	bool toggleEraser = false;
+	bool toggleMoveTo = false;
 
 	Vec2 pendingStartWorld;
 	Vec2 pendingCurrentWorld;
@@ -204,8 +205,14 @@ private:
 	bool isSelecting = false;
 	bool isMovingSelection = false;
 	Vec2 moveStartWorld{};
+	bool hasMoveToBase = false;
+	Vec2 moveToBaseWorld{};
 	std::vector<TrimPreviewResult> selectedTrimSegments;
 	std::vector<TrimPreviewResult> movingTrimSegments;
+
+	// signature of the last-published selection set, so publishSelectionSummary
+	// only bumps Geometry::selectionRevision when the selected set actually changes
+	size_t lastSelectionSignature = 0;
 
 	// Copy/paste buffer. Holds resolved geometry (world-space), not entity IDs,
 	// so the copied shapes survive the originals being edited or deleted.
@@ -225,6 +232,18 @@ private:
 	// recording undo here since this view owns the history
 	void consumePendingDelete();
 
+	// perform a move parked by the Geometry panel (see Geometry::requestMove),
+	// recording undo here since this view owns the history
+	void consumePendingMove();
+
+	// perform a group move parked by the Geometry panel (see
+	// Geometry::requestGroupMove): translate the whole box-select group, undo here
+	void consumePendingGroupMove();
+
+	// push the box-select group's count/center into Geometry so the panel can show
+	// a "move selection" control; bumps selectionRevision when the set changes
+	void publishSelectionSummary();
+
 	void restoreSketchState(const SketchModel& state);
 	bool undoSketchEdit();
 	bool redoSketchEdit();
@@ -232,6 +251,7 @@ private:
 	bool handleShortcuts(ImGuiIO& io);
 
 	void handleSelect();
+	void handleMoveToTool();
 	void handleMouseAndKey();
 
 	// drag/edit dimension labels; runs in both Select and Dimension tools
@@ -276,6 +296,7 @@ private:
 	std::optional<TrimPreviewResult> findTrimPreview(ImVec2 mouse);
 	std::vector<TrimPreviewResult> findTrimPreviewsInRegion(SketchBound region);
 	bool hoveredSelectedTrimSegment(ImVec2 mouse);
+	std::optional<Vec2> findSelectedMovePoint(ImVec2 mouse);
 	std::string getDimensionLabel(const SketchDimension& dimension) const;
 	void openDimensionEditor(int dimensionID);
 
@@ -297,4 +318,16 @@ private:
 	// add a translated copy of clipboardSegments to the sketch and select it,
 	// leaving the originals alone. Undo is the caller's job.
 	bool pasteClipboardSegments(Vec2 delta);
+
+	// The whole paste action, shared by the toolbar button and the chord: land the
+	// clipboard's lower-left corner on `target`, switch to Select (the paste comes
+	// out selected, and dragging or deleting it only works there), and record undo.
+	// Any half-drawn entity on the old tool is abandoned.
+	bool pasteClipboardAt(Vec2 target);
+
+	// Where a paste lands with no cursor over the canvas to anchor to: one nudge
+	// down-right of where the copy was taken from, so it doesn't come down exactly
+	// on the original and read as nothing having happened. This is what a paste
+	// from the toolbar always uses — the cursor is up on the button.
+	Vec2 offsetPasteTarget() const;
 };

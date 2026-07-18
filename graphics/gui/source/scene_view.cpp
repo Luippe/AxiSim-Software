@@ -44,6 +44,8 @@ bool SceneView::compareFloat(float value, FilterValues& filterValues) {
 	constexpr float eps = 1e-6f;
 
 	switch (results.currentCompareType) {
+	case CompareType::None:
+		return true;
 
 	case CompareType::LessThan:
 		return value < filterValues.valueAt;
@@ -424,6 +426,11 @@ void SceneView::buildUnstructuredSurface() {
 	const float twoPi = 6.28318530718f;
 	int nSlices = std::max(8, (int)((float)results.nseg * (usSweep / twoPi)));
 
+	// A full sweep closes on itself (slice nSlices wraps to slice 0), so the
+	// lateral surfaces alone bound a closed solid and the flat cut-plane caps
+	// below are only needed to seal a partial (< 360 degree) wedge.
+	const bool fullRevolve = usSweep >= twoPi - 1.0e-4f;
+
 	std::vector<float> cosT(nSlices + 1);
 	std::vector<float> sinT(nSlices + 1);
 	for (int k = 0; k <= nSlices; k++) {
@@ -439,23 +446,25 @@ void SceneView::buildUnstructuredSurface() {
 		usVertexData.push_back(val);
 	};
 
-	// ---- cut-plane caps at both ends of the sweep ----
-	const int capSlice[2] = { 0, nSlices };
-	for (int c = 0; c < nCells; c++) {
-		if (!pass[c]) continue;
-		const Triangle& t = tris[c];
-		if (!validTri(t)) continue;
+	// ---- cut-plane caps at both ends of the sweep (partial revolve only) ----
+	if (!fullRevolve) {
+		const int capSlice[2] = { 0, nSlices };
+		for (int c = 0; c < nCells; c++) {
+			if (!pass[c]) continue;
+			const Triangle& t = tris[c];
+			if (!validTri(t)) continue;
 
-		float vc = (float)((c < (int)field.size()) ? field[c] : 0.0);
-		float va = smooth ? vavg[t.v0] : vc;
-		float vb = smooth ? vavg[t.v1] : vc;
-		float vd = smooth ? vavg[t.v2] : vc;
+			float vc = (float)((c < (int)field.size()) ? field[c] : 0.0);
+			float va = smooth ? vavg[t.v0] : vc;
+			float vb = smooth ? vavg[t.v1] : vc;
+			float vd = smooth ? vavg[t.v2] : vc;
 
-		for (int s = 0; s < 2; s++) {
-			int k = capSlice[s];
-			pushRevolved(pts[t.v0], k, va);
-			pushRevolved(pts[t.v1], k, vb);
-			pushRevolved(pts[t.v2], k, vd);
+			for (int s = 0; s < 2; s++) {
+				int k = capSlice[s];
+				pushRevolved(pts[t.v0], k, va);
+				pushRevolved(pts[t.v1], k, vb);
+				pushRevolved(pts[t.v2], k, vd);
+			}
 		}
 	}
 

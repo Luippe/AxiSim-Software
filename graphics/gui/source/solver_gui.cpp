@@ -14,6 +14,7 @@
 #include "flag_manager.h"
 #include "unit_manager.h"
 
+#include <cfloat>
 #include <string>
 #include <cstring>
 
@@ -476,6 +477,42 @@ void SolverGUI::drawLayerEditor(
 	ImGui::PopID();
 }
 
+void SolverGUI::drawLinearSolverCombo() {
+
+	// Red-Black Gauss-Seidel relies on the structured checkerboard coloring, so it
+	// is unavailable on an unstructured mesh. Coerce a stale selection back to
+	// Jacobi and grey out the entry so it can't be re-picked.
+	const bool unstructured = mesh.currentMeshType == MeshType::Unstructured;
+
+	int& type = (int&)solver.configSolver.type;
+	if (unstructured && type == LINEAR_GS_RB) {
+		type = LINEAR_JACOBI;
+	}
+
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	ImGui::AlignTextToFramePadding();
+
+	if (ImGui::BeginCombo("##LinearSolverType", solver.linearSolverType[type])) {
+
+		for (int i = 0; i < IM_ARRAYSIZE(solver.linearSolverType); i++) {
+
+			ImGui::BeginDisabled(unstructured && i == LINEAR_GS_RB);
+
+			const bool selected = (type == i);
+			if (ImGui::Selectable(solver.linearSolverType[i], selected)) {
+				type = i;
+			}
+			if (selected) {
+				ImGui::SetItemDefaultFocus();
+			}
+
+			ImGui::EndDisabled();
+		}
+
+		ImGui::EndCombo();
+	}
+}
+
 void SolverGUI::drawPropertiesPanel() {
 
 	ImGui::Begin("Overview");
@@ -495,7 +532,7 @@ void SolverGUI::drawPropertiesPanel() {
 			createSimpleCombo("##Solver", solver.velocitySolverType, (int&)solver.currentVelocitySolver, IM_ARRAYSIZE(solver.velocitySolverType));
 
 			labelRow("Linear Solver");
-			createSimpleCombo("##LinearSolverType", solver.linearSolverType, (int&)(solver.configSolver.type), IM_ARRAYSIZE(solver.linearSolverType));
+			drawLinearSolverCombo();
 
 			ImGui::EndTable();
 		}
@@ -731,7 +768,12 @@ void SolverGUI::drawPropertiesPanel() {
 
 void SolverGUI::draw() {
 
-	if (ImGui::BeginTabItem("Solver")) {
+	ImGuiTabItemFlags tabFlags = ImGuiTabItemFlags_None;
+	if (project.tabSwitchRequested && project.requestedTab == ViewTab::TAB_SOLVER) {
+		tabFlags = ImGuiTabItemFlags_SetSelected;
+	}
+
+	if (ImGui::BeginTabItem("Solver", nullptr, tabFlags)) {
 		project.currentTab = ViewTab::TAB_SOLVER;
 
 		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() - 40.0f), true);

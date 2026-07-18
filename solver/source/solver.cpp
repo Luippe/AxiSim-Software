@@ -106,6 +106,40 @@ void Solver::setDefault() {
 
 }
 
+void Solver::reset() {
+
+    // Join any running solve before wiping the state it touches.
+    shutdown();
+
+    solverRunning = false;
+    continueSolver = false;
+    isReady = false;
+    useMultigrid = false;
+
+    // solved data and derived fields
+    solutions.clear();
+    fieldType.clear();
+    mDotHost.clear();
+    fvMesh = FVMesh{};
+    continuationState = ContinuationState{};
+    currentIteration = 0;
+
+    // run configuration back to defaults
+    fieldOption = SolverFieldOption{};
+    configSolver = ConfigSolver{};
+    configSimple = ConfigSimple{};
+    configMultigrid = ConfigMultigrid{};
+    convectionScheme = CONV_UPWIND;
+    gradientScheme = GRAD_LSQ;
+    currentVelocitySolver = SOLVER_SIMPLE;
+    saveKeyFrameIter = 2;
+
+    // default per-residual display settings (rebinds cfg the same way the ctor does)
+    initConfigResiduals(cfg);
+
+    setDefault();
+}
+
 void Solver::run(const Mesh& mesh) {
 
     if (!runCheck(mesh)) return;
@@ -460,119 +494,6 @@ void Solver::shutdown() {
     if (solverThread.joinable()) {
         solverThread.join();
     }
-}
-
-void Solver::runBiCGStab() {
-
-    //loadVelocity(g, f);
-
-    // create streams
-    cudaStream_t stream;
-    VariablesBiCGStab vars;
-
-    allocateGridConfig(g, f);
-    allocateBiCGStab(g, f, vars);
-
-    int N = g.N;
-
-    cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
-
-    // launch M CPU threads
-    double OCR;
-    const int threadsPerBlock = mem.threadsPerBlock;
-    const int shmem = mem.shmem;
-
-    // record time
-    CudaTimer timer;
-    timer.startTimer(stream);
-
-    double conc = vars.conc;
-    const int blocks = (g.N + threadsPerBlock - 1) / threadsPerBlock;
-    const int cell_blocks = (g.n_cell + threadsPerBlock - 1) / threadsPerBlock;
-
-    // start loop
-    init << <blocks, threadsPerBlock, 0, stream >> > (config, vars, conc, N);
-    init_alpha << <cell_blocks, threadsPerBlock, 0, stream >> > (config, vars, g.n_cell);
-
-    //for (int out = 0; out < outer_iter; ++out) {
-    for (int out = 0; out < itr.outer_iter; ++out) {
-        get_wall_varj << <cell_blocks, threadsPerBlock, 0, stream >> > (config, vars, g.n_cell);
-        update_preconditioner << <blocks, threadsPerBlock, 0, stream >> > (config, vars, N);
-        get_res_init << <blocks, threadsPerBlock, 0, stream >> > (config, vars, N);
-
-        // check outer residual
-        reduce_vec(vars, N, threadsPerBlock, shmem, vars.resnorm, vars.resnorm_val, stream);
-        cudaStreamSynchronize(stream);
-        if (sqrt(*vars.resnorm_val) < itr.outer_tol) break;
-
-        // start Preconditioned BiCGStab
-        for (int in = 0; in < itr.inner_iter; ++in) {
-            // calculate rho
-            get_rho << <blocks, threadsPerBlock, 0, stream >> > (config, vars, N);
-            reduce_vec(vars, N, threadsPerBlock, shmem, vars.jrho, vars.jrho_val, stream);
-
-            if (in > 0) {
-                calc_beta << <1, 1, 0, stream >> > (vars);
-                get_jp << <blocks, threadsPerBlock, 0, stream >> > (config, vars, N);
-            }
-
-            get_jp_t << <blocks, threadsPerBlock, 0, stream >> > (config, vars, N);
-            get_v_alpha << <blocks, threadsPerBlock, 0, stream >> > (config, vars, N);
-            reduce_vec(vars, N, threadsPerBlock, shmem, vars.alpha_den, vars.jalpha_den_val, stream);
-            calc_alpha << <1, 1, 0, stream >> > (vars);
-
-            // calculate s and shat
-            get_s_s_t << <blocks, threadsPerBlock, 0, stream >> > (config, vars, N);
-
-            // check inner residual
-            if (in % itr.check_iter == 0) {
-                reduce_vec(vars, N, threadsPerBlock, shmem, vars.snorm, vars.snorm_val, stream);
-                cudaStreamSynchronize(stream);
-                //printf("%d, %d\n", in, out);
-                if (sqrt(*vars.snorm_val) < itr.inner_tol) {
-                    set_x << <blocks, threadsPerBlock, 0, stream >> > (config, vars, N);
-                    break;
-                }
-            }
-
-            // calculate t and w
-            get_t_w << <blocks, threadsPerBlock, 0, stream >> > (config, vars, N);
-            reduce_vec(vars, N, threadsPerBlock, shmem, vars.w_den, vars.jw_den_val, stream);
-            reduce_vec(vars, N, threadsPerBlock, shmem, vars.w_num, vars.jw_num_val, stream);
-            calc_w << <1, 1, 0, stream >> > (vars);
-
-            // update residual and cocentration
-            update_r_x << <blocks, threadsPerBlock, 0, stream >> > (config, vars, N);
-            std::swap(vars.jrho_val_prev, vars.jrho_val);
-        }
-        init_val << <1, 1, 0, stream >> > (vars);
-    }
-
-    // calculate cw
-    get_cw << <cell_blocks, threadsPerBlock, 0, stream >> > (config, vars, g.n_cell);
-
-    // calculate OCR
-    get_wall_varj << <cell_blocks, threadsPerBlock, 0, stream >> > (config, vars, g.n_cell);
-    get_OCR << <cell_blocks, threadsPerBlock, 0, stream >> > (config, vars, conc, g.n_cell);
-    reduce_vec(vars, g.n_cell, threadsPerBlock, shmem, vars.OCR_num, vars.OCR_num_val, stream);
-    cudaStreamSynchronize(stream);
-
-    double OCR_num_host = 0.0;
-    cudaMemcpyAsync(&OCR_num_host, vars.OCR_num_val, sizeof(double), cudaMemcpyDeviceToHost, stream);
-
-    OCR_num_host / (g.A_tot * f.Vmax);
-    cudaDeviceSynchronize();
-
-    timer.endTimer(stream);
-    float ms = timer.getElapsedTime();
-    console->addCompletionTime("Solver", ms);
-
-    // copy variables to host
-    //concSol = SolutionField{ copyDeviceToHostVector(vars.oxy, N), g.nr, g.nz, g.dr, g.dz};
-
-    // free memory
-    free_GridConfig(g);
-
 }
 
 // TODO(diagnostic): temporary boundary-condition sanity check.

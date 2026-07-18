@@ -20,6 +20,10 @@ private:
 
 	void drawFieldCheckbox();
 
+	// Linear-solver combo with Red-Black Gauss-Seidel disabled on an unstructured
+	// mesh (RBGS needs the structured checkerboard coloring).
+	void drawLinearSolverCombo();
+
 	void drawResidualSettings();
 
 	void drawRowBoundaryVariableEditor(

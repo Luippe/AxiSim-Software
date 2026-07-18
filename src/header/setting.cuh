@@ -1,5 +1,5 @@
 #pragma once
-//#include "device_launch_parameters.h"
+
 #include <vector>
 #include <unordered_set>
 
@@ -36,7 +36,6 @@ struct GridConfig {
 	int N = 0;
 	int n_cell = 0;
 	double A_tot = 0.0;
-	double kl = 0.0;
 
 	int* c_cell;
 	int* z_cell;
@@ -94,17 +93,7 @@ struct FluidPropertyConfig {
 	double cp = 4180.0;
 	double k = 0.6;
 
-	double Vmax = 200;
-	double Km = 00.5;
-	double n = 1.0;
-	double m = 1.0;
-	double K2 = 0.1;
-	double V2 = 0.0;
-	double d = 1e-6;
-
-	double D_isf = 1e-10;
 	double D = 3.0277e-9;
-	double Umax = 8.444199e-5;
 
 };
 

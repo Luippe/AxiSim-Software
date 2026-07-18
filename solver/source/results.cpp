@@ -114,6 +114,27 @@ void Results::updateAfterLoadingFile() {
 
 }
 
+void Results::reset() {
+
+	// clearing the maps frees any GL texture buffers the fields own (RAII).
+	fields.clear();
+	solutions.clear();
+	shownFields.clear();
+	fieldType.clear();
+
+	currentField = nullptr;
+	currentItem = 0;
+
+	isReady = false;
+	show = true;
+	showOutline = false;
+	isMultipleInstancing = false;
+
+	currentCompareType = CompareType::None;
+	currentShadingType = ShadingType::Interp;
+	filterValues = FilterValues{};
+}
+
 void Results::setTextureShadingAllField(GLint shadingMode) {
 
 	//results.currentField->textureBuffer.setTextureShading(shadingMode);

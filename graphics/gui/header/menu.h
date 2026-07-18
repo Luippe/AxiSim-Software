@@ -27,6 +27,9 @@ private:
 	AppAssets& assets;
 	Project& project;
 
+	// create new project
+	void drawNew();
+
 	// open selected file
 	void drawOpen();
 

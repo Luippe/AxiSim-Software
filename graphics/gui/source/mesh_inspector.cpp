@@ -773,6 +773,51 @@ float distPointToSegment(ImVec2 p, ImVec2 a, ImVec2 b) {
 	return std::sqrt(dx * dx + dy * dy);
 }
 
+// ---- screen-space geometry for rubber-band selection ----
+static bool pointInRect(ImVec2 p, ImVec2 mn, ImVec2 mx) {
+	return p.x >= mn.x && p.x <= mx.x &&
+		p.y >= mn.y && p.y <= mx.y;
+}
+
+// do the two screen-space segments p1p2 and p3p4 cross? (proper/parametric test;
+// collinear overlap is left to the endpoint-in-rect check in segmentIntersectsRect)
+static bool segmentsCross(ImVec2 p1, ImVec2 p2, ImVec2 p3, ImVec2 p4) {
+	auto cross = [](ImVec2 a, ImVec2 b) {
+		return a.x * b.y - a.y * b.x;
+	};
+
+	ImVec2 r{ p2.x - p1.x, p2.y - p1.y };
+	ImVec2 s{ p4.x - p3.x, p4.y - p3.y };
+
+	float rxs = cross(r, s);
+	if (std::fabs(rxs) < 1e-6f) {
+		return false; // parallel
+	}
+
+	ImVec2 qp{ p3.x - p1.x, p3.y - p1.y };
+	float t = cross(qp, s) / rxs;
+	float u = cross(qp, r) / rxs;
+
+	return t >= 0.0f && t <= 1.0f && u >= 0.0f && u <= 1.0f;
+}
+
+// does the screen-space segment [a,b] touch the axis-aligned box [mn,mx]?
+static bool segmentIntersectsRect(ImVec2 a, ImVec2 b, ImVec2 mn, ImVec2 mx) {
+	if (pointInRect(a, mn, mx) || pointInRect(b, mn, mx)) {
+		return true;
+	}
+
+	ImVec2 tl{ mn.x, mn.y };
+	ImVec2 tr{ mx.x, mn.y };
+	ImVec2 br{ mx.x, mx.y };
+	ImVec2 bl{ mn.x, mx.y };
+
+	return segmentsCross(a, b, tl, tr) ||
+		segmentsCross(a, b, tr, br) ||
+		segmentsCross(a, b, br, bl) ||
+		segmentsCross(a, b, bl, tl);
+}
+
 int meshInspectorCellIndexAt(const std::vector<double>& faces, double x) {
 	if (faces.size() < 2) {
 		return -1;
@@ -983,23 +1028,80 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 	bool isPopupOpened = ImGui::IsPopupOpen("Mesh Inspector Popup");
 	if (toggleDrawCircle || toggleDrawRect || toggleRuler || isPopupOpened) return;
 
-	if (!hoveredId.has_value()) {
-		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+	// A left-drag across the canvas starts a rubber-band box (panning is on the
+	// middle button, so the left drag is free). initLeftMouse already holds the
+	// press position; the box runs until release, handled in handleMouse so it
+	// survives the cursor slipping off the canvas.
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+		isBoxSelecting = true;
+		return;
+	}
 
+	// A plain left click (no drag): toggle the hovered segment, or clear the
+	// selection when clicking empty canvas. Deferred to release so it can be told
+	// apart from the start of a box drag.
+	if (!ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+		return;
+	}
+
+	if (!hoveredId.has_value()) {
+		if (!io.KeyCtrl) {
 			mesh.selectedBoundaryIDs.clear();
 			mesh.highlightedBoundarySegmentIDs.clear();
 		}
 		return;
 	}
-	else {
 
-		if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-			if (!ImGui::IsKeyDown(ImGuiKey_LeftCtrl))
-				mesh.selectedBoundaryIDs.clear();
-			auto& sel = mesh.selectedBoundaryIDs;
-			auto it = sel.find(*hoveredId);
-			if (it == sel.end()) sel.insert(*hoveredId);
-			else sel.erase(it);
+	if (!io.KeyCtrl) {
+		mesh.selectedBoundaryIDs.clear();
+	}
+
+	auto& sel = mesh.selectedBoundaryIDs;
+	auto it = sel.find(*hoveredId);
+	if (it == sel.end()) sel.insert(*hoveredId);
+	else sel.erase(it);
+}
+
+void MeshInspector::applyBoxSelection(bool additive) {
+	ImVec2 boxMin{
+		std::min(initLeftMouse.x, currentMousePos.x),
+		std::min(initLeftMouse.y, currentMousePos.y)
+	};
+	ImVec2 boxMax{
+		std::max(initLeftMouse.x, currentMousePos.x),
+		std::max(initLeftMouse.y, currentMousePos.y)
+	};
+
+	if (!additive) {
+		mesh.selectedBoundaryIDs.clear();
+	}
+
+	for (const BoundarySegment& seg : mesh.boundarySegments) {
+		bool hit = false;
+
+		for (int edgeID : seg.edgeIDs) {
+			if (edgeID < 0 ||
+				edgeID >= static_cast<int>(mesh.boundaryEdges.size())) {
+				continue;
+			}
+
+			const BoundaryEdge& edge = mesh.boundaryEdges[edgeID];
+
+			if (!edgeInRange(edge, mesh.boundaryVertices.size())) {
+				continue;
+			}
+
+			ImVec2 a = camera.worldToScreen(mesh.boundaryVertices[edge.v0].pos);
+			ImVec2 b = camera.worldToScreen(mesh.boundaryVertices[edge.v1].pos);
+
+			if (segmentIntersectsRect(a, b, boxMin, boxMax)) {
+				hit = true;
+				break;
+			}
+		}
+
+		if (hit) {
+			mesh.selectedBoundaryIDs.insert(seg.id);
 		}
 	}
 }
@@ -1282,6 +1384,17 @@ void MeshInspector::handleOpenPopup() {
 void MeshInspector::handleMouse() {
 
 	ImGuiIO& io = ImGui::GetIO();
+
+	// A box selection in progress owns the left button until release, even if the
+	// cursor is dragged off the canvas -- handled before the near-image gate so the
+	// rubber-band can't get stuck.
+	if (isBoxSelecting) {
+		if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+			applyBoxSelection(io.KeyCtrl);
+			isBoxSelecting = false;
+		}
+		return;
+	}
 
 	// if mouse is not near the image, then dont handle any mouse events
 	if (!isMouseNearImage(io)) return;
@@ -1964,6 +2077,29 @@ void MeshInspector::drawPendingObjects(ImDrawList* drawList) {
 
 }
 
+void MeshInspector::drawBoxSelection(ImDrawList* drawList) {
+	if (!isBoxSelecting) {
+		return;
+	}
+
+	// same highlighter-blue rubber-band the sketch view's box-select uses, so the
+	// two canvases read the same
+	const ImU32 fillColor = IM_COL32(125, 220, 255, 35);
+	const ImU32 lineColor = IM_COL32(125, 220, 255, 255);
+
+	ImVec2 rectMin{
+		std::min(initLeftMouse.x, currentMousePos.x),
+		std::min(initLeftMouse.y, currentMousePos.y)
+	};
+	ImVec2 rectMax{
+		std::max(initLeftMouse.x, currentMousePos.x),
+		std::max(initLeftMouse.y, currentMousePos.y)
+	};
+
+	drawList->AddRectFilled(rectMin, rectMax, fillColor);
+	drawList->AddRect(rectMin, rectMax, lineColor, 0.0f, 0, 2.0f);
+}
+
 void MeshInspector::drawSnapping(ImDrawList* drawList) {
 	if (!toggleSnapping || (!toggleDrawCircle && !toggleDrawRect)) {
 		return;
@@ -2264,6 +2400,7 @@ void MeshInspector::render() {
 	drawPendingObjects(drawList);
 	drawSnapping(drawList);
 	drawBoundarySegments(drawList);
+	drawBoxSelection(drawList);
 	drawTextAtSurfacePoint(drawList);
 	if (toggleInspectCell) {
 		drawCellInfo(drawList);

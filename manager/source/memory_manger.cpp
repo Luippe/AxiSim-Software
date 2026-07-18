@@ -679,9 +679,7 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 	std::vector<double> z = g.z;
 	std::unordered_set<int> obstacleIndices = g.obstacleIndices;
 	
-	double D_isf = f.D_isf;
-	double d = f.d;
-	
+
 	// dz and dr for u and v
 	std::vector<double> z_dz;
 	std::vector<double> r_dr;
@@ -738,66 +736,13 @@ void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f) {
 	std::vector<double> kf;
 	std::vector<int> wall_cell(nr * nz, -1);
 
-
-	//for (int i = 0; i < nr; ++i) {
-	//	for (int j = 0; j < nz; ++j) {
-	//		int n = i * nz + j;
-	//		if (c_cell[n] != 1) {
-
-	//			double localDr = dr[i];
-	//			double localDz = dz[i];
-
-	//			double r1 = rFace[i];
-	//			double r2 = rFace[i + 1];
-
-	//			double Az = PI * (r2 * r2 - r1 * r1);
-	//			double Ar2 = 2 * PI * r2 * localDr;
-	//			double Ar1 = 2 * PI * r1 * localDz;
-
-	//			// east
-	//			if (j != nz - 1) {
-	//				if (c_cell[n + 1] == 1) {
-	//					A_tot += Az;
-	//					A.push_back(Az);
-	//					surf_index.push_back(n);
-	//					dist.push_back(cell_left - z[j]);
-	//					kf.push_back(D / (cell_left - z[j]));
-	//				}
-	//			}
-
-	//			// west
-	//			if (j != 0) {
-	//				if (c_cell[n - 1] == 1) {
-	//					A_tot += Az;
-	//					A.push_back(Az);
-	//					surf_index.push_back(n);
-	//					dist.push_back(z[j] - cell_right);
-	//					kf.push_back(D / (cell_right - z[j]));
-	//				}
-	//			}
-
-	//			// south
-	//			if (i != 0) {
-	//				if (c_cell[n - nz] == 1) {
-	//					A_tot += Ar1;
-	//					A.push_back(Ar1);
-	//					surf_index.push_back(n);
-	//					dist.push_back(r[i] - cell_top);
-	//					kf.push_back(D / (r[i] - cell_top));
-	//				}
-	//			}
-	//		}
-	//	}
-	//}
-
 	g.N = N;
 
 
 	int n_cell = surf_index.size();
 	g.A_tot = A_tot;
 	g.n_cell = n_cell;
-	double kl = D_isf / d;
-	g.kl = kl;
+
 	for (int num = 0; num < n_cell; ++num) {
 		int cell = surf_index[num];
 		wall_cell[cell] = num;
@@ -1034,5 +979,5 @@ void free_GridConfig(GridConfig& g) {
 
 	g.n_cell = 0;
 	g.A_tot = 0.0;
-	g.kl = 0.0;
+
 }

@@ -24,6 +24,7 @@ struct SketchDimension {
 
 enum class SketchTool {
     Select,
+    MoveTo,
     Line,
     Rectangle,
     Circle,
@@ -243,6 +244,56 @@ struct SketchModel {
             }
             eraseEntityByID(arcs, entityID);
             return true;
+        default:
+            return false;
+        }
+    }
+
+    // Translate an entity by delta. A line moves both of its endpoints; the
+    // other shapes move their defining point(s). Mirrors removeEntity's dispatch.
+    // Returns false if the id doesn't resolve. Undo is the caller's job
+    // (SketchView owns the history).
+    bool moveEntity(SketchEntityType type, int entityID, Vec2 delta) {
+        switch (type) {
+        case SketchEntityType::Line: {
+            SketchLine* line = findLine(entityID);
+            if (!line) {
+                return false;
+            }
+            SketchPoint* p0 = findPoint(line->p0);
+            SketchPoint* p1 = findPoint(line->p1);
+            if (!p0 || !p1) {
+                return false;
+            }
+            p0->pos.z += delta.z; p0->pos.r += delta.r;
+            p1->pos.z += delta.z; p1->pos.r += delta.r;
+            return true;
+        }
+        case SketchEntityType::Rectangle: {
+            SketchRectangle* rect = findRectangle(entityID);
+            if (!rect) {
+                return false;
+            }
+            rect->min.z += delta.z; rect->min.r += delta.r;
+            rect->max.z += delta.z; rect->max.r += delta.r;
+            return true;
+        }
+        case SketchEntityType::Circle: {
+            SketchCircle* circle = findCircle(entityID);
+            if (!circle) {
+                return false;
+            }
+            circle->center.z += delta.z; circle->center.r += delta.r;
+            return true;
+        }
+        case SketchEntityType::Arc: {
+            SketchArc* arc = findArc(entityID);
+            if (!arc) {
+                return false;
+            }
+            arc->center.z += delta.z; arc->center.r += delta.r;
+            return true;
+        }
         default:
             return false;
         }

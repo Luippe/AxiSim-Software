@@ -180,6 +180,11 @@ public:
 
 	void updateAfterLoadingFile();
 
+	// Return the mesh to the same blank state as a freshly constructed Mesh, so a
+	// new project doesn't inherit the previous project's geometry, boundary groups,
+	// or multiblock. g (== config.g) is reset separately by Project::createNew.
+	void reset();
+
 	float displayZ(double z) const;
 	float displayR(double r) const;
 

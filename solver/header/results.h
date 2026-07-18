@@ -19,7 +19,7 @@ public:
 
 
 
-	CompareType currentCompareType = CompareType::GreaterThan;
+	CompareType currentCompareType = CompareType::None;
 	FilterValues filterValues;
 
 	int nseg;
@@ -36,7 +36,7 @@ public:
 	std::vector<std::string> shownFields;
 
 	ShadingType currentShadingType = ShadingType::Interp;
-	const char* compareType[5] = { "Less Than", "Equal To", "Greater Than", "Between", "Exclude"};
+	const char* compareType[6] = { "None", "Less Than", "Equal To", "Greater Than", "Between", "Exclude"};
 	const char* shadingType[2] = { "Interp", "Flat" };
 
 	Results(Config& config);
@@ -48,6 +48,10 @@ public:
 
 	// update the results after loading a file
 	void updateAfterLoadingFile();
+
+	// drop all displayed fields/solutions so a new project starts with an empty
+	// Results panel and inspector instead of the previous project's data.
+	void reset();
 
 	// update all relevant variables
 	void updateCurrentField();

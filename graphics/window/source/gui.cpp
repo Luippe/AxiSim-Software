@@ -419,6 +419,15 @@ void GUI::drawResultsViewport() {
 }
 
 void GUI::drawUI() {
+	// Tab key cycles to the next setup tab. Guard on WantTextInput so Tab keeps
+	// its normal behavior while a field is being edited.
+	ImGuiIO& io = ImGui::GetIO();
+	if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Tab, false)) {
+		int next = ((int)project.currentTab + 1) % (int)ViewTab::TAB_COUNT;
+		project.requestedTab = (ViewTab)next;
+		project.tabSwitchRequested = true;
+	}
+
 	ImGui::Begin("Project");
 	if (ImGui::BeginTabBar("Main", TabBarFlags)) {
 
@@ -433,6 +442,9 @@ void GUI::drawUI() {
 		ImGui::EndTabBar();
 	}
 	ImGui::End();
+
+	// request consumed (or dropped if the tab bar was hidden this frame)
+	project.tabSwitchRequested = false;
 }
 
 void GUI::handleKeyInput() {

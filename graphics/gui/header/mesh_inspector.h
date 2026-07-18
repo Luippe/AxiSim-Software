@@ -88,6 +88,11 @@ private:
 	bool hoveringOverSelectedSegment = false;
 	std::optional<BoundarySegmentGroup> pendingBoundaryGroup;
 	bool toggleSnapping = false;
+
+	// rubber-band selection: drag a box across the canvas to select every boundary
+	// segment it touches (Ctrl adds to the current selection). The box starts at
+	// initLeftMouse and follows currentMousePos while active.
+	bool isBoxSelecting = false;
 	Vec2 roiStartWorld{};
 	Vec2 roiCurrentWorld{};
 
@@ -129,6 +134,13 @@ private:
 	void handleMouse();
 	void handleOpenPopup();
 	void handleDrawRegionOfInfluence();
+
+	// select every boundary segment the rubber-band box touches. additive keeps the
+	// current selection (Ctrl-drag) instead of replacing it.
+	void applyBoxSelection(bool additive);
+
+	// draw the rubber-band selection rectangle while a box drag is in progress
+	void drawBoxSelection(ImDrawList* drawList);
 
 	void handleCursor(ImGuiIO& io);
 	std::optional<MeshSnapResult> findSnap(ImVec2 mouse);

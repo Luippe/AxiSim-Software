@@ -52,9 +52,6 @@ void saveFromPathProject(const std::wstring& path, Project& project);
 // save project by opening explorer
 void saveFromExplorerProject(Project& project);
 
-// load project at startup
-void saveLaunchProject(Project& project);
-
 // load project from a given path
 void loadFromPathProject(std::ifstream& in, Project& project);
 
