@@ -292,10 +292,10 @@ void Menu::drawShortcutModal() {
 		ImGui::Separator();
 
 		drawShortcutButton("Reset View", resetViewShortcut);
-		drawShortcutButton("Undo", undoShortcut);
-		drawShortcutButton("Redo", redoShortcut);
-		drawShortcutButton("Copy", copyShortcut);
-		drawShortcutButton("Paste", pasteShortcut);
+
+		// Undo / Redo / Copy / Paste are deliberately not rebindable -- they keep
+		// the platform-standard Ctrl+Z/Y/C/V. They stay in Shortcuts::allShortcuts
+		// so the tool shortcuts above still fail to bind onto them.
 
 		if (editingShortcut) {
 			ImGuiKeyChord capturedShortcut = 0;

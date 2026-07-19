@@ -346,15 +346,23 @@ void Console::registerUtilityCommands() {
 	);
 }
 
-void Console::addLine(const std::string& s) {
+void Console::pushLine(std::string line) {
 
-	lines.push_back({ s });
+	lines.push_back(std::move(line));
+
+	if (lines.size() > maxLines + trimSlack) {
+		lines.erase(lines.begin(), lines.begin() + (lines.size() - maxLines));
+	}
+
 	checkAutoScroll();
 }
 
+void Console::addLine(const std::string& s) {
+	pushLine(s);
+}
+
 void Console::addCompletionMessage(const std::string& s) {
-	lines.push_back({ "		" + s });
-	checkAutoScroll();
+	pushLine("		" + s);
 }
 
 void Console::addCompletionTime(const std::string& object, float& ms) {
@@ -366,8 +374,7 @@ void Console::addCompletionTime(const std::string& object, float& ms) {
 
 
 void Console::addSeparator() {
-	lines.push_back({ "-----------------------------------------" });
-	checkAutoScroll();
+	pushLine("-----------------------------------------");
 }
 
 void Console::clear() {

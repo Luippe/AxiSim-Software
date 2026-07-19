@@ -537,9 +537,10 @@ Equations are discretised with the finite-volume method. The available
 \emph{convection} schemes are first-order upwind, central differencing, second-order
 upwind. Diffusion uses the centroid-distance gradient along $\mathbf{d}$ plus an
 optional \emph{non-orthogonal correction} for the cross term
-(Section~\ref{sec:nonortho}); the number of deferred corrector passes is
-\texttt{nNonOrthCorrectors} (default 0, i.e.\ orthogonal-only, which is the stable
-default). Cell gradients use either Green--Gauss or least-squares
+(Section~\ref{sec:nonortho}), toggled by \texttt{useNonOrthCorrector} (default off,
+i.e.\ orthogonal-only, which is the stable default). The option is disabled on a
+structured mesh, which is orthogonal by construction and so has no cross term to
+correct. Cell gradients use either Green--Gauss or least-squares
 (\texttt{GRAD\_GREEN\_GAUSS}, \texttt{GRAD\_LSQ}) where exposed by the solver path.
 
 \subsection{Linear solvers}

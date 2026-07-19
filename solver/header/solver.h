@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -44,7 +45,17 @@ public:
 	std::thread solverThread;
 	cudaStream_t stream = nullptr;
 
-	bool solverRunning = false;
+	// Written by the solver thread, read every frame by the GUI thread (the
+	// Start/Stop button and the residual plot both key off it), so it has to be
+	// atomic rather than a plain bool.
+	std::atomic<bool> solverRunning{ false };
+
+	// Set by the GUI's Stop Solver button, polled by the solve loops. A stop
+	// unwinds to the end of runSimple rather than killing the thread, so the
+	// fields solved so far are still copied back and remain a valid partial
+	// result -- and Continue Solver can pick up from that iteration.
+	std::atomic<bool> stopRequested{ false };
+
 	bool continueSolver = false;
 	bool isReady = false;
 	bool useMultigrid = true;
@@ -52,6 +63,9 @@ public:
 	// run solver
 	void run(const Mesh& mesh);
 	void runSimple(const Mesh& mesh);
+
+	// ask a running solve to finish early. no-op if nothing is running.
+	void requestStop();
 
 	// check if solver can be continued
 	bool canContinue(const Mesh& mesh, std::string* reason = nullptr) const;

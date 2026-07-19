@@ -81,6 +81,10 @@ private:
     // request is parked here and consumed on this frame's draw().
     bool pendingAddTab = false;
 
+    // ImGui frame number of the last draw(). draw() only runs on the Solver tab,
+    // so a gap identifies the frame the user returns on -- see draw().
+    int lastDrawnFrame = -2;
+
     // slot in `tabs` for a DockTab::id, or -1 if no tab carries that id
     int tabIndexFromID(int id);
 

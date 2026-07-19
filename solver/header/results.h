@@ -45,8 +45,11 @@ public:
 	bool hasAnimation() const { return animationFrames.size() > 1; }
 
 	// Whole-run range for a field, when one exists. Views use this during playback
-	// instead of recomputing per frame.
+	// instead of recomputing per frame. Returns false in Local color-range mode, so
+	// callers fall back to the per-frame range they already computed.
 	bool animationRangeFor(const std::string& name, float& vmin, float& vmax) const;
+
+	ColorRangeMode currentColorRangeMode = ColorRangeMode::Global;
 
 	// build the animation frames from the solver's captured time frames
 	void createAnimationFrames(const Mesh& mesh, const Solver& solver);
@@ -74,6 +77,8 @@ public:
 	ShadingType currentShadingType = ShadingType::Interp;
 	const char* compareType[6] = { "None", "Less Than", "Equal To", "Greater Than", "Between", "Exclude"};
 	const char* shadingType[2] = { "Interp", "Flat" };
+	// order must match enum ColorRangeMode
+	const char* colorRangeModeType[2] = { "Global (whole run)", "Local (per frame)" };
 
 	Results(Config& config);
 

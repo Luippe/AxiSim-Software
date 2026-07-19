@@ -208,6 +208,15 @@ public:
 	// lookup -- this is an id, not an index.
 	int getActiveTabID();
 
+	// Ask the next drawTabs() to bring the tab with this id back to the front.
+	//
+	// Needed because these tabs live in a viewport window that stops being
+	// submitted entirely while another setup tab is open. activeTabID survives
+	// that (nothing takes focus while the windows are absent), but the dock node
+	// re-selects on its own when they reappear -- so returning to the Solver tab
+	// would show a different plot than the one that was being watched.
+	void requestFocus(int tabID) { pendingFocusTabID = tabID; }
+
 	// define structs
 	struct DockSpaceInfo {
 		ImGuiID dockspaceID = 0;
@@ -267,6 +276,14 @@ public:
 			else {
 				ImGui::SetNextWindowDockID(dockspaceID, ImGuiCond_FirstUseEver);
 			}
+			// Restore the previously selected tab when the host window comes back
+			// after being unsubmitted (see requestFocus). Must land before Begin,
+			// and is one-shot so it cannot fight the user's own clicks.
+			if (pendingFocusTabID != 0 && tab.id == pendingFocusTabID) {
+				ImGui::SetNextWindowFocus();
+				pendingFocusTabID = 0;
+			}
+
 			// create windowTitle so when tab.name changes, it keeps the same tab layout format
 			std::string windowTitle = tab.name + "###Tab_" + std::to_string(tab.id);
 			// draw plot
@@ -337,6 +354,9 @@ private:
 	// id, NOT its slot in the caller's vector -- ids are 1-based and survive a
 	// close, indices don't. Resolve it with a lookup before indexing.
 	int activeTabID = 0;
+
+	// one-shot refocus request consumed by drawTabs; 0 = nothing pending
+	int pendingFocusTabID = 0;
 
 	bool isCurrentDockTabDoubleClicked();
 

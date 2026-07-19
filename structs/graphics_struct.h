@@ -18,6 +18,18 @@ enum class ShadingType {
 	Flat
 };
 
+// Which value range the colormap and colorbar are normalized against during
+// transient playback.
+//   Global -- min/max over the WHOLE run. Colors mean the same thing in every
+//             frame and the colorbar is static, so frames are comparable.
+//   Local  -- each frame's own min/max. Maximizes contrast within a frame, at
+//             the cost of the colorbar rescaling as the animation plays.
+// Only meaningful while an animation exists; a steady result has one range.
+enum class ColorRangeMode {
+	Global,
+	Local
+};
+
 struct LengthScale {
 	uint8_t index = 0;
 	float value = 1.0f;

@@ -115,6 +115,14 @@ void BaseGUI::checkBox(const char* label, bool* value) {
 	ImGui::Checkbox(label, value);
 }
 
+void BaseGUI::disabledHint(bool disabled, const char* reason) {
+	if (!disabled || !reason) return;
+
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+		ImGui::SetTooltip("%s", reason);
+	}
+}
+
 bool BaseGUI::inputDouble(const char* label, double* value, const char* format) {
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	ImGui::AlignTextToFramePadding();
@@ -131,12 +139,16 @@ void BaseGUI::sectionHeader(const char* label) {
 	ImGui::SeparatorText(label);
 }
 
-bool BaseGUI::beginPropertyTable(const char* id, float labelWidth) {
+bool BaseGUI::beginPropertyTable(const char* id) {
 	if (!ImGui::BeginTable(id, 2, UIFlags::TableSimpleFlags)) {
 		return false;
 	}
 
-	ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, labelWidth);
+	// Width 0 with WidthFixed means "auto-fit to the widest cell actually
+	// submitted in this column", so a label can never be clipped no matter the
+	// font size or DPI. This replaced hand-tuned pixel widths, which were what
+	// truncated labels like "Number Format" and "Color Range" in the first place.
+	ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 0.0f);
 	ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 	return true;
 }

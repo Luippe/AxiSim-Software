@@ -316,6 +316,14 @@ void ResidualPlot::drawAppToolBar() {
     // button except Add acts on the selected plot, so with no tabs open there
     // is nothing to act on and they disable.
     const int i = activeTabIndex();
+
+    // Locked out for the duration of a solve: the solver thread appends to
+    // tabs[].plots while this strip runs, so adding, clearing or copying a plot
+    // mid-run mutates the same vectors it is writing to.
+    const bool solving = solver.solverRunning;
+
+    ImGui::BeginDisabled(solving);
+
     const bool hasTab = i >= 0;
 
     // --- home ---
@@ -358,6 +366,8 @@ void ResidualPlot::drawAppToolBar() {
     ImGui::EndDisabled();
     endSection("View");
 
+    ImGui::EndDisabled();
+
     endToolbar();
 }
 
@@ -365,6 +375,21 @@ void ResidualPlot::drawAppToolBar() {
 // -----------------------MAIN DRAW LOOP---------------------------------
 // ======================================================================
 void ResidualPlot::draw() {
+
+    // draw() only runs while the Solver tab is open, so a gap in the frame numbers
+    // means the user was on another tab and has just come back. The dock node
+    // re-selects a tab on its own when these windows reappear, so restore the one
+    // that was selected on the way out.
+    const int frame = ImGui::GetFrameCount();
+
+    if (frame - lastDrawnFrame > 1) {
+        const int restoreID = residualDockSpace.getActiveTabID();
+        if (restoreID != 0) {
+            residualDockSpace.requestFocus(restoreID);
+        }
+    }
+
+    lastDrawnFrame = frame;
 
     auto dockInfo = residualDockSpace.renderDockSpace();
 

@@ -57,6 +57,21 @@ private:
 	};
 
 	std::vector<std::string> lines;
+
+	// Bound on retained scrollback. A long transient run prints a residual block
+	// per check interval, so an unbounded console grows without limit for the whole
+	// run. Oldest lines are dropped silently once the cap is passed.
+	static constexpr size_t maxLines = 5000;
+
+	// Trimming a vector from the front is O(n), so it is done in one batch every
+	// `trimSlack` lines rather than on every push (which would move ~maxLines
+	// strings per added line once the cap is reached). Retained count therefore
+	// sits between maxLines and maxLines + trimSlack.
+	static constexpr size_t trimSlack = 1000;
+
+	// single funnel for every line added, so the cap cannot be bypassed
+	void pushLine(std::string line);
+
 	bool autoScroll = true;
 	bool scrollToBottom = false;
 	char inputBuffer[256] = {};

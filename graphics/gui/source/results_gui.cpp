@@ -30,8 +30,10 @@ void ResultsGUI::drawPropertiesPanel() {
 	if (selectedItem == "General") {
 		sectionHeader("Filter");
 		if (ImGui::BeginTable("Geometry", 2, UIFlags::TableSimpleFlags)) {
-			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 45.0f);
-			ImGui::TableSetupColumn("Slider", ImGuiTableColumnFlags_WidthStretch);
+			setupTableColumns(
+				autoColumn("Label"),
+				column("Slider", 0.0f, ImGuiTableColumnFlags_WidthStretch)
+			);
 
 			labelRow("Filter");
 			createSimpleCombo("##Filter", results.compareType, (int&)results.currentCompareType, IM_ARRAYSIZE(results.compareType));
@@ -64,7 +66,7 @@ void ResultsGUI::drawPropertiesPanel() {
 	else if (selectedItem == "Colormap") {
 
 		sectionHeader("Options");
-		if (beginPropertyTable("ColormapOptions", 90.0f)) {
+		if (beginPropertyTable("ColormapOptions")) {
 			labelRow("Colormap");
 			if (createSimpleCombo("##Colormap", colormap.items, colormap.currentItem, IM_ARRAYSIZE(colormap.items))) {
 				colormap.setColormap(colormap.currentItem);
@@ -76,11 +78,32 @@ void ResultsGUI::drawPropertiesPanel() {
 				results.setTextureShadingAllField(shadingMode);
 			}
 
+			// Only bites during playback: a steady result has a single range, so
+			// Global and Local are the same picture.
+			const bool noAnimation = !results.hasAnimation();
+
+			labelRow("Color Range");
+			ImGui::BeginDisabled(noAnimation);
+			if (createSimpleCombo(
+				"##ColorRange",
+				results.colorRangeModeType,
+				(int&)results.currentColorRangeMode,
+				IM_ARRAYSIZE(results.colorRangeModeType)
+			)) {
+				// The 2D inspector recomputes its range every draw and picks this up
+				// on its own, but the 3D scene's Field caches vmin/vmax and only
+				// refreshes them in showAnimationFrame -- so re-apply the current
+				// frame, or the scene keeps the old scaling until the frame changes.
+				results.showAnimationFrame(results.currentAnimationFrame);
+			}
+			ImGui::EndDisabled();
+			disabledHint(noAnimation, "Needs a transient result with more than one frame.");
+
 			ImGui::EndTable();
 		}
 
 		sectionHeader("Display Settings");
-		if (beginPropertyTable("DisplaySettings", 110.0f)) {
+		if (beginPropertyTable("DisplaySettings")) {
 			labelRow("Precision");
 			inputInt("##NumberPrecision", &colorbar.currentPrecision);
 

@@ -24,6 +24,17 @@ public:
 		return { label, width, flags };
 	}
 
+	// Column sized to the widest cell actually submitted in it (width 0 +
+	// WidthFixed is ImGui's auto-fit). Use this for any column holding TEXT --
+	// labels, headers, read-only values -- so nothing is ever clipped.
+	//
+	// Do NOT use it for a column whose widget stretches to the cell (inputDouble /
+	// createSimpleCombo call SetNextItemWidth(-FLT_MIN)): the width would then be
+	// defined in terms of itself. Those columns want an explicit or stretch width.
+	inline TableColumn autoColumn(const char* label) {
+		return { label, 0.0f, ImGuiTableColumnFlags_WidthFixed };
+	}
+
 	bool hasChanged = false;
 
 	std::string selectedItem;
@@ -50,6 +61,12 @@ public:
 	// create checkbox in table
 	void checkBox(const char* label, bool* value);
 
+	// tooltip explaining why the widget just submitted is greyed out. call
+	// immediately after that widget; does nothing when `disabled` is false.
+	// hovering a disabled widget needs AllowWhenDisabled, which is why this is
+	// not just ImGui::SetItemTooltip.
+	void disabledHint(bool disabled, const char* reason);
+
 	// draw leaf for tree node.
 	bool drawLeaf(const char* label, TextureBuffer* icon = nullptr);
 
@@ -69,7 +86,8 @@ public:
 	// begin a standard 2-column label/value property table. returns true when the
 	// table opened (call ImGui::EndTable() in that case). rows use labelRow(...)
 	// then a value/widget, or drawTableProperty(...) for read-only text.
-	bool beginPropertyTable(const char* id, float labelWidth = 150.0f);
+	// The label column auto-fits its widest label; the value column stretches.
+	bool beginPropertyTable(const char* id);
 
 	// full-width primary action button shown under a setup tree (Generate, Start...)
 	bool actionButton(const char* label);

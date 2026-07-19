@@ -322,16 +322,6 @@ void GUI::drawStatusBar() {
 	float textY = centerY - fontHeight * 0.5f;
 	float comboY = centerY - comboHeight * 0.5f;
 
-	// green ready dot
-	ImVec2 dotCenter = ImVec2(winMin.x + 16.0f, centerY);
-	drawList->AddCircleFilled(dotCenter, 5.0f, IM_COL32(50, 220, 80, 255));
-
-	ImGui::SetCursorScreenPos(ImVec2(winMin.x + 30.0f, textY));
-	if (project.currentTab == ViewTab::TAB_MESH) {
-
-	}
-	ImGui::TextUnformatted("Ready");
-
 	// right side info
 	const char* projectText = "Project: ";
 	const char* unitsLabel = "Units: ";

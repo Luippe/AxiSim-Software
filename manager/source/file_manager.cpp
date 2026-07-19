@@ -16,6 +16,7 @@
 #include <string>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 
@@ -56,8 +57,13 @@ std::string wStringToString(std::wstring path) {
 namespace {
 	constexpr std::uint32_t solverFileMagic = 0x53585641u; // "AXVS" little-endian
 	// v3: residual display settings (type/norm/scaling/enabled) are stored per-residual.
-	// Only the current version is loaded; legacy (v1/v2/pre-magic) loaders were removed.
-	constexpr std::uint32_t solverFileVersion = 3u;
+	// v4: adds gradientScheme, which v3 never wrote -- the Pressure Gradient combo
+	//     silently reverted to the default on every load.
+	// v3 is still readable (see readSolverPayload): dropping it would throw away the
+	// rest of the solver setup in every project saved before this.
+	// Legacy (v1/v2/pre-magic) loaders were removed.
+	constexpr std::uint32_t solverFileVersion = 4u;
+	constexpr std::uint32_t solverFileVersionNoGradientScheme = 3u;
 	constexpr std::uint32_t meshRegionFileMagic = 0x494F5241u; // "AROI" little-endian
 	constexpr std::uint32_t meshRegionFileVersion = 1u;
 
@@ -200,11 +206,15 @@ namespace {
 			solver.configSimple.checkConv = 1;
 		}
 
-		if (solver.configSimple.nNonOrthCorrectors < 0) {
-			solver.configSimple.nNonOrthCorrectors = 0;
-		}
-		else if (solver.configSimple.nNonOrthCorrectors > 4) {
-			solver.configSimple.nNonOrthCorrectors = 4;
+		// useNonOrthCorrector used to be `int nNonOrthCorrectors` at this same
+		// offset, so an old save can leave a byte other than 0/1 here (a saved
+		// pass count of 2 lands as 0x02). Reading such a bool directly is UB, so
+		// normalize it through a byte copy: any nonzero count means "corrector on".
+		{
+			unsigned char raw = 0;
+			std::memcpy(&raw, &solver.configSimple.useNonOrthCorrector, 1);
+			const bool on = raw != 0;
+			std::memcpy(&solver.configSimple.useNonOrthCorrector, &on, 1);
 		}
 
 		if (!std::isfinite(solver.configSimple.momTol) ||
@@ -225,6 +235,11 @@ namespace {
 		if ((int)solver.currentVelocitySolver < 0 ||
 			(int)solver.currentVelocitySolver > (int)SOLVER_SIMPLE) {
 			solver.currentVelocitySolver = SOLVER_SIMPLE;
+		}
+
+		if ((int)solver.gradientScheme < 0 ||
+			(int)solver.gradientScheme > (int)GRAD_LSQ) {
+			solver.gradientScheme = GRAD_LSQ;
 		}
 
 		// residual display settings are now per-residual; clamp each entry in place
@@ -260,9 +275,13 @@ namespace {
 		}
 	}
 
-	// v3: per-residual display settings follow the common block (see writeResidualConfigs).
+	// Per-residual display settings follow the common block (see writeResidualConfigs).
 	// The v2 EnabledResiduals block is gone — plot-enable rides along per residual.
-	bool readCurrentSolverPayload(std::ifstream& in, Solver& solver) {
+	//
+	// `hasGradientScheme` distinguishes v4 from v3. The payload is positional, so a
+	// v3 file has nothing where gradientScheme sits and reading one would desync
+	// every field after it; v3 keeps the constructor default instead.
+	bool readSolverPayload(std::ifstream& in, Solver& solver, bool hasGradientScheme) {
 		bool ok = readAll(
 			in,
 			solver.varUnits,
@@ -276,6 +295,10 @@ namespace {
 		);
 
 		if (!ok) {
+			return false;
+		}
+
+		if (hasGradientScheme && !readVar(in, solver.gradientScheme)) {
 			return false;
 		}
 
@@ -975,10 +998,11 @@ void saveFromPathSolver(std::ofstream& out, Solver& solver) {
 		solver.convectionScheme,
 		solver.saveKeyFrameIter,
 		solver.f,
-		solver.configSimple
+		solver.configSimple,
+		solver.gradientScheme	// v4; readSolverPayload skips this for a v3 file
 	);
 
-	// per-residual display settings (v3): type / norm / scaling / enabled for each
+	// per-residual display settings: type / norm / scaling / enabled for each
 	writeResidualConfigs(out, solver);
 
 }
@@ -1014,8 +1038,16 @@ void loadFromPathSolver(std::ifstream& in, Solver& solver) {
 
 	if (magic == solverFileMagic) {
 		std::uint32_t version = 0;
-		if (readVar(in, version) && version == solverFileVersion) {
-			ok = readCurrentSolverPayload(in, solver);   // v3: per-residual settings, no enable block
+		if (readVar(in, version)) {
+			if (version == solverFileVersion) {
+				ok = readSolverPayload(in, solver, true);
+			}
+			else if (version == solverFileVersionNoGradientScheme) {
+				// Pre-gradientScheme save: everything else still reads, and the
+				// scheme keeps its default rather than costing the user the whole
+				// solver setup.
+				ok = readSolverPayload(in, solver, false);
+			}
 		}
 	}
 
@@ -1075,6 +1107,11 @@ void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc) {
 
 	out.write((const char*)&type, sizeof(type));
 	out.write((const char*)&value, sizeof(value));
+
+	if (const auto* pulsatile = std::get_if<PulsatileParams>(&bc.params)) {
+		out.write((const char*)&pulsatile->amplitude, sizeof(pulsatile->amplitude));
+		out.write((const char*)&pulsatile->frequency, sizeof(pulsatile->frequency));
+	}
 }
 
 void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc) {
@@ -1086,6 +1123,11 @@ void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc) {
 
 	bc.setType((BCType)(type));
 	bc.setValue(value);
+
+	if (auto* pulsatile = std::get_if<PulsatileParams>(&bc.params)) {
+		in.read((char*)&pulsatile->amplitude, sizeof(pulsatile->amplitude));
+		in.read((char*)&pulsatile->frequency, sizeof(pulsatile->frequency));
+	}
 }
 
 std::ofstream openBinaryFile(const char* path) {

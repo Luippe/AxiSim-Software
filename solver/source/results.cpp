@@ -249,6 +249,13 @@ void Results::createFields(const Mesh& mesh, const Solver& solver) {
 
 bool Results::animationRangeFor(const std::string& name, float& vmin, float& vmax) const {
 
+	// Local mode: decline the whole-run range and leave vmin/vmax untouched. Every
+	// caller seeds them with the current frame's own range before asking, so
+	// refusing here is all it takes to switch the colormap to per-frame scaling.
+	if (currentColorRangeMode == ColorRangeMode::Local) {
+		return false;
+	}
+
 	auto it = animationRanges.find(name);
 	if (it == animationRanges.end()) {
 		return false;

@@ -150,7 +150,7 @@ void MeshGUI::drawRegionOfInfluenceGUI() {
 
 			if (ImGui::BeginTable("RegionFields", 2)) {
 				setupTableColumns(
-					column("Label", 150.0f),
+					autoColumn("Label"),
 					column("Input", 120.0f, ImGuiTableColumnFlags_WidthStretch)
 				);
 
@@ -288,7 +288,7 @@ void MeshGUI::drawPropertiesPanel() {
 
 		if (ImGui::BeginTable("StatisticsTable", 2, UIFlags::TableSimpleFlags, ImVec2(0.0f, 0.0f))) {
 			setupTableColumns(
-				column("Label", 150.0f),
+				autoColumn("Label"),
 				column("Value", 100.0f, ImGuiTableColumnFlags_WidthStretch)
 			);
 
@@ -343,7 +343,7 @@ void MeshGUI::drawPropertiesPanel() {
 		// rather than padding out to a fixed 220px of empty rule
 		if (ImGui::BeginTable("StatsticsTable", 2, UIFlags::TableSimpleFlags)) {
 			setupTableColumns(
-				column("Label", 150.0f),
+				autoColumn("Label"),
 				column("Value", 100.0f, ImGuiTableColumnFlags_WidthStretch)
 			);
 
@@ -368,7 +368,7 @@ void MeshGUI::drawPropertiesPanel() {
 
 			if (ImGui::BeginTable("BandTable", 2, UIFlags::TableSimpleFlags)) {
 				setupTableColumns(
-					column("Band", 180.0f),
+					autoColumn("Band"),
 					column("Cells", 100.0f, ImGuiTableColumnFlags_WidthStretch)
 				);
 

@@ -79,14 +79,17 @@ BoundaryFieldHost createBoundaryFieldHost(
 			bc = it->second;
 		}
 
+		// Pulsatile is mathematically a time-varying Dirichlet condition. Device
+		// kernels only need that mathematical type; Solver updates valueByGroup at
+		// the beginning of every physical time step.
 		h.typeByGroup[group.id] =
-			(uint8_t)(bc.type());
+			(uint8_t)(bc.type() == BCType::PULSATILE ? BCType::DIRICHLET : bc.type());
 
 		h.boundaryTypeByGroup[group.id] =
 			(uint8_t)(group.type);
 
 		h.valueByGroup[group.id] =
-			bc.value();
+			bc.valueAtTime(0.0);
 
 		h.lengthByGroup[group.id] =
 			group.totalLength;

@@ -2,6 +2,7 @@
 
 #include <cstddef>     // std::size_t
 #include <cstdint>     // std::uint8_t
+#include <cmath>
 #include <functional>  // std::hash
 #include <string>	   // std::string
 #include <unordered_map>
@@ -75,7 +76,8 @@ enum BCType {
 	MICHAELIS_MENTEN,
 	HILL,
 
-	NONE
+	NONE,
+	PULSATILE
 };
 
 
@@ -93,10 +95,16 @@ struct FullyDevelopedParams  { static constexpr BCType bcType = FULLY_DEVELOPED;
 struct MichaelisMentenParams { static constexpr BCType bcType = MICHAELIS_MENTEN; double Vmax = 0.0; double Km = 0.0; bool inhibition = false; double m = 1.0; double K2 = 0.0; double V2 = 0.0; };
 struct HillParams			 { static constexpr BCType bcType = HILL;             double Vmax = 0.0; double Km = 0.0; double n = 1.0; bool inhibition = false; double m = 1.0; double K2 = 0.0; double V2 = 0.0; };
 struct NoneParams            { static constexpr BCType bcType = NONE;             double value = 0.0; };
+// Time-dependent inlet value:
+//   value(t) = value * (1 + amplitude * sin(2*pi*frequency*t))
+// `value` is the mean velocity U0 (or V0 for a radial inlet), amplitude is
+// dimensionless, and frequency is stored in Hz. Appended to BCParams so the
+// existing alternatives retain their on-disk std::variant indices.
+struct PulsatileParams       { static constexpr BCType bcType = PULSATILE;        double value = 0.0; double amplitude = 0.1; double frequency = 1.0; };
 
 using BCParams = std::variant<
 	DirichletParams, NeumannParams, FullyDevelopedParams,
-	MichaelisMentenParams, HillParams, NoneParams>;
+	MichaelisMentenParams, HillParams, NoneParams, PulsatileParams>;
 
 // Detect whether a params alternative carries a `value` member. C++17-friendly
 // (CUDA TUs compile this header as C++17, so no requires-expression here).
@@ -129,6 +137,7 @@ struct BoundaryCondition {
 		case MICHAELIS_MENTEN: params = MichaelisMentenParams{}; break;
 		case HILL:             params = HillParams{};            break;
 		case NONE:             params = NoneParams{};            break;
+		case PULSATILE:        params = PulsatileParams{};       break;
 		}
 		valueRef() = v;
 	}
@@ -152,7 +161,28 @@ struct BoundaryCondition {
 		}, params);
 	}
 	void setValue(double v) { valueRef() = v; }
+
+	// Evaluate a boundary condition at physical time `time`. Steady conditions
+	// simply return their stored scalar. Pulsatile conditions use the mean scalar
+	// as U0/V0 and preserve phase across continued transient runs.
+	double valueAtTime(double time) const {
+		if (const auto* p = std::get_if<PulsatileParams>(&params)) {
+			constexpr double twoPi = 6.283185307179586476925286766559;
+			return p->value *
+				(1.0 + p->amplitude * std::sin(twoPi * p->frequency * time));
+		}
+
+		return value();
+	}
 };
+
+// Boundary groups are currently persisted by raw-copying BoundaryCondition from
+// their unordered_map. HillParams is still the largest alternative, so appending
+// PulsatileParams must not grow this MSVC on-disk layout or old projects would
+// become unreadable.
+static_assert(sizeof(PulsatileParams) <= sizeof(HillParams));
+static_assert(sizeof(BoundaryCondition) == 80,
+	"BoundaryCondition size changed; add a project-file migration before saving it");
 
 
 

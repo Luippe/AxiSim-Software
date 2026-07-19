@@ -163,12 +163,20 @@ struct ConfigSimple {
 	double momTol = 1e-8;
 	double ppTol = 1e-5;
 
-	// Number of deferred non-orthogonal corrector passes for the pressure
-	// correction. 0 = orthogonal only (stable default). The deferred cross term
-	// can destabilize on skewed/axis cells, so it is opt-in; raise to 1-2 once
-	// a limiter is in place.
-	int nNonOrthCorrectors = 0;
+	// Deferred non-orthogonal corrector for the pressure correction. Off =
+	// orthogonal only (stable default); on = one extra corrector pass. The
+	// deferred cross term can destabilize on skewed/axis cells, so it is opt-in,
+	// and it is meaningless on a structured mesh (orthogonal by construction).
+	//
+	// Was `int nNonOrthCorrectors` (a pass count). A bool lands at the same
+	// offset and the struct's tail padding absorbs the 3 lost bytes, so
+	// sizeof(ConfigSimple) is unchanged and old .bin saves still read: a saved
+	// count of 0 loads as false, any count >= 1 loads as a nonzero byte that
+	// sanitizeSolverConfig normalizes to true.
+	bool useNonOrthCorrector = false;
 };
+
+static_assert(sizeof(ConfigSimple) == 32, "ConfigSimple size changed -- see file_manager solverFileVersion");
 
 struct ConfigMultigrid {
 

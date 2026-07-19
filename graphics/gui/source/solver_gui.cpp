@@ -13,6 +13,7 @@
 
 #include "flag_manager.h"
 #include "unit_manager.h"
+#include "fluid_properties_manager.h"
 
 #include <cfloat>
 #include <string>
@@ -97,7 +98,6 @@ void SolverGUI::drawFieldCheckbox() {
 	if (ImGui::Checkbox("Concentration", &solver.fieldOption.solveConcentration)) {
 		solver.cfg.at("Concentration").enabled = solver.fieldOption.solveConcentration;
 	}
-	ImGui::Checkbox("Multigrid", &solver.useMultigrid);
 }
 
 void SolverGUI::drawResidualSettings() {
@@ -115,7 +115,7 @@ void SolverGUI::drawResidualSettings() {
 	if (ImGui::BeginTable("Residual Settings", 4, UIFlags::TableSimpleFlags | ImGuiTableFlags_NoSavedSettings)) {
 		setupTableColumns(
 			column("Plot", 44.0f),
-			column("Residual", 105.0f),
+			autoColumn("Residual"),
 			column("Type", 130.0f, ImGuiTableColumnFlags_WidthStretch),
 			column("Tolerance", 105.0f, ImGuiTableColumnFlags_WidthStretch)
 		);
@@ -164,7 +164,7 @@ void SolverGUI::drawResidualSettings() {
 		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(8.0f, 5.0f));
 		if (ImGui::BeginTable("Residual Advanced", 3, UIFlags::TableSimpleFlags | ImGuiTableFlags_NoSavedSettings)) {
 			setupTableColumns(
-				column("Residual", 105.0f),
+				autoColumn("Residual"),
 				column("Norm", 130.0f, ImGuiTableColumnFlags_WidthStretch),
 				column("Scaling", 130.0f, ImGuiTableColumnFlags_WidthStretch)
 			);
@@ -317,7 +317,7 @@ void SolverGUI::drawRowBoundaryVariableEditor(
 		unitLabel(Units::VmaxUnits, varUnits.VmaxUnit);
 	};
 
-	// Raw value, no unit (Vmax, Hill exponents). Advances 2 columns.
+	// Raw dimensionless value (amplitude, Hill exponents). Advances 2 columns.
 	auto dimlessValue = [&](const std::string& id, double& v) {
 		ImGui::SetNextItemWidth(-FLT_MIN);
 		ImGui::AlignTextToFramePadding();
@@ -326,6 +326,18 @@ void SolverGUI::drawRowBoundaryVariableEditor(
 		ImGui::PopID();
 		ImGui::TableNextColumn();          // -> Unit column
 		ImGui::TextUnformatted("-");
+		ImGui::TableNextColumn();          // -> next row
+	};
+
+	// Frequency is stored in inverse seconds and displayed as Hz.
+	auto frequencyValue = [&](const std::string& id, double& v) {
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		ImGui::AlignTextToFramePadding();
+		ImGui::PushID(id.c_str());
+		ImGui::InputDouble("##value", &v, 0.0, 0.0, "%.6g");
+		ImGui::PopID();
+		ImGui::TableNextColumn();          // -> Unit column
+		ImGui::TextUnformatted("Hz");
 		ImGui::TableNextColumn();          // -> next row
 	};
 
@@ -365,6 +377,13 @@ void SolverGUI::drawRowBoundaryVariableEditor(
 		[&](DirichletParams& p)      { nativeValue(idBase + "_val", p.value); },
 		[&](NeumannParams& p)        { nativeValue(idBase + "_val", p.value); },
 		[&](FullyDevelopedParams& p) { nativeValue(idBase + "_val", p.value); },
+		[&](PulsatileParams& p) {
+			dash();
+			subRow(var == BoundaryVariable::UVelocity ? "Mean U0" : "Mean V0");
+			nativeValue(idBase + "_mean", p.value);
+			subRow("Amplitude A"); dimlessValue(idBase + "_amplitude", p.amplitude);
+			subRow("Frequency f"); frequencyValue(idBase + "_frequency", p.frequency);
+		},
 		[&](NoneParams&)             { dash(); },
 		[&](MichaelisMentenParams& p) {
 			dash();
@@ -540,26 +559,45 @@ void SolverGUI::drawPropertiesPanel() {
 			labelRow("Linear Solver");
 			drawLinearSolverCombo();
 
+			// Multigrid accelerates the pressure-correction solve specifically, so
+			// it belongs next to the linear solver it replaces there -- not in the
+			// General tab's field checkboxes, which pick which EQUATIONS are solved.
+			labelRow("Multigrid");
+			checkBox("##Multigrid", &solver.useMultigrid);
+
 			ImGui::EndTable();
 		}
 
 		sectionHeader("Options");
-		if (beginPropertyTable("SolverOptions", 200.0f)) {
+		if (beginPropertyTable("SolverOptions")) {
 
 			labelRow("Add Convection Term");
 			checkBox("##ConvectionTerm", &solver.configSolver.addConvectionTerm);
 
-			labelRow("Transient");
-			checkBox("##TransientTerm", &solver.configSolver.transient);
+			// The discretization only describes a term that is being assembled,
+			// so it is meaningless with convection off.
+			const bool convectionOff = !solver.configSolver.addConvectionTerm;
 
 			labelRow("Convection Discretization");
+			ImGui::BeginDisabled(convectionOff);
 			createSimpleCombo("##ConvectionScheme", solver.convectionDiscretizationType, (int&)(solver.convectionScheme), IM_ARRAYSIZE(solver.convectionDiscretizationType));
+			ImGui::EndDisabled();
+			disabledHint(convectionOff, "Enable Add Convection Term to choose a discretization.");
 
-			labelRow("Non-Orthogonal Correctors");
-			inputInt("##NonOrthCorrectors", &project.solver.configSimple.nNonOrthCorrectors);
-			if (project.solver.configSimple.nNonOrthCorrectors < 0) {
-				project.solver.configSimple.nNonOrthCorrectors = 0;
+			// A structured mesh is orthogonal by construction, so the deferred
+			// cross term is identically zero. Force the flag off as well as
+			// greying it -- runCheck does the same, and leaving a stale true here
+			// would show a checked box that the solve ignores.
+			const bool orthogonalMesh = mesh.currentMeshType == MeshType::Structured;
+			if (orthogonalMesh) {
+				project.solver.configSimple.useNonOrthCorrector = false;
 			}
+
+			labelRow("Non-Orthogonal Corrector");
+			ImGui::BeginDisabled(orthogonalMesh);
+			checkBox("##NonOrthCorrector", &project.solver.configSimple.useNonOrthCorrector);
+			ImGui::EndDisabled();
+			disabledHint(orthogonalMesh, "A structured mesh is orthogonal, so there is no cross term to correct.");
 
 			labelRow("Pressure Gradient");
 			createSimpleCombo(
@@ -586,7 +624,7 @@ void SolverGUI::drawPropertiesPanel() {
 
 		if (ImGui::BeginTable("Boundary Type", 2)) {
 			setupTableColumns(
-				column("Label", 100.0f),
+				autoColumn("Label"),
 				column("Boundary Type", 100.0f, ImGuiTableColumnFlags_WidthStretch)
 			);
 
@@ -653,11 +691,14 @@ void SolverGUI::drawPropertiesPanel() {
 		//}
 
 		if (ImGui::BeginTable("Boundary Variable Editor", 4)) {
+			// Variable and Unit hold text ("Static Temperature" overflowed the old
+			// 100px); Condition and Value hold stretch-width widgets, so those keep
+			// explicit widths.
 			setupTableColumns(
-				column("Variable", 100.0f),
-				column("Condition", 100.0f),
-				column("Value", 100.0f),
-				column("Unit", 100.0f)
+				autoColumn("Variable"),
+				column("Condition", 140.0f, ImGuiTableColumnFlags_WidthStretch),
+				column("Value", 110.0f, ImGuiTableColumnFlags_WidthStretch),
+				autoColumn("Unit")
 			);
 
 			ImGui::TableHeadersRow();
@@ -692,7 +733,7 @@ void SolverGUI::drawPropertiesPanel() {
 			if (solver.currentVelocitySolver == SOLVER_SIMPLE) {
 
 				setupTableColumns(
-					column("Label", 250.0f),
+					autoColumn("Label"),
 					column("Value", 150.0f, ImGuiTableColumnFlags_WidthStretch)
 				);
 
@@ -732,8 +773,50 @@ void SolverGUI::drawPropertiesPanel() {
 		}
 	}
 	else if (selectedItem == "Fluid Properties") {
+
+		sectionHeader("Preset");
+		if (beginPropertyTable("FluidPresetTable")) {
+
+			// Derived from the live values every frame rather than stored, so a
+			// hand edit to any property drops the label back to "Custom" instead of
+			// leaving it claiming a preset the numbers no longer match.
+			const int presetIndex = FluidPresets::matchingIndex(solver.f);
+
+			labelRow("Fluid");
+			ImGui::SetNextItemWidth(-FLT_MIN);
+			if (ImGui::BeginCombo("##FluidPreset", FluidPresets::presets[presetIndex].name)) {
+
+				for (int i = 0; i < (int)FluidPresets::presets.size(); i++) {
+
+					const FluidPresets::FluidPreset& preset = FluidPresets::presets[i];
+					const bool selected = (presetIndex == i);
+
+					if (ImGui::Selectable(preset.name, selected)) {
+						FluidPresets::apply(i, solver.f);
+					}
+
+					if (selected) {
+						ImGui::SetItemDefaultFocus();
+					}
+				}
+
+				ImGui::EndCombo();
+			}
+
+			ImGui::EndTable();
+		}
+
 		sectionHeader("Fluid Properties");
-		if (ImGui::BeginTable("Fluid Settings", 3)) {
+		if (ImGui::BeginTable("Fluid Settings", 3, UIFlags::TableSimpleFlags)) {
+
+			// Label and Unit are text, so they auto-fit ("Diffusion Coefficient" did
+			// not fit the old implicit third-of-the-panel column). Value holds a
+			// stretch-width input.
+			setupTableColumns(
+				autoColumn("Label"),
+				column("Value", 120.0f, ImGuiTableColumnFlags_WidthStretch),
+				autoColumn("Unit")
+			);
 
 			labelRow("Density");
 			inputDouble("##Density", solver.f.rho, varUnits.rhoUnit, Units::densityUnits, "%.6g");
@@ -755,15 +838,17 @@ void SolverGUI::drawPropertiesPanel() {
 		}
 	}
 
-	else if (selectedItem == "Transient Settings") {
-		sectionHeader("Transient Settings");
+	else if (selectedItem == "Transient") {
+		sectionHeader("Transient");
 
-		if (ImGui::BeginTable("Transient Settings", 2)) {
+		if (beginPropertyTable("TransientSettings")) {
 
-			setupTableColumns(
-				column("Label", 300.0f),
-				column("Value", 150.0f)
-			);
+			labelRow("Enabled");
+			checkBox("##TransientTerm", &solver.configSolver.transient);
+
+			// Keep the configured values visible while the transient solver is off,
+			// but make it clear that they only take effect once Enabled is checked.
+			ImGui::BeginDisabled(!solver.configSolver.transient);
 
 			// Round-tripped through a local int rather than the (int&) cast the other
 			// combos use: TimeScheme is uint8_t-backed (so it fits ConfigSolver's
@@ -780,15 +865,16 @@ void SolverGUI::drawPropertiesPanel() {
 				project.solver.configSolver.timeScheme = (TimeScheme)timeScheme;
 			}
 
-			labelRow("dt");
+			labelRow("Time Step dt (s)");
 			ImGui::InputDouble("##timeStep", &project.solver.configSolver.dt, 0.0, 0.0, "%.3f");
 
-			labelRow("tEnd");
+			labelRow("End Time tEnd (s)");
 			ImGui::InputDouble("##endTime", &project.solver.configSolver.tEnd, 0.0, 0.0, "%.3f");
 
-			labelRow("Save keyframe every # Iterations");
+			labelRow("Save Keyframe Every # Time Steps");
 			ImGui::InputInt("##saveKeyFrameIter", &project.solver.saveKeyFrameIter, 0.0, 0.0);
 
+			ImGui::EndDisabled();
 			ImGui::EndTable();
 		}
 	}
@@ -841,12 +927,7 @@ void SolverGUI::draw() {
 
 		drawLeaf("Fluid Properties", &assets.icon("fluid_properties"));
 
-		if (solver.configSolver.transient) {
-			if (treeHeader("Transient")) {
-				drawLeaf("Transient Settings");
-				ImGui::TreePop();
-			}
-		}
+		drawLeaf("Transient", &assets.icon("transient"));
 
 		ImGui::EndChild();
 
@@ -856,16 +937,34 @@ void SolverGUI::draw() {
 			solver.continueSolver = false;
 		}
 
-		ImGui::BeginDisabled(!canContinueSolver);
+		const bool running = solver.solverRunning;
+
+		// Continue Solver decides how the NEXT run initializes, so it cannot be
+		// meaningfully toggled once a solve is under way.
+		ImGui::BeginDisabled(!canContinueSolver || running);
 		ImGui::Checkbox("Continue Solver", &solver.continueSolver);
 		ImGui::EndDisabled();
 
-		if (!canContinueSolver &&
-			ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-			ImGui::SetTooltip("%s", continueReason.c_str());
-		}
+		disabledHint(
+			!canContinueSolver || running,
+			running ? "Solver is running." : continueReason.c_str()
+		);
 
-		if (actionButton("Start Solver")) {
+		// Start becomes Stop for the duration of the run. A stop is cooperative:
+		// the solver finishes the iteration it is in, copies its fields back, and
+		// ends there, so the partial result stays usable.
+		if (running) {
+			const bool stopping = solver.stopRequested;
+
+			ImGui::BeginDisabled(stopping);
+			if (actionButton(stopping ? "Stopping..." : "Stop Solver")) {
+				project.solver.requestStop();
+			}
+			ImGui::EndDisabled();
+
+			disabledHint(stopping, "Already stopping; finishing the current iteration.");
+		}
+		else if (actionButton("Start Solver")) {
 			project.solver.run(project.mesh);
 		}
 

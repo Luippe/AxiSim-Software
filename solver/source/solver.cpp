@@ -140,6 +140,7 @@ void Solver::reset() {
     shutdown();
 
     solverRunning = false;
+    stopRequested = false;
     continueSolver = false;
     isReady = false;
     useMultigrid = true;
@@ -180,6 +181,9 @@ void Solver::run(const Mesh& mesh) {
     shutdown();                 // end any previous solver threads
     addFieldType();             // add all solving field
 
+    // Clear before the thread starts, or a stop requested against the previous
+    // run would immediately end this one.
+    stopRequested = false;
     solverRunning = true;
 
     solverThread = std::thread([&]() {
@@ -187,6 +191,17 @@ void Solver::run(const Mesh& mesh) {
         solverRunning = false;
         });
 
+}
+
+void Solver::requestStop() {
+
+    if (!solverRunning) return;
+
+    stopRequested = true;
+
+    if (console) {
+        console->addLine("Stop requested: finishing the current iteration...\n");
+    }
 }
 
 //void Solver::createResidualConfig(int N) {
@@ -334,6 +349,75 @@ namespace {
     void setContinuationReason(std::string* reason, const std::string& text) {
         if (reason) {
             *reason = text;
+        }
+    }
+
+    BoundaryCondition effectiveBoundaryCondition(
+        const BoundarySegmentGroup& group,
+        BoundaryVariable variable
+    ) {
+        BoundaryCondition bc = BoundaryDefaults::makeDefaultBC(group, variable);
+        auto it = group.bcs.find(variable);
+
+        if (it != group.bcs.end() &&
+            BoundaryDefaults::isVariableInBoundaryType(variable, group.type)) {
+            bc = it->second;
+        }
+
+        return bc;
+    }
+
+    // Pulsatile conditions are uploaded once per physical time step. All device
+    // kernels see them as ordinary Dirichlet conditions (set in memory_manager),
+    // with only valueByGroup changing as physical time advances.
+    void updatePulsatileBoundaryValues(
+        const std::vector<BoundarySegmentGroup>& groups,
+        BoundaryVariable variable,
+        double time,
+        BoundaryFieldDevice& deviceField,
+        cudaStream_t stream
+    ) {
+        if (deviceField.nGroups <= 0 || !deviceField.valueByGroup) {
+            return;
+        }
+
+        std::vector<double> values((size_t)deviceField.nGroups, 0.0);
+        bool hasPulsatile = false;
+
+        for (const BoundarySegmentGroup& group : groups) {
+            if (group.id < 0 || group.id >= deviceField.nGroups) {
+                continue;
+            }
+
+            BoundaryCondition bc = effectiveBoundaryCondition(group, variable);
+            values[(size_t)group.id] = bc.valueAtTime(time);
+            hasPulsatile = hasPulsatile || bc.type() == BCType::PULSATILE;
+        }
+
+        if (hasPulsatile) {
+            // The previous time step's kernels still read valueByGroup, and they
+            // run on `stream`, which is cudaStreamNonBlocking -- so the null-stream
+            // copy below does NOT wait for them. Without this sync the new boundary
+            // value can land while the tail of the previous step is still reading
+            // the old one. Same hazard the residual read guards against further
+            // down; see the cudaStreamSynchronize before residualAllHost.
+            //
+            // Sync sits inside the hasPulsatile branch so a run with no pulsatile
+            // BC pays nothing for it.
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+
+            // The group list is tiny and this happens once per time step, so a
+            // synchronous copy avoids pageable-host lifetime hazards without
+            // affecting the cost of the inner SIMPLE iterations. It completes
+            // before this returns, and every kernel that reads the new value is
+            // launched on `stream` afterwards, so host program order is enough to
+            // keep the write ordered against those reads.
+            CUDA_CHECK(cudaMemcpy(
+                deviceField.valueByGroup,
+                values.data(),
+                values.size() * sizeof(double),
+                cudaMemcpyHostToDevice
+            ));
         }
     }
 }
@@ -523,8 +607,12 @@ bool Solver::runCheck(const Mesh& mesh) {
         configSolver.maxIter = 20;
     }
 
-    if (configSimple.nNonOrthCorrectors < 0) {
-        configSimple.nNonOrthCorrectors = 0;
+    // A structured mesh is orthogonal by construction, so the cross term is
+    // identically zero -- running the corrector there only buys extra gradient
+    // kernels. The GUI greys the option out for the same reason; this keeps a
+    // project loaded with the flag already set from paying for it.
+    if (mesh.currentMeshType == MeshType::Structured) {
+        configSimple.useNonOrthCorrector = false;
     }
 
     if (saveKeyFrameIter < 1) {
@@ -548,6 +636,64 @@ bool Solver::runCheck(const Mesh& mesh) {
             }
             return false;
         }
+    }
+
+    bool hasPulsatileInlet = false;
+    double maxPulsatileFrequency = 0.0;
+
+    for (const BoundarySegmentGroup& group : mesh.boundaryGroups) {
+        if (group.type != BoundaryType::VELOCITY_INLET) {
+            continue;
+        }
+
+        const BoundaryVariable velocityVariables[] = {
+            BoundaryVariable::UVelocity,
+            BoundaryVariable::VVelocity
+        };
+
+        for (BoundaryVariable variable : velocityVariables) {
+            BoundaryCondition bc = effectiveBoundaryCondition(group, variable);
+            const auto* pulsatile = std::get_if<PulsatileParams>(&bc.params);
+
+            if (!pulsatile) {
+                continue;
+            }
+
+            hasPulsatileInlet = true;
+
+            if (!std::isfinite(pulsatile->value) ||
+                !std::isfinite(pulsatile->amplitude) || pulsatile->amplitude < 0.0 ||
+                !std::isfinite(pulsatile->frequency) || pulsatile->frequency <= 0.0) {
+                if (console) {
+                    console->addLine(
+                        "Pulsatile inlet '" + group.name +
+                        "' needs a finite mean velocity, A >= 0, and f > 0 Hz.\n"
+                    );
+                }
+                return false;
+            }
+
+            maxPulsatileFrequency =
+                std::max(maxPulsatileFrequency, pulsatile->frequency);
+        }
+    }
+
+    if (hasPulsatileInlet && !configSolver.transient) {
+        if (console) {
+            console->addLine(
+                "Pulsatile inlet requires Transient Solver to be enabled.\n"
+            );
+        }
+        return false;
+    }
+
+    if (hasPulsatileInlet &&
+        configSolver.dt * maxPulsatileFrequency > 0.05 && console) {
+        std::ostringstream warning;
+        warning << "Warning: pulsatile inlet has fewer than 20 time steps per "
+                   "period. For temporal resolution, use dt <= "
+                << (1.0 / (20.0 * maxPulsatileFrequency)) << " s.\n";
+        console->addLine(warning.str());
     }
 
     if (!std::isfinite(f.rho) || !std::isfinite(f.mu) ||
@@ -619,6 +765,7 @@ static void printBoundaryDiagnostics(
         case DIRICHLET:       return "Dirichlet";
         case NEUMANN:         return "Neumann";
         case FULLY_DEVELOPED: return "FullyDeveloped";
+        case PULSATILE:       return "Pulsatile";
         default:              return "None";
         }
     };
@@ -632,20 +779,6 @@ static void printBoundaryDiagnostics(
         case BoundaryType::FAR_FIELD:       return "FarField";
         default:                            return "Unknown";
         }
-    };
-
-    // Resolve the BC the solver actually uses for a variable, mirroring
-    // createBoundaryFieldHost: stored value only when the variable belongs to
-    // the boundary type, otherwise the type's default. Locked presets such as
-    // Symmetry and Far Field therefore always resolve from their definitions.
-    auto effectiveBC = [](const BoundarySegmentGroup& group, BoundaryVariable var) -> BoundaryCondition {
-        BoundaryCondition bc = BoundaryDefaults::makeDefaultBC(group, var);
-        auto it = group.bcs.find(var);
-        if (it != group.bcs.end() &&
-            BoundaryDefaults::isVariableInBoundaryType(var, group.type)) {
-            bc = it->second;
-        }
-        return bc;
     };
 
     std::ostringstream line;
@@ -681,9 +814,16 @@ static void printBoundaryDiagnostics(
         const char* printNames[] = { "U", "V", "P" };
 
         for (int vi = 0; vi < 3; vi++) {
-            BoundaryCondition bc = effectiveBC(group, printVars[vi]);
+            BoundaryCondition bc = effectiveBoundaryCondition(group, printVars[vi]);
             line << "    " << printNames[vi] << ": " << bcTypeName(bc.type())
-                 << " = " << bc.value() << "\n";
+                 << " = " << bc.value();
+
+            if (const auto* pulsatile = std::get_if<PulsatileParams>(&bc.params)) {
+                line << " (mean), A=" << pulsatile->amplitude
+                     << ", f=" << pulsatile->frequency << " Hz";
+            }
+
+            line << "\n";
         }
     }
 
@@ -865,7 +1005,7 @@ void Solver::runSimple(const Mesh& mesh) {
         (convectionScheme == CONV_SECOND_ORDER_UPWIND || convectionScheme == CONV_QUICK);
     bool solveEnergy = fieldOption.solveEnergy;
     bool solveConcentration = fieldOption.solveConcentration;
-    const int applyNonOrtho = (configSimple.nNonOrthCorrectors > 0) ? 1 : 0;
+    const int applyNonOrtho = configSimple.useNonOrthCorrector ? 1 : 0;
 
     // Transient snapshots are kept in memory rather than exported to
     // flow_motion.bin: the binary export wrote a single nr x nz raster block, which
@@ -941,6 +1081,28 @@ void Solver::runSimple(const Mesh& mesh) {
     //print(Nface, N, threadsPerBlock, blocks);
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
+        // The equations for this step are implicit at t_(n+1), so prescribe the
+        // inlet at that same physical time. timeOffset keeps the sine phase
+        // continuous when Continue Solver appends another transient interval.
+        if (transient) {
+            const double stepTime =
+                timeOffset + (double)(tCount + 1) * configSolver.dt;
+            updatePulsatileBoundaryValues(
+                mesh.boundaryGroups,
+                BoundaryVariable::UVelocity,
+                stepTime,
+                bcDevice.u,
+                stream
+            );
+            updatePulsatileBoundaryValues(
+                mesh.boundaryGroups,
+                BoundaryVariable::VVelocity,
+                stepTime,
+                bcDevice.v,
+                stream
+            );
+        }
+
         // Freeze the previous time levels. Every SIMPLE iteration within this step
         // reassembles against the SAME old levels, so this must sit outside the inner
         // loop -- copying it per iteration would make the unsteady term chase the
@@ -990,6 +1152,11 @@ void Solver::runSimple(const Mesh& mesh) {
         bool converged = false;
 
         for (int k = 0; k < configSimple.maxIter; k++) {
+
+            // Checked at the top of the iteration so a stop never leaves the
+            // fields half-updated: the previous iteration completed the full
+            // SIMPLE sequence, so what is on the device is a consistent state.
+            if (stopRequested) break;
 
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (uCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (vCoeff);
@@ -1057,7 +1224,9 @@ void Solver::runSimple(const Mesh& mesh) {
             // gradPZ/gradPR are reused below to hold grad(p'); they are no longer
             // needed for Rhie-Chow until the next outer iteration. p' starts at 0,
             // so the first corrector pass has a zero cross term (pure orthogonal).
-            const int nNonOrth = configSimple.nNonOrthCorrectors;
+            // corr = 0 is the pure orthogonal pass (p' starts at 0, so the cross
+            // term is zero); the corrector adds exactly one more pass on top.
+            const int nNonOrth = configSimple.useNonOrthCorrector ? 1 : 0;
 
             cudaMemsetAsync(simple.pp, 0, N * sizeof(double), stream);
             cudaMemsetAsync(simple.ppTemp, 0, N * sizeof(double), stream);
@@ -1200,13 +1369,26 @@ void Solver::runSimple(const Mesh& mesh) {
         }
 
         // Capture on the keyframe interval, and always on the last step so the
-        // animation ends on the same state the steady results show.
-        const bool lastStep = (tCount == numSteps - 1);
+        // animation ends on the same state the steady results show. A stopped
+        // run counts as ending here, so capture that step too rather than
+        // dropping the interval the user actually watched.
+        const bool lastStep = (tCount == numSteps - 1) || stopRequested;
 
         if (transient && (tCount % saveKeyFrameIter == 0 || lastStep)) {
             CUDA_CHECK(cudaStreamSynchronize(stream));
             captureTimeFrame(timeOffset + (double)(tCount + 1) * configSolver.dt, N);
         }
+
+        if (stopRequested) break;
+    }
+
+    // Fall through to the copy-back below rather than returning: the fields are
+    // at a consistent iteration, so the partial solution is still worth showing
+    // and Continue Solver can resume from currentIteration.
+    if (stopRequested && console) {
+        std::ostringstream stopMsg;
+        stopMsg << "Solver stopped by user at iteration " << currentIteration << "\n";
+        console->addLine(stopMsg.str());
     }
 
     if (transient && console) {

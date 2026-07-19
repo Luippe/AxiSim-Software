@@ -81,6 +81,7 @@ namespace BoundaryGet {
 		case BCType::MICHAELIS_MENTEN:	return "Michaelis Menten";
 		case BCType::HILL:				return "Hill";
 		case BCType::NONE:				return "None";
+		case BCType::PULSATILE:			return "Pulsatile";
 		default:						return "Unknown";
 		}
 	}
@@ -204,7 +205,7 @@ namespace BoundaryDefaults {
 			case BoundaryVariable::UVelocity:
 				switch (group.includesOrientation) {
 				case EdgeOrient::Vertical:
-					return { BCType::DIRICHLET, BCType::FULLY_DEVELOPED };
+					return { BCType::DIRICHLET, BCType::FULLY_DEVELOPED, BCType::PULSATILE };
 				case EdgeOrient::Horizontal:
 					return { BCType::DIRICHLET };
 				case EdgeOrient::Both:
@@ -216,7 +217,7 @@ namespace BoundaryDefaults {
 			case BoundaryVariable::VVelocity:
 				switch (group.includesOrientation) {
 				case EdgeOrient::Horizontal:
-					return { BCType::DIRICHLET, BCType::FULLY_DEVELOPED };
+					return { BCType::DIRICHLET, BCType::FULLY_DEVELOPED, BCType::PULSATILE };
 				case EdgeOrient::Vertical:
 					return { BCType::DIRICHLET };
 				case EdgeOrient::Both:
