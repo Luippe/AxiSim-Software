@@ -367,6 +367,12 @@ void Menu::drawUnitsModal() {
 
 		VariableUnits& u = project.solver.varUnits;
 
+		// Set by any row whose dropdown is open this frame. A combo's dropdown is
+		// its own root window, not a child of this modal, so clicks inside it read
+		// as "outside" to the click-away test below and would close the whole
+		// modal the moment a unit is picked.
+		bool comboOpen = false;
+
 		// one label + unit dropdown row; works for any Units table (UnitOption
 		// or LinearUnitOption, both expose .name).
 		auto unitRow = [&](
@@ -385,6 +391,7 @@ void Menu::drawUnitsModal() {
 
 			ImGui::PushID(label);
 			if (ImGui::BeginCombo("##unit", table[index].name)) {
+				comboOpen = true;
 				for (int i = 0; i < (int)(table.size()); i++) {
 					bool isSelected = index == i;
 					if (ImGui::Selectable(table[i].name, isSelected)) {
@@ -414,6 +421,7 @@ void Menu::drawUnitsModal() {
 
 			ImGui::PushID(label);
 			if (ImGui::BeginCombo("##unit", Units::lengthUnits[ls.index].name)) {
+				comboOpen = true;
 				for (int i = 0; i < (int)(Units::lengthUnits.size()); i++) {
 					bool isSelected = ls.index == i;
 					if (ImGui::Selectable(Units::lengthUnits[i].name, isSelected)) {
@@ -465,6 +473,7 @@ void Menu::drawUnitsModal() {
 		bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
 		bool clickedOutside =
 			!justOpened &&
+			!comboOpen &&
 			!ImGui::IsAnyItemActive() &&
 			!ImGui::IsAnyItemHovered() &&
 			!hovered &&
