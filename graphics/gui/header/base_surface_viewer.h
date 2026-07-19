@@ -544,7 +544,7 @@ protected:
 	bool toggleDrawCircle = false;
 	bool toggleDrawRect = false;
 	bool toggleRuler = false;
-	bool toggleGrid = false;
+	bool toggleGrid = true;
 
 	ImVec2 currentMousePos = ImVec2(0.0f, 0.0f);
 
