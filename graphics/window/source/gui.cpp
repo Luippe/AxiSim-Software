@@ -499,9 +499,9 @@ void GUI::render() {
 			scene.render();
 			inspector.render();
 
-			if (project.solver.configSolver.transient) {
-				animationGUI.render();
-			}
+			// self-gating: draws nothing unless the last run captured frames, so it
+			// survives the Transient checkbox being toggled after a solve
+			animationGUI.render();
 		}
 		break;
 	}

@@ -652,6 +652,12 @@ void allocateSimple(
 	copyHostToDevice(vars.vOld, h_v);
 	copyHostToDevice(vars.tempOld, h_temp);
 	copyHostToDevice(vars.concOld, h_conc);
+
+	// time level n-1 for BDF2
+	copyHostToDevice(vars.uOld2, h_u);
+	copyHostToDevice(vars.vOld2, h_v);
+	copyHostToDevice(vars.tempOld2, h_temp);
+	copyHostToDevice(vars.concOld2, h_conc);
 	copyHostToDevice(vars.mDot, h_mDot);
 
 	copyHostToDevice(vars.u, h_u);

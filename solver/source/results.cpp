@@ -122,6 +122,10 @@ void Results::reset() {
 	shownFields.clear();
 	fieldType.clear();
 
+	animationFrames.clear();
+	animationRanges.clear();
+	currentAnimationFrame = 0;
+
 	currentField = nullptr;
 	currentItem = 0;
 
@@ -138,10 +142,6 @@ void Results::reset() {
 void Results::setTextureShadingAllField(GLint shadingMode) {
 
 	//results.currentField->textureBuffer.setTextureShading(shadingMode);
-}
-
-void Results::updateTextureBuffer(const void* data) {
-	currentField->textureBuffer.updateBuffer(g.nz + 1, g.nr + 1, GL_RED, GL_FLOAT, data);
 }
 
 void Results::copyData(const Mesh& mesh, const Solver& solver) {
@@ -176,6 +176,10 @@ void Results::generate(Mesh& mesh, Solver& solver) {
 	createFields(mesh, solver);
 	updateCurrentField();
 
+	// transient snapshots, if the run captured any. Built after createFields so the
+	// frames can reuse each solution's geometry/metadata.
+	createAnimationFrames(mesh, solver);
+
 	// prune stale shown-field names and seed a default so the inspector has a tab
 	syncShownFields();
 
@@ -188,66 +192,176 @@ void Results::generate(Mesh& mesh, Solver& solver) {
 
 }
 
-void Results::createFields(const Mesh& mesh, const Solver& solver) {
+Field Results::buildField(
+	const Mesh& mesh,
+	const Solver& solver,
+	const SolutionField& solution,
+	const std::vector<int>& rasterToCell,
+	bool createTexture
+) const {
 
-	// A multiblock mesh has no single nr x nz raster: its FVMesh cells are numbered
-	// per block, and fvMesh.nr/nz are 0. The results renderer (3D cylinders + the 2D
-	// inspector) is raster-based and indexes fields as i*nz+j, so the per-cell
-	// multiblock solution must first be resampled onto the raster grid (mesh.g).
-	if (mesh.isMultiBlock) {
-		createFieldsMultiBlock(mesh);
-		return;
+	Field newField;
+
+	if (!mesh.isMultiBlock) {
+		newField.generate(solution, solver.fvMesh, mesh.boundaryGroups, createTexture);
+		return newField;
 	}
-
-	for (const std::string& name : fieldType) {
-
-		// generate new field
-		Field newField;
-		newField.generate(solutions[name], solver.fvMesh, mesh.boundaryGroups);
-
-		// insert new field
-		fields[name] = newField;
-
-	}
-}
-
-void Results::createFieldsMultiBlock(const Mesh& mesh) {
 
 	const GridConfig& grid = mesh.g;
 	const int nrRaster = grid.nr;
 	const int nzRaster = grid.nz;
-	const int nRasterCells = nrRaster * nzRaster;
+	const int nRasterCells = std::max(nrRaster * nzRaster, 0);
+
+	// Resample the multiblock solution onto the raster grid for the 3D cylinder
+	// view only, which is raster-based (Field::generateRaster indexes i*nz+j).
+	// Build it into a LOCAL copy and DO NOT write it back to solutions[] -- the 2D
+	// inspector renders the real block cells and indexes solutions[].field in
+	// block/cellGlobal order (the exact solver values). Cells with no covering
+	// block (obstacles / outside the domain) read 0 in the raster.
+	SolutionField rasterSol = solution;
+	std::vector<double> raster(static_cast<size_t>(nRasterCells), 0.0);
+
+	for (int n = 0; n < nRasterCells && n < (int)rasterToCell.size(); n++) {
+		const int c = rasterToCell[n];
+		if (c >= 0 && c < (int)solution.field.size()) {
+			raster[n] = solution.field[c];
+		}
+	}
+
+	rasterSol.field = std::move(raster);
+	rasterSol.dr = grid.dr;
+	rasterSol.dz = grid.dz;
+
+	newField.generateRaster(rasterSol, nrRaster, nzRaster, createTexture);
+	return newField;
+}
+
+void Results::createFields(const Mesh& mesh, const Solver& solver) {
 
 	// One raster -> multiblock-cell map, shared by every field this generate.
-	const std::vector<int> rasterToCell = mesh.buildMultiBlockRasterMap();
+	const std::vector<int> rasterToCell =
+		mesh.isMultiBlock ? mesh.buildMultiBlockRasterMap() : std::vector<int>{};
 
 	for (const std::string& name : fieldType) {
+		fields[name] = buildField(mesh, solver, solutions[name], rasterToCell, true);
+	}
+}
 
-		const SolutionField& sol = solutions[name];
+bool Results::animationRangeFor(const std::string& name, float& vmin, float& vmax) const {
 
-		// Resample the multiblock solution onto the raster grid for the 3D cylinder
-		// view only, which is raster-based (Field::generateRaster indexes i*nz+j).
-		// Build it into a LOCAL copy and DO NOT write it back to solutions[] -- the 2D
-		// inspector renders the real block cells and indexes solutions[].field in
-		// block/cellGlobal order (the exact solver values). Cells with no covering
-		// block (obstacles / outside the domain) read 0 in the raster.
-		SolutionField rasterSol = sol;
-		std::vector<double> raster(static_cast<size_t>(std::max(nRasterCells, 0)), 0.0);
-		for (int n = 0; n < nRasterCells; n++) {
-			const int c = rasterToCell[n];
-			if (c >= 0 && c < (int)sol.field.size()) {
-				raster[n] = sol.field[c];
+	auto it = animationRanges.find(name);
+	if (it == animationRanges.end()) {
+		return false;
+	}
+
+	vmin = it->second.vmin;
+	vmax = it->second.vmax;
+	return true;
+}
+
+void Results::createAnimationFrames(const Mesh& mesh, const Solver& solver) {
+
+	animationFrames.clear();
+	animationRanges.clear();
+	currentAnimationFrame = 0;
+
+	if (solver.timeFrames.empty()) {
+		return;
+	}
+
+	const std::vector<int> rasterToCell =
+		mesh.isMultiBlock ? mesh.buildMultiBlockRasterMap() : std::vector<int>{};
+
+	animationFrames.reserve(solver.timeFrames.size());
+
+	for (const Solver::TimeFrame& timeFrame : solver.timeFrames) {
+
+		AnimationFrame frame;
+		frame.time = timeFrame.time;
+
+		for (const auto& [name, values] : timeFrame.fields) {
+
+			// The solver only captures primary fields; anything else (gradients,
+			// continuity) has no per-step data and stays at its final-state value.
+			auto solIt = solutions.find(name);
+			if (solIt == solutions.end()) {
+				continue;
 			}
+
+			// Reuse the final solution's geometry/metadata and swap in this
+			// instant's values, so the frame builds through the identical path.
+			SolutionField sol = solIt->second;
+			sol.field = values;
+
+			Field field = buildField(mesh, solver, sol, rasterToCell, false);
+
+			// Seed on the first frame that carries this field, then widen. Starting
+			// from a default-constructed 0/0 would drag every range towards zero.
+			auto rangeIt = animationRanges.find(name);
+			if (rangeIt == animationRanges.end()) {
+				animationRanges[name] = FieldRange{ field.vmin, field.vmax };
+			}
+			else {
+				rangeIt->second.vmin = std::min(rangeIt->second.vmin, field.vmin);
+				rangeIt->second.vmax = std::max(rangeIt->second.vmax, field.vmax);
+			}
+
+			frame.solutions[name] = std::move(sol);
+			frame.fields[name] = std::move(field);
 		}
 
-		rasterSol.field = std::move(raster);
-		rasterSol.dr = grid.dr;
-		rasterSol.dz = grid.dz;
-
-		Field newField;
-		newField.generateRaster(rasterSol, nrRaster, nzRaster);
-		fields[name] = std::move(newField);
+		animationFrames.push_back(std::move(frame));
 	}
+}
+
+void Results::showAnimationFrame(int index) {
+
+	if (index < 0 || index >= (int)animationFrames.size()) {
+		return;
+	}
+
+	const AnimationFrame& frame = animationFrames[index];
+
+	// The 2D inspector reads solutions[].field live every draw, so swapping the
+	// values here is all it needs.
+	for (const auto& [name, sol] : frame.solutions) {
+		auto it = solutions.find(name);
+		if (it != solutions.end()) {
+			it->second.field = sol.field;
+		}
+	}
+
+	// The 3D scene samples each field's GL texture and its cellValues, both of
+	// which live on the persistent Field -- frame fields carry no texture, so the
+	// values are copied in and re-uploaded rather than the pointer being swapped.
+	for (const auto& [name, frameField] : frame.fields) {
+
+		auto it = fields.find(name);
+		if (it == fields.end()) {
+			continue;
+		}
+
+		Field& live = it->second;
+
+		live.vertexValues = frameField.vertexValues;
+		live.cellValues = frameField.cellValues;
+
+		float vmin = frameField.vmin;
+		float vmax = frameField.vmax;
+		animationRangeFor(name, vmin, vmax);
+		live.setMinMax(vmin, vmax);
+
+		// nr/nz come from the Field itself, matching what createBuffer allocated.
+		live.textureBuffer.updateBuffer(
+			live.nz + 1,
+			live.nr + 1,
+			GL_RED,
+			GL_FLOAT,
+			live.vertexValues.data()
+		);
+	}
+
+	currentAnimationFrame = index;
 }
 
 void Results::updateCurrentField() {
@@ -323,26 +437,25 @@ void Results::syncShownFields() {
 		shownFields.end()
 	);
 
-	// seed a default set the first time results are generated: the core flow fields
-	// plus whichever scalar solvers are active. Temperature/Concentration are only
-	// present in fieldType when their solver is enabled, so membership alone gates them.
+	// Ensure every generated result shows the core flow fields by default, while
+	// preserving any extra tabs the user added. Temperature and Concentration only
+	// exist in fieldType when their corresponding solver is enabled, so they are
+	// added automatically as soon as results are regenerated with that solver.
+	const char* defaults[] = {
+		"Axial Velocity", "Radial Velocity", "Continuity", "Pressure",
+		"Temperature", "Concentration"
+	};
+
+	for (const char* name : defaults) {
+		if (indexOfField(name) >= 0 && !isShown(name)) {
+			shownFields.push_back(name);
+		}
+	}
+
+	// Nothing matched (unexpected) — fall back to the current field so the
+	// inspector still has a tab.
 	if (shownFields.empty() && !fieldType.empty()) {
-		const char* defaults[] = {
-			"Axial Velocity", "Radial Velocity", "Continuity",
-			"Temperature", "Concentration"
-		};
-
-		for (const char* name : defaults) {
-			if (indexOfField(name) >= 0) {
-				shownFields.push_back(name);
-			}
-		}
-
-		// nothing matched (unexpected) — fall back to the current field so the
-		// inspector still has a tab
-		if (shownFields.empty()) {
-			int seed = std::clamp(currentItem, 0, (int)fieldType.size() - 1);
-			shownFields.push_back(fieldType[seed]);
-		}
+		int seed = std::clamp(currentItem, 0, (int)fieldType.size() - 1);
+		shownFields.push_back(fieldType[seed]);
 	}
 }

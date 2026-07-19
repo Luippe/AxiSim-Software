@@ -16,69 +16,9 @@ AnimationGUI::AnimationGUI(Project& project, GUI& gui) :
 
 }
 
-void AnimationGUI::loadAnimation(const std::string& filename) {
+void AnimationGUI::updateCurrentFrame(int frameCount) {
 
-	//std::ifstream in(filename, std::ios::binary);
-
- //   frames.clear();
-
- //   std::vector<double> dr, dz;
- //   readAll(in, nr, nz, dr, dz);
-
- //   BoundaryConditionConfig uBC;
- //   BoundaryConditionConfig vBC;
- //   BoundaryConditionConfig pBC;
- //   readBoundaryConditionConfig(in, uBC, vBC, pBC);
-
- //   SolutionField uSol{{}, nr, nz + 1, dr, dz, CellStoreType::AXIAL};
- //   SolutionField vSol{{}, nr + 1, nz, dr, dz, CellStoreType::RADIAL };
- //   SolutionField pSol{{}, nr, nz, dr, dz, CellStoreType::CENTER };
-
- //   Field uField{ nz, nr };
- //   Field vField{ nz, nr };
- //   Field pField{ nz, nr };
-
- //   MinMaxGlobal uMinMax;
- //   MinMaxGlobal vMinMax;
- //   MinMaxGlobal pMinMax;
-
-	//while (true) {
-	//	FlowFrame frame;
-
-	//	if (!readBinary(in, frame.time)) break;
- //       if (!readBinary(in, uSol.field, vSol.field, pSol.field)) break;
-
- //       uField.generate(uSol, uBC);
- //       vField.generate(vSol, vBC);
- //       pField.generate(pSol, pBC);
-
- //       uMinMax.vmin = std::min(uField.vmin, uMinMax.vmin);
- //       uMinMax.vmax = std::max(uField.vmax, uMinMax.vmax);
-
- //       vMinMax.vmin = std::min(vField.vmin, vMinMax.vmin);
- //       vMinMax.vmax = std::max(vField.vmax, vMinMax.vmax);
-
- //       pMinMax.vmin = std::min(pField.vmin, pMinMax.vmin);
- //       pMinMax.vmax = std::max(pField.vmax, pMinMax.vmax);
-
- //       frame.fields.push_back(uField);
- //       frame.fields.push_back(vField);
- //       frame.fields.push_back(pField);
- //      
-	//	frames.push_back(std::move(frame));
-
-	//}
-
- //   minmaxGlobals.push_back(uMinMax);
- //   minmaxGlobals.push_back(vMinMax);
- //   minmaxGlobals.push_back(pMinMax);
-
- //   updateCurrentField();
- //   isReady = true;
-}
-
-void AnimationGUI::updateCurrentFrame() {
-    if (!isPlaying || frames.empty()) {
+    if (!isPlaying || frameCount <= 0) {
         return;
     }
 
@@ -92,26 +32,13 @@ void AnimationGUI::updateCurrentFrame() {
 
         currentFrame++;
 
-        if (currentFrame >= (int)(frames.size())) {
+        if (currentFrame >= frameCount) {
             currentFrame = 0; // loop animation
         }
     }
 }
 
-void AnimationGUI::updateCurrentField() {
-
-    Field& currentField = frames[currentFrame].fields[project.results.currentItem];
-    project.results.currentField = &currentField;
-    project.results.updateTextureBuffer(currentField.vertexValues.data());
-
-    project.results.currentField->setMinMax(
-        minmaxGlobals[project.results.currentItem].vmin,
-        minmaxGlobals[project.results.currentItem].vmax
-    );
-
-}
-
-void AnimationGUI::handleEvents() {
+void AnimationGUI::handleEvents(int frameCount) {
 
     if (!ImGui::IsWindowFocused()) return;
 
@@ -122,7 +49,7 @@ void AnimationGUI::handleEvents() {
 
     // step forward a frame
     if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
-        currentFrame = std::clamp(currentFrame + 1, 0, (int)(frames.size() - 1));
+        currentFrame = std::clamp(currentFrame + 1, 0, frameCount - 1);
     }
 
     // step back a frame
@@ -136,21 +63,25 @@ void AnimationGUI::handleEvents() {
 // ======================================================================
 void AnimationGUI::render() {
 
+    Results& results = project.results;
+
+    // A steady run, or a transient run that captured a single frame, has nothing
+    // to play -- leave the results views showing the final state untouched.
+    if (!results.hasAnimation()) {
+        return;
+    }
+
+    const int frameCount = (int)results.animationFrames.size();
+
+    // A re-solve can shorten the run, so never trust the previous index.
+    currentFrame = std::clamp(currentFrame, 0, frameCount - 1);
+
     ImGui::SetNextWindowSize(ImVec2(scene.rectSize.x * 0.33f, 70.0f), ImGuiCond_Always);
     ImGui::SetNextWindowPos(ImVec2(scene.rectPos.x + scene.rectSize.x * 0.33f, scene.rectPos.y + scene.rectSize.y - 90), ImGuiCond_Always);
 
     ImGui::Begin("Animation", nullptr, UIFlags::AnimationWindowFlags);
 
-    if (frames.empty()) {
-        ImGui::Text("No animation loaded.");
-        if (ImGui::Button("load")) {
-            loadAnimation("flow_motion.bin");
-        }
-        ImGui::End();
-        return;
-    }
-
-    handleEvents();
+    handleEvents(frameCount);
 
     if (ImGui::Button(isPlaying ? "Pause" : "Play")) {
         isPlaying = !isPlaying;
@@ -164,6 +95,9 @@ void AnimationGUI::render() {
         isPlaying = false;
     }
 
+    ImGui::SameLine();
+    ImGui::Text("t = %.4g   (%d fps)", results.animationFrames[currentFrame].time, fps);
+
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
     ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 180));
 
@@ -174,7 +108,7 @@ void AnimationGUI::render() {
     float sliderW = availW - plusW - minusW;
 
     ImGui::SetNextItemWidth(sliderW);
-    ImGui::SliderInt("##Frame", &currentFrame, 0, frames.size() - 1);
+    ImGui::SliderInt("##Frame", &currentFrame, 0, frameCount - 1);
 
     ImGui::SameLine(0.0f, 0.0f);
     if (ImGui::Button("-##frame")) {
@@ -189,11 +123,13 @@ void AnimationGUI::render() {
     ImGui::PopStyleColor();
     ImGui::PopStyleVar();
 
-    updateCurrentFrame();
+    updateCurrentFrame(frameCount);
 
-    // update whenever frame changes
-    if (currentFrame != previousFrame && isReady) {
-        updateCurrentField();
+    // update whenever frame changes. previousFrame starts at -1 so the first draw
+    // always applies a frame, otherwise the views would keep showing the final
+    // state until the user scrubbed.
+    if (currentFrame != previousFrame) {
+        results.showAnimationFrame(currentFrame);
         previousFrame = currentFrame;
     }
 

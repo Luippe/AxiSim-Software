@@ -136,23 +136,60 @@ addDiffusionCoefficient(
 	double constVar
 );
 
+// Implicit unsteady term, assembled so the system solves for phi at the NEW time
+// level. phiOld2 (time level n-1) selects the scheme:
+//
+//   null      backward Euler, first order:  AC += c*V/dt
+//   non-null  BDF2, second order:           AC += 3/2 * c*V/dt
+//
+// Pass null on the first step of a run even in BDF2 mode -- there is no n-1 level
+// to difference against yet, which is the standard multistep startup.
+//
+// `capacity` is whatever multiplies d(phi)/dt in the conservation equation, and must
+// match the flux scaling the rest of the equation uses. Momentum convects the MASS
+// flux and diffuses with mu, so it passes rho. Temperature and concentration convect
+// the VOLUMETRIC flux (fluxScale = 1/rho) and diffuse with a kinematic diffusivity,
+// so they pass 1.0 -- passing rho there would silently rescale their time constant.
+//
+// Cell volume comes from the mesh, so this works on every mesh type, unlike the
+// structured-index version it replaces (which indexed g.d_rFace/d_dz through nr/nz
+// and could never run on the face path).
 __global__
-void addUTransientCoefficient(Config config, Coefficients uCoeff, VariablesSimple simple, double dt);
-
-__global__
-void addVTransientCoefficient(Config config, Coefficients vCoeff, VariablesSimple simple, double dt);
+void addTransientCoefficient(
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	const double* phiOld,
+	const double* phiOld2,
+	double capacity,
+	double dt
+);
 
 // fluxScale multiplies the face MASS flux (mDot = rho*u*area) before it is used
 // as the convecting flux F. Momentum convects mass, so it passes 1.0. A passive
 // scalar (species concentration) convects with the VOLUMETRIC flux u*area, so it
 // passes 1/rho to divide the density out and stay consistent with the kinematic
 // diffusivity (f.D) used by addDiffusionCoefficient.
+//
+// `scheme` selects the face interpolation, applied by DEFERRED CORRECTION: the
+// matrix is always the first-order upwind operator and the higher-order difference
+// is added to the RHS, lagged one outer iteration. That keeps the system an
+// M-matrix for Jacobi/Gauss-Seidel/multigrid while converging to the higher-order
+// solution.
+//
+// CONV_SECOND_ORDER_UPWIND and CONV_QUICK read gradPhiZ/gradPhiR at the upwind
+// cell, so the caller MUST have filled them for this field before launching this
+// kernel. Passing null gradients silently degrades those schemes to upwind.
+// CONV_UPWIND and CONV_CENTRAL ignore them.
 __global__
 void addConvectionCoefficient(
 	FVMeshDevice mesh,
 	VariablesSimple simple,
 	Coefficients coeff,
 	BoundaryFieldDevice bc,
+	const double* phi,
+	const double* gradPhiZ,
+	const double* gradPhiR,
+	ConvectionScheme scheme,
 	double fluxScale
 );
 

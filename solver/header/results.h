@@ -17,7 +17,43 @@ class Solver;
 class Results {
 public:
 
+	// One instant of a transient run, ready to display. Both halves are needed
+	// because the two results views read different data: the 2D inspector colors
+	// real mesh cells from solutions[].field, while the 3D scene samples the
+	// raster texture built from Field::vertexValues.
+	struct AnimationFrame {
+		double time = 0.0;
+		std::unordered_map<std::string, SolutionField> solutions;
+		std::unordered_map<std::string, Field> fields;	// no GL texture of their own
+	};
 
+	// Value range of one field across the WHOLE run. Playback pins the colorbar to
+	// this instead of each frame's own range, so colors mean the same thing in
+	// every frame and the legend does not jitter as the animation plays.
+	struct FieldRange {
+		float vmin = 0.0f;
+		float vmax = 0.0f;
+	};
+
+	std::vector<AnimationFrame> animationFrames;
+	std::unordered_map<std::string, FieldRange> animationRanges;
+
+	// index of the frame currently pushed into solutions/fields
+	int currentAnimationFrame = 0;
+
+	// true once a transient run produced something worth playing
+	bool hasAnimation() const { return animationFrames.size() > 1; }
+
+	// Whole-run range for a field, when one exists. Views use this during playback
+	// instead of recomputing per frame.
+	bool animationRangeFor(const std::string& name, float& vmin, float& vmax) const;
+
+	// build the animation frames from the solver's captured time frames
+	void createAnimationFrames(const Mesh& mesh, const Solver& solver);
+
+	// push one frame's data into solutions/fields so every results view shows that
+	// instant. No-op on an out-of-range index.
+	void showAnimationFrame(int index);
 
 	CompareType currentCompareType = CompareType::None;
 	FilterValues filterValues;
@@ -68,12 +104,9 @@ public:
 	void addShownField(const std::string& name);
 	void removeShownField(const std::string& name);
 
-	// drop stale names from shownFields after fieldType changes, and seed a default
-	// so the inspector isn't blank the first time results are generated.
+	// Drop stale names after fieldType changes and ensure every generated result
+	// shows the available default flow/scalar fields while preserving extra tabs.
 	void syncShownFields();
-
-	// update current buffer with new data, as texture buffers cannot be copied over, they must be updated instead
-	void updateTextureBuffer(const void* data);
 
 	// set shading mode for all fields
 	void setTextureShadingAllField(GLint shadingMode);
@@ -100,13 +133,22 @@ public:
 	// generate all fields
 	void createFields(const Mesh& mesh, const Solver& solver);
 
-	// resample a multiblock solution onto the raster grid (mesh.g) and build the
-	// raster-based fields the results/inspector renderers expect
-	void createFieldsMultiBlock(const Mesh& mesh);
-
 	void generate(Mesh& mesh, Solver& solver);
 
 private:
+
+	// Build one Field from a cell-centered solution. A multiblock mesh has no single
+	// nr x nz raster -- its FVMesh cells are numbered per block and fvMesh.nr/nz are
+	// 0 -- so its solution is first resampled onto the raster grid (mesh.g) that the
+	// raster-based renderers index as i*nz+j. rasterToCell is only read on that path
+	// and may be empty otherwise.
+	Field buildField(
+		const Mesh& mesh,
+		const Solver& solver,
+		const SolutionField& solution,
+		const std::vector<int>& rasterToCell,
+		bool createTexture
+	) const;
 
 	//Field uField;
 	//Field vField;

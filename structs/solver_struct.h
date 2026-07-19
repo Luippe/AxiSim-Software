@@ -186,6 +186,17 @@ struct ConfigMultigrid {
 
 };
 
+// Time discretization for a transient run.
+//
+// Backed by uint8_t on purpose: it drops into ConfigSolver's existing padding so
+// sizeof(ConfigSolver) does not change. file_manager serializes ConfigSolver as a
+// raw byte blob, so a size change would silently misread every .bin saved before
+// this field existed. See the static_assert below.
+enum class TimeScheme : uint8_t {
+	TIME_FIRST_ORDER  = 0,		// backward Euler
+	TIME_SECOND_ORDER = 1		// BDF2
+};
+
 struct ConfigSolver {
 
 	LinearSolverType type = LINEAR_JACOBI;
@@ -194,15 +205,26 @@ struct ConfigSolver {
 	bool addConvectionTerm = true;
 	bool transient = false;
 
+	// Placed here, inside the padding that already followed the two bools, rather
+	// than after tEnd where it would grow the struct.
+	TimeScheme timeScheme = TimeScheme::TIME_FIRST_ORDER;
+
 	double dt = 0.1;
 	double tEnd = 2.0;
 };
+
+// Old projects are loaded by reading sizeof(ConfigSolver) bytes straight over this
+// struct, so its size is part of the .bin format. If a field is added that pushes
+// this past 32, either shrink it back into the padding or bump solverFileVersion in
+// file_manager.cpp (which makes older saves fall back to defaults instead of
+// misreading). Do not just update the number here.
+static_assert(sizeof(ConfigSolver) == 32, "ConfigSolver size changed -- see file_manager solverFileVersion");
 
 struct ConfigResidual {
 
 	ResidualType type				= RESIDUAL_SCALED;
 
-	ResidualNormType normType		= RESIDUAL_LINF;
+	ResidualNormType normType		= RESIDUAL_L1;
 	ResidualScalingType scaleType	= RESIDUAL_SCALING_DIAGONAL;
 
 	bool enabled = false;
@@ -244,6 +266,14 @@ struct VariablesSimple {
 	double* tempOld = nullptr;
 	double* concOld = nullptr;
 
+	// Time level n-1, needed only by BDF2 (the first-order scheme reads uOld alone).
+	// Allocated unconditionally so switching the scheme between runs does not
+	// require a reallocation.
+	double* uOld2 = nullptr;
+	double* vOld2 = nullptr;
+	double* tempOld2 = nullptr;
+	double* concOld2 = nullptr;
+
 	double* gradPZ = nullptr;
 	double* gradPR = nullptr;
 
@@ -269,6 +299,7 @@ struct VariablesSimple {
 
 	void free() {
 		freeAllDev(DU, DV, p, pp, u, v, temp, conc, uTemp, vTemp, ppTemp, tempTemp, concTemp, uOld, vOld, tempOld, concOld, gradPZ, gradPR, gradUZ, gradUR, gradVZ, gradVR, gradTZ, gradTR, gradCZ, gradCR, mDot);
+		freeAllDev(uOld2, vOld2, tempOld2, concOld2);
 	}
 };
 

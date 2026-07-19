@@ -1045,16 +1045,76 @@ void addRadialMomentumCylindricalSource(
 // ==============================================================
 // ==================CONVECTION TERM=============================
 // ==============================================================
+// Higher-order face value for the deferred correction. Returns the first-order
+// upwind value itself when the scheme is upwind or the data it needs is missing,
+// which makes the correction below vanish.
+__device__
+double higherOrderFaceValue(
+	int n,
+	int nb,
+	int faceID,
+	FVMeshDevice mesh,
+	BoundaryFieldDevice fieldBC,
+	const double* phi,
+	const double* gradPhiZ,
+	const double* gradPhiR,
+	ConvectionScheme scheme,
+	double F,
+	double phiUD
+) {
+	if (scheme == CONV_CENTRAL) {
+		// Linear interpolation between the two cell centers. Always a convex
+		// combination of phiP/phiN, so it needs no limiting -- but see the
+		// boundedness note at the call site: central is second order and
+		// oscillatory above cell Peclet ~2 regardless of the face value's range.
+		return interpolateFieldToFace(n, faceID, mesh, fieldBC, phi);
+	}
+
+	// Second-order (linear) upwind, and QUICK which is not reachable from the UI
+	// and falls back here: extrapolate from the UPWIND cell along the vector to
+	// the face using that cell's gradient.
+	//
+	// phi_f = phi_U + grad(phi)_U . (r_f - r_U)
+	//
+	// The classic QUICK stencil needs a far-upwind cell, which a general face list
+	// does not provide; the gradient form is the standard unstructured equivalent.
+	if (!gradPhiZ || !gradPhiR) {
+		return phiUD;			// gradients not available -> stay first order
+	}
+
+	int up = (F > 0.0) ? n : nb;
+
+	double dz = mesh.faces.centerZ[faceID] - mesh.cells.centerZ[up];
+	double dr = mesh.faces.centerR[faceID] - mesh.cells.centerR[up];
+
+	double phiHO = phi[up] + gradPhiZ[up] * dz + gradPhiR[up] * dr;
+
+	// Clip the extrapolation into the range spanned by the two cells sharing the
+	// face. Unlimited linear upwind overshoots near sharp gradients, and for
+	// concentration an overshoot below zero would feed a negative value into the
+	// Michaelis-Menten pow() at the wall. Clipping reduces the scheme to upwind at
+	// local extrema, which is what makes it bounded.
+	double lo = fmin(phi[n], phi[nb]);
+	double hi = fmax(phi[n], phi[nb]);
+
+	return fmin(fmax(phiHO, lo), hi);
+}
+
 __device__
 void addConvectionContribution(
 	int n,
 	int nb,
+	int faceID,
 	FVMeshDevice mesh,
 	double F,
 	bool isBoundary,
 	int groupID,
 	Coefficients coeff,
-	BoundaryFieldDevice fieldBC
+	BoundaryFieldDevice fieldBC,
+	const double* phi,
+	const double* gradPhiZ,
+	const double* gradPhiR,
+	ConvectionScheme scheme
 ) {
 	// ------------------------------------------------------------
 	// Interior face
@@ -1070,6 +1130,32 @@ void addConvectionContribution(
 		double aNb = fmin(F, 0.0);
 
 		addNeighborCoeff(n,	nb,	mesh, aNb, coeff);
+
+		// ---- deferred higher-order correction ----
+		//
+		// The convection term contributes F*phi_f to the LHS. Split it as
+		//
+		//     F*phi_HO = F*phi_UD + F*(phi_HO - phi_UD)
+		//
+		// and keep only the upwind part implicit. The matrix therefore stays
+		// exactly the first-order upwind operator -- diagonally dominant, positive
+		// off-diagonals, an M-matrix -- which is what Jacobi, Gauss-Seidel and the
+		// multigrid coarse operator all rely on. Assembling central or linear
+		// upwind directly into the matrix would break that and diverge.
+		//
+		// The difference goes to the RHS, lagged one outer iteration. At
+		// convergence phi satisfies the full higher-order scheme.
+		if (scheme != CONV_UPWIND && phi) {
+
+			double phiUD = (F > 0.0) ? phi[n] : phi[nb];
+
+			double phiHO = higherOrderFaceValue(
+				n, nb, faceID, mesh, fieldBC,
+				phi, gradPhiZ, gradPhiR, scheme, F, phiUD
+			);
+
+			coeff.b[n] -= F * (phiHO - phiUD);
+		}
 
 		return;
 	}
@@ -1114,6 +1200,10 @@ void addConvectionCoefficient(
 	VariablesSimple simple,
 	Coefficients coeff,
 	BoundaryFieldDevice bc,
+	const double* phi,
+	const double* gradPhiZ,
+	const double* gradPhiR,
+	ConvectionScheme scheme,
 	double fluxScale
 ) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1171,12 +1261,17 @@ void addConvectionCoefficient(
 			addConvectionContribution(
 				n,
 				nb,
+				faceID,
 				mesh,
 				F,
 				false,
 				-1,
 				coeff,
-				bc
+				bc,
+				phi,
+				gradPhiZ,
+				gradPhiR,
+				scheme
 			);
 		}
 
@@ -1185,16 +1280,24 @@ void addConvectionCoefficient(
 		// ------------------------------------------------------------
 		else {
 
+			// Boundary faces stay first order. A Dirichlet boundary already
+			// supplies the exact face value, and the zero-gradient/outflow cases
+			// have no downstream cell to extrapolate from.
 			int groupID = mesh.faces.boundaryGroupID[faceID];
 			addConvectionContribution(
 				n,
 				-1,
+				faceID,
 				mesh,
 				F,
 				true,
 				groupID,
 				coeff,
-				bc
+				bc,
+				phi,
+				gradPhiZ,
+				gradPhiR,
+				scheme
 			);
 		}
 	}
@@ -1276,78 +1379,47 @@ void wallConsumptionDiagnostic(
 // ==================TRANSIENT TERM==============================
 // ==============================================================
 __global__
-void addUTransientCoefficient(Config config, Coefficients uCoeff, VariablesSimple simple, double dt) {
+void addTransientCoefficient(
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	const double* phiOld,
+	const double* phiOld2,
+	double capacity,
+	double dt
+) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (n >= uCoeff.N) return;
+	if (n >= mesh.cells.nCells) return;
+	if (!mesh.cells.active[n]) return;
 
-	const GridConfig& g = config.g;
-	const FluidPropertyConfig& f = config.f;
+	// A null phiOld means the field is not being solved this run, and a
+	// non-positive dt would divide by zero -- both leave the equation steady
+	// rather than poisoning the diagonal.
+	if (!phiOld || dt <= 0.0) return;
 
-	int nr = uCoeff.nr;
-	int nz = uCoeff.nz;
-	double* dr = g.d_dr;
-	double* dz = g.d_dz;
-	double* rFace = g.d_rFace;
-	double* r = g.d_r;
-	double rho = f.rho;
+	double cV = capacity * mesh.cells.volume[n];
 
-	double* AC = uCoeff.AC;
-	double* b = uCoeff.b;
-	double* uOld = simple.uOld;
+	// BDF2:  d(phi)/dt ~ (3*phi - 4*phiOld + phiOld2) / (2*dt)
+	//
+	// The 3/2 diagonal is LARGER than backward Euler's 1, so this stays
+	// diagonally dominant. phiOld2 null means the caller has only one time level
+	// available (the very first step of a run), which falls back to BDF1 -- the
+	// standard startup for a multistep scheme, since there is no n-1 level yet.
+	if (phiOld2) {
 
-	int j = n % nz;
-	int i = n / nz;
+		double a = cV / (2.0 * dt);
 
-	double r1 = 0.0;
-	double r2 = 0.0;
+		coeff.AC[n] += 3.0 * a;
+		coeff.b[n] += a * (4.0 * phiOld[n] - phiOld2[n]);
+		return;
+	}
 
+	// Backward Euler: d(phi)/dt ~ (phi - phiOld) / dt
+	double a = cV / dt;
 
-	r1 = rFace[i];
-	r2 = rFace[i + 1];
-
-	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-
-	AC[n] += (rho * Az * dz[j]) / dt;
-	b[n] += (rho * Az * dz[j] * uOld[n]) / dt;
-}
-
-__global__
-void addVTransientCoefficient(Config config, Coefficients vCoeff, VariablesSimple simple, double dt) {
-
-	int n = blockIdx.x * blockDim.x + threadIdx.x;
-
-	if (n >= vCoeff.N) return;
-	const GridConfig& g = config.g;
-	const FluidPropertyConfig& f = config.f;
-
-	int nr = vCoeff.nr;
-	int nz = vCoeff.nz;
-	double* dr = g.d_dr;
-	double* dz = g.d_dz;
-	double* rFace = g.d_rFace;
-	double* r = g.d_r;
-	double mu = f.mu;
-	double rho = f.rho;
-
-	double* AC = vCoeff.AC;
-	double* b = vCoeff.b;
-	double* vOld = simple.vOld;
-
-	int j = n % nz;
-	int i = n / nz;
-
-	double r1 = 0.0;
-	double r2 = 0.0;
-
-	r1 = rFace[i];
-	r2 = rFace[i + 1];
-
-	double Az = CUDART_PI * (r2 * r2 - r1 * r1);
-
-	AC[n] += (rho * Az * dz[j]) / dt;
-	b[n] += (rho * Az * dz[j] * vOld[n]) / dt;
+	coeff.AC[n] += a;
+	coeff.b[n] += a * phiOld[n];
 }
 
 __global__

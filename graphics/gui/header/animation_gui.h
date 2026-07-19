@@ -1,13 +1,13 @@
 #pragma once
-#include <vector>
 #include <string>
-
-#include "field_manager.h"
 
 struct SceneView;
 class Project;
 class GUI;
 
+// Playback control for a transient run. It owns no field data of its own: the
+// frames live in Results (built from Solver::timeFrames), and this only decides
+// WHICH frame is on screen, then asks Results to push it into the live fields.
 class AnimationGUI {
 public:
 
@@ -15,48 +15,23 @@ public:
 
 	void render();
 
-	// load from a .bin file, the variables needed to make an animation
-	void loadAnimation(const std::string& filename);
-
-	bool isReady = false;
-
 private:
 
-	// holds data for each frame
-	struct FlowFrame {
-		double time = 0.0;
-		std::vector<Field> fields;
-	};
-	
-	// vmin and vmax for all of the time in the animation
-	struct MinMaxGlobal {
-		float vmin = 0;
-		float vmax = 0;
-	};
-
-	std::vector<FlowFrame> frames;
-	std::vector<MinMaxGlobal> minmaxGlobals;
-	
 	Project& project;
 	SceneView& scene;
 
 	int currentFrame = 0;
-	int previousFrame = 0;
+	int previousFrame = -1;		// -1 forces the first frame to be applied
 	bool isPlaying = false;
 	int maxFPS = 60;
 	int minFPS = 1;
 	int fps = 10;
 	float accumulator = 0.0f;
 
-	// update currernt frame based on time accumulated
-	void updateCurrentFrame();
-
-	// update the current field which will be displayed
-	void updateCurrentField();
+	// advance currentFrame based on time accumulated since the last draw
+	void updateCurrentFrame(int frameCount);
 
 	// handle mouse and keyboard events
-	void handleEvents();
-
-
+	void handleEvents(int frameCount);
 
 };

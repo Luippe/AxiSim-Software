@@ -123,8 +123,9 @@ Solver::Solver(Config& config) :
 
 void Solver::setDefault() {
 
-    configSolver.addConvectionTerm = false;
+    configSolver.addConvectionTerm = true;
     configSolver.transient = false;
+    configSolver.timeScheme = TimeScheme::TIME_FIRST_ORDER;
     configSolver.dt = 0.1;
     configSolver.tEnd = 2.0;
     configSolver.maxIter = 10;
@@ -145,6 +146,7 @@ void Solver::reset() {
 
     // solved data and derived fields
     solutions.clear();
+    timeFrames.clear();
     fieldType.clear();
     mDotHost.clear();
     fvMesh = FVMesh{};
@@ -225,6 +227,39 @@ void Solver::createSolutions(int N) {
         g.dz,
         BoundaryVariable::None
     };
+}
+
+void Solver::captureTimeFrame(double time, int N) {
+
+    if ((int)timeFrames.size() >= maxTimeFrames) {
+
+        // Warn once, on the frame that trips the cap, then stay silent.
+        if ((int)timeFrames.size() == maxTimeFrames && console) {
+            std::ostringstream msg;
+            msg << "Animation frame limit (" << maxTimeFrames
+                << ") reached; later frames are not captured. "
+                   "Raise the keyframe interval to cover the whole run.\n";
+            console->addLine(msg.str());
+        }
+        return;
+    }
+
+    TimeFrame frame;
+    frame.time = time;
+
+    frame.fields["Axial Velocity"] = copyDeviceToHostVector(simple.u, N);
+    frame.fields["Radial Velocity"] = copyDeviceToHostVector(simple.v, N);
+    frame.fields["Pressure"] = copyDeviceToHostVector(simple.p, N);
+
+    if (fieldOption.solveEnergy) {
+        frame.fields["Temperature"] = copyDeviceToHostVector(simple.temp, N);
+    }
+
+    if (fieldOption.solveConcentration) {
+        frame.fields["Concentration"] = copyDeviceToHostVector(simple.conc, N);
+    }
+
+    timeFrames.push_back(std::move(frame));
 }
 
 std::vector<double> Solver::getMassImbalance(int N) {
@@ -490,6 +525,29 @@ bool Solver::runCheck(const Mesh& mesh) {
 
     if (configSimple.nNonOrthCorrectors < 0) {
         configSimple.nNonOrthCorrectors = 0;
+    }
+
+    if (saveKeyFrameIter < 1) {
+        saveKeyFrameIter = 1;
+    }
+
+    // A non-positive dt divides by zero in the unsteady term, and tEnd <= 0 gives
+    // zero time steps -- neither is recoverable by clamping to a guessed value.
+    if (configSolver.transient) {
+
+        if (!std::isfinite(configSolver.dt) || configSolver.dt <= 0.0) {
+            if (console) {
+                console->addLine("Transient run needs a positive time step.\n");
+            }
+            return false;
+        }
+
+        if (!std::isfinite(configSolver.tEnd) || configSolver.tEnd <= 0.0) {
+            if (console) {
+                console->addLine("Transient run needs a positive end time.\n");
+            }
+            return false;
+        }
     }
 
     if (!std::isfinite(f.rho) || !std::isfinite(f.mu) ||
@@ -796,33 +854,48 @@ void Solver::runSimple(const Mesh& mesh) {
 
     uint8_t* activeCells = fvMeshDevice.cells.active;
     bool transient = configSolver.transient;
+    const bool useSecondOrderTime =
+        transient && configSolver.timeScheme == TimeScheme::TIME_SECOND_ORDER;
     bool addConvectionTerm = configSolver.addConvectionTerm;
+
+    // Second-order upwind extrapolates from the upwind cell's gradient, so those
+    // gradients must exist even when the non-orthogonal corrector is off.
+    const bool convectionNeedsGradient =
+        addConvectionTerm &&
+        (convectionScheme == CONV_SECOND_ORDER_UPWIND || convectionScheme == CONV_QUICK);
     bool solveEnergy = fieldOption.solveEnergy;
     bool solveConcentration = fieldOption.solveConcentration;
     const int applyNonOrtho = (configSimple.nNonOrthCorrectors > 0) ? 1 : 0;
 
-    // open file if transient is turned on
-    std::ofstream out;
-    // Binary export writes a single nr x nz raster block, which a multiblock mesh
-    // doesn't have -- treat it like unstructured and skip the export.
-    const bool canSaveStructuredTransient = transient && isStructuredMesh && !isMultiBlock;
-    if (transient && !canSaveStructuredTransient && console) {
-        console->addLine("Transient binary export is only supported for single-block structured meshes; continuing without export.\n");
+    // Transient snapshots are kept in memory rather than exported to
+    // flow_motion.bin: the binary export wrote a single nr x nz raster block, which
+    // only a single-block structured mesh has -- and the Generate path builds every
+    // structured mesh as multiblock, so that export could never actually fire.
+    // Results reads timeFrames directly to build the animation.
+    // Also cleared for a steady run, so switching Transient off drops the previous
+    // run's animation instead of leaving the player showing stale frames.
+    if (!transient || !continueSolver) {
+        timeFrames.clear();
     }
 
-    if (canSaveStructuredTransient) {
+    // Continuing a transient run appends to the frames already captured, so its
+    // steps carry on from where the previous run stopped instead of relabelling
+    // them from t = 0 and giving the animation two frames with the same time.
+    const double timeOffset = timeFrames.empty() ? 0.0 : timeFrames.back().time;
 
-        out.open("flow_motion.bin", std::ios::binary);
-        saveBinary(out, g.nr, g.nz, g.dr, g.dz);
-        
-        //// save initial field
-        //saveBinary(out, (double)0 * dt,
-        //    copyDeviceToHostVector(simple.u, N),
-        //    copyDeviceToHostVector(simple.v, N),
-        //    copyDeviceToHostVector(simple.p, N));
-
-    }
     CUDA_CHECK(cudaGetLastError());
+
+    if (addConvectionTerm && console) {
+        const char* schemeName =
+            convectionScheme == CONV_CENTRAL ? "central difference" :
+            convectionScheme == CONV_SECOND_ORDER_UPWIND ? "second order upwind" :
+            convectionScheme == CONV_QUICK ? "QUICK (falls back to second order upwind)" :
+            "first order upwind";
+
+        std::ostringstream schemeMsg;
+        schemeMsg << "Convection: " << schemeName << "\n";
+        console->addLine(schemeMsg.str());
+    }
 
     cudaProfilerStart();
 
@@ -857,11 +930,60 @@ void Solver::runSimple(const Mesh& mesh) {
         }
     }
 
+    // Initial state, so the animation opens on the field the run started from
+    // rather than jumping straight to the end of the first step. Skipped when
+    // continuing, where the previous run already captured this instant.
+    if (transient && timeFrames.empty()) {
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        captureTimeFrame(timeOffset, N);
+    }
+
     //print(Nface, N, threadsPerBlock, blocks);
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
-        cudaMemcpyAsync(simple.uOld, simple.u, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-        cudaMemcpyAsync(simple.vOld, simple.v, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+        // Freeze the previous time levels. Every SIMPLE iteration within this step
+        // reassembles against the SAME old levels, so this must sit outside the inner
+        // loop -- copying it per iteration would make the unsteady term chase the
+        // current solution and quietly reduce the run to a relaxed steady solve.
+        //
+        // Shift n-1 <- n BEFORE n <- current, or both levels end up holding the same
+        // field and BDF2's (4*phiOld - phiOld2) collapses to 3*phi.
+        if (transient) {
+
+            if (useSecondOrderTime) {
+                cudaMemcpyAsync(simple.uOld2, simple.uOld, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+                cudaMemcpyAsync(simple.vOld2, simple.vOld, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+
+                if (solveEnergy) {
+                    cudaMemcpyAsync(simple.tempOld2, simple.tempOld, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+                }
+
+                if (solveConcentration) {
+                    cudaMemcpyAsync(simple.concOld2, simple.concOld, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+                }
+            }
+
+            cudaMemcpyAsync(simple.uOld, simple.u, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+            cudaMemcpyAsync(simple.vOld, simple.v, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+
+            if (solveEnergy) {
+                cudaMemcpyAsync(simple.tempOld, simple.temp, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+            }
+
+            if (solveConcentration) {
+                cudaMemcpyAsync(simple.concOld, simple.conc, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+            }
+        }
+
+        // BDF2 needs two stored levels. On the first step of a run only level n
+        // exists, so that step runs backward Euler and the scheme engages from the
+        // second step on. Passing null here is what selects BDF1 in the kernel.
+        const bool bdf2ThisStep = useSecondOrderTime && tCount > 0;
+
+        const double* uOld2  = bdf2ThisStep ? simple.uOld2 : nullptr;
+        const double* vOld2  = bdf2ThisStep ? simple.vOld2 : nullptr;
+        const double* tOld2  = bdf2ThisStep ? simple.tempOld2 : nullptr;
+        const double* cOld2  = bdf2ThisStep ? simple.concOld2 : nullptr;
 
         // Reset per time step: a transient run drives each step to convergence
         // on its own before advancing time.
@@ -876,25 +998,34 @@ void Solver::runSimple(const Mesh& mesh) {
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (concCoeff);
             clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (massFluxCoeff);
 
-            if (applyNonOrtho) {
+            // Gradients feed two consumers now: the non-orthogonal diffusion
+            // correction, and the second-order-upwind convection extrapolation. The
+            // deferred correction reads the gradient at the UPWIND cell, which may be
+            // any neighbor, so the whole field has to be filled before the convection
+            // kernel launches -- not just when applyNonOrtho is set.
+            if (applyNonOrtho || convectionNeedsGradient) {
                 computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, gradientScheme);
                 computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, gradientScheme);
             }
 
             // create coeffs for velocity and pressure correction equations
-            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, bcDevice.u, simple.v, simple.gradUZ, simple.gradUR, applyNonOrtho, f.mu);
-            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, bcDevice.v, simple.u, simple.gradVZ, simple.gradVR, applyNonOrtho, f.mu);
+            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, applyNonOrtho, f.mu);
+            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, applyNonOrtho, f.mu);
 
             //addRadialMomentumCylindricalSource << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, vCoeff);
             if (addConvectionTerm) {
-                addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, uCoeff, bcDevice.u, 1.0);
-                addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, vCoeff, bcDevice.v, 1.0);
+                addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, uCoeff, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, convectionScheme, 1.0);
+                addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, vCoeff, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, convectionScheme, 1.0);
             }
 
-            //        if (config.transient) {
-                        //addUTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (config, uCoeff, simple);
-                        //addVTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (config, vCoeff, simple);
-            //        }
+            // Unsteady term, added before under-relaxation and before DU/DV are read
+            // off the diagonal: rho*V/dt belongs to the momentum diagonal, so the
+            // Rhie-Chow interpolation and the pressure-correction equation both have
+            // to see it. Adding it any later would leave pp solving a steady operator.
+            if (transient) {
+                addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, simple.uOld, uOld2, f.rho, configSolver.dt);
+                addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.vOld, vOld2, f.rho, configSolver.dt);
+            }
 
             computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.p, simple.p, simple.gradPZ, simple.gradPR, gradientScheme);
 
@@ -955,7 +1086,7 @@ void Solver::runSimple(const Mesh& mesh) {
             // -----------------------ENERGY EQUATION--------------------------------
             // ======================================================================
             if (solveEnergy) {
-                if (applyNonOrtho) {
+                if (applyNonOrtho || convectionNeedsGradient) {
                     computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, gradientScheme);
                 }
                 addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, applyNonOrtho, thermDiffusivity);
@@ -964,7 +1095,13 @@ void Solver::runSimple(const Mesh& mesh) {
                     // = k/(rho*cp), the energy equation should also convect volumetrically
                     // (1/rho). Left at 1.0 to preserve current behavior; change to
                     // (1.0 / f.rho) to make temperature consistent too.
-                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, tempCoeff, bcDevice.temp, 1.0 / f.rho);
+                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, tempCoeff, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, convectionScheme, 1.0 / f.rho);
+                }
+                // capacity 1.0, not rho: this equation convects volumetrically
+                // (fluxScale 1/rho) and diffuses with k/(rho*cp), so it is already
+                // divided through by rho*cp.
+                if (transient) {
+                    addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.tempOld, tOld2, 1.0, configSolver.dt);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.temp, simple.momentumRelaxation);
                 solveLinearSystem(tempCoeff, configSolver, stream, simple.temp, simple.tempTemp, activeCells, threadsPerBlock, coloring);
@@ -975,7 +1112,7 @@ void Solver::runSimple(const Mesh& mesh) {
             // ======================================================================
             if (solveConcentration) {
 
-                if (applyNonOrtho) {
+                if (applyNonOrtho || convectionNeedsGradient) {
                     computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, gradientScheme);
                 }
                 addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, applyNonOrtho, f.D);
@@ -985,7 +1122,12 @@ void Solver::runSimple(const Mesh& mesh) {
                     // matches the kinematic diffusivity f.D used above and the mm-unit
                     // reference solver (me = Az*u, no density). f.rho > 0 is enforced
                     // in runCheck.
-                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, concCoeff, bcDevice.conc, 1.0 / f.rho);
+                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, concCoeff, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, convectionScheme, 1.0 / f.rho);
+                }
+                // capacity 1.0 for the same reason as temperature: volumetric flux
+                // and kinematic diffusivity f.D, so no density belongs here either.
+                if (transient) {
+                    addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.concOld, cOld2, 1.0, configSolver.dt);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.conc, 1.0);
                 solveLinearSystem(concCoeff, configSolver, stream, simple.conc, simple.concTemp, activeCells, threadsPerBlock, coloring);
@@ -1057,19 +1199,23 @@ void Solver::runSimple(const Mesh& mesh) {
             }
         }
 
-        if (canSaveStructuredTransient && tCount % saveKeyFrameIter == 0) {
-            CUDA_CHECK(cudaStreamSynchronize(stream));
+        // Capture on the keyframe interval, and always on the last step so the
+        // animation ends on the same state the steady results show.
+        const bool lastStep = (tCount == numSteps - 1);
 
-            saveBinary(out, (double)(tCount + 1) * configSolver.dt, 
-                copyDeviceToHostVector(simple.u, N), 
-                copyDeviceToHostVector(simple.v, N),
-                copyDeviceToHostVector(simple.p, N));
+        if (transient && (tCount % saveKeyFrameIter == 0 || lastStep)) {
+            CUDA_CHECK(cudaStreamSynchronize(stream));
+            captureTimeFrame(timeOffset + (double)(tCount + 1) * configSolver.dt, N);
         }
     }
 
-    if (canSaveStructuredTransient) {
-        out.close();
-	}
+    if (transient && console) {
+        std::ostringstream frameMsg;
+        frameMsg << "Transient: " << (useSecondOrderTime ? "second" : "first")
+                 << " order in time, captured " << timeFrames.size()
+                 << " animation frame(s) over " << numSteps << " time step(s).\n";
+        console->addLine(frameMsg.str());
+    }
 
     // end timer and print to console
     timer.endTimer(stream);

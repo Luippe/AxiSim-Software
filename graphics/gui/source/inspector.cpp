@@ -29,7 +29,12 @@ Inspector::Inspector(Project& project, SceneView& scene, AppConfig& appConfig) :
 		results(project.results),
 		g(mesh.g),
 		assets(appConfig.assets),
-		colorbar(scene.colormap, project.results),
+		colorbar(
+			scene.colormap,
+			project.results,
+			project.config.varUnits,
+			project.lengthScale
+		),
 		BaseSurfaceViewer("graphics/shaders/inspector.vert", "graphics/shaders/inspector.frag") {
 
 	frameBuffer.create2DBuffer(100, 100, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
@@ -623,6 +628,33 @@ void Inspector::drawField(ImDrawList* drawList, bool mirrored) {
 	float vmax = 0.0f;
 	if (!computeFieldRange(*sol, vmin, vmax)) {
 		return;
+	}
+
+	// During playback, prefer the field's range over the WHOLE run. computeFieldRange
+	// only sees the frame currently swapped into solutions[], so using it would
+	// remap the colors every frame and make the animation flash.
+	if (results.hasAnimation() && !results.fieldType.empty()) {
+
+		int idx = std::clamp(results.currentItem, 0, (int)results.fieldType.size() - 1);
+
+		float animMin = 0.0f;
+		float animMax = 0.0f;
+		if (results.animationRangeFor(results.fieldType[idx], animMin, animMax)) {
+
+			// Preserve the mirrored-odd-field symmetry computeFieldRange applies:
+			// the reflected half negates the values, so the range must stay
+			// zero-centered or the two halves use different color mappings.
+			if (mirrorResult && currentFieldIsOddAcrossAxis()) {
+				float magnitude = std::max({ std::abs(animMin), std::abs(animMax), 1.0e-30f });
+				animMin = -magnitude;
+				animMax = magnitude;
+			}
+
+			if (animMax - animMin >= 1.0e-30f) {
+				vmin = animMin;
+				vmax = animMax;
+			}
+		}
 	}
 
 	// keep the colorbar in sync with what is on screen

@@ -238,6 +238,15 @@ namespace {
 			solver.convectionScheme = CONV_UPWIND;
 		}
 
+		// timeScheme occupies a byte that was plain struct padding before it existed,
+		// so a project saved by an older build supplies whatever the writer's padding
+		// held. Anything outside the enum falls back to first order, which is exactly
+		// the behavior those projects were saved with.
+		if ((int)solver.configSolver.timeScheme < (int)TimeScheme::TIME_FIRST_ORDER ||
+			(int)solver.configSolver.timeScheme > (int)TimeScheme::TIME_SECOND_ORDER) {
+			solver.configSolver.timeScheme = TimeScheme::TIME_FIRST_ORDER;
+		}
+
 		FluidPropertyConfig defaults;
 		bool resetFluid =
 			!std::isfinite(solver.f.rho) || solver.f.rho < 1.0e-12 ||

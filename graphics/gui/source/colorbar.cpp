@@ -6,13 +6,130 @@
 
 #include "colormap.h"
 #include "results.h"
+#include "graphics_struct.h"
+#include "unit_manager.h"
 
 #include "printer.h"
+
+
+namespace {
+	template <typename UnitArray>
+	const typename UnitArray::value_type& selectedUnit(
+		const UnitArray& units,
+		std::uint8_t index
+	) {
+		const size_t safeIndex = std::min<size_t>(index, units.size() - 1);
+		return units[safeIndex];
+	}
+}
 
 
 // ======================================================================
 // -----------------------HELPER FUNCTION--------------------------------
 // ======================================================================
+std::string Colorbar::currentUnitText() const {
+
+	if (results.fieldType.empty() ||
+		results.currentItem < 0 ||
+		results.currentItem >= (int)results.fieldType.size()) {
+		return {};
+	}
+
+	const std::string& name = results.fieldType[results.currentItem];
+	const UnitOption& axial = selectedUnit(Units::velocityUnits, variableUnits.axialUnit);
+	const UnitOption& radial = selectedUnit(Units::velocityUnits, variableUnits.radialUnit);
+	const UnitOption& pressure = selectedUnit(Units::pressureUnits, variableUnits.pressureUnit);
+	const LinearUnitOption& temperature = selectedUnit(Units::temperatureUnits, variableUnits.temperatureUnit);
+	const UnitOption& concentration = selectedUnit(Units::concentrationUnits, variableUnits.concentrationUnit);
+	const UnitOption& length = selectedUnit(Units::lengthUnits, lengthScale.index);
+
+	if (name == "Axial Velocity") return axial.name;
+	if (name == "Radial Velocity") return radial.name;
+	if (name == "Pressure") return pressure.name;
+	if (name == "Continuity") return "kg/s";
+	if (name == "Temperature") return temperature.name;
+	if (name == "Concentration") return concentration.name;
+
+	if (name == "dU/dz" || name == "dU/dr") {
+		return "(" + std::string(axial.name) + ")/" + length.name;
+	}
+	if (name == "dV/dz" || name == "dV/dr") {
+		return "(" + std::string(radial.name) + ")/" + length.name;
+	}
+	if (name == "dP/dz" || name == "dP/dr") {
+		return std::string(pressure.name) + "/" + length.name;
+	}
+	if (name == "dT/dz" || name == "dT/dr") {
+		return std::string(temperature.name) + "/" + length.name;
+	}
+	if (name == "dC/dz" || name == "dC/dr") {
+		return std::string(concentration.name) + "/" + length.name;
+	}
+
+	return {};
+}
+
+std::string Colorbar::currentLabelText() const {
+
+	if (results.fieldType.empty() ||
+		results.currentItem < 0 ||
+		results.currentItem >= (int)results.fieldType.size()) {
+		return {};
+	}
+
+	std::string text = results.fieldType[results.currentItem];
+	const std::string unit = currentUnitText();
+	if (!unit.empty()) {
+		text += " [" + unit + "]";
+	}
+	return text;
+}
+
+double Colorbar::valueForDisplay(double baseValue) const {
+
+	if (results.fieldType.empty() ||
+		results.currentItem < 0 ||
+		results.currentItem >= (int)results.fieldType.size()) {
+		return baseValue;
+	}
+
+	const std::string& name = results.fieldType[results.currentItem];
+	const UnitOption& axial = selectedUnit(Units::velocityUnits, variableUnits.axialUnit);
+	const UnitOption& radial = selectedUnit(Units::velocityUnits, variableUnits.radialUnit);
+	const UnitOption& pressure = selectedUnit(Units::pressureUnits, variableUnits.pressureUnit);
+	const LinearUnitOption& temperature = selectedUnit(Units::temperatureUnits, variableUnits.temperatureUnit);
+	const UnitOption& concentration = selectedUnit(Units::concentrationUnits, variableUnits.concentrationUnit);
+	const UnitOption& length = selectedUnit(Units::lengthUnits, lengthScale.index);
+
+	if (name == "Axial Velocity") return fromBaseValue(baseValue, axial);
+	if (name == "Radial Velocity") return fromBaseValue(baseValue, radial);
+	if (name == "Pressure") return fromBaseValue(baseValue, pressure);
+	if (name == "Temperature") return fromBaseValue(baseValue, temperature);
+	if (name == "Concentration") return fromBaseValue(baseValue, concentration);
+
+	// Derivatives use a unit difference, so affine temperature offsets do not
+	// participate: grad_display = grad_base * lengthScale / fieldScale.
+	if (name == "dU/dz" || name == "dU/dr") {
+		return baseValue * length.toBase / axial.toBase;
+	}
+	if (name == "dV/dz" || name == "dV/dr") {
+		return baseValue * length.toBase / radial.toBase;
+	}
+	if (name == "dP/dz" || name == "dP/dr") {
+		return baseValue * length.toBase / pressure.toBase;
+	}
+	if (name == "dT/dz" || name == "dT/dr") {
+		return baseValue * length.toBase / temperature.toBase;
+	}
+	if (name == "dC/dz" || name == "dC/dr") {
+		return baseValue * length.toBase / concentration.toBase;
+	}
+
+	// Continuity is stored as mass flow in kg/s and currently has no selectable
+	// display-unit family, so its numerical value is already in the labeled unit.
+	return baseValue;
+}
+
 void Colorbar::formatTickValue(char* buf, size_t bufSize, double value, int precision) {
 
 	precision = std::clamp(precision, 0, 12);
@@ -44,12 +161,14 @@ int Colorbar::computeTickPrecision() {
 		return std::clamp(currentPrecision, 0, 12);
 	}
 
-	float dval = (results.currentField->vmax - results.currentField->vmin) / numTicks;
-	double refValue = std::max(std::fabs((double)(results.currentField->vmax)), std::fabs((double)(results.currentField->vmin)));
+	double displayMin = valueForDisplay(results.currentField->vmin);
+	double displayMax = valueForDisplay(results.currentField->vmax);
+	double dval = (displayMax - displayMin) / numTicks;
+	double refValue = std::max(std::fabs(displayMax), std::fabs(displayMin));
 
 	int precision = currentPrecision;
 
-	if (dval > 0.0f && refValue > 0.0) {
+	if (dval > 0.0 && refValue > 0.0) {
 		int magRef = (int)(std::floor(std::log10(refValue)));
 		int magStep = (int)(std::floor(std::log10((double)(dval))));
 		precision = std::clamp(std::max(currentPrecision, magRef - magStep + 2), 0, 12);
@@ -67,7 +186,7 @@ float Colorbar::maxTickTextWidth(int precision) {
 
 	for (int i = 0; i < numTicks + 1; i++) {
 		char buf[32];
-		double value = results.currentField->vmax - i * dval;
+		double value = valueForDisplay(results.currentField->vmax - i * dval);
 
 		formatTickValue(buf, sizeof(buf), value, precision);
 		maxW = std::max(maxW, ImGui::CalcTextSize(buf).x);
@@ -78,7 +197,7 @@ float Colorbar::maxTickTextWidth(int precision) {
 
 float Colorbar::maxLabelLineWidth() {
 
-	std::string text = results.fieldType[results.currentItem];
+	std::string text = currentLabelText();
 	std::stringstream ss(text);
 	std::string word;
 
@@ -92,7 +211,7 @@ float Colorbar::maxLabelLineWidth() {
 
 int Colorbar::labelLineCount() {
 
-	std::string text = results.fieldType[results.currentItem];
+	std::string text = currentLabelText();
 	std::stringstream ss(text);
 	std::string word;
 
@@ -177,7 +296,7 @@ void Colorbar::drawTickValue() {
 	for (int i = 0; i < numTicks + 1; i++) {
 		float y = posMin.y + i * dy;
 		char buf[32];
-		double value = results.currentField->vmax - i * dval;
+		double value = valueForDisplay(results.currentField->vmax - i * dval);
 
 		formatTickValue(buf, sizeof(buf), value, precision);
 
@@ -212,7 +331,7 @@ float Colorbar::yForValue(double value) {
 
 void Colorbar::drawLabel() {
 
-	std::string text = results.fieldType[results.currentItem];
+	std::string text = currentLabelText();
 	std::vector<std::string> lines;
 
 	std::stringstream ss(text);

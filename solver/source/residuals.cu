@@ -181,7 +181,7 @@ void residualAllHost(std::unordered_map<std::string, ConfigResidual>& cfgs, int 
 
 			// treat continuity equation differently
 			if (name == "Continuity") {
-				residualLInfHost(cfg, N);
+				residualL1Host(cfg, N);
 				if (currentIteration < 5) {
 					cfg.scaleVal = std::max(cfg.resVal, 0.0);
 				}

@@ -38,7 +38,8 @@ std::vector<double> buildCenters(const std::vector<double>& faces) {
 void Field::generate(
 	const SolutionField& solution,
 	const FVMesh& fvMesh,
-	const std::vector<BoundarySegmentGroup>& boundaryGroups
+	const std::vector<BoundarySegmentGroup>& boundaryGroups,
+	bool createTexture
 ) {
 
 	this->fvMesh = &fvMesh;
@@ -47,11 +48,11 @@ void Field::generate(
 	nr = fvMesh.nr;
 	nz = fvMesh.nz;
 
-	buildFromSolution(solution);
+	buildFromSolution(solution, createTexture);
 
 }
 
-void Field::generateRaster(const SolutionField& solution, int nrRaster, int nzRaster) {
+void Field::generateRaster(const SolutionField& solution, int nrRaster, int nzRaster, bool createTexture) {
 
 	// No source FVMesh: the data is already a dense raster (a resampled multiblock
 	// solution), so sampleBoundary falls back to copying the nearest interior cell
@@ -62,11 +63,11 @@ void Field::generateRaster(const SolutionField& solution, int nrRaster, int nzRa
 	nr = nrRaster;
 	nz = nzRaster;
 
-	buildFromSolution(solution);
+	buildFromSolution(solution, createTexture);
 
 }
 
-void Field::buildFromSolution(const SolutionField& solution) {
+void Field::buildFromSolution(const SolutionField& solution, bool createTexture) {
 
 	unProcessedData = solution.field;
 	boundaryVariable = solution.boundaryVariable;
@@ -88,7 +89,11 @@ void Field::buildFromSolution(const SolutionField& solution) {
 
 	createVertexValues();
 	createCellValues();
-	createBuffer();
+
+	if (createTexture) {
+		createBuffer();
+	}
+
 	updateMinMax();
 
 }

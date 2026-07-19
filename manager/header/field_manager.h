@@ -21,10 +21,15 @@ public:
 
 	void setMinMax(float vmin, float vmax);
 
+	// createTexture == false skips the GL texture and builds only the CPU-side
+	// values. Animation frames pass false: playback uploads their vertexValues into
+	// the live field's texture, so a texture per frame per field would be VRAM that
+	// is allocated and never bound.
 	void generate(
 		const SolutionField& solution,
 		const FVMesh& fvMesh,
-		const std::vector<BoundarySegmentGroup>& boundaryGroups
+		const std::vector<BoundarySegmentGroup>& boundaryGroups,
+		bool createTexture = true
 	);
 
 	// Build the field directly from a dense raster solution (row-major i*nz+j) with
@@ -32,7 +37,7 @@ public:
 	// multiblock solutions that have been resampled onto the raster grid: there is no
 	// raster-ordered FVMesh, so the boundary layer falls back to copying the nearest
 	// interior cell (no BC extrapolation).
-	void generateRaster(const SolutionField& solution, int nr, int nz);
+	void generateRaster(const SolutionField& solution, int nr, int nz, bool createTexture = true);
 
 	// get value at given position using bilinear interpolation
 	float getData(const glm::vec2& pos) const;
@@ -43,7 +48,7 @@ private:
 	// Shared field-build pipeline for generate()/generateRaster(): the caller sets the
 	// source (fvMesh/boundaryGroups) and nr/nz first, then this builds the faces,
 	// centers, extended data, values, buffer and min/max from the solution.
-	void buildFromSolution(const SolutionField& solution);
+	void buildFromSolution(const SolutionField& solution, bool createTexture);
 
 	const FVMesh* fvMesh;
 	const std::vector<BoundarySegmentGroup>* boundaryGroups;

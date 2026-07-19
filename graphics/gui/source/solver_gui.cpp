@@ -53,7 +53,7 @@ SolverGUI::SolverGUI(Project& project, AppConfig& appConfig) :
 void setResidualDefault(ConfigResidual& configRes) {
 	switch (configRes.type) {
 	case RESIDUAL_SCALED:
-		configRes.normType = RESIDUAL_LINF;
+		configRes.normType = RESIDUAL_L1;
 		configRes.scaleType = RESIDUAL_SCALING_DIAGONAL;
 		break;
 	case RESIDUAL_RAW:
@@ -760,6 +760,21 @@ void SolverGUI::drawPropertiesPanel() {
 				column("Label", 300.0f),
 				column("Value", 150.0f)
 			);
+
+			// Round-tripped through a local int rather than the (int&) cast the other
+			// combos use: TimeScheme is uint8_t-backed (so it fits ConfigSolver's
+			// padding and keeps old .bin saves loadable), and reinterpreting it as
+			// int& would write 4 bytes over a 1-byte field.
+			labelRow("Time Discretization");
+			int timeScheme = (int)project.solver.configSolver.timeScheme;
+			if (createSimpleCombo(
+				"##TimeScheme",
+				project.solver.timeSchemeType,
+				timeScheme,
+				IM_ARRAYSIZE(project.solver.timeSchemeType)
+			)) {
+				project.solver.configSolver.timeScheme = (TimeScheme)timeScheme;
+			}
 
 			labelRow("dt");
 			ImGui::InputDouble("##timeStep", &project.solver.configSolver.dt, 0.0, 0.0, "%.3f");

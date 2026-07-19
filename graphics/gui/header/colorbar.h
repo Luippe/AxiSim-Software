@@ -2,9 +2,12 @@
 #include "imgui.h"
 #include <vector>
 #include <optional>
+#include <string>
 
 class Colormap;
 class Results;
+struct LengthScale;
+struct VariableUnits;
 
 enum class NumberFormat {
 	Fixed,
@@ -14,7 +17,16 @@ enum class NumberFormat {
 
 class Colorbar {
 public:
-	Colorbar(Colormap& colormap, Results& results) : colormap(colormap), results(results) {};
+	Colorbar(
+		Colormap& colormap,
+		Results& results,
+		const VariableUnits& variableUnits,
+		const LengthScale& lengthScale
+	) :
+		colormap(colormap),
+		results(results),
+		variableUnits(variableUnits),
+		lengthScale(lengthScale) {}
 
 	// Draw the colorbar onto `drawList`, positioned inside the given canvas rect at
 	// the stored (normalized) position. Pure rendering with no ImGui items, so it
@@ -81,6 +93,14 @@ private:
 
 	Colormap& colormap;
 	Results& results;
+	const VariableUnits& variableUnits;
+	const LengthScale& lengthScale;
+
+	// Current field label/unit and conversion from solver-base values to the
+	// project's selected display units. Filters remain stored in base units.
+	std::string currentLabelText() const;
+	std::string currentUnitText() const;
+	double valueForDisplay(double baseValue) const;
 
 	// change number display depending on current format
 	void formatTickValue(char* buf, size_t bufSize, double value, int precision);

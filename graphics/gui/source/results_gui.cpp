@@ -29,7 +29,7 @@ void ResultsGUI::drawPropertiesPanel() {
 
 	if (selectedItem == "General") {
 		sectionHeader("Filter");
-		if (ImGui::BeginTable("Geometry", 3, UIFlags::TableSimpleFlags)) {
+		if (ImGui::BeginTable("Geometry", 2, UIFlags::TableSimpleFlags)) {
 			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 45.0f);
 			ImGui::TableSetupColumn("Slider", ImGuiTableColumnFlags_WidthStretch);
 

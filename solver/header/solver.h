@@ -28,6 +28,8 @@ public:
 	const char* bcInletTypeNames[3]{ "Constant", "Flux", "Fully Developed" };
 	const char* convectionDiscretizationType[3] = { "First Order Upwind", "Central Difference", "Second Order Upwind"};
 	const char* gradientSchemeType[2] = { "Green-Gauss", "Least Squares" };
+	// order must match enum TimeScheme
+	const char* timeSchemeType[2] = { "First Order Implicit", "Second Order Implicit" };
 	const char* residualPlotType[5] = { "U", "V", "Continuity", "Temperature", "Concentration" };
 	const char* coefficientNames[6] = { "U", "V", "PP", "Continuity", "Temperature", "Concentration" };
 
@@ -72,6 +74,24 @@ public:
 
 	// solution fields
 	std::unordered_map<std::string, SolutionField> solutions;
+
+	// One captured instant of a transient run, in cell order (same indexing as
+	// solutions[].field). Only the primary solved fields are stored: the gradient
+	// fields are computed once after the whole run, not per time step, so there is
+	// nothing per-step to capture for them.
+	struct TimeFrame {
+		double time = 0.0;
+		std::unordered_map<std::string, std::vector<double>> fields;
+	};
+
+	// Filled during a transient run, every saveKeyFrameIter steps plus the final
+	// step. Empty after a steady run. Results turns these into animation frames.
+	std::vector<TimeFrame> timeFrames;
+
+	// Hard cap on captured frames. Each frame is (fields * nCells) doubles on the
+	// host, so a long run with a small dt can otherwise eat GBs before the user
+	// sees a single frame. Hitting the cap stops capture, not the solve.
+	int maxTimeFrames = 500;
 
 	// residual
 	std::unordered_map<std::string, ConfigResidual> cfg;
@@ -153,6 +173,10 @@ private:
 
 	// create solution map
 	void createSolutions(int N);
+
+	// append one transient snapshot to timeFrames. Assumes the caller has already
+	// synchronized `stream`, since it reads the device fields straight back to host.
+	void captureTimeFrame(double time, int N);
 
 	MemoryConfig mem;
 	ContinuationState continuationState;
