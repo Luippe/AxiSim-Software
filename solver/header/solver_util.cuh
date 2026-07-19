@@ -6,16 +6,231 @@
 // reduction kernel
 void reduction(int N, int threadsPerBlock, size_t shmem, cudaStream_t stream, double* tmpA, double* tmpB, double* in, double* store);
 
-// computational helper functions
-__device__
+// ======================================================================
+// Inline face helpers
+//
+// These live in the header, not solver_util.cu, because the project builds
+// with CUDA_SEPARABLE_COMPILATION ON: a __device__ function defined in another
+// translation unit cannot be inlined, so each call becomes a real ABI call and
+// every by-value struct parameter is copied through local memory. createPPCoeff
+// makes ~9 such calls per face and paid 1.87 ms per launch for it, against
+// 20 us for the structurally identical createPPRhs -- a 616-byte per-thread
+// stack frame, all of it parameter copies.
+//
+// Defined here and taking the big structs by const reference, they inline at
+// the call site and the stack frame goes away. Keep new hot-loop helpers here
+// for the same reason; anything called once per cell can stay in the .cu.
+// ======================================================================
+
+__device__ __forceinline__
+void getOutwardNormalForCell(
+	const FVMeshDevice& mesh,
+	int cellID,
+	int faceID,
+	double& normalZ,
+	double& normalR
+) {
+	normalZ = mesh.faces.normalZ[faceID];
+	normalR = mesh.faces.normalR[faceID];
+
+	if (mesh.faces.neighbor[faceID] == cellID) {
+		normalZ = -normalZ;
+		normalR = -normalR;
+	}
+}
+
+__device__ __forceinline__
+double getDistanceCellToCell(
+	const FVMeshDevice& mesh,
+	int owner,
+	int neighbor,
+	double normalZ,
+	double normalR
+) {
+	double zP = mesh.cells.centerZ[owner];
+	double rP = mesh.cells.centerR[owner];
+
+	double zN = mesh.cells.centerZ[neighbor];
+	double rN = mesh.cells.centerR[neighbor];
+
+	double dz = zN - zP;
+	double dr = rN - rP;
+
+	double proj = fabs(dz * normalZ + dr * normalR); // over-relaxed projected distance
+	double full = sqrt(dz * dz + dr * dr);           // true centroid separation
+
+	// Clamp the projection so a highly non-orthogonal / near-axis cell can't
+	// collapse n.d toward zero and blow up coefficients of the form A/(n.d)
+	// (Rhie-Chow face gradient, p' Laplacian, momentum diffusion). On well
+	// shaped cells proj ~ full, so this leaves them untouched.
+	double minProj = 0.3 * full;
+
+	return fmax(proj, minProj);
+}
+
+__device__ __forceinline__
+double getDistanceCellToFace(
+	const FVMeshDevice& mesh,
+	int cellID,
+	int faceID,
+	double normalZ,
+	double normalR
+) {
+	double zP = mesh.cells.centerZ[cellID];
+	double rP = mesh.cells.centerR[cellID];
+
+	double zF = mesh.faces.centerZ[faceID];
+	double rF = mesh.faces.centerR[faceID];
+
+	return fabs((zF - zP) * normalZ + (rF - rP) * normalR);	// distance from cell to face dotted with normal vector
+}
+
+__device__ __forceinline__
+double getNormalCorrectionCoeff(
+	int cellID,
+	int faceID,
+	const FVMeshDevice& mesh,
+	const VariablesSimple& simple
+) {
+	double normalZ = mesh.faces.normalZ[faceID];
+	double normalR = mesh.faces.normalR[faceID];
+
+	// DU corrects axial velocity, DV corrects radial velocity.
+	// For axis-aligned faces, this naturally selects DU or DV.
+	// Axial face: normalZ^2 = 1, normalR^2 = 0 -> DU
+	// Radial face: normalZ^2 = 0, normalR^2 = 1 -> DV
+	// branchless if statement
+	return simple.DU[cellID] * normalZ * normalZ
+		+ simple.DV[cellID] * normalR * normalR;
+}
+
+__device__ __forceinline__
+double interpolateNormalCorrectionCoeffToFace(
+	int cellID,
+	int faceID,
+	const FVMeshDevice& mesh,
+	const VariablesSimple& simple
+) {
+	int owner = mesh.faces.owner[faceID];
+	int neighbor = mesh.faces.neighbor[faceID];
+
+	double normalZ, normalR;
+	getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
+
+	double dPF = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
+
+	double DP = getNormalCorrectionCoeff(
+		cellID,
+		faceID,
+		mesh,
+		simple
+	);
+
+	// boundary face: use owner/current cell correction coefficient
+	if (neighbor < 0) {
+		return DP;
+	}
+
+	int nb = (owner == cellID) ? neighbor : owner;
+
+	double dNF = getDistanceCellToFace(mesh, nb, faceID, normalZ, normalR);
+
+	double DN = getNormalCorrectionCoeff(
+		nb,
+		faceID,
+		mesh,
+		simple
+	);
+
+	double denom = dPF + dNF;
+
+	if (denom <= 0.0) {
+		return 0.5 * (DP + DN);
+	}
+
+	// Linear interpolation to face
+	return (dNF * DP + dPF * DN) / denom;
+}
+
+// Scatters aNb into the matrix slot linking cell n to neighbour nb.
+//
+// The face path searches n's own neighbour list for nb, which is O(faces per
+// cell) per call. Callers that are already walking that list know the slot
+// index and should write coeff.AF[k] directly instead of calling this.
+__device__ __forceinline__
 void addNeighborCoeff(
 	int n,
 	int nb,
-	FVMeshDevice mesh,
+	const FVMeshDevice& mesh,
 	double aNb,
-	Coefficients coeff
-);
+	const Coefficients& coeff
+) {
+	if (nb < 0) {
+		return;
+	}
 
+	if (coeff.useFaceCoeffs &&
+		coeff.AF &&
+		coeff.faceStart &&
+		coeff.faceNeighbor) {
+		int start = coeff.faceStart[n];
+		int end = coeff.faceStart[n + 1];
+
+		for (int k = start; k < end; k++) {
+			if (coeff.faceNeighbor[k] == nb) {
+				coeff.AF[k] += aNb;
+				return;
+			}
+		}
+
+		return;
+	}
+
+	int nz = coeff.nz;
+
+	if (nz > 0) {
+		if (nb == n + 1) {
+			coeff.AE[n] += aNb;
+		}
+		else if (nb == n - 1) {
+			coeff.AW[n] += aNb;
+		}
+		else if (nb == n + nz) {
+			coeff.AN[n] += aNb;
+		}
+		else if (nb == n - nz) {
+			coeff.AS[n] += aNb;
+		}
+	}
+}
+
+// boolean helper functions
+__device__ __forceinline__
+bool isDirichletType(uint8_t type) {
+	return type == (uint8_t)(DIRICHLET);
+}
+
+__device__ __forceinline__
+bool isNeumannType(uint8_t type) {
+	return type == (uint8_t)(NEUMANN);
+}
+
+__device__ __forceinline__
+bool isFullyDevelopedType(uint8_t type) {
+	return type == (uint8_t)(FULLY_DEVELOPED);
+}
+
+__device__ __forceinline__
+bool isMichaelisMentenType(uint8_t type) {
+	return type == (uint8_t)(MICHAELIS_MENTEN);
+}
+
+__device__ __forceinline__
+bool isHillType(uint8_t type) {
+	return type == (uint8_t)(HILL);
+}
+
+// computational helper functions
 __device__
 void phiGradientGreenGauss(
 	int cellID,
@@ -56,23 +271,6 @@ double nonOrthoScalarDiffusionFlux(
 	double gamma
 );
 
-__device__
-void getOutwardNormalForCell(
-	FVMeshDevice mesh,
-	int cellID,
-	int faceID,
-	double& normalZ,
-	double& normalR
-);
-
-__device__
-double interpolateNormalCorrectionCoeffToFace(
-	int cellID,
-	int faceID,
-	FVMeshDevice mesh,
-	VariablesSimple simple
-);
-
 __global__
 void computeGradient(
 	FVMeshDevice mesh,
@@ -82,41 +280,6 @@ void computeGradient(
 	double* gradR,
 	GradientScheme scheme
 );
-
-__device__
-double getDistanceCellToCell(
-	const FVMeshDevice& mesh,
-	int owner,
-	int neighbor,
-	double normalZ,
-	double normalR
-);
-
-__device__
-double getDistanceCellToFace(
-	const FVMeshDevice& mesh,
-	int cellID,
-	int faceID,
-	double normalZ,
-	double normalR
-);
-
-
-// boolean helper functions
-__device__
-bool isDirichletType(uint8_t type);
-
-__device__
-bool isNeumannType(uint8_t type);
-
-__device__
-bool isFullyDevelopedType(uint8_t type);
-
-__device__
-bool isMichaelisMentenType(uint8_t type);
-
-__device__
-bool isHillType(uint8_t type);
 
 __global__
 void copyVector(double* vec1, double* vec2, int N);
