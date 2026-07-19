@@ -123,6 +123,40 @@ struct Coefficients {
 	}
 };
 
+// Multicolor ordering of the mesh cell graph, so Gauss-Seidel can run on the
+// face path (multiblock / unstructured).
+//
+// Red-black colors by (i+j)%2, which needs a real nr x nz grid -- on the face path
+// nr = nz = 0, so that kernel divides by zero. A general cell graph is not even
+// guaranteed to be 2-colorable (three triangles round a vertex is an odd cycle),
+// so the colors come from greedy graph coloring instead. On a single-block
+// structured mesh greedy reproduces the checkerboard exactly: 2 colors.
+//
+// Cells sharing a color share no face, so one color can be swept updating x IN
+// PLACE with no read/write conflict -- which is what makes it Gauss-Seidel rather
+// than Jacobi, and why no xTemp buffer is needed.
+struct MeshColoring {
+
+	int nCells = 0;
+	int nColors = 0;
+
+	// size nColors + 1; color c owns cellOrder[colorStart[c] .. colorStart[c + 1]).
+	// Stays on the host because the per-color launch geometry is computed there.
+	std::vector<int> colorStart;
+
+	// device, size nCells: cell ids grouped by color
+	int* d_cellOrder = nullptr;
+
+	bool valid() const { return nColors > 0 && d_cellOrder != nullptr; }
+
+	void free() {
+		freeAllDev(d_cellOrder);
+		colorStart.clear();
+		nColors = 0;
+		nCells = 0;
+	}
+};
+
 struct ConfigSimple {
 	int maxIter = 50;
 	int checkConv = 1;
@@ -137,9 +171,18 @@ struct ConfigSimple {
 };
 
 struct ConfigMultigrid {
-	
-	int maxIter = 50;
 
+	// Cycles per pressure-correction solve. This is an INNER solve inside SIMPLE's
+	// outer loop, so it does not need to converge -- a few cycles is the usual
+	// trade. Was 50 while the field was unread; wiring that value up unchanged
+	// would have made every pp solve ~50x its previous cost.
+	int maxIter = 3;
+
+	// Diagnostic: measure the level-0 residual norm either side of the cycle so the
+	// pp solve can be judged on its own rather than through SIMPLE's outer
+	// convergence. Costs two extra residual evaluations AND two blocking host syncs
+	// per solve, so it is off by default -- this sits inside SIMPLE's inner loop.
+	bool logConvergence = false;
 
 };
 

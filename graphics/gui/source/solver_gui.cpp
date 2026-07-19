@@ -489,15 +489,11 @@ void SolverGUI::drawLayerEditor(
 
 void SolverGUI::drawLinearSolverCombo() {
 
-	// Red-Black Gauss-Seidel relies on the structured checkerboard coloring, so it
-	// is unavailable on an unstructured mesh. Coerce a stale selection back to
-	// Jacobi and grey out the entry so it can't be re-picked.
-	const bool unstructured = mesh.currentMeshType == MeshType::Unstructured;
-
+	// Gauss-Seidel used to be structured-only: it took its checkerboard from
+	// (i+j)%2, which needs a real nr x nz grid. The face path (multiblock /
+	// unstructured) now supplies an equivalent ordering by graph coloring, so every
+	// mesh type can run it and there is nothing left to grey out.
 	int& type = (int&)solver.configSolver.type;
-	if (unstructured && type == LINEAR_GS_RB) {
-		type = LINEAR_JACOBI;
-	}
 
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	ImGui::AlignTextToFramePadding();
@@ -506,8 +502,6 @@ void SolverGUI::drawLinearSolverCombo() {
 
 		for (int i = 0; i < IM_ARRAYSIZE(solver.linearSolverType); i++) {
 
-			ImGui::BeginDisabled(unstructured && i == LINEAR_GS_RB);
-
 			const bool selected = (type == i);
 			if (ImGui::Selectable(solver.linearSolverType[i], selected)) {
 				type = i;
@@ -515,8 +509,6 @@ void SolverGUI::drawLinearSolverCombo() {
 			if (selected) {
 				ImGui::SetItemDefaultFocus();
 			}
-
-			ImGui::EndDisabled();
 		}
 
 		ImGui::EndCombo();
@@ -718,15 +710,17 @@ void SolverGUI::drawPropertiesPanel() {
 					project.solver.configSolver.maxIter = 1;
 				}
 
-				//if (solver.useMultigrid) {
+				// Multigrid replaces the linear solver above for the pressure
+				// correction only, so it carries its own cycle count.
+				if (solver.useMultigrid) {
 
-				//	labelRow("Maximum Multigrid Solve");
-				//	inputInt("##MultigridSolve", &project.solver.configSolver.maxIter);
-				//	if (project.solver.configSolver.maxIter < 1) {
-				//		project.solver.configSolver.maxIter = 1;
-				//	}
+					labelRow("Maximum Multigrid Cycles");
+					inputInt("##MultigridMaxIter", &project.solver.configMultigrid.maxIter);
+					if (project.solver.configMultigrid.maxIter < 1) {
+						project.solver.configMultigrid.maxIter = 1;
+					}
 
-				//}
+				}
 
 
 			}

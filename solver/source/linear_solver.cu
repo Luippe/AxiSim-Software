@@ -121,6 +121,52 @@ void gaussSeidelRB(Coefficients coeff, uint8_t* active, double* x, int color) {
 	x[n] = val;
 }
 
+// Gauss-Seidel over ONE color of the multicolor ordering (see MeshColoring).
+//
+// One thread per cell of that color. No two cells of a color share a face, so x is
+// updated in place safely: every neighbour read here belongs to a different color
+// and so is not being written by this launch. Colors already swept this iteration
+// contribute their NEW values, which is exactly what makes this Gauss-Seidel and
+// not Jacobi -- and why there is no xTemp.
+__global__
+void gaussSeidelColorSweep(
+	Coefficients coeff,
+	uint8_t* active,
+	double* x,
+	const int* cellOrder,
+	int colorBegin,
+	int colorCount
+) {
+
+	int t = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (t >= colorCount) return;
+
+	// buildMeshColoring counting-sorts every id in [0, nCells) into cellOrder, and
+	// the caller checks nCells == coeff.N, so n is in range by construction
+	const int n = cellOrder[colorBegin + t];
+
+	if (active && !active[n]) return;
+
+	const double AC = coeff.AC[n];
+
+	if (fabs(AC) < 1.0e-30) return;
+
+	double val = coeff.b[n];
+
+	const int start = coeff.faceStart[n];
+	const int end = coeff.faceStart[n + 1];
+
+	for (int k = start; k < end; k++) {
+		const int nb = coeff.faceNeighbor[k];
+		if (nb >= 0) {
+			val -= coeff.AF[k] * x[nb];
+		}
+	}
+
+	x[n] = val / AC;
+}
+
 void solveLinearSystem(
 	Coefficients& coeff,
 	const ConfigSolver& config,
@@ -128,12 +174,30 @@ void solveLinearSystem(
 	double*& x,
 	double*& xTemp,
 	uint8_t*& active,
-	int threadsPerBlock
+	int threadsPerBlock,
+	const MeshColoring& coloring
 ) {
 
 	int N = coeff.N;
 	int blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
-	LinearSolverType type = coeff.useFaceCoeffs ? LINEAR_JACOBI : config.type;
+
+	LinearSolverType type = config.type;
+
+	// The face path can run Gauss-Seidel only with a coloring to sweep; the
+	// structured gaussSeidelRB kernel is unusable there because it derives the
+	// checkerboard from coeff.nr / coeff.nz, which are 0.
+	const bool faceColored =
+		coeff.useFaceCoeffs &&
+		coloring.valid() && coloring.nCells == N &&
+		coeff.AF && coeff.faceStart && coeff.faceNeighbor;
+
+	// Jacobi and multicolor GS are the only two schemes implemented on the face
+	// path. Anything else (BiCGStab / GMRES, or GS without a usable coloring) falls
+	// back to Jacobi rather than dropping through the switch and silently running
+	// zero iterations.
+	if (coeff.useFaceCoeffs && !(type == LINEAR_GS_RB && faceColored)) {
+		type = LINEAR_JACOBI;
+	}
 
 	switch (type) {
 	case LINEAR_JACOBI:
@@ -144,6 +208,27 @@ void solveLinearSystem(
 		break;
 
 	case LINEAR_GS_RB:
+
+		if (faceColored) {
+
+			for (int k = 0; k < config.maxIter; k++) {
+				for (int c = 0; c < coloring.nColors; c++) {
+
+					const int begin = coloring.colorStart[c];
+					const int count = coloring.colorStart[c + 1] - begin;
+
+					if (count <= 0) continue;
+
+					const int colorBlocks = (count + threadsPerBlock - 1) / threadsPerBlock;
+
+					gaussSeidelColorSweep << <colorBlocks, threadsPerBlock, 0, stream >> > (
+						coeff, active, x, coloring.d_cellOrder, begin, count);
+				}
+			}
+
+			break;
+		}
+
 		for (int k = 0; k < config.maxIter; k++) {
 			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, active, x, 0);
 			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, active, x, 1);

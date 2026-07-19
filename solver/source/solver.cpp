@@ -34,7 +34,7 @@
 void printResidualConsole(int currentIteration, const std::unordered_map<std::string, ConfigResidual>& cfg, Console* console) {
     std::ostringstream line;
 
-    line << "ITERAITON: " << currentIteration;
+    line << "ITERATION: " << currentIteration;
     line << std::scientific << std::setprecision(6);
 
     for (auto& [name, configResidual] : cfg) {
@@ -141,7 +141,7 @@ void Solver::reset() {
     solverRunning = false;
     continueSolver = false;
     isReady = false;
-    useMultigrid = false;
+    useMultigrid = true;
 
     // solved data and derived fields
     solutions.clear();
@@ -749,6 +749,23 @@ void Solver::runSimple(const Mesh& mesh) {
             allocateCoefficients(concCoeff, nr, nz);
         }
 
+        // Gauss-Seidel ordering, face path only -- the structured path gets its
+        // checkerboard from (i+j)%2 in the kernel and needs no ordering. Nothing
+        // else reads it, so building it under any other solver type is a wasted
+        // O(N * degree) graph walk plus an N-int upload.
+        coloring.free();
+
+        if (useFaceCoefficients && configSolver.type == LINEAR_GS_RB) {
+            buildMeshColoring(coloring, fvMesh);
+
+            if (console) {
+                std::ostringstream gs;
+                gs << "Gauss-Seidel: " << coloring.nColors << " colors over "
+                   << coloring.nCells << " cells\n";
+                console->addLine(gs.str());
+            }
+        }
+
         // per-field residual vectors (res/scale) live in cfg now
         allocateResiduals(cfg, fvMesh);
 
@@ -820,16 +837,24 @@ void Solver::runSimple(const Mesh& mesh) {
     double rho = f.rho;
     double thermDiffusivity = k / (rho * cp);
 
-    // Multigrid only applies to the structured pressure solve: it coarsens a
-    // structured grid and reads config.g's face/active arrays. On an unstructured
-    // mesh those are empty and fvMesh.nr/nz == 0, so building a level there copies
-    // from empty host vectors and raises a CUDA error. Build it only when it can
-    // actually run; the pp solve falls back to solveLinearSystem otherwise.
+    // Multigrid now coarsens the cell/face GRAPH rather than a logical nr x nz
+    // grid, so it runs on any face-based mesh -- which since every structured mesh
+    // is built as multiblock, means every mesh the Generate path produces. The old
+    // gate here was `isStructuredMesh && !isMultiBlock`, a combination that path
+    // never produces, so the solver could never actually construct one.
+    //
+    // Still gated on the face path: level 0's Coefficients are allocated by the
+    // face-path allocator (AC/b/AF, no AE/AW/AN/AS), so a structured-index source
+    // operator would have nothing to copy into.
     std::optional<MultigridSolver> multigrid;
-    if (useMultigrid && isStructuredMesh && !isMultiBlock) {
-        GridLevel grid{ fvMesh.nr, fvMesh.nz, N, config.g.rFace, config.g.zFace, config.g.activeCell };
-        multigrid.emplace(mem, grid);
+    if (useMultigrid && useFaceCoefficients) {
+        GridLevel grid = makeFinestGridLevel(fvMesh);
+        multigrid.emplace(configMultigrid, mem, grid);
         CUDA_CHECK(cudaGetLastError());
+
+        if (console) {
+            console->addLine(multigrid->describeHierarchy());
+        }
     }
 
     //print(Nface, N, threadsPerBlock, blocks);
@@ -887,8 +912,8 @@ void Solver::runSimple(const Mesh& mesh) {
             getCorrectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.DV);
 
             // solve velocity
-            solveLinearSystem(uCoeff, configSolver, stream, simple.u, simple.uTemp, activeCells, threadsPerBlock);
-            solveLinearSystem(vCoeff, configSolver, stream, simple.v, simple.vTemp, activeCells, threadsPerBlock);
+            solveLinearSystem(uCoeff, configSolver, stream, simple.u, simple.uTemp, activeCells, threadsPerBlock, coloring);
+            solveLinearSystem(vCoeff, configSolver, stream, simple.v, simple.vTemp, activeCells, threadsPerBlock, coloring);
 
             // solve pressure correction
             createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, bcDevice.p);
@@ -914,7 +939,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     multigrid->run(ppCoeff, stream, simple.pp);
                 }
                 else {
-                    solveLinearSystem(ppCoeff, configSolver, stream, simple.pp, simple.ppTemp, activeCells, threadsPerBlock);
+                    solveLinearSystem(ppCoeff, configSolver, stream, simple.pp, simple.ppTemp, activeCells, threadsPerBlock, coloring);
                 }
             }
 
@@ -942,7 +967,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, tempCoeff, bcDevice.temp, 1.0 / f.rho);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.temp, simple.momentumRelaxation);
-                solveLinearSystem(tempCoeff, configSolver, stream, simple.temp, simple.tempTemp, activeCells, threadsPerBlock);
+                solveLinearSystem(tempCoeff, configSolver, stream, simple.temp, simple.tempTemp, activeCells, threadsPerBlock, coloring);
             }
 
             // ======================================================================
@@ -963,7 +988,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, concCoeff, bcDevice.conc, 1.0 / f.rho);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.conc, 1.0);
-                solveLinearSystem(concCoeff, configSolver, stream, simple.conc, simple.concTemp, activeCells, threadsPerBlock);
+                solveLinearSystem(concCoeff, configSolver, stream, simple.conc, simple.concTemp, activeCells, threadsPerBlock, coloring);
             }
 
             // ======================================================================
@@ -1002,6 +1027,20 @@ void Solver::runSimple(const Mesh& mesh) {
                 residualAllHost(cfg, N, currentIteration);
                 residualPlot->add(currentIteration, cfg);
                 printResidualConsole(currentIteration, cfg, console);
+
+                // pp-solve quality, reported separately from the SIMPLE residuals
+                // above: multigrid only accelerates the inner pressure-correction
+                // solve, so the outer residuals barely reflect whether it works.
+                if (multigrid && configMultigrid.logConvergence && console) {
+                    std::ostringstream mg;
+                    mg << "  MG pp: |r| " << std::scientific << std::setprecision(3)
+                       << multigrid->lastResBefore << " -> " << multigrid->lastResAfter
+                       << "   " << multigrid->lastCycles << " cycle(s), "
+                       << std::fixed << std::setprecision(4)
+                       << multigrid->lastRatio << "/cycle\n";
+                    console->addLine(mg.str());
+                }
+
                 CUDA_CHECK(cudaGetLastError());
 
                 converged = residualsConverged(cfg);

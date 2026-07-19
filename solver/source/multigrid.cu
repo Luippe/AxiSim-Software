@@ -1,8 +1,12 @@
 #include "multigrid.cuh"
 
 
-#include <math_constants.h>
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <iomanip>
+#include <sstream>
+#include <utility>
 #include <vector>
 
 #include "residuals.cuh"
@@ -17,18 +21,12 @@
   } \
 } while(0)
 
-__host__ __device__ inline int id(int i, int j, int nz) {
-	return i * nz + j;
-}
-
-MultigridSolver::MultigridSolver(MemoryConfig& mem, GridLevel& grid) :
+MultigridSolver::MultigridSolver(ConfigMultigrid& cfg, MemoryConfig& mem, GridLevel& grid) :
+	cfg(cfg),
 	mem(mem) {
 
 	// init once
-	buildHierarchy(grid);
-	CUDA_CHECK(cudaGetLastError());
-
-	buildLevels();
+	buildLevels(std::move(grid));
 	CUDA_CHECK(cudaGetLastError());
 
 }
@@ -39,176 +37,412 @@ MultigridSolver::~MultigridSolver() {
 	}
 }
 
-bool canCoarsen(const GridLevel& grid) {
-	return grid.nr % 2 == 0 && grid.nz % 2 == 0		// make sure grid size is divisible by 2
-		&& grid.nr / 2 >= 4 && grid.nz / 2 >= 4;		// make sure grid size does not go below 4x4
+GridLevel makeFinestGridLevel(const FVMesh& mesh) {
+
+	GridLevel level;
+
+	const int N = mesh.numCells();
+
+	level.nCells = N;
+	buildCellFaceCSR(mesh, level.faceStart, level.faceNeighbor);
+
+	// match the mask the solver kernels use (mesh.cells.active), not
+	// active && !solid -- disagreeing here would agglomerate cells the
+	// solver is skipping
+	level.active.assign(N, 0);
+	for (int c = 0; c < N; c++) {
+		level.active[c] = mesh.cells[c].active ? 1 : 0;
+	}
+
+	return level;
 }
 
-GridLevel MultigridSolver::coarsenGrid(const GridLevel& grid) {
+// Stop coarsening below this many cells: the coarsest level is solved by brute
+// smoothing, so shrinking further buys nothing and costs a level of memory.
+static const int minCoarseCells = 64;
 
-	GridLevel tempGrid;
+// A pass must shrink the graph by at least this factor to be worth keeping. A
+// pass that barely shrinks means agglomeration stalled, and another level would
+// add work without improving convergence.
+static const double maxShrinkRatio = 0.8;
 
-	int nr = grid.nr;
-	int nz = grid.nz;
+// ============================================================================
+// PASS 1 -- grouping. Greedy agglomeration over the face graph: every unclaimed
+// cell seeds a coarse cell and pulls in up to (target - 1) unclaimed neighbours.
+//
+// This is the ONLY mesh-type-specific step in the hierarchy build, and it is
+// written generically so multiblock and unstructured both work -- both reach the
+// solver as a plain cell/face graph. Swap in an index-based map here (per-block
+// i/2, j/2 + block offset) if deterministic square agglomerates are wanted on
+// multiblock; nothing downstream needs to change.
+//
+// Active and inactive cells are never merged: an inactive cell carries an
+// identity row, which would poison whatever coarse diagonal it folded into.
+//
+// Returns the coarse cell count. cellToCoarse comes out dense over
+// [0, nCoarse), including inactive cells -- the coarse arrays are indexed by it
+// directly, so gaps are not allowed. `active` does the filtering instead.
+// ============================================================================
+static int buildAgglomerationMap(const GridLevel& fine, std::vector<int>& cellToCoarse) {
 
-	// populate grid dimensions
-	tempGrid.nr = nr / 2;
-	tempGrid.nz = nz / 2;
-	tempGrid.N = tempGrid.nr * tempGrid.nz;
+	// 4 keeps the coarsening ratio near the 2x2 blocks the structured version
+	// used, so hierarchy depth stays comparable.
+	const int target = 4;
 
-	// populate rFace and zFace
-	for (int I = 0; I <= tempGrid.nr; I++) {
-		tempGrid.rFace.push_back(grid.rFace[2 * I]);
-	}
+	cellToCoarse.assign(fine.nCells, -1);
 
-	for (int J = 0; J <= tempGrid.nz; J++) {
-		tempGrid.zFace.push_back(grid.zFace[2 * J]);
-	}
+	int nCoarse = 0;
 
-	// populate active. check 2x2 grid. if any of the cells are active, then the coarsened cell is also active
-	tempGrid.active.assign(tempGrid.N, 0);
-	for (int I = 0; I < tempGrid.nr; I++) {
-		for (int J = 0; J < tempGrid.nz; J++) {
+	// Cells claimed by the agglomerate currently being grown. Declared out here and
+	// reused so growing a coarse cell does not allocate.
+	std::vector<int> members;
+	members.reserve(target);
 
-			int nTemp = I * tempGrid.nz + J;
+	for (int n = 0; n < fine.nCells; n++) {
 
-			int n1 = (2 * I) * nz + 2 * J;
-			int n2 = (2 * I + 1) * nz + 2 * J;
-			int n3 = (2 * I) * nz + 2 * J + 1;
-			int n4 = (2 * I + 1) * nz + 2 * J + 1;
+		if (cellToCoarse[n] >= 0) continue;   // already pulled into an earlier seed
 
-			bool isActive = grid.active[n1] || grid.active[n2] || grid.active[n3] || grid.active[n4];
+		const int c = nCoarse++;
+		cellToCoarse[n] = c;
 
-			tempGrid.active[nTemp] = (uint8_t)isActive;
+		members.clear();
+		members.push_back(n);
+
+		// Grow breadth-first: walk the cells claimed so far and keep taking their
+		// unclaimed neighbours until the agglomerate reaches `target`.
+		//
+		// Scanning only the SEED's own neighbours is not enough. In the CSR order a
+		// mesh actually produces, the neighbours "behind" cell n have already been
+		// claimed by earlier seeds by the time n seeds, so a seed finds only one or
+		// two free neighbours. That capped the real coarsening ratio at ~2x instead
+		// of the 4x `target` asks for -- which doubled the level count and let the
+		// coarse graph degree climb past the fine mesh's, since a 2-cell agglomerate
+		// inherits nearly every neighbour of both its members.
+		for (int m = 0; m < (int)members.size() && (int)members.size() < target; m++) {
+
+			const int cell = members[m];
+
+			for (int k = fine.faceStart[cell]; k < fine.faceStart[cell + 1] && (int)members.size() < target; k++) {
+
+				const int nb = fine.faceNeighbor[k];
+
+				if (nb < 0) continue;                                            // boundary slot
+				if (cellToCoarse[nb] >= 0) continue;                             // already claimed
+				if ((fine.active[nb] != 0) != (fine.active[n] != 0)) continue;   // never mix
+
+				cellToCoarse[nb] = c;
+				members.push_back(nb);
+			}
 		}
 	}
 
-	return tempGrid;
+	// ---- singleton cleanup --------------------------------------------------
+	// Sequential seeding strands cells whose neighbours were all claimed by
+	// earlier seeds. A one-cell agglomerate coarsens nothing AND inherits every
+	// one of its fine neighbours, so it is what drives the coarse graph degree
+	// up -- the damage is bigger than the cell count suggests.
+	//
+	// Merge each stranded cell into its SMALLEST adjacent agglomerate. Picking
+	// the smallest keeps growth self-limiting: an agglomerate only absorbs a
+	// singleton while it is the least-bad option, so no cap is needed.
+	std::vector<int> agglomSize(nCoarse, 0);
+	for (int n = 0; n < fine.nCells; n++) {
+		agglomSize[cellToCoarse[n]]++;
+	}
 
+	for (int n = 0; n < fine.nCells; n++) {
+
+		const int c = cellToCoarse[n];
+		if (agglomSize[c] != 1) continue;
+
+		int best = -1;
+		int bestSize = 0;
+
+		for (int k = fine.faceStart[n]; k < fine.faceStart[n + 1]; k++) {
+
+			const int nb = fine.faceNeighbor[k];
+
+			if (nb < 0) continue;
+			if ((fine.active[nb] != 0) != (fine.active[n] != 0)) continue;
+
+			const int cnb = cellToCoarse[nb];
+			if (cnb == c) continue;   // unreachable for a singleton, but cheap
+
+			if (best < 0 || agglomSize[cnb] < bestSize) {
+				best = cnb;
+				bestSize = agglomSize[cnb];
+			}
+		}
+
+		if (best < 0) continue;   // genuinely isolated -- leave it as its own cell
+
+		cellToCoarse[n] = best;
+		agglomSize[best]++;
+		agglomSize[c] = 0;
+	}
+
+	// ---- compaction ---------------------------------------------------------
+	// Merging empties coarse cells, and cellToCoarse must stay dense over
+	// [0, nCoarse) because the coarse arrays are indexed by it directly. Renumber
+	// by first appearance, which also happens to improve coarse-level locality.
+	std::vector<int> remap(nCoarse, -1);
+	int nCompact = 0;
+
+	for (int n = 0; n < fine.nCells; n++) {
+
+		const int c = cellToCoarse[n];
+
+		if (remap[c] < 0) {
+			remap[c] = nCompact++;
+		}
+
+		cellToCoarse[n] = remap[c];
+	}
+
+	return nCompact;
 }
 
-MultigridLevel MultigridSolver::createMultigridLevel(GridLevel& grid) {
+GridLevel MultigridSolver::coarsenGrid(GridLevel& fine) {
 
+	GridLevel coarse;
+
+	// ---- pass 1: group fine cells into coarse cells -------------------------
+	const int nCoarse = buildAgglomerationMap(fine, fine.cellToCoarse);
+
+	coarse.nCells = nCoarse;
+
+	// a coarse cell is active if ANY member is active (same rule the structured
+	// 2x2 coarsening used)
+	coarse.active.assign(nCoarse, 0);
+	for (int n = 0; n < fine.nCells; n++) {
+		if (fine.active[n]) {
+			coarse.active[fine.cellToCoarse[n]] = 1;
+		}
+	}
+
+	// ---- pass 2: distinct coarse neighbours of each coarse cell -------------
+	// A fine face contributes a coarse off-diagonal only when its two ends land
+	// in DIFFERENT coarse cells. Faces internal to an agglomerate fold into the
+	// coarse diagonal, and boundary slots contribute nothing (their effect is
+	// already in the fine AC / b).
+	//
+	// Collected as one flat (coarse cell, coarse neighbour) list rather than a
+	// set per coarse cell: sort + unique gives the same deduplicated, row-sorted
+	// result -- which the binary search below depends on -- in one allocation
+	// instead of nCoarse red-black trees.
+	std::vector<std::pair<int, int>> pairs;
+	pairs.reserve(fine.nFaceRefs());
+
+	for (int n = 0; n < fine.nCells; n++) {
+
+		const int cn = fine.cellToCoarse[n];
+
+		for (int k = fine.faceStart[n]; k < fine.faceStart[n + 1]; k++) {
+
+			const int nb = fine.faceNeighbor[k];
+			if (nb < 0) continue;
+
+			const int cnb = fine.cellToCoarse[nb];
+			if (cnb != cn) {
+				pairs.emplace_back(cn, cnb);
+			}
+		}
+	}
+
+	std::sort(pairs.begin(), pairs.end());
+	pairs.erase(std::unique(pairs.begin(), pairs.end()), pairs.end());
+
+	// ---- pass 3: flatten the pair list into CSR -----------------------------
+	coarse.faceStart.assign(nCoarse + 1, 0);
+	for (const auto& p : pairs) {
+		coarse.faceStart[p.first + 1]++;
+	}
+
+	for (int c = 0; c < nCoarse; c++) {
+		coarse.faceStart[c + 1] += coarse.faceStart[c];
+	}
+
+	coarse.faceNeighbor.resize(pairs.size());
+	for (size_t i = 0; i < pairs.size(); i++) {
+		coarse.faceNeighbor[i] = pairs[i].second;
+	}
+
+	// ---- fine slot -> coarse slot -------------------------------------------
+	// -1 means "feeds no coarse off-diagonal", covering two different cases the
+	// coarse-operator kernel tells apart via faceNeighbor[k]:
+	//   faceNeighbor[k] >= 0 -> internal to an agglomerate, folds into the diagonal
+	//   faceNeighbor[k] <  0 -> boundary slot, contributes nothing
+	fine.fineSlotToCoarseSlot.assign(fine.nFaceRefs(), -1);
+
+	for (int n = 0; n < fine.nCells; n++) {
+
+		const int cn = fine.cellToCoarse[n];
+
+		for (int k = fine.faceStart[n]; k < fine.faceStart[n + 1]; k++) {
+
+			const int nb = fine.faceNeighbor[k];
+			if (nb < 0) continue;
+
+			const int cnb = fine.cellToCoarse[nb];
+			if (cnb == cn) continue;
+
+			// pass 2 built row cn from these same pairs, so the hit always exists
+			const auto rowBegin = coarse.faceNeighbor.begin() + coarse.faceStart[cn];
+			const auto rowEnd = coarse.faceNeighbor.begin() + coarse.faceStart[cn + 1];
+
+			const auto hit = std::lower_bound(rowBegin, rowEnd, cnb);
+
+			fine.fineSlotToCoarseSlot[k] = (int)(hit - coarse.faceNeighbor.begin());
+		}
+	}
+
+	return coarse;
+}
+
+MultigridLevel MultigridSolver::createMultigridLevel(GridLevel grid) {
 
 	MultigridLevel level;
-	level.grid = grid;
+	level.grid = std::move(grid);
 	allocateMultigridLevel(level);
 	return level;
 
 }
 
-void MultigridSolver::buildLevels() {
+void MultigridSolver::buildLevels(GridLevel fine) {
 
-	for (GridLevel& grid : grids) {
+	// Each GridLevel is moved into its MultigridLevel as it is finished, so the
+	// host connectivity exists in exactly one place. `fine` is the level being
+	// coarsened FROM and is not yet owned by `levels` -- coarsenGrid writes its
+	// cellToCoarse / fineSlotToCoarseSlot, so it can only be handed over once the
+	// coarse level below it is known.
+	while (true) {
 
-		levels.push_back(createMultigridLevel(grid));
+		if (fine.nCells <= minCoarseCells) break;
 
+		// built speculatively: the shrink test needs the coarse cell count. On
+		// reject, the maps coarsenGrid just wrote are cleared again so `fine`
+		// correctly reports isCoarsest().
+		GridLevel coarse = coarsenGrid(fine);
+
+		if (coarse.nCells >= (int)(fine.nCells * maxShrinkRatio)) {
+			fine.cellToCoarse.clear();
+			fine.fineSlotToCoarseSlot.clear();
+			break;
+		}
+
+		levels.push_back(createMultigridLevel(std::move(fine)));
+		fine = std::move(coarse);
 	}
-}
 
-void MultigridSolver::buildHierarchy(GridLevel fine) {
-
-	grids.push_back(fine);
-	while (canCoarsen(grids.back())) {
-		grids.push_back(coarsenGrid(grids.back()));
-	}
+	levels.push_back(createMultigridLevel(std::move(fine)));
 }
 
 
 
 // ============================================================================
-// Route A coarse operator: build A_H by AVERAGING the fine face coefficients.
-// A coarse face is made of two fine faces; parallel conductances add and the
-// doubled cell spacing halves them, so coarse coeff = average of the two fine.
-// The fine AE/AW/AN/AS already carry d = A/aP, so this needs no geometry.
-// One thread per coarse cell.
+// Galerkin coarse operator, A_H = R A_h P with P = piecewise-constant injection
+// and R = P^T. That reduces to one rule: every fine matrix entry A[row][col]
+// adds into the coarse entry A_H[c(row)][c(col)]. Which gives four cases:
+//
+//   AC[n]                          -> AC_H[c(n)]
+//   AF[k], c(nb) == c(n)           -> AC_H[c(n)]   (internal, folds into diagonal)
+//   AF[k], c(nb) != c(n)           -> AF_H[fineSlotToCoarseSlot[k]]
+//   boundary slot (faceNeighbor<0) -> nothing; already folded into fine AC / b
+//
+// One thread per FINE cell, scattering with atomicAdd -- the coarse row a fine
+// entry lands in was resolved on the host, so there is no search here.
+//
+// This replaces Route A (average the two fine face coeffs, then force
+// AC = -(sum of neighbours)). Summing is the correct Galerkin operator AND it
+// preserves Dirichlet anchoring: a pinned fine cell carries extra weight in AC
+// with no matching off-diagonal, which forcing row-sum-zero would discard,
+// leaving the coarse level singular.
+//
+// The caller must zero coarse AC / AF first -- this accumulates.
 // ============================================================================
 __global__
-void buildCoarseOperatorKernel(Coefficients fine, Coefficients coarse, const uint8_t* coarseActive) {
+void buildCoarseOperatorKernel(
+	Coefficients fine,
+	Coefficients coarse,
+	const int* cellToCoarse,
+	const int* fineSlotToCoarseSlot,
+	const uint8_t* fineActive
+) {
 
-	int nc = blockIdx.x * blockDim.x + threadIdx.x;
-	if (nc >= coarse.N) return;
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+	if (n >= fine.N) return;
 
-	int I = nc / coarse.nz;
-	int J = nc % coarse.nz;
+	// an inactive fine cell is never assembled (createPPCoeff returns early, leaving
+	// the row at AC = 0) and never solved, so folding that empty row into a coarse
+	// cell would only dilute the coarse diagonal
+	if (!fineActive[n]) return;
 
-	// inactive coarse cell -> trivial identity row so its correction stays 0
-	if (!coarseActive[nc]) {
-		coarse.AE[nc] = 0.0;
-		coarse.AW[nc] = 0.0;
-		coarse.AN[nc] = 0.0;
-		coarse.AS[nc] = 0.0;
-		coarse.AC[nc] = 1.0;
-		coarse.b[nc]  = 0.0;
-		return;
+	const int cn = cellToCoarse[n];
+
+	atomicAdd(&coarse.AC[cn], fine.AC[n]);
+
+	for (int k = fine.faceStart[n]; k < fine.faceStart[n + 1]; k++) {
+
+		const int nb = fine.faceNeighbor[k];
+		if (nb < 0) continue;             // boundary slot
+
+		// coupling to an inactive cell is inert in the fine solve (its x stays 0),
+		// so it must not create a coarse coupling either. Leaving the matching
+		// weight in AC makes the coarse row diagonally dominant, which is the
+		// stable choice.
+		if (!fineActive[nb]) continue;
+
+		const int slot = fineSlotToCoarseSlot[k];
+
+		if (slot >= 0) {
+			atomicAdd(&coarse.AF[slot], fine.AF[k]);
+		}
+		else {
+			atomicAdd(&coarse.AC[cn], fine.AF[k]);
+		}
 	}
-
-	int fnz = fine.nz;
-
-	// coarse cell (I,J) owns fine cells i in {2I, 2I+1}, j in {2J, 2J+1}.
-	// each coarse face averages the two fine faces of the same type on that side:
-	double AE = 0.5 * (fine.AE[id(2 * I,     2 * J + 1, fnz)] +    // east  = right column
-	                   fine.AE[id(2 * I + 1, 2 * J + 1, fnz)]);
-	double AW = 0.5 * (fine.AW[id(2 * I,     2 * J,     fnz)] +    // west  = left column
-	                   fine.AW[id(2 * I + 1, 2 * J,     fnz)]);
-	double AN = 0.5 * (fine.AN[id(2 * I + 1, 2 * J,     fnz)] +    // north = top row
-	                   fine.AN[id(2 * I + 1, 2 * J + 1, fnz)]);
-	double AS = 0.5 * (fine.AS[id(2 * I,     2 * J,     fnz)] +    // south = bottom row
-	                   fine.AS[id(2 * I,     2 * J + 1, fnz)]);
-
-	coarse.AE[nc] = AE;
-	coarse.AW[nc] = AW;
-	coarse.AN[nc] = AN;
-	coarse.AS[nc] = AS;
-
-	// diagonal from the coarse neighbours keeps the row sum zero (constants in null space)
-	coarse.AC[nc] = -(AE + AW + AN + AS);
 }
 
 
+// Restriction, R = P^T for piecewise-constant injection: a plain SUM of the fine
+// residuals over each agglomerate. No 1/4 averaging -- with the Galerkin operator
+// above, the sum is the consistent pairing (b is a volume-integrated source, and
+// a coarse cell is the union of its members).
+//
+// The caller must zero coarse b first -- this accumulates.
 __global__
-void buildRestrictionKernel(Coefficients fine, Coefficients coarse, const double* fineRes, const uint8_t* coarseActive) {
+void buildRestrictionKernel(
+	Coefficients fine,
+	Coefficients coarse,
+	const double* fineRes,
+	const int* cellToCoarse,
+	const uint8_t* fineActive
+) {
 
-	int nc = blockIdx.x * blockDim.x + threadIdx.x;
-	if (nc >= coarse.N) return;
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+	if (n >= fine.N) return;
+	if (!fineActive[n]) return;
 
-	int I = nc / coarse.nz;
-	int J = nc % coarse.nz;
-
-	if (!coarseActive[nc]) {
-		coarse.b[nc] = 0.0;
-		return;
-	}
-
-	int fnz = fine.nz;
-
-	// average over 4 cells
-	double r1 = fineRes[id(2 * I, 2 * J + 1, fnz)];
-	double r2 = fineRes[id(2 * I, 2 * J, fnz)];
-	double r3 = fineRes[id(2 * I + 1, 2 * J, fnz)];
-	double r4 = fineRes[id(2 * I + 1, 2 * J + 1, fnz)];
-
-	coarse.b[nc] = 0.25 * (r1 + r2 + r3 + r4);
-
+	atomicAdd(&coarse.b[cellToCoarse[n]], fineRes[n]);
 }
 
+
+// Prolongation, P = piecewise-constant injection: every fine cell picks up the
+// correction of the coarse cell it belongs to.
 __global__
-void buildProlongationKernel(Coefficients fine, Coefficients coarse, double* xf, double* xc, const uint8_t* fineActive) {
+void buildProlongationKernel(
+	Coefficients fine,
+	double* xf,
+	const double* xc,
+	const int* cellToCoarse,
+	const uint8_t* fineActive
+) {
 
-	int nf = blockIdx.x * blockDim.x + threadIdx.x;
-	if (nf >= fine.N) return;
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+	if (n >= fine.N) return;
+	if (!fineActive[n]) return;
 
-	int I = nf / fine.nz;
-	int J = nf % fine.nz;
-
-	if (!fineActive[nf]) {
-		return;
-	}
-
-	int cnz = coarse.nz;
-
-	xf[nf] += xc[id(I / 2, J / 2, cnz)];
-
+	xf[n] += xc[cellToCoarse[n]];
 }
 
 __global__
@@ -221,32 +455,65 @@ void jacobiSmoother(Coefficients coeff, double* x, const double* res, const uint
 	x[n] += weight * res[n] / coeff.AC[n];
 }
 
+// NOTE: all three transfers are now driven from the FINE level (one thread per
+// fine cell, scattering down), so every launch below sizes on fine.grid.nCells.
+// The old versions launched over the coarse level and gathered.
+
 void MultigridSolver::buildCoarseOperator(const MultigridLevel& fine, MultigridLevel& coarse, cudaStream_t& stream) {
 
-	int blocks = (coarse.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+	// the kernel accumulates, and run() rebuilds the hierarchy's operators on
+	// every call -- without this it would sum onto the previous call's operator
+	CUDA_CHECK(cudaMemsetAsync(coarse.coeff.AC, 0, coarse.grid.nCells * sizeof(double), stream));
 
-	buildCoarseOperatorKernel << <blocks, mem.threadsPerBlock, 0, stream >> > (fine.coeff, coarse.coeff, coarse.d_active);
+	if (coarse.coeff.AF && coarse.coeff.nFaceRefs > 0) {
+		CUDA_CHECK(cudaMemsetAsync(coarse.coeff.AF, 0, coarse.coeff.nFaceRefs * sizeof(double), stream));
+	}
+
+	int blocks = (fine.grid.nCells + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+
+	buildCoarseOperatorKernel << <blocks, mem.threadsPerBlock, 0, stream >> > (
+		fine.coeff,
+		coarse.coeff,
+		fine.d_cellToCoarse,
+		fine.d_fineSlotToCoarseSlot,
+		fine.d_active
+		);
 
 }
 
 void MultigridSolver::buildRestriction(const MultigridLevel& fine, MultigridLevel& coarse, cudaStream_t& stream) {
 
-	int blocks = (coarse.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+	// same reason as above: the scatter accumulates into b
+	CUDA_CHECK(cudaMemsetAsync(coarse.coeff.b, 0, coarse.grid.nCells * sizeof(double), stream));
 
-	buildRestrictionKernel << <blocks, mem.threadsPerBlock, 0, stream >> > (fine.coeff, coarse.coeff, fine.res, coarse.d_active);
+	int blocks = (fine.grid.nCells + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+
+	buildRestrictionKernel << <blocks, mem.threadsPerBlock, 0, stream >> > (
+		fine.coeff,
+		coarse.coeff,
+		fine.res,
+		fine.d_cellToCoarse,
+		fine.d_active
+		);
 
 }
 
 void MultigridSolver::buildProlongation(const MultigridLevel& fine, MultigridLevel& coarse, cudaStream_t& stream) {
 
-	int blocks = (fine.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+	int blocks = (fine.grid.nCells + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
 
-	buildProlongationKernel << <blocks, mem.threadsPerBlock, 0, stream >> > (fine.coeff, coarse.coeff, fine.x, coarse.x, fine.d_active);
+	buildProlongationKernel << <blocks, mem.threadsPerBlock, 0, stream >> > (
+		fine.coeff,
+		fine.x,
+		coarse.x,
+		fine.d_cellToCoarse,
+		fine.d_active
+		);
 }
 
 void MultigridSolver::computeResidual(MultigridLevel& level, cudaStream_t& stream) {
 
-	int blocks = (level.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+	int blocks = (level.grid.nCells + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
 
 	residualAll << <blocks, mem.threadsPerBlock, 0, stream >> > (
 		level.d_active,
@@ -256,30 +523,116 @@ void MultigridSolver::computeResidual(MultigridLevel& level, cudaStream_t& strea
 
 }
 
+void MultigridSolver::vCycle(int l, cudaStream_t& stream) {
 
-void MultigridSolver::twoGridCycle(cudaStream_t& stream) {
-	MultigridLevel& fine = levels[0];
-	MultigridLevel& coarse = levels[1];
+	// Cache as int. levels.size() is size_t, so `l == levels.size() - 1` would
+	// promote l to unsigned, and on an empty hierarchy size() - 1 wraps to
+	// SIZE_MAX -- the base case never matches and the recursion runs away.
+	const int nLevels = (int)levels.size();
 
-	smoothen(fine, stream, jacobiPrePostSweep);
-	computeResidual(fine, stream);
-	buildRestriction(fine, coarse, stream);
-	cudaMemsetAsync(coarse.x, 0, coarse.grid.N * sizeof(double), stream);
-	smoothen(coarse, stream, jacobiSweep);
-	buildProlongation(fine, coarse, stream);
-	smoothen(fine, stream, jacobiPrePostSweep);
+	if (l < 0 || l >= nLevels) return;
+
+	// coarsest level: nothing below to correct from, so just smooth hard
+	if (l == nLevels - 1) {
+		smoothen(levels[l], stream, jacobiSweep);
+		return;
+	}
+
+	smoothen(levels[l], stream, jacobiPrePostSweep);
+
+	// smoothen() ends on a jacobi update, which leaves level.res one step stale.
+	// Restricting without this recompute would transfer the residual from BEFORE
+	// the last sweep. Not redundant -- do not fold it into smoothen().
+	computeResidual(levels[l], stream);
+
+	buildRestriction(levels[l], levels[l + 1], stream);
+
+	// The coarse solve is for a CORRECTION, so it starts from zero. This must
+	// happen every cycle: on the second and later V-cycles the coarse x still
+	// holds the previous cycle's correction, which would prolongate back up.
+	cudaMemsetAsync(levels[l + 1].x, 0, levels[l + 1].grid.nCells * sizeof(double), stream);
+
+	vCycle(l + 1, stream);
+
+	buildProlongation(levels[l], levels[l + 1], stream);
+	smoothen(levels[l], stream, jacobiPrePostSweep);
 
 }
 
-
 void MultigridSolver::smoothen(MultigridLevel& level, cudaStream_t& stream, int iteration) {
 
-	int blocks = (level.grid.N + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+	int blocks = (level.grid.nCells + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
 
 	for (int n = 0; n < iteration; n++) {
 		computeResidual(level, stream);
 		jacobiSmoother << <blocks, mem.threadsPerBlock, 0, stream >> > (level.coeff, level.x, level.res, level.d_active, jacobiWeight);
 	}
+}
+
+double MultigridSolver::residualNorm(MultigridLevel& level, cudaStream_t& stream) {
+
+	computeResidual(level, stream);
+	CUDA_CHECK(cudaStreamSynchronize(stream));
+
+	const int N = level.grid.nCells;
+
+	// level.res is scratch at both call sites: before the cycle the first
+	// smoothen() recomputes it, and after the cycle run() only copies x back.
+	std::vector<double> host = copyDeviceToHostVector(level.res, (size_t)N);
+
+	double sum = 0.0;
+
+	for (int n = 0; n < N; n++) {
+		if (!level.grid.active[n]) continue;
+		sum += host[n] * host[n];
+	}
+
+	return std::sqrt(sum);
+}
+
+std::string MultigridSolver::describeHierarchy() const {
+
+	std::ostringstream out;
+
+	out << "Multigrid: " << levels.size() << " level(s)\n";
+
+	for (size_t l = 0; l < levels.size(); l++) {
+
+		const GridLevel& g = levels[l].grid;
+
+		int nActive = 0;
+		for (uint8_t a : g.active) {
+			if (a) nActive++;
+		}
+
+		// average number of neighbours per cell. The fine mesh sits near 4 on
+		// quads; if this climbs sharply going coarse, the agglomerates are ragged
+		// and the coarse operator will be denser and worse-conditioned than it
+		// should be, which shows up as a V-cycle that barely beats Jacobi.
+		const double degree = g.nCells > 0
+			? (double)g.nFaceRefs() / (double)g.nCells
+			: 0.0;
+
+		out << "  L" << l
+			<< "  cells " << g.nCells
+			<< "  active " << nActive
+			<< std::fixed << std::setprecision(2)
+			<< "  degree " << degree;
+
+		if (l > 0) {
+			const int prev = levels[l - 1].grid.nCells;
+			const double ratio = g.nCells > 0 ? (double)prev / (double)g.nCells : 0.0;
+			out << "  (" << ratio << "x)";
+		}
+
+		out << "\n";
+	}
+
+	if (levels.size() < 2) {
+		out << "  WARNING: single level -- no coarse correction, this degrades to plain Jacobi.\n";
+	}
+
+	return out.str();
 }
 
 void MultigridSolver::run(Coefficients& coeff, cudaStream_t& stream, double* x) {
@@ -288,14 +641,42 @@ void MultigridSolver::run(Coefficients& coeff, cudaStream_t& stream, double* x) 
 
 	// load the fine operator's DATA into level 0's own buffers (not `= coeff`,
 	// which would leak level 0's buffers and alias the solver's arrays)
-	copyCoefficients(levels[0].coeff, coeff, levels[0].grid.N, stream);
+	copyCoefficients(levels[0].coeff, coeff, levels[0].grid.nCells, stream);
 
 	// start at index 1, as the 0th index contains the fine level
 	for (int l = 1; l < levels.size(); l++) {
 		buildCoarseOperator(levels[l - 1], levels[l], stream);
 	}
 
-	twoGridCycle(stream);
+	// Measured either side of the whole run so the pp solve is judged on its own,
+	// independent of whether SIMPLE's outer loop happens to care.
+	if (cfg.logConvergence) {
+		lastResBefore = residualNorm(levels[0], stream);
+	}
+
+	// Repeat the cycle on the SAME operator: A does not change between cycles, only
+	// x does, so the hierarchy built above is reused and each pass simply starts
+	// from the residual the previous pass left. Floored at 1 so a bad config can
+	// never turn the pp solve into a no-op.
+	//
+	// There is deliberately no residual-based early exit: testing it would mean a
+	// blocking host sync per cycle, which costs more than the cycles it saves.
+	const int nCycles = std::max(1, cfg.maxIter);
+
+	for (int cycle = 0; cycle < nCycles; cycle++) {
+		vCycle(0, stream);
+	}
+
+	if (cfg.logConvergence) {
+
+		lastResAfter = residualNorm(levels[0], stream);
+		lastCycles = nCycles;
+
+		// per-cycle geometric mean, not the total reduction -- see the header
+		lastRatio = (lastResBefore > 0.0 && lastResAfter > 0.0)
+			? std::pow(lastResAfter / lastResBefore, 1.0 / nCycles)
+			: 0.0;
+	}
 
 	cudaMemcpyAsync(x, levels[0].x, coeff.N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
 

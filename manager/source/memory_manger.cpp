@@ -260,6 +260,130 @@ void allocateResiduals(std::unordered_map<std::string, ConfigResidual>& configRe
 	}
 }
 
+void buildCellFaceCSR(const FVMesh& mesh, std::vector<int>& faceStart, std::vector<int>& faceNeighbor) {
+
+	const int N = mesh.numCells();
+	const int nFaces = mesh.numFaces();
+
+	faceStart.assign(N + 1, 0);
+
+	int total = 0;
+	for (int c = 0; c < N; c++) {
+		faceStart[c] = total;
+		total += static_cast<int>(mesh.cells[c].faceIDs.size());
+	}
+
+	faceStart[N] = total;
+
+	faceNeighbor.clear();
+	faceNeighbor.reserve(total);
+
+	for (int c = 0; c < N; c++) {
+		for (int faceID : mesh.cells[c].faceIDs) {
+
+			int neighbor = -1;
+
+			if (faceID >= 0 && faceID < nFaces) {
+				const FVFace& face = mesh.faces[faceID];
+				if (face.owner == c) {
+					neighbor = face.neighbor;
+				}
+				else if (face.neighbor == c) {
+					neighbor = face.owner;
+				}
+			}
+
+			faceNeighbor.push_back(neighbor);
+		}
+	}
+}
+
+void buildMeshColoring(MeshColoring& coloring, const FVMesh& mesh) {
+
+	std::vector<int> faceStart;
+	std::vector<int> faceNeighbor;
+
+	buildCellFaceCSR(mesh, faceStart, faceNeighbor);
+	buildMeshColoring(coloring, mesh.numCells(), faceStart, faceNeighbor);
+}
+
+void buildMeshColoring(
+	MeshColoring& coloring,
+	int N,
+	const std::vector<int>& faceStart,
+	const std::vector<int>& faceNeighbor
+) {
+
+	coloring.free();
+	coloring.nCells = N;
+
+	if (N <= 0) {
+		return;
+	}
+
+	std::vector<int> color(N, -1);
+
+	// Which colors the current cell's neighbours already hold. Stamped with the
+	// cell id rather than cleared, so the per-cell cost stays proportional to the
+	// cell's degree instead of the color count.
+	std::vector<int> stamp;
+
+	int nColors = 0;
+
+	for (int c = 0; c < N; c++) {
+
+		for (int k = faceStart[c]; k < faceStart[c + 1]; k++) {
+
+			const int nb = faceNeighbor[k];
+
+			// only cells coloured earlier constrain this one
+			if (nb < 0 || color[nb] < 0) continue;
+
+			if (color[nb] >= (int)stamp.size()) {
+				stamp.resize(color[nb] + 1, -1);
+			}
+
+			stamp[color[nb]] = c;
+		}
+
+		// smallest color no neighbour is using. Running off the end of `stamp` is
+		// fine -- a color that was never stamped is by definition free.
+		int pick = 0;
+		while (pick < (int)stamp.size() && stamp[pick] == c) {
+			pick++;
+		}
+
+		color[c] = pick;
+
+		if (pick >= nColors) {
+			nColors = pick + 1;
+		}
+	}
+
+	coloring.nColors = nColors;
+
+	// counting sort into a flat color-major order
+	coloring.colorStart.assign(nColors + 1, 0);
+
+	for (int c = 0; c < N; c++) {
+		coloring.colorStart[color[c] + 1]++;
+	}
+
+	for (int k = 0; k < nColors; k++) {
+		coloring.colorStart[k + 1] += coloring.colorStart[k];
+	}
+
+	std::vector<int> cellOrder(N);
+	std::vector<int> fill = coloring.colorStart;
+
+	for (int c = 0; c < N; c++) {
+		cellOrder[fill[color[c]]++] = c;
+	}
+
+	copyHostToDevice(coloring.d_cellOrder, cellOrder);
+	CUDA_CHECK(cudaGetLastError());
+}
+
 void allocateCoefficients(Coefficients& coeff, int nr, int nz) {
 
 	// get N
@@ -290,142 +414,35 @@ void allocateCoefficients(Coefficients& coeff, int nr, int nz) {
 
 void allocateCoefficients(std::unordered_map<std::string, Coefficients>& coefficients, const FVMesh& mesh) {
 
-	int N = mesh.numCells();
+	const int N = mesh.numCells();
+
+	// one walk for the whole map -- every field sits on the same mesh
+	std::vector<int> faceStart;
+	std::vector<int> faceNeighbor;
+	buildCellFaceCSR(mesh, faceStart, faceNeighbor);
 
 	for (auto& [name, coeff] : coefficients) {
 
-		coeff.N = N;
+		allocateCoefficients(coeff, N, faceStart, faceNeighbor);
+
+		// the face-path allocator zeroes nr/nz; this mesh does have a logical grid
+		// behind it, and the structured kernels still read them
 		coeff.nr = mesh.nr;
 		coeff.nz = mesh.nz;
-		coeff.useFaceCoeffs = 1;
-
-		coeff.AE = deviceAlloc<double>(N);
-		coeff.AW = deviceAlloc<double>(N);
-		coeff.AN = deviceAlloc<double>(N);
-		coeff.AS = deviceAlloc<double>(N);
-		coeff.AC = deviceAlloc<double>(N);
-		coeff.b = deviceAlloc<double>(N);
-
-
-		CUDA_CHECK(cudaMemset(coeff.AE, 0, N * sizeof(double)));
-		CUDA_CHECK(cudaMemset(coeff.AW, 0, N * sizeof(double)));
-		CUDA_CHECK(cudaMemset(coeff.AN, 0, N * sizeof(double)));
-		CUDA_CHECK(cudaMemset(coeff.AS, 0, N * sizeof(double)));
-		CUDA_CHECK(cudaMemset(coeff.AC, 0, N * sizeof(double)));
-		CUDA_CHECK(cudaMemset(coeff.b, 0, N * sizeof(double)));
-
-
-		std::vector<int> faceStart(N + 1, 0);
-		std::vector<int> faceNeighbor;
-
-		int totalFaceRefs = 0;
-		for (int c = 0; c < N; c++) {
-			faceStart[c] = totalFaceRefs;
-			totalFaceRefs += static_cast<int>(mesh.cells[c].faceIDs.size());
-		}
-
-		faceStart[N] = totalFaceRefs;
-		faceNeighbor.reserve(totalFaceRefs);
-
-		for (int c = 0; c < N; c++) {
-			for (int faceID : mesh.cells[c].faceIDs) {
-				int neighbor = -1;
-
-				if (faceID >= 0 && faceID < mesh.numFaces()) {
-					const FVFace& face = mesh.faces[faceID];
-					if (face.owner == c) {
-						neighbor = face.neighbor;
-					}
-					else if (face.neighbor == c) {
-						neighbor = face.owner;
-					}
-				}
-
-				faceNeighbor.push_back(neighbor);
-			}
-		}
-
-		coeff.nFaceRefs = (int)(faceNeighbor.size());
-
-		if (coeff.nFaceRefs > 0) {
-			coeff.AF = deviceAlloc<double>(coeff.nFaceRefs);
-			CUDA_CHECK(cudaMemset(coeff.AF, 0, coeff.nFaceRefs * sizeof(double)));
-		}
-		else {
-			coeff.AF = nullptr;
-		}
-
-		copyHostToDevice(coeff.faceStart, faceStart);
-		copyHostToDevice(coeff.faceNeighbor, faceNeighbor);
-
 	}
 
 }
 
 void allocateCoefficients(Coefficients& coeff, const FVMesh& mesh) {
-	int N = mesh.numCells();
 
-	coeff.N = N;
-	coeff.nr = mesh.nr;
-	coeff.nz = mesh.nz;
-	coeff.useFaceCoeffs = 1;
-
-	coeff.AE = deviceAlloc<double>(N);
-	coeff.AW = deviceAlloc<double>(N);
-	coeff.AN = deviceAlloc<double>(N);
-	coeff.AS = deviceAlloc<double>(N);
-	coeff.AC = deviceAlloc<double>(N);
-	coeff.b = deviceAlloc<double>(N);
-
-	CUDA_CHECK(cudaMemset(coeff.AE, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.AW, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.AN, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.AS, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.AC, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.b, 0, N * sizeof(double)));
-
-	std::vector<int> faceStart(N + 1, 0);
+	std::vector<int> faceStart;
 	std::vector<int> faceNeighbor;
 
-	int totalFaceRefs = 0;
-	for (int c = 0; c < N; c++) {
-		faceStart[c] = totalFaceRefs;
-		totalFaceRefs += static_cast<int>(mesh.cells[c].faceIDs.size());
-	}
+	buildCellFaceCSR(mesh, faceStart, faceNeighbor);
+	allocateCoefficients(coeff, mesh.numCells(), faceStart, faceNeighbor);
 
-	faceStart[N] = totalFaceRefs;
-	faceNeighbor.reserve(totalFaceRefs);
-
-	for (int c = 0; c < N; c++) {
-		for (int faceID : mesh.cells[c].faceIDs) {
-			int neighbor = -1;
-
-			if (faceID >= 0 && faceID < mesh.numFaces()) {
-				const FVFace& face = mesh.faces[faceID];
-				if (face.owner == c) {
-					neighbor = face.neighbor;
-				}
-				else if (face.neighbor == c) {
-					neighbor = face.owner;
-				}
-			}
-
-			faceNeighbor.push_back(neighbor);
-		}
-	}
-
-	coeff.nFaceRefs = static_cast<int>(faceNeighbor.size());
-
-	if (coeff.nFaceRefs > 0) {
-		coeff.AF = deviceAlloc<double>(coeff.nFaceRefs);
-		CUDA_CHECK(cudaMemset(coeff.AF, 0, coeff.nFaceRefs * sizeof(double)));
-	}
-	else {
-		coeff.AF = nullptr;
-	}
-
-	copyHostToDevice(coeff.faceStart, faceStart);
-	copyHostToDevice(coeff.faceNeighbor, faceNeighbor);
+	coeff.nr = mesh.nr;
+	coeff.nz = mesh.nz;
 }
 
 FVMeshHostPacked packFVMeshForDevice(const FVMesh& mesh) {
@@ -912,45 +929,111 @@ void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& 
 // copy operator arrays device -> device. NOTE: copies the NUMBERS, not the
 // pointers - a plain `dst = src` would only alias src's buffers (and leak dst's).
 void copyCoefficients(Coefficients& dst, const Coefficients& src, int N, cudaStream_t stream) {
+
+	cudaMemcpyAsync(dst.AC, src.AC, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+	cudaMemcpyAsync(dst.b, src.b, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+
+	// The two paths keep their off-diagonals in different places. On the face path
+	// (multiblock / unstructured) they live in the CSR array AF and AE/AW/AN/AS are
+	// never written, so copying only the 5-point arrays would hand dst a
+	// DIAGONAL-ONLY operator. That does not fail loudly: AC is populated either
+	// way, so a smoother converges to x = b/AC and the residual still drops.
+	if (src.useFaceCoeffs) {
+
+		if (src.AF && dst.AF && src.nFaceRefs == dst.nFaceRefs) {
+			cudaMemcpyAsync(dst.AF, src.AF, src.nFaceRefs * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+		}
+		else {
+			// loud beats silently wrong, for the reason above
+			printf("copyCoefficients: face-path source but AF not copyable "
+				"(src.nFaceRefs=%d dst.nFaceRefs=%d src.AF=%p dst.AF=%p)\n",
+				src.nFaceRefs, dst.nFaceRefs, (void*)src.AF, (void*)dst.AF);
+		}
+
+		return;
+	}
+
 	cudaMemcpyAsync(dst.AE, src.AE, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
 	cudaMemcpyAsync(dst.AW, src.AW, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
 	cudaMemcpyAsync(dst.AN, src.AN, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
 	cudaMemcpyAsync(dst.AS, src.AS, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-	cudaMemcpyAsync(dst.AC, src.AC, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-	cudaMemcpyAsync(dst.b, src.b, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+}
+
+// THE face-path allocator. Both FVMesh overloads above funnel here after
+// flattening their mesh with buildCellFaceCSR, and a multigrid coarse level --
+// which has no FVMesh, its connectivity coming from the agglomeration map --
+// hands its CSR in directly.
+//
+// AE/AW/AN/AS are deliberately NOT allocated: nothing on the face path reads them
+// (residualRaw, addNeighborCoeff and the jacobi kernel all take the AF branch,
+// and clearCoefficients null-guards each one), and copyCoefficients skips them
+// when useFaceCoeffs is set. Allocating them anyway cost 4 * 8 * nCells bytes of
+// device memory per field, permanently zero.
+void allocateCoefficients(
+	Coefficients& coeff,
+	int nCells,
+	const std::vector<int>& faceStart,
+	const std::vector<int>& faceNeighbor
+) {
+
+	coeff.N = nCells;
+	coeff.nr = 0;   // no single logical grid on the face path
+	coeff.nz = 0;
+	coeff.useFaceCoeffs = 1;
+	coeff.nFaceRefs = (int)faceNeighbor.size();
+
+	coeff.AC = deviceAlloc<double>(nCells);
+	coeff.b = deviceAlloc<double>(nCells);
+
+	CUDA_CHECK(cudaMemset(coeff.AC, 0, nCells * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.b, 0, nCells * sizeof(double)));
+
+	if (coeff.nFaceRefs > 0) {
+		coeff.AF = deviceAlloc<double>(coeff.nFaceRefs);
+		CUDA_CHECK(cudaMemset(coeff.AF, 0, coeff.nFaceRefs * sizeof(double)));
+	}
+	else {
+		coeff.AF = nullptr;
+	}
+
+	// allocates and uploads in one step; nulls the pointer on an empty vector
+	copyHostToDevice(coeff.faceStart, faceStart);
+	copyHostToDevice(coeff.faceNeighbor, faceNeighbor);
+	CUDA_CHECK(cudaGetLastError());
 }
 
 void allocateMultigridLevel(MultigridLevel& level) {
 
-	int N = level.grid.N;
+	const int N = level.grid.nCells;
 
-	allocateCoefficients(level.coeff, level.grid.nr, level.grid.nz);
+	allocateCoefficients(level.coeff, N, level.grid.faceStart, level.grid.faceNeighbor);
 	CUDA_CHECK(cudaGetLastError());
-	cudaMalloc(&level.x, N * sizeof(double));
-	cudaMalloc(&level.xTemp, N * sizeof(double));
-	cudaMalloc(&level.res, N * sizeof(double));
-	cudaMalloc(&level.d_active, N * sizeof(uint8_t));
-	cudaMalloc(&level.d_rFace, (level.grid.nr + 1) * sizeof(double));
-	cudaMalloc(&level.d_zFace, (level.grid.nz + 1) * sizeof(double));
+
+	level.x = deviceAlloc<double>(N);
+	level.res = deviceAlloc<double>(N);
 	CUDA_CHECK(cudaGetLastError());
-	cudaMemset(level.x, 0, N * sizeof(double));
-	cudaMemset(level.xTemp, 0, N * sizeof(double));
-	cudaMemset(level.res, 0, N * sizeof(double));
-	CUDA_CHECK(cudaGetLastError());
-	cudaMemcpy(level.d_rFace, level.grid.rFace.data(), (level.grid.nr + 1) * sizeof(double), cudaMemcpyHostToDevice);
-	cudaMemcpy(level.d_zFace, level.grid.zFace.data(), (level.grid.nz + 1) * sizeof(double), cudaMemcpyHostToDevice);
-	cudaMemcpy(level.d_active, level.grid.active.data(), N * sizeof(uint8_t), cudaMemcpyHostToDevice);
+
+	CUDA_CHECK(cudaMemset(level.x, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(level.res, 0, N * sizeof(double)));
+
+	// each allocates + uploads. cellToCoarse / fineSlotToCoarseSlot are empty on
+	// the coarsest level, which leaves their device pointers null -- there is no
+	// level below to restrict to or prolongate from.
+	copyHostToDevice(level.d_active, level.grid.active);
+	copyHostToDevice(level.d_cellToCoarse, level.grid.cellToCoarse);
+	copyHostToDevice(level.d_fineSlotToCoarseSlot, level.grid.fineSlotToCoarseSlot);
 	CUDA_CHECK(cudaGetLastError());
 
 }
 
 void freeMultigridLevel(MultigridLevel& level) {
 
-	// coeff owns its own AE/AW/AN/AS/AC/b (and face arrays when used)
+	// coeff owns its own AC/b/AF and the CSR arrays
 	level.coeff.free();
 
 	// the per-level buffers allocated above; freeAllDev nulls each pointer
-	freeAllDev(level.x, level.xTemp, level.res, level.d_active, level.d_rFace, level.d_zFace);
+	freeAllDev(level.x, level.res);
+	freeAllDev(level.d_active, level.d_cellToCoarse, level.d_fineSlotToCoarseSlot);
 	CUDA_CHECK(cudaGetLastError());
 
 }

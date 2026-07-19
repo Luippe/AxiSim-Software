@@ -45,7 +45,7 @@ public:
 	bool solverRunning = false;
 	bool continueSolver = false;
 	bool isReady = false;
-	bool useMultigrid = false;
+	bool useMultigrid = true;
 
 	// run solver
 	void run(const Mesh& mesh);
@@ -78,6 +78,10 @@ public:
 
 	// coefficients
 	std::unordered_map<std::string, Coefficients> coeffs;
+
+	// Gauss-Seidel cell ordering for the face path. One coloring serves every
+	// field: they all sit on the same mesh CSR.
+	MeshColoring coloring;
 
 	// scalar solution
 	SolutionScalar scalarSolutions;
