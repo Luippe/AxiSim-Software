@@ -87,11 +87,15 @@ BoundaryCondition& SolverGUI::getOrCreateBC(
 }
 
 void SolverGUI::drawFieldCheckbox() {
+	// The energy field's residual is registered under "Temperature", not "Energy"
+	// -- initConfigResiduals and kResidualOrder both use that key, and so does the
+	// residualAll launch. at() rather than operator[] on purpose: a typo here used
+	// to insert a phantom entry with a null res pointer instead of failing.
 	if (ImGui::Checkbox("Energy", &solver.fieldOption.solveEnergy)) {
-		solver.cfg["Energy"].enabled = solver.fieldOption.solveEnergy;
+		solver.cfg.at("Temperature").enabled = solver.fieldOption.solveEnergy;
 	}
 	if (ImGui::Checkbox("Concentration", &solver.fieldOption.solveConcentration)) {
-		solver.cfg["Concentration"].enabled = solver.fieldOption.solveConcentration;
+		solver.cfg.at("Concentration").enabled = solver.fieldOption.solveConcentration;
 	}
 	ImGui::Checkbox("Multigrid", &solver.useMultigrid);
 }
