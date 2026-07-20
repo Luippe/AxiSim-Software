@@ -75,9 +75,22 @@ struct MultigridLevel {
 
 	double* x = nullptr;
 
+	// Ping-pong partner for x, used only by the fused smoother. jacobiFused reads
+	// neighbour values while writing its own cell, so the two cannot be the same
+	// buffer -- with one array a thread could read a neighbour another thread had
+	// already advanced this sweep, which is chaotic relaxation, not Jacobi.
+	//
+	// smoothen() swaps these two members after every sweep, so `x` always names
+	// the live vector once it returns and every other consumer (prolongation, the
+	// memset in vCycle, run()'s copy in/out) needs no parity awareness.
+	double* xNew = nullptr;
+
 	// per-level residual vector. Previously read off Coefficients::res, which was
 	// removed when residual state moved to ConfigResidual; a multigrid level owns
 	// its own residual for restriction/smoothing.
+	//
+	// Written ONLY by computeResidual() now -- the fused smoother keeps its
+	// residual in a register and never lands it.
 	double* res = nullptr;
 
 	uint8_t* d_active = nullptr;
@@ -98,7 +111,7 @@ struct MultigridLevel {
 // Build the finest GridLevel from the solver's FVMesh.
 //
 // Shares buildCellFaceCSR with allocateCoefficients, so level 0's connectivity
-// matches the Coefficients the solver hands to run() slot for slot by
+// matches the Coefficients the solver hands to prepare() slot for slot by
 // construction -- which fineSlotToCoarseSlot depends on, since it indexes exactly
 // those slots.
 GridLevel makeFinestGridLevel(const FVMesh& mesh);
@@ -119,36 +132,26 @@ public:
 
 	std::vector<MultigridLevel> levels;
 
-	// run multigrid. this will be called in the solver
-	void run(Coefficients& coeff, cudaStream_t& stream, double* x);
+	// Capture, instantiate and upload the complete solve before the SIMPLE loop.
+	void prepare(Coefficients& coeff, cudaStream_t& stream, double* x);
+
+	// Replay the prepared multigrid solve.
+	//
+	// Convergence expected of THIS method (piecewise-constant aggregation,
+	// unsmoothed): the two-grid factor is a mesh-independent ~0.5, but the
+	// recursive V-cycle degrades with problem size -- measured ~0.80 per cycle at
+	// 1k cells, ~0.90 at 4k, ~0.96 at 16k, ~0.98 at 65k. That is the method, not a
+	// defect: the coarse operator here is exactly P^T A P, and neither an exact
+	// coarsest solve nor perfect agglomeration moves those numbers much. So a
+	// per-cycle ratio near 1.0 on a large mesh does NOT mean the operator or a
+	// transfer broke. A mesh-independent V-cycle needs smoothed aggregation
+	// (P <- (I - w D^-1 A) P) or Krylov acceleration wrapped around the cycle.
+	void run(cudaStream_t& stream);
 
 	// One line per level: cell count, active count, average graph degree and the
 	// coarsening ratio. Host-side only and cheap -- meant to be logged once after
 	// construction to sanity-check that agglomeration actually did something.
 	std::string describeHierarchy() const;
-
-	// Only updated while cfg.logConvergence is true.
-	//
-	// Expected range for THIS method (piecewise-constant aggregation, unsmoothed).
-	// The two-grid factor is a mesh-independent ~0.5, but the recursive V-cycle
-	// degrades with problem size: measured ~0.80 at 1k cells, ~0.90 at 4k, ~0.96 at
-	// 16k, ~0.98 at 65k. That is the method, not a defect -- the coarse operator
-	// here is exactly P^T A P, and neither an exact coarsest solve nor perfect
-	// agglomeration moves those numbers much.
-	//
-	// So a ratio near 1.0 on a large mesh does NOT mean the operator or a transfer
-	// broke. A mesh-independent V-cycle needs smoothed aggregation
-	// (P <- (I - w D^-1 A) P) or Krylov acceleration wrapped around the cycle.
-	//
-	// lastResBefore / lastResAfter bracket the WHOLE run (all cfg.maxIter cycles);
-	// lastRatio is the PER-CYCLE geometric mean, so it stays comparable to the
-	// figures above however maxIter is set.
-	double lastResBefore = 0.0;
-	double lastResAfter = 0.0;
-	double lastRatio = 0.0;
-
-	// cycles the last run() actually performed
-	int lastCycles = 0;
 
 	ConfigMultigrid& cfg;
 	MemoryConfig& mem;
@@ -159,7 +162,40 @@ private:
 	int jacobiSweep = 75;
 	int jacobiPrePostSweep = 3;
 
-	
+	// One executable graph owns a complete run(): copy the current fine system
+	// into level 0, rebuild all coarse operators, perform every configured
+	// V-cycle, then copy the live level-0 vector back to the caller. prepare()
+	// captures, instantiates and uploads it before the SIMPLE loop; run() only
+	// replays it for the rest of this MultigridSolver's lifetime.
+	cudaGraph_t runGraph = nullptr;
+	cudaGraphExec_t runGraphExec = nullptr;
+
+	// Kernel arguments and memcpy endpoints are snapshotted during capture. The
+	// numbers stored in those allocations may change freely, but a new allocation
+	// or a topology/configuration change requires a new graph.
+	struct RunGraphKey {
+		int N = 0;
+		int nFaceRefs = 0;
+		int nCycles = 0;
+		int threadsPerBlock = 0;
+		int useFaceCoeffs = 0;
+
+		double* externalX = nullptr;
+		double* AC = nullptr;
+		double* b = nullptr;
+		double* AF = nullptr;
+		cudaStream_t stream = nullptr;
+	};
+
+	RunGraphKey runGraphKey;
+
+	// Submit the complete multigrid solve to a stream. Called once while the
+	// stream is being captured; graph replays do not execute this host code.
+	void enqueueRun(Coefficients& coeff, cudaStream_t& stream, double* x);
+
+	void captureRunGraph(Coefficients& coeff, cudaStream_t& stream, double* x);
+	bool runGraphMatches(const Coefficients& coeff, const double* x, cudaStream_t stream) const;
+	void destroyRunGraph();
 
 	// Build the next coarser level from `fine`, and fill fine's cellToCoarse /
 	// fineSlotToCoarseSlot describing the link down to it. NOT const: coarsening
@@ -167,10 +203,6 @@ private:
 	GridLevel coarsenGrid(GridLevel& fine);
 
 	void computeResidual(MultigridLevel& level, cudaStream_t& stream);
-
-	// L2 norm of a level's residual over its active cells. Recomputes the
-	// residual, then reduces on the host -- blocking, diagnostic use only.
-	double residualNorm(MultigridLevel& level, cudaStream_t& stream);
 
 	// smoothen the field
 	void smoothen(MultigridLevel& level, cudaStream_t& stream, int iteration);

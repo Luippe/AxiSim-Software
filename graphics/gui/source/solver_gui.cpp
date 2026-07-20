@@ -760,8 +760,13 @@ void SolverGUI::drawPropertiesPanel() {
 				if (solver.useMultigrid) {
 
 					labelRow("Maximum Multigrid Cycles");
+					const bool graphPrepared = solver.solverRunning;
+					ImGui::BeginDisabled(graphPrepared);
 					inputInt("##MultigridMaxIter", &project.solver.configMultigrid.maxIter);
-					if (project.solver.configMultigrid.maxIter < 1) {
+					ImGui::EndDisabled();
+					disabledHint(graphPrepared, "The multigrid graph is already prepared for this solve.");
+
+					if (!graphPrepared && project.solver.configMultigrid.maxIter < 1) {
 						project.solver.configMultigrid.maxIter = 1;
 					}
 

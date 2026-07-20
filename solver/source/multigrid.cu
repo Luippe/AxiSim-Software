@@ -2,6 +2,7 @@
 
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <iomanip>
@@ -32,6 +33,8 @@ MultigridSolver::MultigridSolver(ConfigMultigrid& cfg, MemoryConfig& mem, GridLe
 }
 
 MultigridSolver::~MultigridSolver() {
+	destroyRunGraph();
+
 	for (MultigridLevel& level : levels) {
 		freeMultigridLevel(level);
 	}
@@ -445,14 +448,50 @@ void buildProlongationKernel(
 	xf[n] += xc[cellToCoarse[n]];
 }
 
+// Fused residual + weighted-Jacobi update: form r = b - A*x and apply
+// x += weight * r / AC in a single pass, holding r in a register instead of
+// round-tripping it through level.res. Versus the old computeResidual +
+// pointwise jacobiSmoother pair this drops one launch and one N-double store
+// plus reload per sweep, which is most of what the separate smoother cost.
+//
+// Face path only, deliberately: multigrid is constructed solely when
+// useFaceCoefficients is set (solver.cpp), and coarse levels come from the
+// face-path allocator, so AF / faceStart / faceNeighbor are always live here.
+// No structured AE/AW/AN/AS fallback and no useFaceCoeffs branch -- residualRaw
+// keeps those for the structured mesh path.
+//
+// xOld and xNew MUST be distinct buffers. This reads neighbour values while
+// writing its own cell, so sharing one array would let a thread see a neighbour
+// another thread had already advanced this sweep -- chaotic relaxation, not
+// Jacobi, and nondeterministic run to run.
 __global__
-void jacobiSmoother(Coefficients coeff, double* x, const double* res, const uint8_t* active, double weight) {
+void jacobiFused(Coefficients coeff, const double* xOld, double* xNew, const uint8_t* active, double weight) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 	if (n >= coeff.N) return;
-	if (!active[n]) return;
 
-	x[n] += weight * res[n] / coeff.AC[n];
+	// Inactive cells must still be carried across. Returning early here would
+	// leave xNew[n] holding the value from two sweeps ago; since these cells sit
+	// outside the domain the residual would keep dropping normally while the
+	// solution beside the mask quietly rotted.
+	if (!active[n]) {
+		xNew[n] = xOld[n];
+		return;
+	}
+
+	double Ax = coeff.AC[n] * xOld[n];
+
+	const int start = coeff.faceStart[n];
+	const int end = coeff.faceStart[n + 1];
+
+	for (int k = start; k < end; k++) {
+		const int nb = coeff.faceNeighbor[k];
+		if (nb >= 0) {
+			Ax += coeff.AF[k] * xOld[nb];
+		}
+	}
+
+	xNew[n] = xOld[n] + weight * (coeff.b[n] - Ax) / coeff.AC[n];
 }
 
 // NOTE: all three transfers are now driven from the FINE level (one thread per
@@ -540,9 +579,11 @@ void MultigridSolver::vCycle(int l, cudaStream_t& stream) {
 
 	smoothen(levels[l], stream, jacobiPrePostSweep);
 
-	// smoothen() ends on a jacobi update, which leaves level.res one step stale.
-	// Restricting without this recompute would transfer the residual from BEFORE
-	// the last sweep. Not redundant -- do not fold it into smoothen().
+	// smoothen() keeps its residual in a register and never writes level.res, so
+	// this is the ONLY thing that fills it -- restriction would otherwise read
+	// whatever the previous cycle left. Not redundant; do not fold it into
+	// smoothen(), which would also make the fused smoother pay for a store that
+	// only the last sweep of the loop actually needs.
 	computeResidual(levels[l], stream);
 
 	buildRestriction(levels[l], levels[l + 1], stream);
@@ -550,7 +591,12 @@ void MultigridSolver::vCycle(int l, cudaStream_t& stream) {
 	// The coarse solve is for a CORRECTION, so it starts from zero. This must
 	// happen every cycle: on the second and later V-cycles the coarse x still
 	// holds the previous cycle's correction, which would prolongate back up.
-	cudaMemsetAsync(levels[l + 1].x, 0, levels[l + 1].grid.nCells * sizeof(double), stream);
+	CUDA_CHECK(cudaMemsetAsync(
+		levels[l + 1].x,
+		0,
+		levels[l + 1].grid.nCells * sizeof(double),
+		stream
+	));
 
 	vCycle(l + 1, stream);
 
@@ -564,30 +610,18 @@ void MultigridSolver::smoothen(MultigridLevel& level, cudaStream_t& stream, int 
 	int blocks = (level.grid.nCells + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
 
 	for (int n = 0; n < iteration; n++) {
-		computeResidual(level, stream);
-		jacobiSmoother << <blocks, mem.threadsPerBlock, 0, stream >> > (level.coeff, level.x, level.res, level.d_active, jacobiWeight);
+		jacobiFused << <blocks, mem.threadsPerBlock, 0, stream >> > (
+			level.coeff, level.x, level.xNew, level.d_active, jacobiWeight
+			);
+
+		// Swap the members rather than copying back, so `x` names the live vector
+		// on return whatever the sweep count's parity. During CUDA Graph capture
+		// this host swap runs once and gives every recorded kernel node its fixed,
+		// alternating input/output addresses. It is deliberately NOT repeated on
+		// graph replay: enqueueRun's captured entry and exit copies make the whole
+		// fixed pointer schedule self-contained.
+		std::swap(level.x, level.xNew);
 	}
-}
-
-double MultigridSolver::residualNorm(MultigridLevel& level, cudaStream_t& stream) {
-
-	computeResidual(level, stream);
-	CUDA_CHECK(cudaStreamSynchronize(stream));
-
-	const int N = level.grid.nCells;
-
-	// level.res is scratch at both call sites: before the cycle the first
-	// smoothen() recomputes it, and after the cycle run() only copies x back.
-	std::vector<double> host = copyDeviceToHostVector(level.res, (size_t)N);
-
-	double sum = 0.0;
-
-	for (int n = 0; n < N; n++) {
-		if (!level.grid.active[n]) continue;
-		sum += host[n] * host[n];
-	}
-
-	return std::sqrt(sum);
 }
 
 std::string MultigridSolver::describeHierarchy() const {
@@ -635,23 +669,26 @@ std::string MultigridSolver::describeHierarchy() const {
 	return out.str();
 }
 
-void MultigridSolver::run(Coefficients& coeff, cudaStream_t& stream, double* x) {
+void MultigridSolver::enqueueRun(Coefficients& coeff, cudaStream_t& stream, double* x) {
 
-	cudaMemcpyAsync(levels[0].x, x, coeff.N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+	// Graph entry: initialize the exact level-0 buffer from which the captured
+	// first smoother node reads. This also makes odd sweep parity safe on a
+	// single-level hierarchy, where the captured exit buffer can be different.
+	CUDA_CHECK(cudaMemcpyAsync(
+		levels[0].x,
+		x,
+		coeff.N * sizeof(double),
+		cudaMemcpyDeviceToDevice,
+		stream
+	));
 
 	// load the fine operator's DATA into level 0's own buffers (not `= coeff`,
 	// which would leak level 0's buffers and alias the solver's arrays)
 	copyCoefficients(levels[0].coeff, coeff, levels[0].grid.nCells, stream);
 
 	// start at index 1, as the 0th index contains the fine level
-	for (int l = 1; l < levels.size(); l++) {
+	for (int l = 1; l < (int)levels.size(); l++) {
 		buildCoarseOperator(levels[l - 1], levels[l], stream);
-	}
-
-	// Measured either side of the whole run so the pp solve is judged on its own,
-	// independent of whether SIMPLE's outer loop happens to care.
-	if (cfg.logConvergence) {
-		lastResBefore = residualNorm(levels[0], stream);
 	}
 
 	// Repeat the cycle on the SAME operator: A does not change between cycles, only
@@ -667,17 +704,109 @@ void MultigridSolver::run(Coefficients& coeff, cudaStream_t& stream, double* x) 
 		vCycle(0, stream);
 	}
 
-	if (cfg.logConvergence) {
+	// Graph exit: consumers outside multigrid always see their stable allocation,
+	// regardless of which level-0 ping-pong buffer is live after the fixed sweep
+	// sequence captured above.
+	CUDA_CHECK(cudaMemcpyAsync(
+		x,
+		levels[0].x,
+		coeff.N * sizeof(double),
+		cudaMemcpyDeviceToDevice,
+		stream
+	));
 
-		lastResAfter = residualNorm(levels[0], stream);
-		lastCycles = nCycles;
+}
 
-		// per-cycle geometric mean, not the total reduction -- see the header
-		lastRatio = (lastResBefore > 0.0 && lastResAfter > 0.0)
-			? std::pow(lastResAfter / lastResBefore, 1.0 / nCycles)
-			: 0.0;
+bool MultigridSolver::runGraphMatches(
+	const Coefficients& coeff,
+	const double* x,
+	cudaStream_t stream
+) const {
+
+	return
+		runGraphExec != nullptr &&
+		runGraphKey.N == coeff.N &&
+		runGraphKey.nFaceRefs == coeff.nFaceRefs &&
+		runGraphKey.nCycles == std::max(1, cfg.maxIter) &&
+		runGraphKey.threadsPerBlock == mem.threadsPerBlock &&
+		runGraphKey.useFaceCoeffs == coeff.useFaceCoeffs &&
+		runGraphKey.externalX == x &&
+		runGraphKey.AC == coeff.AC &&
+		runGraphKey.b == coeff.b &&
+		runGraphKey.AF == coeff.AF &&
+		runGraphKey.stream == stream;
+
+}
+
+void MultigridSolver::prepare(
+	Coefficients& coeff,
+	cudaStream_t& stream,
+	double* x
+) {
+	if (!runGraphMatches(coeff, x, stream)) {
+		if (runGraphExec || runGraph) {
+			// Synchronize the stream that owns the existing executable before
+			// destroying graph resources which one of its launches may still use.
+			CUDA_CHECK(cudaStreamSynchronize(runGraphKey.stream));
+			destroyRunGraph();
+		}
+
+		captureRunGraph(coeff, stream, x);
+		CUDA_CHECK(cudaGraphUpload(runGraphExec, stream));
+	}
+}
+
+void MultigridSolver::captureRunGraph(Coefficients& coeff, cudaStream_t& stream, double* x) {
+
+	// Thread-local mode avoids imposing capture restrictions on unrelated GUI
+	// threads which may also make CUDA/graphics API calls.
+	CUDA_CHECK(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
+
+	// CUDA work is recorded rather than submitted. Host loops, recursion and the
+	// smoother's std::swap calls still execute here, flattening the complete solve
+	// and fixing the ping-pong address used by every graph node.
+	enqueueRun(coeff, stream, x);
+
+	CUDA_CHECK(cudaStreamEndCapture(stream, &runGraph));
+	CUDA_CHECK(cudaGraphInstantiate(&runGraphExec, runGraph, nullptr, nullptr, 0));
+
+	runGraphKey.N = coeff.N;
+	runGraphKey.nFaceRefs = coeff.nFaceRefs;
+	runGraphKey.nCycles = std::max(1, cfg.maxIter);
+	runGraphKey.threadsPerBlock = mem.threadsPerBlock;
+	runGraphKey.useFaceCoeffs = coeff.useFaceCoeffs;
+	runGraphKey.externalX = x;
+	runGraphKey.AC = coeff.AC;
+	runGraphKey.b = coeff.b;
+	runGraphKey.AF = coeff.AF;
+	runGraphKey.stream = stream;
+
+}
+
+void MultigridSolver::destroyRunGraph() {
+
+	// Destroy the executable first: it snapshots nodes from runGraph and both
+	// objects retain device addresses owned by the multigrid levels.
+	if (runGraphExec) {
+		CUDA_CHECK(cudaGraphExecDestroy(runGraphExec));
+		runGraphExec = nullptr;
 	}
 
-	cudaMemcpyAsync(x, levels[0].x, coeff.N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+	if (runGraph) {
+		CUDA_CHECK(cudaGraphDestroy(runGraph));
+		runGraph = nullptr;
+	}
+
+	runGraphKey = {};
+
+}
+
+void MultigridSolver::run(cudaStream_t& stream) {
+
+	// check to make sure the executable and stream matches what was captured
+	assert(runGraphExec != nullptr);
+	assert(runGraphKey.stream == stream);
+
+	CUDA_CHECK(cudaGraphLaunch(runGraphExec, stream));
 
 }

@@ -1019,10 +1019,12 @@ void allocateMultigridLevel(MultigridLevel& level) {
 	CUDA_CHECK(cudaGetLastError());
 
 	level.x = deviceAlloc<double>(N);
+	level.xNew = deviceAlloc<double>(N);
 	level.res = deviceAlloc<double>(N);
 	CUDA_CHECK(cudaGetLastError());
 
 	CUDA_CHECK(cudaMemset(level.x, 0, N * sizeof(double)));
+	CUDA_CHECK(cudaMemset(level.xNew, 0, N * sizeof(double)));
 	CUDA_CHECK(cudaMemset(level.res, 0, N * sizeof(double)));
 
 	// each allocates + uploads. cellToCoarse / fineSlotToCoarseSlot are empty on
@@ -1041,7 +1043,7 @@ void freeMultigridLevel(MultigridLevel& level) {
 	level.coeff.free();
 
 	// the per-level buffers allocated above; freeAllDev nulls each pointer
-	freeAllDev(level.x, level.res);
+	freeAllDev(level.x, level.xNew, level.res);
 	freeAllDev(level.d_active, level.d_cellToCoarse, level.d_fineSlotToCoarseSlot);
 	CUDA_CHECK(cudaGetLastError());
 

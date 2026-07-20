@@ -186,12 +186,6 @@ struct ConfigMultigrid {
 	// would have made every pp solve ~50x its previous cost.
 	int maxIter = 3;
 
-	// Diagnostic: measure the level-0 residual norm either side of the cycle so the
-	// pp solve can be judged on its own rather than through SIMPLE's outer
-	// convergence. Costs two extra residual evaluations AND two blocking host syncs
-	// per solve, so it is off by default -- this sits inside SIMPLE's inner loop.
-	bool logConvergence = false;
-
 };
 
 // Time discretization for a transient run.

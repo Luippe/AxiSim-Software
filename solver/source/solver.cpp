@@ -1063,6 +1063,7 @@ void Solver::runSimple(const Mesh& mesh) {
     if (useMultigrid && useFaceCoefficients) {
         GridLevel grid = makeFinestGridLevel(fvMesh);
         multigrid.emplace(configMultigrid, mem, grid);
+        multigrid->prepare(ppCoeff, stream, simple.pp);
         CUDA_CHECK(cudaGetLastError());
 
         if (console) {
@@ -1236,7 +1237,7 @@ void Solver::runSimple(const Mesh& mesh) {
                 computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
                 createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, applyNonOrtho);
                 if (multigrid) {
-                    multigrid->run(ppCoeff, stream, simple.pp);
+                    multigrid->run(stream);
                 }
                 else {
                     solveLinearSystem(ppCoeff, configSolver, stream, simple.pp, simple.ppTemp, activeCells, threadsPerBlock, coloring);
@@ -1338,19 +1339,6 @@ void Solver::runSimple(const Mesh& mesh) {
                 residualAllHost(cfg, N, currentIteration);
                 residualPlot->add(currentIteration, cfg);
                 printResidualConsole(currentIteration, cfg, console);
-
-                // pp-solve quality, reported separately from the SIMPLE residuals
-                // above: multigrid only accelerates the inner pressure-correction
-                // solve, so the outer residuals barely reflect whether it works.
-                if (multigrid && configMultigrid.logConvergence && console) {
-                    std::ostringstream mg;
-                    mg << "  MG pp: |r| " << std::scientific << std::setprecision(3)
-                       << multigrid->lastResBefore << " -> " << multigrid->lastResAfter
-                       << "   " << multigrid->lastCycles << " cycle(s), "
-                       << std::fixed << std::setprecision(4)
-                       << multigrid->lastRatio << "/cycle\n";
-                    console->addLine(mg.str());
-                }
 
                 CUDA_CHECK(cudaGetLastError());
 
