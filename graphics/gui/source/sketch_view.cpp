@@ -15,6 +15,7 @@
 
 using namespace sketchmath;
 using namespace Shortcuts;
+using namespace Snapping;
 using namespace UIDockFlags;
 
 namespace {
@@ -244,16 +245,35 @@ std::optional<SnapResult> SketchView::findSnap(ImVec2 mouse) {
 
 	// origin (0,0) as a snappable vertex -- routed through tryCandidate so a
 	// strictly closer sketch vertex or point still wins, instead of the origin
-	// always taking priority via an early return
-	tryCandidate(SnapType::Vertex, Vec2{ 0.0, 0.0 }, -102);
+	// always taking priority via an early return. Grouped with the points rather
+	// than the axes so it survives the default settings, where axis snapping is
+	// off: it is the one reference an axisymmetric sketch is always drawn against.
+	if (snapToPoints) {
+		tryCandidate(SnapType::Vertex, Vec2{ 0.0, 0.0 }, -102);
+	}
 
-	// the axis lines (r = 0 and z = 0) are deliberately NOT snap candidates: they
-	// span the whole canvas, so anything drawn near an axis got pulled onto it. The
-	// origin above stays snappable -- a single point, not a line across the view.
+	// The axis lines (r = 0 and z = 0) are off by default: they span the whole
+	// canvas, so with them on anything drawn near an axis gets pulled onto it.
+	// Only the nearest point on each is offered, so they behave like any other
+	// edge candidate rather than as a band across the view.
+	if (snapToAxis) {
+		tryCandidate(SnapType::Line, Vec2{ mouseWorld.z, 0.0 }, -104);	// r = 0
+		tryCandidate(SnapType::Line, Vec2{ 0.0, mouseWorld.r }, -105);	// z = 0
+	}
 
 	// snap to vertices
-	for (const SketchPoint& point : geometry.sketch.points) {
-		tryCandidate(SnapType::Vertex, point.pos, point.id);
+	if (snapToPoints) {
+		for (const SketchPoint& point : geometry.sketch.points) {
+			tryCandidate(SnapType::Vertex, point.pos, point.id);
+		}
+	}
+
+	// Everything below is drawn sketch geometry -- the edges and the vertices they
+	// imply. Line endpoints are not among them: those live in sketch.points above,
+	// so turning this off keeps endpoint snapping and drops mid-edge snapping,
+	// which is the distinction the two checkboxes are meant to draw.
+	if (!snapToSketch) {
+		return best;
 	}
 
 	// snap to lines / edges
@@ -652,7 +672,9 @@ std::optional<SnapResult> SketchView::resolveSnap(ImVec2 mouse) {
 	// when the grid is shown, prioritize grid vertices over sketch edges: a grid
 	// vertex beats any edge (Line/Circle) snap, and also beats a sketch vertex
 	// only when it is at least as close. Sketch vertices/points otherwise win.
-	if (toggleGrid && gridWorldStep() > 0.0) {
+	// Still gated on toggleGrid as well as the setting: the snap uses the spacing
+	// that is being drawn, so snapping to a grid nobody can see reads as a bug.
+	if (snapToGrid && toggleGrid && gridWorldStep() > 0.0) {
 		Vec2 gridWorld = snapToGridVertex(camera.screenToWorld(mouse));
 		ImVec2 gridScreen = camera.worldToScreen(gridWorld);
 		float gridDistPx = pixelDistance(gridScreen, mouse);

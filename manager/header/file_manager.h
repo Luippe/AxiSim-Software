@@ -39,7 +39,11 @@ enum class FileKind {
 	Project,	// .axi
 	Geometry,	// .axigeom
 	Mesh,		// .aximesh
-	Solver		// .axislv
+	Solver,		// .axislv
+
+	// Names the animation export. An .mp4 target is written directly; a .png one
+	// names a numbered frame sequence written into a folder derived from it.
+	Animation
 };
 
 // open file dialog for saving

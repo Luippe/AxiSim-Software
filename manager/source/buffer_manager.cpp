@@ -195,6 +195,18 @@ void FrameBuffer::beginOffScreenImGuiRender(GLint& oldFBO, GLint (&oldViewport)[
 }
 
 void FrameBuffer::endOffScreenImGuiRender(const GLint& oldFBO, const GLint(&oldViewport)[4], const ImVec2& oldDisplaySize, const ImVec2 oldFramebufferScale) {
+
+	std::vector<unsigned char> pixels = endOffScreenImGuiRenderToPixels(
+		oldFBO,
+		oldViewport,
+		oldDisplaySize,
+		oldFramebufferScale
+	);
+
+	copyRGBAToClipboard(pixels.data(), width, height);
+}
+
+std::vector<unsigned char> FrameBuffer::endOffScreenImGuiRenderToPixels(const GLint& oldFBO, const GLint(&oldViewport)[4], const ImVec2& oldDisplaySize, const ImVec2 oldFramebufferScale) {
 	// render the imgui frame
 	ImGui::Render();
 
@@ -204,7 +216,6 @@ void FrameBuffer::endOffScreenImGuiRender(const GLint& oldFBO, const GLint(&oldV
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 	std::vector<unsigned char> pixels = readPixelsRGBA();
-	copyRGBAToClipboard(pixels.data(), width, height);
 
 	ImGuiIO& io = ImGui::GetIO();
 	io.DisplaySize = oldDisplaySize;
@@ -213,6 +224,7 @@ void FrameBuffer::endOffScreenImGuiRender(const GLint& oldFBO, const GLint(&oldV
 	glBindFramebuffer(GL_FRAMEBUFFER, oldFBO);
 	glViewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
 
+	return pixels;
 }
 
 std::vector<unsigned char> FrameBuffer::readPixelsRGBA() {

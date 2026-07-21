@@ -2,6 +2,7 @@
 #include "pch.h"
 
 #include <array>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -42,6 +43,22 @@ public:
 	// copy active surface to clipboard
 	void copyActiveSurfaceToClipboard();
 
+	// Latch the pixel size an export sequence will be captured at, from the
+	// panel's current size. Call once when an export starts: resizing the window
+	// partway through would otherwise change the frame size mid-sequence, which
+	// no video encoder accepts. False when the panel has no size yet (never
+	// rendered).
+	bool beginExportSequence();
+
+	// Render the active surface offscreen at the latched size and hand back its
+	// pixels (bottom-up RGBA, as glReadPixels produces); empty when no sequence
+	// is running. What the frames become -- PNGs or an mp4 -- is AnimationGUI's
+	// business, so the viewer knows about neither.
+	std::vector<unsigned char> captureSequenceFrame();
+
+	int sequenceWidth() const { return sequenceCaptureWidth; }
+	int sequenceHeight() const { return sequenceCaptureHeight; }
+
 	Console* console = nullptr;
 
 	Colorbar colorbar;
@@ -73,6 +90,10 @@ private:
 	// scratch buffers reused across frames for smooth (vertex) shading
 	std::vector<float> vertexValues;
 	std::vector<int> vertexCounts;
+
+	// size every frame of the running export is captured at (0 = none running)
+	int sequenceCaptureWidth = 0;
+	int sequenceCaptureHeight = 0;
 
 	// Real multiblock cell quads (world r-z corners), in block/cellGlobal order --
 	// the same cells the Mesh Inspector draws. For a multiblock mesh the results view
@@ -171,5 +192,11 @@ private:
 	void drawCellInfo(ImDrawList* drawList);
 
 	void drawEmptyMessage(ImDrawList* drawList);
+
+	// Re-render the whole panel into the offscreen framebuffer at
+	// pendingCopyWidth/Height and return its pixels (bottom-up RGBA). Shared by
+	// the clipboard copy and the PNG export so the two cannot drift apart; the
+	// caller decides where the pixels go.
+	std::vector<unsigned char> renderActiveSurfaceOffScreen();
 
 };

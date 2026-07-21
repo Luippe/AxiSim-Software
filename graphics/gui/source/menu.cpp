@@ -1,5 +1,6 @@
 #include "menu.h"
 
+#include <filesystem>
 #include <string>
 
 #include "gui.h"
@@ -10,10 +11,12 @@
 #include "unit_manager.h"
 
 using namespace Shortcuts;
+using namespace Snapping;
 
 Menu::Menu(Project& project, GUI& gui) :
 	project(project),
-	assets(gui.appConfig.assets) {
+	assets(gui.appConfig.assets),
+	gui(gui) {
 	loadAtLaunch(project, settings);
 };
 
@@ -172,13 +175,22 @@ void Menu::drawExport() {
 
 		}
 
-		if (menuItem("Animation")) {
+		// Gated on frames actually existing rather than on the Transient checkbox,
+		// which can be turned on (or off) without a run behind it -- the same
+		// self-gating the playback bar uses.
+		if (menuItem("Animation", nullptr, false, project.results.hasAnimation())) {
 
+			std::wstring path = saveFileDialog(FileKind::Animation);
+
+			if (!path.empty()) {
+				// mp4 or a png sequence, decided by the extension the Save-as-type
+				// dropdown put on the name -- see AnimationGUI::beginExport.
+				gui.animationGUI.beginExport(std::filesystem::path(path));
+			}
 		}
 
 		ImGui::EndMenu();
 	}
-
 }
 
 void Menu::drawView() {
@@ -253,8 +265,14 @@ std::string shortcutButtonLabel(
 
 void Menu::drawEditShortcut() {
 
-	if (menuItem("Keyboard Shortcuts")) {
-		openShortcutModal = true;
+	if (beginMenu("Keyboard")) {
+		if (menuItem("Keyboard Shortcuts")) {
+			openShortcutModal = true;
+		}
+		if (menuItem("Snapping")) {
+			openSnappingModal = true;
+		}
+		ImGui::EndMenu();
 	}
 
 	if (menuItem("Units", assets.icon("units"))) {
@@ -273,6 +291,85 @@ bool shortcutExists(ImGuiKeyChord shortcut, ImGuiKeyChord* currentShortcut) {
 		}
 	}
 	return false;
+}
+
+void Menu::drawSnappingModal() {
+	if (openSnappingModal) {
+		ImGui::OpenPopup("Snapping");
+		openSnappingModal = false;
+	}
+
+	if (ImGui::BeginPopupModal(
+		"Snapping",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove
+	)) {
+		bool justOpened = ImGui::IsWindowAppearing();
+
+		ImGui::TextDisabled("What holding Ctrl snaps to in the sketch view");
+		ImGui::Separator();
+
+		auto snapCheckbox = [](const char* label, bool& setting, const char* tooltip) {
+			ImGui::Checkbox(label, &setting);
+
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip("%s", tooltip);
+			}
+		};
+
+		snapCheckbox(
+			"Sketch",
+			snapToSketch,
+			"Edges of drawn geometry: line bodies, rectangle sides and centers,\n"
+			"circle rims and centers, arc rims and centers."
+		);
+
+		snapCheckbox(
+			"Axis",
+			snapToAxis,
+			"The r = 0 and z = 0 lines.\n"
+			"Off by default -- they run the width of the canvas, so anything drawn\n"
+			"near one gets pulled onto it. The origin snaps either way."
+		);
+
+		snapCheckbox(
+			"Grid",
+			snapToGrid,
+			"Grid vertices. Only active while the grid is being shown."
+		);
+
+		snapCheckbox(
+			"Points",
+			snapToPoints,
+			"Sketch points -- including line endpoints, which are stored as points --\n"
+			"and the origin."
+		);
+
+		ImGui::Separator();
+
+		if (ImGui::Button("Close")) {
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("Reset To Default")) {
+			resetSnappingToDefault();
+		}
+
+		bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+		bool clickedOutside =
+			!justOpened &&
+			!ImGui::IsAnyItemActive() &&
+			!ImGui::IsAnyItemHovered() &&
+			!hovered &&
+			ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+
+		if (clickedOutside) {
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
 }
 
 void Menu::drawShortcutModal() {
@@ -536,5 +633,6 @@ void Menu::render() {
 	}
 
 	drawShortcutModal();
+	drawSnappingModal();
 	drawUnitsModal();
 }

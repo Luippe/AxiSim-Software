@@ -141,9 +141,6 @@ public:
 	VariablesSimple simple;
 
 
-	// set all variables to default values
-	void setDefault();
-
 	// Return the solver to constructor defaults for a new project: joins any running
 	// solve, drops solutions/field state, and resets the run/residual config. config-
 	// owned data (g / f / itr / varUnits) is reset separately by Project::createNew.

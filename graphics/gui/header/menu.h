@@ -19,6 +19,7 @@ private:
 
 	bool openShortcutModal = false;
 	bool openUnitsModal = false;
+	bool openSnappingModal = false;
 
 	static constexpr float menuIconScale = 1.0f;
 	static constexpr const char* menuIconPlaceholder = "    ";
@@ -26,6 +27,10 @@ private:
 	AppSettings settings;
 	AppAssets& assets;
 	Project& project;
+
+	// Menu is constructed before the view objects (it loads mesh/solver/results
+	// first), so this is bound but not dereferenced until a menu is drawn.
+	GUI& gui;
 
 	// create new project
 	void drawNew();
@@ -41,10 +46,13 @@ private:
 
 	void drawEditShortcut();
 
-	void drawImportExport();
+	void drawExport();
 
 	// open popup when edit shortcut is pressed
 	void drawShortcutModal();
+
+	// open popup when editing snapping priorities
+	void drawSnappingModal();
 
 	// open popup to edit display units
 	void drawUnitsModal();

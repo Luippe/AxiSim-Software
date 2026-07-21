@@ -348,6 +348,14 @@ namespace {
 				L"axislv"
 			};
 
+		case FileKind::Animation:
+			return {
+				L"MP4 Video (*.mp4)\0*.mp4\0"
+				L"PNG Sequence (*.png)\0*.png\0"
+				L"All Files\0*.*\0",
+				L"mp4"
+			};
+
 		case FileKind::Project:
 		default:
 			return {

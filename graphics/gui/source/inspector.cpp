@@ -15,6 +15,7 @@
 #include "console.h"
 #include "app_struct.h"
 
+#include "clipboard.h"
 #include "flag_manager.h"
 #include "printer.h"
 #include "unit_manager.h"
@@ -1259,6 +1260,34 @@ void Inspector::drawEmptyMessage(ImDrawList* drawList) {
 
 void Inspector::copyActiveSurfaceToClipboard() {
 
+	std::vector<unsigned char> pixels = renderActiveSurfaceOffScreen();
+	copyRGBAToClipboard(pixels.data(), pendingCopyWidth, pendingCopyHeight);
+}
+
+bool Inspector::beginExportSequence() {
+
+	sequenceCaptureWidth = frameBuffer.width;
+	sequenceCaptureHeight = frameBuffer.height;
+
+	return sequenceCaptureWidth > 0 && sequenceCaptureHeight > 0;
+}
+
+std::vector<unsigned char> Inspector::captureSequenceFrame() {
+
+	if (sequenceCaptureWidth <= 0 || sequenceCaptureHeight <= 0) {
+		return {};
+	}
+
+	// every frame of a sequence is captured at the size latched when it started,
+	// not at whatever the panel happens to be now
+	pendingCopyWidth = sequenceCaptureWidth;
+	pendingCopyHeight = sequenceCaptureHeight;
+
+	return renderActiveSurfaceOffScreen();
+}
+
+std::vector<unsigned char> Inspector::renderActiveSurfaceOffScreen() {
+
 	GLint oldFBO, oldViewport[4];
 	ImVec2 oldDisplaySize, oldFramebufferSize;
 	offScreenFBO.create2DBuffer(pendingCopyWidth, pendingCopyHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE);
@@ -1308,7 +1337,7 @@ void Inspector::copyActiveSurfaceToClipboard() {
 	ImGui::End();
 	ImGui::PopStyleVar();
 
-	offScreenFBO.endOffScreenImGuiRender(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
+	return offScreenFBO.endOffScreenImGuiRenderToPixels(oldFBO, oldViewport, oldDisplaySize, oldFramebufferSize);
 }
 
 // ======================================================================

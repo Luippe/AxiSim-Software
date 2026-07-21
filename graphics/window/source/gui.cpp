@@ -585,4 +585,19 @@ void GUI::render() {
 		console.addLine("copied to clipboard!");
 
 	}
+
+	// An animation export writes one frame per app frame, through the same
+	// offscreen path (and so the same export context) the copies above use.
+	// AnimationGUI has already pushed this frame's values into the fields.
+	if (animationGUI.pendingExportFrame) {
+
+		setContext(exportImGuiContext, exportImPlotContext);
+
+		animationGUI.pendingExportFrame = false;
+		std::vector<unsigned char> pixels = inspector.captureSequenceFrame();
+
+		setContext(mainImGuiContext, mainImPlotContext);
+
+		animationGUI.onFrameCaptured(pixels);
+	}
 }

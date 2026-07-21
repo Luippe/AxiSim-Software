@@ -43,6 +43,13 @@ void MeshGUI::drawBoundaryGroupGUI() {
 		return;
 	}
 
+	// Scope every widget below to THIS group. The sizing rows are named by what
+	// they are ("Bias", "Target spacing"), not by the group, so without this each
+	// group reuses one set of ids -- ImGui then reads a half-typed value and the
+	// group switched away from as the same widget still being edited, and commits
+	// the pending text into whichever group is selected when the edit ends.
+	ImGui::PushID(selectedGroup->id);
+
 	ImGui::SeparatorText(selectedGroup->name.c_str());
 
 	ImGui::Text("Group ID: %d", selectedGroup->id);
@@ -94,8 +101,11 @@ void MeshGUI::drawBoundaryGroupGUI() {
 			selectedBoundaryGroupID = -1;
 		}
 
+		ImGui::PopID();
 		return;
 	}
+
+	ImGui::PopID();
 }
 
 void MeshGUI::drawRegionOfInfluenceGUI() {

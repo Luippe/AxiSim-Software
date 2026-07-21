@@ -16,6 +16,11 @@ public:
 	void beginOffScreenImGuiRender(GLint& oldFBO, GLint(&oldViewport)[4], ImVec2& oldDisplaySize, ImVec2& oldFramebufferScale);
 	void endOffScreenImGuiRender(const GLint& oldFBO, const GLint(&oldViewport)[4], const ImVec2& oldDisplaySize, const ImVec2 oldFramebufferScale);
 
+	// Same as endOffScreenImGuiRender but hands the pixels back instead of picking
+	// a destination for them, so a caller can write a file rather than the
+	// clipboard. Bottom-up RGBA, as glReadPixels produces.
+	std::vector<unsigned char> endOffScreenImGuiRenderToPixels(const GLint& oldFBO, const GLint(&oldViewport)[4], const ImVec2& oldDisplaySize, const ImVec2 oldFramebufferScale);
+
 	// create a frame buffer with MSAA
 	void createBuffer(int width, int height, int samples);
 
@@ -26,7 +31,10 @@ public:
 	void resolve();
 
 	unsigned int getTextureID();
-	int width, height;
+
+	// zero until a create*Buffer call sizes them, so a caller can tell an
+	// unsized framebuffer from a real one
+	int width = 0, height = 0;
 
 private:
 

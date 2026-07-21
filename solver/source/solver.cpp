@@ -121,19 +121,6 @@ Solver::Solver(Config& config) :
 
 
 
-void Solver::setDefault() {
-
-    configSolver.addConvectionTerm = true;
-    configSolver.transient = false;
-    configSolver.timeScheme = TimeScheme::TIME_FIRST_ORDER;
-    configSolver.dt = 0.1;
-    configSolver.tEnd = 2.0;
-    configSolver.maxIter = 10;
-
-    configSimple.maxIter = 10;
-
-}
-
 void Solver::reset() {
 
     // Join any running solve before wiping the state it touches.
@@ -151,6 +138,7 @@ void Solver::reset() {
     fieldType.clear();
     mDotHost.clear();
     fvMesh = FVMesh{};
+    configSolver = ConfigSolver{};
     continuationState = ContinuationState{};
     currentIteration = 0;
 
@@ -160,14 +148,12 @@ void Solver::reset() {
     configSimple = ConfigSimple{};
     configMultigrid = ConfigMultigrid{};
     convectionScheme = CONV_UPWIND;
-    gradientScheme = GRAD_LSQ;
+    gradientScheme = GRAD_GREEN_GAUSS;
     currentVelocitySolver = SOLVER_SIMPLE;
     saveKeyFrameIter = 2;
 
     // default per-residual display settings (rebinds cfg the same way the ctor does)
     initConfigResiduals(cfg);
-
-    setDefault();
 }
 
 void Solver::run(const Mesh& mesh) {

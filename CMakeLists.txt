@@ -220,6 +220,13 @@ if(WIN32)
 
     target_link_libraries(AxiSim PRIVATE
         Comdlg32
+        Windowscodecs	# WIC, used by image_writer.cpp to encode PNG frames
+
+        # Media Foundation, used by video_writer.cpp to encode H.264 mp4 without
+        # bundling an encoder or needing ffmpeg on the user's PATH
+        Mfplat
+        Mfreadwrite
+        Mfuuid
     )
 endif()
 

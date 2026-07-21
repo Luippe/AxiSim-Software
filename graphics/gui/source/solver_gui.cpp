@@ -631,6 +631,15 @@ void SolverGUI::drawPropertiesPanel() {
 		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.20f, 0.25f, 0.32f, 1.0f));
 		ImGui::BeginChild("Properties", ImVec2(0.0f, 0.0f), true);
 
+		// Scope every widget below to THIS group. Without it each group's rows
+		// reuse one set of ids (the editor names them after the variable, not the
+		// group), so ImGui reads a half-typed value and the group switched away
+		// from as the same widget still being edited -- and commits the pending
+		// text into whichever group is selected when the edit ends. Pushing the id
+		// here rather than in drawRowBoundaryVariableEditor covers the type combo
+		// and the wall-layer stack too, since PushID nests.
+		ImGui::PushID(group->id);
+
 		if (ImGui::BeginTable("Boundary Type", 2)) {
 			setupTableColumns(
 				autoColumn("Label"),
@@ -727,6 +736,8 @@ void SolverGUI::drawPropertiesPanel() {
 		if (group->type == BoundaryType::WALL) {
 			drawWallLayerSection(*group, activeLeaves);
 		}
+
+		ImGui::PopID();
 
 		ImGui::EndChild();
 		ImGui::PopStyleColor();
