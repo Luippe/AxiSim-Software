@@ -1091,7 +1091,28 @@ bool readVar(std::ifstream& in, SolutionField& value) {
 
 namespace {
 	constexpr std::uint32_t resultsFileMagic = 0x53525641u;   // "AVRS" little-endian
-	constexpr std::uint32_t resultsFileVersion = 1u;
+	constexpr std::uint32_t resultsFileVersion = 2u;
+
+	// Version 1 stored the grid and the dimensions derived from it ahead of the field
+	// tables. Both are re-taken from the live mesh by Results::rebuildAfterLoad, so v2
+	// stopped writing them -- but a v1 file still has those bytes sitting there, and
+	// reading it with the v2 layout would take the grid's nr/nz as the fieldType length
+	// prefix. Kept so projects saved before the format changed still load.
+	constexpr std::uint32_t resultsFileVersionWithGrid = 1u;
+
+	// Step the stream past a version-1 grid block and throw the values away.
+	bool skipLegacyResultsGrid(std::ifstream& in) {
+
+		GridConfig g;
+		int nseg = 0;
+		int nr = 0;
+		int nz = 0;
+		std::vector<double> dr;
+		std::vector<double> dz;
+
+		return readAll(in, g.nr, g.nz, g.R, g.L, g.r, g.z, g.rFace, g.zFace, g.dr, g.dz)
+			&& readAll(in, nseg, nr, nz, dr, dz);
+	}
 
 	// Clamp an enum loaded from disk into the range of the GUI name table it indexes.
 	// Pass the table itself so the bound cannot drift from the array the combo draws.
@@ -1182,13 +1203,21 @@ void loadFromPathResults(std::ifstream& in, Results& results) {
 
 	if (!readAll(in, magic, version) ||
 		magic != resultsFileMagic ||
-		version != resultsFileVersion) {
+		version == 0 ||
+		version > resultsFileVersion) {
 		bail();
 		return;
 	}
 
 	std::uint8_t hasResults = 0;
 	if (!readAll(in, hasResults) || hasResults == 0) {
+		return;
+	}
+
+	// Everything from here on is common to both versions; only the grid block that v1
+	// wrote ahead of it has to be stepped over.
+	if (version == resultsFileVersionWithGrid && !skipLegacyResultsGrid(in)) {
+		bail();
 		return;
 	}
 

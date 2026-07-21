@@ -4,6 +4,7 @@
 #include <string>
 #include <fstream>
 #include <filesystem>
+#include <cstdint>
 #include <type_traits>
 #include <utility>
 #include <unordered_set>
@@ -141,6 +142,35 @@ bool readVar(std::ifstream& in, T& val) {
 	return (bool)in.read((char*)&val, sizeof(T));
 }
 
+// Bytes left in the stream from the current position. Used to sanity-check a length
+// prefix BEFORE allocating against it.
+inline std::streamoff bytesLeft(std::ifstream& in) {
+	std::streampos pos = in.tellg();
+	if (pos == std::streampos(-1)) {
+		return 0;
+	}
+
+	in.seekg(0, std::ios::end);
+	std::streampos end = in.tellg();
+	in.seekg(pos);
+
+	return end - pos;
+}
+
+// True when a container claiming `size` elements of at least `minBytesPerElement`
+// each cannot possibly fit in what is left of the file.
+//
+// A truncated, mismatched or hand-edited file hands us an arbitrary size_t, and
+// resize/reserve would try to honour it before the first failed read -- a multi-
+// terabyte allocation that throws bad_alloc and takes the process down. That is a
+// crash rather than the clean "this block is not for me" the callers are written to
+// handle, and it happens before any of their error paths get a chance to run. The
+// file length is a hard ceiling no honest count can exceed.
+inline bool sizeExceedsFile(std::ifstream& in, size_t size, size_t minBytesPerElement) {
+	const std::streamoff left = bytesLeft(in);
+	return (std::uintmax_t)size > (std::uintmax_t)(left / (std::streamoff)minBytesPerElement);
+}
+
 // SolutionField owns vectors, so it can't be raw-copied. Declared here (defined in
 // file_manager.cpp, which has the complete type) so the vector/map templates below
 // resolve to it at their definition context rather than falling back to the generic
@@ -154,6 +184,10 @@ inline bool readVar(std::ifstream& in, std::string& value) {
 	size_t size = 0;
 
 	if (!in.read((char*)&size, sizeof(size))) {
+		return false;
+	}
+
+	if (sizeExceedsFile(in, size, sizeof(char))) {
 		return false;
 	}
 
@@ -177,6 +211,10 @@ inline bool readVar(std::ifstream& in, std::wstring& value) {
 		return false;
 	}
 
+	if (sizeExceedsFile(in, size, sizeof(wchar_t))) {
+		return false;
+	}
+
 	value.resize(size);
 
 	if (size == 0) {
@@ -195,6 +233,15 @@ bool readVar(std::ifstream& in, std::vector<T>& vec) {
 	size_t size = 0;
 
 	if (!(bool)in.read((char*)&size, sizeof(size))) {
+		return false;
+	}
+
+	// Trivially-copyable elements occupy exactly sizeof(T) on disk; a memory-owning
+	// element still costs at least its own length prefix.
+	constexpr size_t minBytes =
+		std::is_trivially_copyable_v<T> ? sizeof(T) : sizeof(size_t);
+
+	if (sizeExceedsFile(in, size, minBytes)) {
 		return false;
 	}
 
@@ -222,6 +269,11 @@ bool readVar(std::ifstream& in, std::unordered_set<T, Hash, KeyEqual, Allocator>
 	size_t size = 0;
 
 	if (!in.read((char*)&size, sizeof(size))) {
+		return false;
+	}
+
+	// Elements are read raw below, so each costs exactly sizeof(T) on disk.
+	if (sizeExceedsFile(in, size, sizeof(T))) {
 		return false;
 	}
 
@@ -254,6 +306,12 @@ bool readVar(std::ifstream& in,	std::unordered_map<Key, Value, Hash, KeyEqual, A
 	size_t size = 0;
 
 	if (!in.read((char*)&size, sizeof(size))) {
+		return false;
+	}
+
+	// Same guard as the vector reader: an entry costs at least a key length prefix on
+	// disk, so a count beyond that ceiling is garbage and must not reach reserve().
+	if (sizeExceedsFile(in, size, sizeof(size_t))) {
 		return false;
 	}
 
