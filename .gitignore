@@ -20,6 +20,24 @@ imgui.ini
 /Concentration Solver Software.vcxproj
 /Concentration Solver Software.vcxproj.filters
 
+# Backup / scratch copies (bullet.bin.pre-9mm-sketch.bak and friends)
+*.bak
+*.orig
+*.rej
+*.tmp
+*.swp
+*~
+
+# Project save files (local work, same as the old *.bin saves)
+*.axi
+*.axigeom
+
+# Local runtime artifacts
+*.pid
+*.tlog/
+/Concentr.b6d463ec/
+/.agents/
+
 # Nsight / CUDA profiler output
 *.nsys-rep
 *.ncu-rep
