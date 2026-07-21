@@ -158,10 +158,6 @@ public:
 
 private:
 
-	double jacobiWeight = 0.6;
-	int jacobiSweep = 75;
-	int jacobiPrePostSweep = 3;
-
 	// One executable graph owns a complete run(): copy the current fine system
 	// into level 0, rebuild all coarse operators, perform every configured
 	// V-cycle, then copy the live level-0 vector back to the caller. prepare()
@@ -179,6 +175,14 @@ private:
 		int nCycles = 0;
 		int threadsPerBlock = 0;
 		int useFaceCoeffs = 0;
+
+		// The smoother settings are baked in at capture: the sweep counts decide how
+		// many kernel nodes get recorded, and `weight` is a by-value kernel argument
+		// snapshotted into each of them. Editing any of the three has no effect until
+		// the graph is recaptured, so all three have to key it.
+		int linearSweep = 0;
+		int linearPrePostSweep = 0;
+		double weight = 0.0;
 
 		double* externalX = nullptr;
 		double* AC = nullptr;
@@ -206,6 +210,8 @@ private:
 
 	// smoothen the field
 	void smoothen(MultigridLevel& level, cudaStream_t& stream, int iteration);
+	void smoothenRegular(MultigridLevel& level, cudaStream_t& stream, int iteration);
+	void smoothenSingleBlock(MultigridLevel& level, cudaStream_t& stream, int iteration);
 
 	// Coarsen `grid` repeatedly and allocate a MultigridLevel for each result.
 	// Consumes the seed level: nothing keeps a second host copy of the hierarchy.

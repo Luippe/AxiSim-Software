@@ -158,12 +158,31 @@ void Menu::drawOpen() {
 
 }
 
-void Menu::drawExportImport() {
+void Menu::drawImportExport() {
+
+	//if (beginMenu("Import")) {
+
+	//	ImGui::EndMenu();
+	//}
+
+	//if (beginMenu("Export")) {
+
+	//	if (menuItem("Animation")) {
+
+
+
+	//	}
+
+	//	ImGui::EndMenu();
+	//}
 
 }
 
 void Menu::drawView() {
 
+	if (menuItem("GUI")) {
+
+	}
 }
 
 
@@ -494,6 +513,7 @@ void Menu::render() {
 			drawNew();
 			drawOpen();
 			drawSave();
+			drawImportExport();
 			ImGui::EndMenu();
 		}
 

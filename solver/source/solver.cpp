@@ -1225,8 +1225,11 @@ void Solver::runSimple(const Mesh& mesh) {
             // gradPZ/gradPR are reused below to hold grad(p'); they are no longer
             // needed for Rhie-Chow until the next outer iteration. p' starts at 0,
             // so the first corrector pass has a zero cross term (pure orthogonal).
-            // corr = 0 is the pure orthogonal pass (p' starts at 0, so the cross
-            // term is zero); the corrector adds exactly one more pass on top.
+            // corr = 0 is the pure orthogonal pass. Since p' starts at 0, its
+            // gradient and therefore the deferred cross term are also zero, so
+            // do not launch a gradient kernel just to write zeros. Each later
+            // corrector computes grad(p') from the preceding solve and adds the
+            // lagged non-orthogonal term to the RHS.
             const int nNonOrth = configSimple.useNonOrthCorrector ? 1 : 0;
 
             cudaMemsetAsync(simple.pp, 0, N * sizeof(double), stream);
@@ -1234,8 +1237,13 @@ void Solver::runSimple(const Mesh& mesh) {
             CUDA_CHECK(cudaGetLastError());
 
             for (int corr = 0; corr <= nNonOrth; corr++) {
-                computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
-                createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, applyNonOrtho);
+                const int applyCrossTerm = corr > 0 ? 1 : 0;
+
+                if (applyCrossTerm) {
+                    computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
+                }
+
+                createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, applyCrossTerm);
                 if (multigrid) {
                     multigrid->run(stream);
                 }
@@ -1336,7 +1344,14 @@ void Solver::runSimple(const Mesh& mesh) {
                 // for the two kernels above. Without this sync it reads stale residuals.
                 CUDA_CHECK(cudaStreamSynchronize(stream));
 
-                residualAllHost(cfg, N, currentIteration);
+                // Continuity is normalized by a scale captured in the first few
+                // iterations of the interval it is measured over. A transient step
+                // starts with a fresh imbalance from the unsteady term, so that
+                // interval is the TIME STEP (k), not the run -- pinning it to the
+                // run would normalize every step against the first step's startup.
+                // A steady solve has one step, and keeps the run-global count so a
+                // continued solve stays measured against its original baseline.
+                residualAllHost(cfg, N, transient ? k : currentIteration);
                 residualPlot->add(currentIteration, cfg);
                 printResidualConsole(currentIteration, cfg, console);
 

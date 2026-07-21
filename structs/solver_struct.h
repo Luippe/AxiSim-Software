@@ -186,6 +186,20 @@ struct ConfigMultigrid {
 	// would have made every pp solve ~50x its previous cost.
 	int maxIter = 3;
 
+	// Damping on the weighted-Jacobi smoother. Under-relaxation is what makes
+	// Jacobi smooth the high-frequency error the coarse grid cannot see; at 1.0 it
+	// stops being a smoother and the V-cycle stalls.
+	double weight = 0.6;
+
+	// Sweeps used as the coarsest-level solve. There is nothing below that level to
+	// correct from, so the smoother has to stand in for a direct solve, which is why
+	// this is an order of magnitude above the pre/post count.
+	int linearSweep = 30;
+
+	// Sweeps before restriction and again after prolongation, on every level that
+	// has a coarser one beneath it.
+	int linearPrePostSweep = 3;
+
 };
 
 // Time discretization for a transient run.

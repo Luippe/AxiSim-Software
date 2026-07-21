@@ -494,6 +494,72 @@ void jacobiFused(Coefficients coeff, const double* xOld, double* xNew, const uin
 	xNew[n] = xOld[n] + weight * (coeff.b[n] - Ax) / coeff.AC[n];
 }
 
+// Small-level weighted Jacobi, with every sweep performed inside one block.
+// The whole level must fit in that block: this is what makes __syncthreads() a
+// grid-wide barrier and preserves Jacobi's read-old/write-new semantics between
+// sweeps. x is loaded once, ping-ponged in shared memory, and written back once;
+// coefficients/topology remain in global memory and should be cache-hot after
+// the first sweep because the system is small.
+__global__
+void jacobiSingleBlock(
+	Coefficients coeff,
+	double* x,
+	const uint8_t* active,
+	double weight,
+	int iterations
+) {
+
+	extern __shared__ double sharedX[];
+
+	double* xOld = sharedX;
+	double* xNew = sharedX + coeff.N;
+
+	const int n = threadIdx.x;
+
+	if (n < coeff.N) {
+		xOld[n] = x[n];
+	}
+
+	__syncthreads();
+
+	#pragma unroll 1
+	for (int iteration = 0; iteration < iterations; iteration++) {
+
+		if (n < coeff.N) {
+			if (active && !active[n]) {
+				xNew[n] = xOld[n];
+			}
+			else {
+				double Ax = coeff.AC[n] * xOld[n];
+
+				const int start = coeff.faceStart[n];
+				const int end = coeff.faceStart[n + 1];
+
+				for (int k = start; k < end; k++) {
+					const int nb = coeff.faceNeighbor[k];
+					if (nb >= 0) {
+						Ax += coeff.AF[k] * xOld[nb];
+					}
+				}
+
+				xNew[n] = xOld[n] + weight * (coeff.b[n] - Ax) / coeff.AC[n];
+			}
+		}
+
+		// No thread may return before this barrier: even threads beyond coeff.N
+		// participate so every cell has finished writing before the buffers swap.
+		__syncthreads();
+
+		double* swap = xOld;
+		xOld = xNew;
+		xNew = swap;
+	}
+
+	if (n < coeff.N) {
+		x[n] = xOld[n];
+	}
+}
+
 // NOTE: all three transfers are now driven from the FINE level (one thread per
 // fine cell, scattering down), so every launch below sizes on fine.grid.nCells.
 // The old versions launched over the coarse level and gathered.
@@ -573,11 +639,11 @@ void MultigridSolver::vCycle(int l, cudaStream_t& stream) {
 
 	// coarsest level: nothing below to correct from, so just smooth hard
 	if (l == nLevels - 1) {
-		smoothen(levels[l], stream, jacobiSweep);
+		smoothen(levels[l], stream, cfg.linearSweep);
 		return;
 	}
 
-	smoothen(levels[l], stream, jacobiPrePostSweep);
+	smoothen(levels[l], stream, cfg.linearPrePostSweep);
 
 	// smoothen() keeps its residual in a register and never writes level.res, so
 	// this is the ONLY thing that fills it -- restriction would otherwise read
@@ -601,17 +667,39 @@ void MultigridSolver::vCycle(int l, cudaStream_t& stream) {
 	vCycle(l + 1, stream);
 
 	buildProlongation(levels[l], levels[l + 1], stream);
-	smoothen(levels[l], stream, jacobiPrePostSweep);
+	smoothen(levels[l], stream, cfg.linearPrePostSweep);
 
 }
 
 void MultigridSolver::smoothen(MultigridLevel& level, cudaStream_t& stream, int iteration) {
 
-	int blocks = (level.grid.nCells + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
+	const int N = level.grid.nCells;
+
+	if (N <= 0 || iteration <= 0) return;
+
+	// A single block can synchronize the entire level between Jacobi sweeps. Use
+	// that persistent kernel whenever it can eliminate at least one launch; the
+	// regular smoother remains the fallback for larger levels and single sweeps.
+	if (iteration > 1 && N <= mem.threadsPerBlock) {
+		smoothenSingleBlock(level, stream, iteration);
+		return;
+	}
+
+	smoothenRegular(level, stream, iteration);
+}
+
+void MultigridSolver::smoothenRegular(
+	MultigridLevel& level,
+	cudaStream_t& stream,
+	int iteration
+) {
+
+	const int blocks =
+		(level.grid.nCells + mem.threadsPerBlock - 1) / mem.threadsPerBlock;
 
 	for (int n = 0; n < iteration; n++) {
 		jacobiFused << <blocks, mem.threadsPerBlock, 0, stream >> > (
-			level.coeff, level.x, level.xNew, level.d_active, jacobiWeight
+			level.coeff, level.x, level.xNew, level.d_active, cfg.weight
 			);
 
 		// Swap the members rather than copying back, so `x` names the live vector
@@ -622,6 +710,30 @@ void MultigridSolver::smoothen(MultigridLevel& level, cudaStream_t& stream, int 
 		// fixed pointer schedule self-contained.
 		std::swap(level.x, level.xNew);
 	}
+}
+
+void MultigridSolver::smoothenSingleBlock(
+	MultigridLevel& level,
+	cudaStream_t& stream,
+	int iteration
+) {
+
+	const int N = level.grid.nCells;
+
+	// Round to warps without exceeding the configured block size. Idle lanes must
+	// still reach every __syncthreads() in jacobiSingleBlock.
+	const int warpSize = 32;
+	const int roundedThreads = ((N + warpSize - 1) / warpSize) * warpSize;
+	const int threads = std::min(mem.threadsPerBlock, roundedThreads);
+	const size_t sharedBytes = 2ull * (size_t)N * sizeof(double);
+
+	jacobiSingleBlock << <1, threads, sharedBytes, stream >> > (
+		level.coeff,
+		level.x,
+		level.d_active,
+		cfg.weight,
+		iteration
+		);
 }
 
 std::string MultigridSolver::describeHierarchy() const {
@@ -730,6 +842,9 @@ bool MultigridSolver::runGraphMatches(
 		runGraphKey.nCycles == std::max(1, cfg.maxIter) &&
 		runGraphKey.threadsPerBlock == mem.threadsPerBlock &&
 		runGraphKey.useFaceCoeffs == coeff.useFaceCoeffs &&
+		runGraphKey.linearSweep == cfg.linearSweep &&
+		runGraphKey.linearPrePostSweep == cfg.linearPrePostSweep &&
+		runGraphKey.weight == cfg.weight &&
 		runGraphKey.externalX == x &&
 		runGraphKey.AC == coeff.AC &&
 		runGraphKey.b == coeff.b &&
@@ -775,6 +890,9 @@ void MultigridSolver::captureRunGraph(Coefficients& coeff, cudaStream_t& stream,
 	runGraphKey.nCycles = std::max(1, cfg.maxIter);
 	runGraphKey.threadsPerBlock = mem.threadsPerBlock;
 	runGraphKey.useFaceCoeffs = coeff.useFaceCoeffs;
+	runGraphKey.linearSweep = cfg.linearSweep;
+	runGraphKey.linearPrePostSweep = cfg.linearPrePostSweep;
+	runGraphKey.weight = cfg.weight;
 	runGraphKey.externalX = x;
 	runGraphKey.AC = coeff.AC;
 	runGraphKey.b = coeff.b;

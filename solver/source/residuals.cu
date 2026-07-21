@@ -105,7 +105,7 @@ void residualLInfHost(ConfigResidual& cfg, int N) {
 }
 
 
-void residualAllHost(std::unordered_map<std::string, ConfigResidual>& cfgs, int N, int currentIteration) {
+void residualAllHost(std::unordered_map<std::string, ConfigResidual>& cfgs, int N, int scaleIteration) {
 
 	for (auto& [name, cfg] : cfgs) {
 		if (cfg.enabled) {
@@ -113,9 +113,13 @@ void residualAllHost(std::unordered_map<std::string, ConfigResidual>& cfgs, int 
 			// treat continuity equation differently
 			if (name == "Continuity") {
 				residualL1Host(cfg, N);
-				if (currentIteration < 5) {
+				if (scaleIteration < 5) {
 					cfg.scaleVal = std::max(cfg.resVal, 0.0);
 				}
+
+				// A step whose imbalance is already zero at capture would divide by
+				// zero here. The non-continuity path below guards the same case.
+				if (cfg.scaleVal == 0.0) continue;
 
 				cfg.resVal /= cfg.scaleVal;
 				continue;

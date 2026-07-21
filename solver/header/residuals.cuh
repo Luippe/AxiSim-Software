@@ -99,4 +99,12 @@ void residualAll(uint8_t* activeCell, bool sign, Systems...systems) {
 
 // reduce a field's per-cell residual vector (cfg.res) to a single value (cfg.resVal).
 // coeff supplies the cell count N used for the norm/scaling.
-void residualAllHost(std::unordered_map<std::string, ConfigResidual>& cfgs, int N, int currentIteration);
+//
+// scaleIteration drives the continuity normalization ONLY: the scale is captured
+// while it is < 5, and every later residual is divided by it. It therefore has to
+// count from the start of the interval continuity is being measured over -- the run
+// for a steady solve, but each TIME STEP for a transient one, since every step
+// starts with a fresh imbalance from the unsteady term. Passing a run-global count
+// in a transient solve pins the scale to the first step's startup and makes the
+// reported continuity residual meaningless from step 2 on.
+void residualAllHost(std::unordered_map<std::string, ConfigResidual>& cfgs, int N, int scaleIteration);

@@ -759,8 +759,9 @@ void SolverGUI::drawPropertiesPanel() {
 				// correction only, so it carries its own cycle count.
 				if (solver.useMultigrid) {
 
-					labelRow("Maximum Multigrid Cycles");
 					const bool graphPrepared = solver.solverRunning;
+
+					labelRow("Maximum Multigrid Cycles");
 					ImGui::BeginDisabled(graphPrepared);
 					inputInt("##MultigridMaxIter", &project.solver.configMultigrid.maxIter);
 					ImGui::EndDisabled();
@@ -768,6 +769,19 @@ void SolverGUI::drawPropertiesPanel() {
 
 					if (!graphPrepared && project.solver.configMultigrid.maxIter < 1) {
 						project.solver.configMultigrid.maxIter = 1;
+					}
+
+					// Coarsest-level sweep count. Same capture caveat as the cycle
+					// count: it decides how many smoother nodes get recorded into the
+					// run graph, so it cannot move once that graph is prepared.
+					labelRow("Coarsest Level Sweeps");
+					ImGui::BeginDisabled(graphPrepared);
+					inputInt("##MultigridLinearSweep", &project.solver.configMultigrid.linearSweep);
+					ImGui::EndDisabled();
+					disabledHint(graphPrepared, "The multigrid graph is already prepared for this solve.");
+
+					if (!graphPrepared && project.solver.configMultigrid.linearSweep < 1) {
+						project.solver.configMultigrid.linearSweep = 1;
 					}
 
 				}
@@ -871,10 +885,10 @@ void SolverGUI::drawPropertiesPanel() {
 			}
 
 			labelRow("Time Step dt (s)");
-			ImGui::InputDouble("##timeStep", &project.solver.configSolver.dt, 0.0, 0.0, "%.3f");
+			ImGui::InputDouble("##timeStep", &project.solver.configSolver.dt, 0.0, 0.0, "%.5f");
 
 			labelRow("End Time tEnd (s)");
-			ImGui::InputDouble("##endTime", &project.solver.configSolver.tEnd, 0.0, 0.0, "%.3f");
+			ImGui::InputDouble("##endTime", &project.solver.configSolver.tEnd, 0.0, 0.0, "%.5f");
 
 			labelRow("Save Keyframe Every # Time Steps");
 			ImGui::InputInt("##saveKeyFrameIter", &project.solver.saveKeyFrameIter, 0.0, 0.0);
