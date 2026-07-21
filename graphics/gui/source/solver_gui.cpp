@@ -484,13 +484,13 @@ void SolverGUI::drawLayerEditor(
 			ImGui::TableSetColumnIndex(4);
 			unitLabel(Units::lengthUnits, project.lengthScale.index);
 
-			// R is fully derived from D and d; recompute it so the stored value
-			// the solver will read stays in sync with the inputs.
-			layer.R = (layer.k != 0.0) ? layer.d / layer.k : 0.0;
+			// Keep the serialized field in step with the inputs so saves written from
+			// here still carry it, but display (and the solver) read resistance().
+			layer.R = layer.resistance();
 
 			ImGui::TableSetColumnIndex(5);
 			ImGui::AlignTextToFramePadding();
-			ImGui::Text("%.3g s/m", layer.R);
+			ImGui::Text("%.3g s/m", layer.resistance());
 
 			ImGui::TableSetColumnIndex(6);
 			if (ImGui::SmallButton("x")) {
@@ -615,9 +615,9 @@ void SolverGUI::drawPropertiesPanel() {
 		BoundarySegmentGroup* group = getBoundaryGroupByID(mesh.boundaryGroups, selectedBoundaryGroupID);
 
 		// draw() drops a stale selection before this runs, so this should not fire --
-		// but the panel must not depend on that. A group can also disappear mid-frame
-		// (deleted from the mesh inspector), and there is nothing to draw for one that
-		// no longer exists. Bail out through End() to keep the Begin/End pair balanced.
+		// kept so the panel does not silently depend on its one caller having done
+		// that, since it is all that stands between a dropped group and a deref. Bail
+		// out through End() to keep the Begin/End pair balanced.
 		if (!group) {
 			ImGui::End();
 			return;
@@ -919,17 +919,17 @@ void SolverGUI::draw() {
 	if (ImGui::BeginTabItem("Solver", nullptr, tabFlags)) {
 		project.currentTab = ViewTab::TAB_SOLVER;
 
-		// Re-meshing after a geometry edit rebuilds mesh.boundaryGroups from scratch,
-		// and getAvailableBoundaryGroupID numbers from max(id)+1 over the LIVE vector --
-		// so once the old groups are cleared the same IDs get handed back out to
-		// different boundaries. A selection held across that rebuild is therefore not
-		// just stale, it is actively wrong: it either resolves to nothing (which used to
-		// null-deref in drawPropertiesPanel) or, when the new geometry produces enough
-		// groups, silently resolves to an unrelated boundary whose BCs would then be
-		// edited in its place. Validate here, once, before anything reads it -- this
-		// covers every rebuild path (re-mesh, clearUnstructuredGeometry, project load)
-		// without SolverGUI having to hear about each one. MeshGUI self-heals the same
-		// way in drawBoundaryGroupGUI; it keeps its own selection, separate from this.
+		// A selection outlives the vector it points into. Re-meshing after a geometry
+		// edit rebuilds mesh.boundaryGroups and drops any group that no longer matches,
+		// so a held ID can resolve to nothing -- which used to null-deref in
+		// drawPropertiesPanel. IDs are only unique within one project's lifetime
+		// (nextGroupID is monotonic, but Mesh::reset() rewinds it and a load brings in
+		// another file's numbering), so across a new-project or load a held ID can also
+		// resolve to an unrelated boundary whose BCs would be edited in its place.
+		// Validate here, once, before anything reads it -- that covers every rebuild
+		// path without SolverGUI having to hear about each one. MeshGUI self-heals the
+		// same way in drawBoundaryGroupGUI; it keeps its own selection, separate from
+		// this.
 		if (selectedBoundaryGroupID >= 0 &&
 			!getBoundaryGroupByID(mesh.boundaryGroups, selectedBoundaryGroupID)) {
 

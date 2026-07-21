@@ -477,6 +477,11 @@ struct FVMeshHostPacked {
 	std::vector<double> cellCenterZ;
 	std::vector<double> cellCenterR;
 
+	// r-z cross-section, before the axisymmetric revolve. Carried alongside the
+	// volume rather than divided back out of it: the revolve zeroes inactive cells
+	// and degrades near the axis, neither of which the cross-section does.
+	std::vector<double> cellArea2D;
+
 	std::vector<double> cellVolume;
 
 	std::vector<uint8_t> cellActive;

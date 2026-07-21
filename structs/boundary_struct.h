@@ -15,17 +15,27 @@
 // One material layer of a multi-layer wall (e.g. a membrane or coating) that a
 // solved scalar -- concentration or temperature -- must pass through. A stack of
 // layers acts as a series transfer resistance on the wall flux.
-//   D = layer diffusivity / conductivity
 //   d = layer thickness
-//   k = D / d, the layer permeance (transfer coefficient); kept in sync with
-//       D and d by the editor so the solver can read it directly.
+//   k = layer diffusivity / conductivity
+//   R = d / k, the layer's series transfer resistance.
 // NOTE: layers are edited and persisted today; the solver does not yet consume
 // them. This is the hook where wall-resistance physics would read `k`.
 struct Layer {
 
 	double k = 0.0;
 	double d = 0.0;
+
+	// Derived; read resistance() instead. The field stays because it is serialized
+	// (file_manager.cpp writes Layer as a raw 24-byte record), so dropping it would
+	// break every existing save -- same reason VariableUnits keeps its dead fields.
+	// It is written by the editor row in solver_gui.cpp and otherwise unused: a Layer
+	// that never passed through that row carries 0 here, which is a legal-looking
+	// resistance, so nothing downstream can tell the difference.
 	double R = 0.0;
+
+	double resistance() const {
+		return (k != 0.0) ? d / k : 0.0;
+	}
 
 };
 
@@ -200,11 +210,17 @@ struct EdgeKey {
 	}
 };
 
+// std::hash<int> is the identity, so a bare `h1 ^ (h2 << 1)` of two small indices
+// collides constantly on a mesh-sized lattice ({2,1} and {0,0} both land on 0).
+// These maps hold one entry per edge/vertex, so every collision is a bucket walk.
+// hashCombine is the mixer PointKeyHash below already used; the others now share it.
+inline std::size_t hashCombine(std::size_t h1, std::size_t h2) {
+	return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+}
+
 struct EdgeKeyHash {
 	std::size_t operator()(const EdgeKey& e) const {
-		std::size_t h1 = std::hash<int>{}(e.a);
-		std::size_t h2 = std::hash<int>{}(e.b);
-		return h1 ^ (h2 << 1);
+		return hashCombine(std::hash<int>{}(e.a), std::hash<int>{}(e.b));
 	}
 };
 
@@ -287,11 +303,9 @@ inline bool operator==(const MeshEdge& a, const MeshEdge& b) {
 
 struct MeshEdgeHash {
 	std::size_t operator()(const MeshEdge& e) const {
-		std::size_t h1 = std::hash<int>{}(static_cast<int>(e.orient));
-		std::size_t h2 = std::hash<int>{}(e.i);
-		std::size_t h3 = std::hash<int>{}(e.j);
-
-		return h1 ^ (h2 << 1) ^ (h3 << 2);
+		std::size_t h = std::hash<int>{}(static_cast<int>(e.orient));
+		h = hashCombine(h, std::hash<int>{}(e.i));
+		return hashCombine(h, std::hash<int>{}(e.j));
 	}
 };
 
@@ -306,10 +320,7 @@ inline bool operator==(const GridVertex& a, const GridVertex& b) {
 
 struct GridVertexHash {
 	std::size_t operator()(const GridVertex& v) const {
-		std::size_t h1 = std::hash<int>{}(v.i);
-		std::size_t h2 = std::hash<int>{}(v.j);
-
-		return h1 ^ (h2 << 1);
+		return hashCombine(std::hash<int>{}(v.i), std::hash<int>{}(v.j));
 	}
 };
 
@@ -324,9 +335,7 @@ struct PointKey {
 
 struct PointKeyHash {
 	std::size_t operator()(const PointKey& key) const {
-		std::size_t h1 = std::hash<long long>{}(key.z);
-		std::size_t h2 = std::hash<long long>{}(key.r);
-		return h1 ^ (h2 + 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2));
+		return hashCombine(std::hash<long long>{}(key.z), std::hash<long long>{}(key.r));
 	}
 };
 

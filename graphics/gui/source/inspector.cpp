@@ -632,23 +632,21 @@ void Inspector::drawFieldTabs() {
 	lastFieldItem = results.currentItem;
 }
 
-void Inspector::drawField(ImDrawList* drawList, bool mirrored) {
+// The range the field is drawn with this frame, published to the colorbar so the
+// two cannot disagree. Nothing here depends on WHICH half is being drawn: the
+// mirrored pass reflects geometry, not values, and computeFieldRange's odd-field
+// branch already widens the range to cover both halves. So it is resolved once and
+// handed to both drawField passes -- drawing mirrored used to pay for a second,
+// bit-identical O(N) scan of the whole field, every frame.
+bool Inspector::resolveDisplayRange(float& vmin, float& vmax) {
 
 	const SolutionField* sol = getCurrentSolution();
-	if (!sol) {
-		return;
+	if (!sol || sol->field.empty()) {
+		return false;
 	}
 
-	const std::vector<double>& field = sol->field;
-
-	if (field.empty()) {
-		return;
-	}
-
-	float vmin = 0.0f;
-	float vmax = 0.0f;
 	if (!computeFieldRange(*sol, vmin, vmax)) {
-		return;
+		return false;
 	}
 
 	// During playback, prefer the field's range over the WHOLE run. computeFieldRange
@@ -682,6 +680,22 @@ void Inspector::drawField(ImDrawList* drawList, bool mirrored) {
 	if (results.currentField) {
 		results.currentField->vmin = vmin;
 		results.currentField->vmax = vmax;
+	}
+
+	return true;
+}
+
+void Inspector::drawField(ImDrawList* drawList, float vmin, float vmax, bool mirrored) {
+
+	const SolutionField* sol = getCurrentSolution();
+	if (!sol) {
+		return;
+	}
+
+	const std::vector<double>& field = sol->field;
+
+	if (field.empty()) {
+		return;
 	}
 
 	bool smooth = (results.currentShadingType == ShadingType::Interp);
@@ -1267,9 +1281,15 @@ void Inspector::copyActiveSurfaceToClipboard() {
 	drawCanvas(drawList, canvasRect, 0.0f);
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
-	drawField(drawList);
-	if (mirrorResult) {
-		drawField(drawList, true);
+
+	// one range for both halves -- see resolveDisplayRange
+	float vmin = 0.0f;
+	float vmax = 0.0f;
+	if (resolveDisplayRange(vmin, vmax)) {
+		drawField(drawList, vmin, vmax);
+		if (mirrorResult) {
+			drawField(drawList, vmin, vmax, true);
+		}
 	}
 	drawMeshOverlay(drawList);
 	if (mirrorResult) {
@@ -1352,9 +1372,15 @@ void Inspector::render() {
 	drawCanvas(drawList, canvasRect, 0.0f);
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
-	drawField(drawList);
-	if (mirrorResult) {
-		drawField(drawList, true);
+
+	// one range for both halves -- see resolveDisplayRange
+	float vmin = 0.0f;
+	float vmax = 0.0f;
+	if (resolveDisplayRange(vmin, vmax)) {
+		drawField(drawList, vmin, vmax);
+		if (mirrorResult) {
+			drawField(drawList, vmin, vmax, true);
+		}
 	}
 	drawMeshOverlay(drawList);
 	if (mirrorResult) {

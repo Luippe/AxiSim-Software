@@ -1,12 +1,15 @@
 #pragma once
 //
-// Multi-block structured grid — data model (Steps 1-2 + halo map).
+// Multi-block structured grid — data model + packer.
 //
-// Header-only and dependency-free on purpose: nothing here is compiled into the
-// build until you #include it somewhere, so it can't disturb the current
-// single-block / Jacobi solver. It defines the geometry + topology of a
-// conformal multi-block structured grid and the interface (halo) connectivity
-// that a solver consumes. It does NOT touch the solver.
+// This is ON the live path, despite what this comment used to claim: solver/header/
+// mesh.h includes it, Mesh owns a MultiBlockMesh member, and toPackedMesh below
+// feeds BOTH the solver's device upload (manager/source/memory_manger.cpp) and the
+// inspector's FVMesh (solver/source/mesh.cpp). Edit it as solver code.
+//
+// It defines the geometry + topology of a conformal multi-block structured grid,
+// the interface (halo) connectivity a solver consumes, and the assembly that turns
+// both into a face-based packed mesh.
 //
 // Conventions (match the existing solver, e.g. multigrid.cu / linear_solver.cu):
 //   - Two logical directions per block: i = radial (r), j = axial (z).
@@ -26,12 +29,15 @@
 #include <string>
 #include <set>
 
-// Axial (z) / radial (r) node position. Standalone so this header has no deps;
-// swap for your Vec2 when you integrate (Vec2.x -> z, Vec2.y -> r, or similar).
-struct MBNode {
-    double z = 0.0;
-    double r = 0.0;
-};
+#include "core_struct.h"
+
+// Axial (z) / radial (r) node position -- the project's Vec2, under the name the
+// multiblock code reads in. An alias rather than a twin struct: they were already
+// field-for-field identical, and every boundary between block nodes and the rest of
+// the geometry had to hand-repack across the two (see the block-node -> Vec2 lambda
+// in mesh.cpp's vertex builder). As the same type, that repacking is unnecessary and
+// the Vec2 geometry helpers in math_func.h apply to block nodes directly.
+using MBNode = Vec2;
 
 // ---------------------------------------------------------------------------
 // 1D spacing zones — the "resolution control" face generator.
@@ -195,8 +201,14 @@ inline void forEachBlockGridSegment(const Block& b, Fn&& emit) {
     for (int I = 0; I <= b.nr; I++)
         for (int J = 0; J < b.nz; J++)
             emit(b.node(I, J), b.node(I, J + 1));
-    for (int J = 0; J <= b.nz; J++)
-        for (int I = 0; I < b.nr; I++)
+    // I outer / J inner in this loop too, even though it walks the i-running lines:
+    // node index is I*(nz+1)+J, so iterating I innermost would stride a whole row
+    // per access and touch a fresh cache line every time, re-walking the node array
+    // nz+1 times. This runs per frame from the inspector overlay. Only the order
+    // WITHIN this group changes; the set of segments, and the j-group-then-i-group
+    // order the callers rely on, are unchanged.
+    for (int I = 0; I < b.nr; I++)
+        for (int J = 0; J <= b.nz; J++)
             emit(b.node(I, J), b.node(I + 1, J));
 }
 
@@ -465,8 +477,8 @@ inline void fitMultiBlockToBox(MultiBlockMesh& m, double L, double R) {
 // (Step 3/6). Templated on the packed-mesh type so this header stays
 // dependency-free; call it with your FVMeshHostPacked (member names must match:
 // nCells, nFaces, nr, nz, face{Owner,Neighbor,NormalZ,NormalR,CenterZ,CenterR,
-// Area,BoundaryGroupID}, cell{CenterZ,CenterR,Volume,Active,Solid,FaceStart,
-// FaceIDs}).
+// Area,BoundaryGroupID}, cell{CenterZ,CenterR,Area2D,Volume,Active,Solid,
+// FaceStart,FaceIDs}).
 //
 // Geometry (axisymmetric r-z), consistent with the existing solver:
 //   - cell volume = 2*pi * r_centroid * quad_area        (Pappus revolve)
@@ -527,6 +539,7 @@ inline void toPackedMesh(const MultiBlockMesh& mesh, Packed& out,
 
     out.cellCenterZ.assign(nCells, 0.0);
     out.cellCenterR.assign(nCells, 0.0);
+    out.cellArea2D.assign(nCells, 0.0);
     out.cellVolume.assign(nCells, 0.0);
     out.cellActive.assign(nCells, 1);
     out.cellSolid.assign(nCells, 0);
@@ -543,6 +556,10 @@ inline void toPackedMesh(const MultiBlockMesh& mesh, Packed& out,
                 const uint8_t act = b.active[b.cellLocal(i, j)];
                 out.cellCenterZ[g] = cz;
                 out.cellCenterR[g] = cr;
+                // Geometry, so it stands whether or not the cell carries flow --
+                // matching the structured and triangle cell builders. Only the
+                // revolved volume is gated on `act`.
+                out.cellArea2D[g]  = area;
                 out.cellVolume[g]  = act ? (2.0 * MB_PI * std::fabs(cr) * area) : 0.0;
                 out.cellActive[g]  = act;
             }

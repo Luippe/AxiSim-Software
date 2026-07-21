@@ -125,7 +125,10 @@ BoundaryFieldHost createBoundaryFieldHost(
 		if (layerIt != group.layers.end()) {
 			double Rtot = 0.0;
 			for (const Layer& layer : layerIt->second) {
-				Rtot += layer.R;
+				// resistance(), not the stored R: the field is only refreshed while
+				// the editor row is being drawn, so a stack loaded from disk and sent
+				// straight to the solver would contribute whatever was on disk.
+				Rtot += layer.resistance();
 			}
 			h.RtotByGroup[group.id] = Rtot;
 		}
@@ -485,6 +488,7 @@ FVMeshHostPacked packFVMeshForDevice(const FVMesh& mesh) {
 
 	h.cellCenterZ.resize(h.nCells);
 	h.cellCenterR.resize(h.nCells);
+	h.cellArea2D.resize(h.nCells);
 	h.cellVolume.resize(h.nCells);
 	h.cellActive.resize(h.nCells);
 	h.cellSolid.resize(h.nCells);
@@ -498,6 +502,13 @@ FVMeshHostPacked packFVMeshForDevice(const FVMesh& mesh) {
 
 		h.cellCenterZ[c] = cell.center.z;
 		h.cellCenterR[c] = cell.center.r;
+
+		// Filled even though no kernel reads the cross-section, so that every
+		// FVMeshHostPacked is fully populated regardless of which packer built it.
+		// The alternative -- leaving it empty here because this path happens not to
+		// need it -- makes the struct's validity depend on its provenance, and the
+		// one consumer (mesh.cpp's packed -> FVMesh loop) indexes it unconditionally.
+		h.cellArea2D[c] = cell.area2D;
 
 		h.cellVolume[c] = cell.volume;
 

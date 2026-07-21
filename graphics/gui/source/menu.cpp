@@ -149,7 +149,11 @@ void Menu::drawOpen() {
 			ImGui::EndMenu();
 		}
 
-		if (menuItem("Open Current Project At Startup", assets.icon("house"))) {
+		if (menuItem("Geometry")) {
+			loadFromExplorerGeometry(project.geometry);
+		}
+
+		if (menuItem("Open Current Project At Startup")) {
 			saveSettings(project, settings);
 		}
 
@@ -158,23 +162,17 @@ void Menu::drawOpen() {
 
 }
 
-void Menu::drawImportExport() {
-
-	if (beginMenu("Import")) {
-
-		if (menuItem("Geometry")) {
-
-			loadFromExplorerGeometry(project.geometry);
-		}
-
-		ImGui::EndMenu();
-	}
+void Menu::drawExport() {
 
 	if (beginMenu("Export")) {
 
 		if (menuItem("Geometry")) {
 
 			saveFromExplorerGeometry(project.geometry);
+
+		}
+
+		if (menuItem("Animation")) {
 
 		}
 
@@ -520,7 +518,7 @@ void Menu::render() {
 			drawNew();
 			drawOpen();
 			drawSave();
-			drawImportExport();
+			drawExport();
 			ImGui::EndMenu();
 		}
 

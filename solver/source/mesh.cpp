@@ -2693,11 +2693,7 @@ FVMesh Mesh::createMultiBlockFVMesh() const {
 		FVCell& cell = out.cells[c];
 		cell.center = Vec2{ packed.cellCenterZ[c], packed.cellCenterR[c] };
 		cell.volume = packed.cellVolume[c];
-		// The packer revolves each quad (volume = 2*pi*|r_c| * area2D) and emits only
-		// the revolved volume, so the cross-section is divided back out here. r_c is a
-		// centroid and so never lands exactly on the axis for a non-degenerate cell.
-		const double revolve = 2.0 * PI * std::abs(cell.center.r);
-		cell.area2D = (revolve > 0.0) ? cell.volume / revolve : 0.0;
+		cell.area2D = packed.cellArea2D[c];
 		cell.active = packed.cellActive[c] != 0;
 		cell.solid  = packed.cellSolid[c] != 0;
 		cell.faceIDs.reserve(packed.cellFaceStart[c + 1] - packed.cellFaceStart[c]);

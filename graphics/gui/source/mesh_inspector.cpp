@@ -1408,8 +1408,14 @@ void MeshInspector::handleMouse() {
 	// cursor is now. Without this, dragging in from outside arrives with the button
 	// already down and IsMouseDragging already true, so the rubber-band opened
 	// instantly, anchored at whatever stale initLeftMouse the last real press left.
+	// The anchor is taken in the same breath, so that whether the gesture started
+	// here and where it started cannot come from two different presses.
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
 		leftPressedOnCanvas = isMouseNearImage(io);
+
+		if (leftPressedOnCanvas) {
+			updateInitialLeftClick(io);
+		}
 	}
 	else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
 		!ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
@@ -1425,8 +1431,6 @@ void MeshInspector::handleMouse() {
 	// if mouse is not near the image, then dont handle any mouse events
 	if (!isMouseNearImage(io)) return;
 
-	// update the initial mouse position where left click was pressed
-	updateInitialLeftClick(io);
 	toggleSnapping = io.KeyCtrl;
 
 	handleOpenPopup();

@@ -43,11 +43,12 @@ std::string Colorbar::currentUnitText() const {
 	const UnitOption& concentration = selectedUnit(Units::concentrationUnits, variableUnits.concentrationUnit);
 	const UnitOption& length = selectedUnit(Units::lengthUnits, lengthScale.index);
 
-	if (name == "Axial Velocity") return axial.name;
-	if (name == "Radial Velocity") return radial.name;
 	// The magnitude mixes both components, so it has to pick one velocity unit to
-	// report in; axial is the one the axial-flow results are read against.
-	if (name == "Velocity Magnitude") return axial.name;
+	// report in; axial is the one the axial-flow results are read against. It shares
+	// the axial branch so this file cannot label it in one unit and, sixty lines
+	// down in valueForDisplay, convert it with another.
+	if (name == "Axial Velocity" || name == "Velocity Magnitude") return axial.name;
+	if (name == "Radial Velocity") return radial.name;
 	if (name == "Pressure") return pressure.name;
 	if (name == "Continuity") return "kg/s";
 	if (name == "Temperature") return temperature.name;
@@ -105,9 +106,10 @@ double Colorbar::valueForDisplay(double baseValue) const {
 	const UnitOption& concentration = selectedUnit(Units::concentrationUnits, variableUnits.concentrationUnit);
 	const UnitOption& length = selectedUnit(Units::lengthUnits, lengthScale.index);
 
-	if (name == "Axial Velocity") return fromBaseValue(baseValue, axial);
+	// Velocity Magnitude shares the axial unit -- see currentUnitText, which must
+	// pick the same one.
+	if (name == "Axial Velocity" || name == "Velocity Magnitude") return fromBaseValue(baseValue, axial);
 	if (name == "Radial Velocity") return fromBaseValue(baseValue, radial);
-	if (name == "Velocity Magnitude") return fromBaseValue(baseValue, axial);
 	if (name == "Pressure") return fromBaseValue(baseValue, pressure);
 	if (name == "Temperature") return fromBaseValue(baseValue, temperature);
 	if (name == "Concentration") return fromBaseValue(baseValue, concentration);
@@ -180,44 +182,45 @@ int Colorbar::computeTickPrecision() {
 	// rounding error up as measurement.
 	constexpr int maxSignificant = 7;
 
-	if (!results.currentField) {
-		return std::clamp(currentPrecision, 0, 12);
-	}
-
-	double displayMin = valueForDisplay(results.currentField->vmin);
-	double displayMax = valueForDisplay(results.currentField->vmax);
-	double dval = std::fabs(displayMax - displayMin) / numTicks;
-	double refValue = std::max(std::fabs(displayMax), std::fabs(displayMin));
-
+	// Never bumped below the user's setting, and clamped once on the way out, so
+	// every path returns a precision printf will accept.
 	int precision = currentPrecision;
 
-	if (dval > 0.0 && refValue > 0.0) {
-		int magRef = (int)(std::floor(std::log10(refValue)));
-		int magStep = (int)(std::floor(std::log10(dval)));
+	if (results.currentField) {
 
-		// `precision` means a different thing in each format, so the digits needed
-		// to resolve a step of 10^magStep have to be expressed per format:
-		// %g counts significant digits, %f counts digits after the point, and %e
-		// counts digits after the point (one fewer than its significant digits).
-		int needed = 0;
+		double displayMin = valueForDisplay(results.currentField->vmin);
+		double displayMax = valueForDisplay(results.currentField->vmax);
+		double dval = std::fabs(displayMax - displayMin) / numTicks;
+		double refValue = std::max(std::fabs(displayMax), std::fabs(displayMin));
 
-		switch (currentNumberFormat) {
-		case NumberFormat::Fixed:
-			// decimals available before the float runs out of significant digits
-			needed = std::min(-magStep + 1, std::max(0, maxSignificant - 1 - magRef));
-			break;
+		if (dval > 0.0 && refValue > 0.0) {
+			int magRef = (int)(std::floor(std::log10(refValue)));
+			int magStep = (int)(std::floor(std::log10(dval)));
 
-		case NumberFormat::Scientific:
-			needed = std::min(magRef - magStep + 1, maxSignificant - 1);
-			break;
+			// `precision` means a different thing in each format, so the digits needed
+			// to resolve a step of 10^magStep have to be expressed per format:
+			// %g counts significant digits, %f counts digits after the point, and %e
+			// counts digits after the point (one fewer than its significant digits).
+			int needed = 0;
 
-		case NumberFormat::General:
-		default:
-			needed = std::min(magRef - magStep + 2, maxSignificant);
-			break;
+			switch (currentNumberFormat) {
+			case NumberFormat::Fixed:
+				// decimals available before the float runs out of significant digits
+				needed = std::min(-magStep + 1, std::max(0, maxSignificant - 1 - magRef));
+				break;
+
+			case NumberFormat::Scientific:
+				needed = std::min(magRef - magStep + 1, maxSignificant - 1);
+				break;
+
+			case NumberFormat::General:
+			default:
+				needed = std::min(magRef - magStep + 2, maxSignificant);
+				break;
+			}
+
+			precision = std::max(currentPrecision, needed);
 		}
-
-		precision = std::max(currentPrecision, needed);
 	}
 
 	return std::clamp(precision, 0, 12);

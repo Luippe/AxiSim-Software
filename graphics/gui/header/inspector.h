@@ -106,6 +106,11 @@ private:
 
 	bool computeFieldRange(const SolutionField& sol, float& vmin, float& vmax) const;
 
+	// The range the field is actually drawn with this frame (computeFieldRange, or
+	// the whole-run range during playback), published to the colorbar. Resolved once
+	// per frame and handed to both drawField passes -- see the definition.
+	bool resolveDisplayRange(float& vmin, float& vmax);
+
 	// map a scalar value to a color using the active colormap LUT
 	ImU32 valueToColor(double value, double vmin, double vmax) const;
 
@@ -150,7 +155,9 @@ private:
 	// entry in results.fieldType and drives results.currentItem
 	void drawFieldTabs();
 
-	void drawField(ImDrawList* drawList, bool mirrored = false);
+	// vmin/vmax come from resolveDisplayRange: the same range drives both halves, so
+	// it is a parameter rather than something each pass recomputes for itself.
+	void drawField(ImDrawList* drawList, float vmin, float vmax, bool mirrored = false);
 	void drawMeshOverlay(ImDrawList* drawList, bool mirrored = false);
 	void drawValueProbe(ImDrawList* drawList);
 
