@@ -45,10 +45,14 @@ std::string Colorbar::currentUnitText() const {
 
 	if (name == "Axial Velocity") return axial.name;
 	if (name == "Radial Velocity") return radial.name;
+	// The magnitude mixes both components, so it has to pick one velocity unit to
+	// report in; axial is the one the axial-flow results are read against.
+	if (name == "Velocity Magnitude") return axial.name;
 	if (name == "Pressure") return pressure.name;
 	if (name == "Continuity") return "kg/s";
 	if (name == "Temperature") return temperature.name;
 	if (name == "Concentration") return concentration.name;
+	// Cell Reynolds Number is dimensionless -- falls through to no unit text.
 
 	if (name == "dU/dz" || name == "dU/dr") {
 		return "(" + std::string(axial.name) + ")/" + length.name;
@@ -103,6 +107,7 @@ double Colorbar::valueForDisplay(double baseValue) const {
 
 	if (name == "Axial Velocity") return fromBaseValue(baseValue, axial);
 	if (name == "Radial Velocity") return fromBaseValue(baseValue, radial);
+	if (name == "Velocity Magnitude") return fromBaseValue(baseValue, axial);
 	if (name == "Pressure") return fromBaseValue(baseValue, pressure);
 	if (name == "Temperature") return fromBaseValue(baseValue, temperature);
 	if (name == "Concentration") return fromBaseValue(baseValue, concentration);
@@ -149,6 +154,19 @@ void Colorbar::formatTickValue(char* buf, size_t bufSize, double value, int prec
 	}
 }
 
+// Tick i counts down from vmax (i == 0) to vmin (i == numTicks), in base units.
+// Interpolating in double beats accumulating a float step: the step's drift is
+// large enough to show up as wrong trailing digits on the bottom tick once the
+// precision bump below kicks in, so vmin would not print as vmin.
+double Colorbar::tickBaseValue(int i) const {
+
+	const double vmin = results.currentField->vmin;
+	const double vmax = results.currentField->vmax;
+	const double t = (double)i / (double)numTicks;
+
+	return vmax + (vmin - vmax) * t;
+}
+
 // A field can sit on a large baseline with only a small fractional variation
 // across the domain (e.g. an inlet-dominated concentration field with a thin
 // depletion layer). At the user's chosen precision, adjacent ticks can then
@@ -157,36 +175,63 @@ void Colorbar::formatTickValue(char* buf, size_t bufSize, double value, int prec
 // the field's magnitude.
 int Colorbar::computeTickPrecision() {
 
+	// Field::vmin/vmax are floats, so anything past ~7 significant digits is the
+	// float's quantization noise rather than data. Printing it would only dress
+	// rounding error up as measurement.
+	constexpr int maxSignificant = 7;
+
 	if (!results.currentField) {
 		return std::clamp(currentPrecision, 0, 12);
 	}
 
 	double displayMin = valueForDisplay(results.currentField->vmin);
 	double displayMax = valueForDisplay(results.currentField->vmax);
-	double dval = (displayMax - displayMin) / numTicks;
+	double dval = std::fabs(displayMax - displayMin) / numTicks;
 	double refValue = std::max(std::fabs(displayMax), std::fabs(displayMin));
 
 	int precision = currentPrecision;
 
 	if (dval > 0.0 && refValue > 0.0) {
 		int magRef = (int)(std::floor(std::log10(refValue)));
-		int magStep = (int)(std::floor(std::log10((double)(dval))));
-		precision = std::clamp(std::max(currentPrecision, magRef - magStep + 2), 0, 12);
+		int magStep = (int)(std::floor(std::log10(dval)));
+
+		// `precision` means a different thing in each format, so the digits needed
+		// to resolve a step of 10^magStep have to be expressed per format:
+		// %g counts significant digits, %f counts digits after the point, and %e
+		// counts digits after the point (one fewer than its significant digits).
+		int needed = 0;
+
+		switch (currentNumberFormat) {
+		case NumberFormat::Fixed:
+			// decimals available before the float runs out of significant digits
+			needed = std::min(-magStep + 1, std::max(0, maxSignificant - 1 - magRef));
+			break;
+
+		case NumberFormat::Scientific:
+			needed = std::min(magRef - magStep + 1, maxSignificant - 1);
+			break;
+
+		case NumberFormat::General:
+		default:
+			needed = std::min(magRef - magStep + 2, maxSignificant);
+			break;
+		}
+
+		precision = std::max(currentPrecision, needed);
 	}
 
-	return precision;
+	return std::clamp(precision, 0, 12);
 }
 
 float Colorbar::maxTickTextWidth(int precision) {
 
 	if (!results.currentField) return 0.0f;
 
-	float dval = (results.currentField->vmax - results.currentField->vmin) / numTicks;
 	float maxW = 0.0f;
 
 	for (int i = 0; i < numTicks + 1; i++) {
 		char buf[32];
-		double value = valueForDisplay(results.currentField->vmax - i * dval);
+		double value = valueForDisplay(tickBaseValue(i));
 
 		formatTickValue(buf, sizeof(buf), value, precision);
 		maxW = std::max(maxW, ImGui::CalcTextSize(buf).x);
@@ -289,14 +334,12 @@ void Colorbar::drawOutline() {
 
 void Colorbar::drawTickValue() {
 
-	float dval = (results.currentField->vmax - results.currentField->vmin) / numTicks;
-
 	int precision = computeTickPrecision();
 
 	for (int i = 0; i < numTicks + 1; i++) {
 		float y = posMin.y + i * dy;
 		char buf[32];
-		double value = valueForDisplay(results.currentField->vmax - i * dval);
+		double value = valueForDisplay(tickBaseValue(i));
 
 		formatTickValue(buf, sizeof(buf), value, precision);
 
@@ -415,8 +458,10 @@ void Colorbar::applyFilterClick(float localY) {
 			}
 		}
 
-		// keep lower <= upper
-		if (filterValueLower->value > filterValueUpper->value) {
+		// keep lower <= upper -- only once the first click has been followed by a
+		// second, since until then the upper tick is still empty
+		if (filterValueLower.has_value() && filterValueUpper.has_value() &&
+			filterValueLower->value > filterValueUpper->value) {
 			std::swap(filterValueLower, filterValueUpper);
 			std::swap(results.filterValues.valueLower, results.filterValues.valueUpper);
 		}

@@ -1028,6 +1028,11 @@ void MeshInspector::handleCursor(ImGuiIO& io) {
 	bool isPopupOpened = ImGui::IsPopupOpen("Mesh Inspector Popup");
 	if (toggleDrawCircle || toggleDrawRect || toggleRuler || isPopupOpened) return;
 
+	// Everything below reacts to a left gesture, and a gesture that began off the
+	// canvas is someone else's -- a drag out of another panel, or a click released
+	// over us -- so neither the box nor the segment toggle should claim it.
+	if (!leftPressedOnCanvas) return;
+
 	// A left-drag across the canvas starts a rubber-band box (panning is on the
 	// middle button, so the left drag is free). initLeftMouse already holds the
 	// press position; the box runs until release, handled in handleMouse so it
@@ -1147,8 +1152,10 @@ std::optional<MeshSnapResult> MeshInspector::findSnap(ImVec2 mouse) {
 		}
 	}
 
-	tryCandidate(MeshSnapType::Line, Vec2{ mouseWorld.z, 0.0 }, -100);
-	tryCandidate(MeshSnapType::Line, Vec2{ 0.0, mouseWorld.r }, -101);
+	// the axis lines (r = 0 and z = 0) are deliberately NOT snap candidates: they
+	// span the whole canvas, so an ROI drawn anywhere near an axis got pulled onto
+	// it. The origin above stays snappable -- a single point, not a line across the
+	// view.
 
 	const SketchModel& sketch = geometry.sketch;
 
@@ -1394,6 +1401,25 @@ void MeshInspector::handleMouse() {
 			isBoxSelecting = false;
 		}
 		return;
+	}
+
+	// Where the press LANDED decides whether a later drag may act on this canvas, so
+	// it is recorded ahead of the near-image gate -- the gate only knows where the
+	// cursor is now. Without this, dragging in from outside arrives with the button
+	// already down and IsMouseDragging already true, so the rubber-band opened
+	// instantly, anchored at whatever stale initLeftMouse the last real press left.
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+		leftPressedOnCanvas = isMouseNearImage(io);
+	}
+	else if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+		!ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+
+		// Button is up, and this is not the release frame handleCursor still acts on:
+		// forget the press. Only the four tab viewports' active one is submitted per
+		// frame, so a press made while another tab was up is never seen here -- and
+		// without this the answer left over from the last real canvas press would be
+		// inherited by that gesture when the tab switch brought us back mid-drag.
+		leftPressedOnCanvas = false;
 	}
 
 	// if mouse is not near the image, then dont handle any mouse events

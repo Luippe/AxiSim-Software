@@ -105,6 +105,9 @@ private:
 	// change number display depending on current format
 	void formatTickValue(char* buf, size_t bufSize, double value, int precision);
 
+	// base-unit value at tick i, counting down from vmax (i == 0) to vmin
+	double tickBaseValue(int i) const;
+
 	// precision actually used for the tick values (bumped so adjacent ticks stay
 	// distinguishable on large-baseline fields)
 	int computeTickPrecision();

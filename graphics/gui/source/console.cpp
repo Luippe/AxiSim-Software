@@ -334,7 +334,7 @@ void Console::registerUtilityCommands() {
 	addCommand("tutorial", [this](const std::vector<std::string>& words) {
 		gui.showingTutorial = !gui.showingTutorial;
 		},
-		"show tutorial",
+		"tutorial",
 		"Shows tutorial for AxiSim"
 	);
 

@@ -242,6 +242,58 @@ void Solver::createSolutions(int N) {
         g.dz,
         BoundaryVariable::None
     };
+
+    createDerivedVelocitySolutions(N);
+}
+
+void Solver::createDerivedVelocitySolutions(int N) {
+
+    // Both are functions of the final u/v, so they are derived here rather than
+    // solved for -- and, like the gradient fields above, they are not captured per
+    // time step, so a transient run leaves them at the final state.
+    const std::vector<double>& u = solutions.at("Axial Velocity").field;
+    const std::vector<double>& v = solutions.at("Radial Velocity").field;
+
+    std::vector<double> speed((size_t)N, 0.0);
+    std::vector<double> cellRe((size_t)N, 0.0);
+
+    const int nCells = std::min(N, (int)fvMesh.cells.size());
+
+    for (int c = 0; c < nCells; c++) {
+        const FVCell& cell = fvMesh.cells[c];
+
+        // Solid/inactive cells hold no flow, and their area2D is 0 anyway. Left at
+        // 0 rather than skipped-with-garbage, matching getMassImbalance.
+        if (!cell.active || cell.solid) {
+            continue;
+        }
+
+        speed[c] = std::sqrt(u[c] * u[c] + v[c] * v[c]);
+
+        // Re_cell = rho |V| h / mu, with h the cell's own length scale: the square
+        // root of its r-z cross-section, which is the one measure that means the
+        // same thing on a structured quad, a trellis block quad and a triangle.
+        // This is the Reynolds number the DISCRETIZATION sees, not the flow's --
+        // it says whether a cell is small enough for the convection scheme, so it
+        // is read against the mesh rather than against the physics.
+        const double h = std::sqrt(std::max(cell.area2D, 0.0));
+
+        cellRe[c] = (f.mu > 0.0) ? f.rho * speed[c] * h / f.mu : 0.0;
+    }
+
+    solutions["Velocity Magnitude"] = SolutionField{
+        std::move(speed),
+        g.dr,
+        g.dz,
+        BoundaryVariable::None
+    };
+
+    solutions["Cell Reynolds Number"] = SolutionField{
+        std::move(cellRe),
+        g.dr,
+        g.dz,
+        BoundaryVariable::None
+    };
 }
 
 void Solver::captureTimeFrame(double time, int N) {
@@ -322,8 +374,10 @@ void Solver::addFieldType() {
 
     fieldType.push_back("Axial Velocity");
     fieldType.push_back("Radial Velocity");
+    fieldType.push_back("Velocity Magnitude");
     fieldType.push_back("Pressure");
     fieldType.push_back("Continuity");
+    fieldType.push_back("Cell Reynolds Number");
 
     if (fieldOption.solveEnergy) {
         fieldType.push_back("Temperature");

@@ -142,13 +142,34 @@ const SolutionField* Inspector::getCurrentSolution() const {
 	return &it->second;
 }
 
+// Number of cells drawField can actually put on screen, matching the bound of
+// whichever branch it will take. The range pass has to stop at the same place:
+// sol.field is sized by the solver, the draw loops stop at the graphics grid, and
+// isStructuredCellActive() reports every id past g.activeCell as drawable. Ranging
+// over the whole field therefore folds cells that are never rendered into vmin/vmax
+// and stretches the colorbar past anything visible.
+int Inspector::drawableCellCount() const {
+
+	if (hasMultiBlockCells()) {
+		return (int)blockQuads.size();
+	}
+
+	if (hasStructuredGrid()) {
+		return g.nr * g.nz;
+	}
+
+	return (int)mesh.unstructuredTriangles.size();
+}
+
 bool Inspector::computeFieldRange(const SolutionField& sol, float& vmin, float& vmax) const {
 
 	double lo = std::numeric_limits<double>::max();
 	double hi = std::numeric_limits<double>::lowest();
 	bool found = false;
 
-	for (int c = 0; c < (int)sol.field.size(); c++) {
+	const int cellCount = std::min((int)sol.field.size(), drawableCellCount());
+
+	for (int c = 0; c < cellCount; c++) {
 		if (!isDrawableCell(c, (int)sol.field.size())) {
 			continue;
 		}
@@ -1073,6 +1094,8 @@ void Inspector::drawValueProbe(ImDrawList* drawList) {
 static const char* shortFieldName(const std::string& name) {
 	if (name == "Axial Velocity")  return "U  (axial)";
 	if (name == "Radial Velocity") return "V  (radial)";
+	if (name == "Velocity Magnitude") return "|V|";
+	if (name == "Cell Reynolds Number") return "Re_cell";
 	if (name == "Pressure")        return "P";
 	if (name == "Temperature")     return "T";
 	if (name == "Concentration")   return "C";

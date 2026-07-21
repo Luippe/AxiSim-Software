@@ -108,6 +108,14 @@ public:
 	std::vector<BoundarySegment> boundarySegments;
 	std::vector<MeshRegionOfInfluence> regionsOfInfluence;
 
+	// Monotonic allocator for boundary group IDs. Must never be rewound while a
+	// project is open: a group ID outlives the vector it was created in (both
+	// MeshGUI and SolverGUI hold their own selectedBoundaryGroupID, and
+	// BoundarySegment::groupID / FVFace::boundaryGroupID reference it), so reissuing
+	// a retired ID makes a stale selection resolve to an unrelated boundary instead
+	// of failing. Persisted in the .bin/.axi mesh block; loadFromPathMesh raises it
+	// past the loaded groups since saves written before it was actually used to
+	// allocate all carry 0. Reset only by Mesh::reset() -- a new project.
 	int nextGroupID = 0;
 	int nextRegionOfInfluenceID = 0;
 
@@ -214,8 +222,9 @@ public:
 	// search for segment with specific ID
 	BoundarySegment* getBoundarySegmentByID(int id);
 
-	// get the next avaiable group id that does not conflict with existing group ids
-	int getAvailableBoundaryGroupID() const;
+	// Allocate a boundary group ID that has never been used by this project.
+	// Not derived from the live boundaryGroups vector -- see nextGroupID.
+	int getAvailableBoundaryGroupID();
 
 	std::unordered_set<int> getSegmentIDsInSameLoop(int segmentID) const;
 

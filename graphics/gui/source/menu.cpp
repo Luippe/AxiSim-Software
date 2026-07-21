@@ -160,28 +160,35 @@ void Menu::drawOpen() {
 
 void Menu::drawImportExport() {
 
-	//if (beginMenu("Import")) {
+	if (beginMenu("Import")) {
 
-	//	ImGui::EndMenu();
-	//}
+		if (menuItem("Geometry")) {
 
-	//if (beginMenu("Export")) {
+			loadFromExplorerGeometry(project.geometry);
+		}
 
-	//	if (menuItem("Animation")) {
+		ImGui::EndMenu();
+	}
 
+	if (beginMenu("Export")) {
 
+		if (menuItem("Geometry")) {
 
-	//	}
+			saveFromExplorerGeometry(project.geometry);
 
-	//	ImGui::EndMenu();
-	//}
+		}
+
+		ImGui::EndMenu();
+	}
 
 }
 
 void Menu::drawView() {
 
-	if (menuItem("GUI")) {
-
+	// Checked = the panels are showing. Unchecking leaves only the live viewport;
+	// the GUI picks the flag up on the next frame, not this one.
+	if (menuItem("GUI", nullptr, !project.simpleView)) {
+		project.simpleView = !project.simpleView;
 	}
 }
 

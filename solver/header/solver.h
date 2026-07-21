@@ -188,6 +188,10 @@ private:
 	// create solution map
 	void createSolutions(int N);
 
+	// velocity magnitude + cell Reynolds number, built from the u/v entries
+	// createSolutions has already filled in. Call it after those exist.
+	void createDerivedVelocitySolutions(int N);
+
 	// append one transient snapshot to timeFrames. Assumes the caller has already
 	// synchronized `stream`, since it reads the device fields straight back to host.
 	void captureTimeFrame(double time, int N);

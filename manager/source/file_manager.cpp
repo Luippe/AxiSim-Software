@@ -309,23 +309,73 @@ namespace {
 // ====================================================
 // ----------FILE DIALOG-------------------------------
 // ====================================================
-std::wstring saveFileDialog() {
+namespace {
+
+	struct DialogSpec {
+		const wchar_t* filter;	// double-null-terminated label/pattern pairs
+		const wchar_t* defExt;	// appended when the user types a bare name
+	};
+
+	// Each kind gets its own extension so a project, geometry, mesh and solver file
+	// are distinguishable in explorer, and so the load dialog stops offering files of
+	// the wrong type -- the loaders read raw structs and never validate what they got.
+	// ".bin" stays as a second filter entry: every save made before this change used it.
+	DialogSpec dialogSpec(FileKind kind) {
+
+		switch (kind) {
+
+		case FileKind::Geometry:
+			return {
+				L"AxiSim Geometry (*.axigeom)\0*.axigeom\0"
+				L"Legacy Binary (*.bin)\0*.bin\0"
+				L"All Files\0*.*\0",
+				L"axigeom"
+			};
+
+		case FileKind::Mesh:
+			return {
+				L"AxiSim Mesh (*.aximesh)\0*.aximesh\0"
+				L"Legacy Binary (*.bin)\0*.bin\0"
+				L"All Files\0*.*\0",
+				L"aximesh"
+			};
+
+		case FileKind::Solver:
+			return {
+				L"AxiSim Solver (*.axislv)\0*.axislv\0"
+				L"Legacy Binary (*.bin)\0*.bin\0"
+				L"All Files\0*.*\0",
+				L"axislv"
+			};
+
+		case FileKind::Project:
+		default:
+			return {
+				L"AxiSim Project (*.axi)\0*.axi\0"
+				L"Legacy Binary (*.bin)\0*.bin\0"
+				L"All Files\0*.*\0",
+				L"axi"
+			};
+		}
+	}
+}
+
+std::wstring saveFileDialog(FileKind kind) {
 	wchar_t filePath[MAX_PATH] = L"";
 
 	OPENFILENAMEW ofn{};
 	GLFWwindow* window = glfwGetCurrentContext();
+	const DialogSpec spec = dialogSpec(kind);
 
 	ofn.lStructSize = sizeof(ofn);
 	ofn.hwndOwner = window ? glfwGetWin32Window(window) : nullptr;
 	ofn.lpstrFile = filePath;
 	ofn.nMaxFile = MAX_PATH;
 
-	ofn.lpstrFilter =
-		L"Binary Files\0*.bin\0"
-		L"All Files\0*.*\0";
+	ofn.lpstrFilter = spec.filter;
 
 	ofn.nFilterIndex = 1;
-	ofn.lpstrDefExt = L"bin";
+	ofn.lpstrDefExt = spec.defExt;
 	ofn.Flags = OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR;
 
 	if (GetSaveFileNameW(&ofn)) {
@@ -335,20 +385,19 @@ std::wstring saveFileDialog() {
 	return L"";
 }
 
-std::wstring loadFileDialog() {
+std::wstring loadFileDialog(FileKind kind) {
 	wchar_t filePath[MAX_PATH] = L"";
 
 	OPENFILENAMEW ofn{};
 	GLFWwindow* window = glfwGetCurrentContext();
+	const DialogSpec spec = dialogSpec(kind);
 
 	ofn.lStructSize = sizeof(ofn);
 	ofn.hwndOwner = window ? glfwGetWin32Window(window) : nullptr;
 	ofn.lpstrFile = filePath;
 	ofn.nMaxFile = MAX_PATH;
 
-	ofn.lpstrFilter =
-		L"Binary Files\0*.bin\0"
-		L"All Files\0*.*\0";
+	ofn.lpstrFilter = spec.filter;
 
 	ofn.nFilterIndex = 1;
 	ofn.Flags =
@@ -761,7 +810,7 @@ void saveFromPathProject(const std::wstring& path, Project& project) {
 
 void saveFromExplorerProject(Project& project) {
 
-	std::wstring path = saveFileDialog();
+	std::wstring path = saveFileDialog(FileKind::Project);
 	if (path.empty()) return;
 
 	project.path = path;
@@ -796,7 +845,7 @@ void loadFromPathProject(std::ifstream& in, Project& project) {
 
 void loadFromExplorerProject(Project& project) {
 
-	std::wstring path = loadFileDialog();
+	std::wstring path = loadFileDialog(FileKind::Project);
 	if (path.empty()) return;
 
 	std::ifstream in(std::filesystem::path(path), std::ios::binary);
@@ -823,7 +872,7 @@ void loadPresetProject(const std::string& fileName, Project& project) {
 // ====================================================
 void saveFromExplorerGeometry(Geometry& geometry) {
 
-	std::wstring path = saveFileDialog();
+	std::wstring path = saveFileDialog(FileKind::Geometry);
 	if (path.empty()) return;
 
 	std::ofstream out(std::filesystem::path(path), std::ios::binary);
@@ -850,6 +899,16 @@ void saveFromPathGeometry(std::ofstream& out, Geometry& geometry) {
 		sketch.nextRectangleID,
 		sketch.nextDimensionID
 	);
+}
+
+void loadFromExplorerGeometry(Geometry& geometry) {
+
+	std::wstring path = loadFileDialog(FileKind::Geometry);
+	if (path.empty()) return;
+
+	std::ifstream in(std::filesystem::path(path), std::ios::binary);
+	loadFromPathGeometry(in, geometry);
+
 }
 
 void loadFromPathGeometry(std::ifstream& in, Geometry& geometry) {
@@ -881,7 +940,7 @@ void loadFromPathGeometry(std::ifstream& in, Geometry& geometry) {
 // ====================================================
 void saveFromExplorerMesh(Mesh& mesh) {
 
-	std::wstring path = saveFileDialog();
+	std::wstring path = saveFileDialog(FileKind::Mesh);
 	if (path.empty()) return;
 
 	std::ofstream out(std::filesystem::path(path), std::ios::binary);
@@ -933,7 +992,7 @@ void saveFromPathMesh(std::ofstream& out, Mesh& mesh) {
 
 void loadFromExplorerMesh(Mesh& mesh) {
 
-	std::wstring path = loadFileDialog();
+	std::wstring path = loadFileDialog(FileKind::Mesh);
 	if (path.empty()) return;
 
 	std::ifstream in(std::filesystem::path(path), std::ios::binary);
@@ -973,6 +1032,18 @@ void loadFromPathMesh(std::ifstream& in, Mesh& mesh) {
 
 	readBoundarySegments(in, mesh.boundarySegments);
 	readBoundaryGroups(in, mesh.boundaryGroups);
+
+	// mesh.nextGroupID has always been in this block, but nothing allocated from it
+	// until boundary group IDs were made monotonic -- so every save written before
+	// that carries 0 while its groups are numbered 0..n. Raising the counter past the
+	// loaded groups migrates those files in place (no format change) and keeps the
+	// invariant honest for new ones: the next group created after a load must not
+	// reuse an ID some segment, face, or GUI selection already refers to.
+	for (const BoundarySegmentGroup& group : mesh.boundaryGroups) {
+		if (group.id >= mesh.nextGroupID) {
+			mesh.nextGroupID = group.id + 1;
+		}
+	}
 
 	if (!readMeshRegions(
 		in,
@@ -1015,7 +1086,7 @@ void saveFromPathSolver(std::ofstream& out, Solver& solver) {
 
 void saveFromExplorerSolver(Solver& solver) {
 
-	std::wstring path = saveFileDialog();
+	std::wstring path = saveFileDialog(FileKind::Solver);
 	if (path.empty()) return;
 
 	std::ofstream out(std::filesystem::path(path), std::ios::binary);
@@ -1068,7 +1139,7 @@ void loadFromPathSolver(std::ifstream& in, Solver& solver) {
 
 void loadFromExplorerSolver(Solver& solver) {
 
-	std::wstring path = loadFileDialog();
+	std::wstring path = loadFileDialog(FileKind::Solver);
 	if (path.empty()) return;
 
 	std::ifstream in(std::filesystem::path(path), std::ios::binary);

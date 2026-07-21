@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "field_manager.h"
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 #include "printer.h"
 #include "boundary_func.h"
@@ -100,9 +102,31 @@ void Field::buildFromSolution(const SolutionField& solution, bool createTexture)
 
 void Field::updateMinMax() {
 
-	vmin = *std::min_element(vertexValues.begin(), vertexValues.end());
-	vmax = *std::max_element(vertexValues.begin(), vertexValues.end());
+	// Skip non-finite samples the way the inspector's own range pass does: a single
+	// NaN makes min/max NaN, which takes the colorbar ticks and the shader's
+	// (value - vmin)/(vmax - vmin) with it and flattens the whole field to one color.
+	float lo = std::numeric_limits<float>::max();
+	float hi = std::numeric_limits<float>::lowest();
+	bool found = false;
 
+	for (float v : vertexValues) {
+		if (!std::isfinite(v)) {
+			continue;
+		}
+
+		lo = std::min(lo, v);
+		hi = std::max(hi, v);
+		found = true;
+	}
+
+	if (!found) {
+		vmin = 0.0f;
+		vmax = 0.0f;
+		return;
+	}
+
+	vmin = lo;
+	vmax = hi;
 }
 
 void Field::setMinMax(float vmin, float vmax) {

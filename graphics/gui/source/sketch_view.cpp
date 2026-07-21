@@ -247,26 +247,9 @@ std::optional<SnapResult> SketchView::findSnap(ImVec2 mouse) {
 	// always taking priority via an early return
 	tryCandidate(SnapType::Vertex, Vec2{ 0.0, 0.0 }, -102);
 
-	// snap to axis
-	// snap to x-axis: r = 0
-	{
-		Vec2 closest{
-			mouseWorld.z,
-			0.0
-		};
-
-		tryCandidate(SnapType::Line, closest, -100);
-	}
-
-	// snap to y-axis: z = 0
-	{
-		Vec2 closest{
-			0.0,
-			mouseWorld.r
-		};
-
-		tryCandidate(SnapType::Line, closest, -101);
-	}
+	// the axis lines (r = 0 and z = 0) are deliberately NOT snap candidates: they
+	// span the whole canvas, so anything drawn near an axis got pulled onto it. The
+	// origin above stays snappable -- a single point, not a line across the view.
 
 	// snap to vertices
 	for (const SketchPoint& point : geometry.sketch.points) {

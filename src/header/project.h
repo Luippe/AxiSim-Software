@@ -32,7 +32,9 @@ public:
 	// to recenter/re-zoom every surface inspector to the loaded project's units.
 	bool resetInspectorViews = false;
 
-	// enable/disable simple view
+	// Simple view: every panel but the live viewport is hidden (setup tabs, console,
+	// toolbar strip, status bar), leaving the inspector full-window. Toggled from
+	// View > GUI; the GUI latches it once per frame (see GUI::simpleViewThisFrame).
 	bool simpleView = false;
 
 	// path and name of current project

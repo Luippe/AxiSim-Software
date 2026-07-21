@@ -614,6 +614,15 @@ void SolverGUI::drawPropertiesPanel() {
 	else if (selectedItem == "Boundary Group") {
 		BoundarySegmentGroup* group = getBoundaryGroupByID(mesh.boundaryGroups, selectedBoundaryGroupID);
 
+		// draw() drops a stale selection before this runs, so this should not fire --
+		// but the panel must not depend on that. A group can also disappear mid-frame
+		// (deleted from the mesh inspector), and there is nothing to draw for one that
+		// no longer exists. Bail out through End() to keep the Begin/End pair balanced.
+		if (!group) {
+			ImGui::End();
+			return;
+		}
+
 		ImGui::PushFont(appConfig.fonts.uiFontLarge);
 		sectionHeader(group->nameBuffer);
 		ImGui::PopFont();
@@ -909,6 +918,28 @@ void SolverGUI::draw() {
 
 	if (ImGui::BeginTabItem("Solver", nullptr, tabFlags)) {
 		project.currentTab = ViewTab::TAB_SOLVER;
+
+		// Re-meshing after a geometry edit rebuilds mesh.boundaryGroups from scratch,
+		// and getAvailableBoundaryGroupID numbers from max(id)+1 over the LIVE vector --
+		// so once the old groups are cleared the same IDs get handed back out to
+		// different boundaries. A selection held across that rebuild is therefore not
+		// just stale, it is actively wrong: it either resolves to nothing (which used to
+		// null-deref in drawPropertiesPanel) or, when the new geometry produces enough
+		// groups, silently resolves to an unrelated boundary whose BCs would then be
+		// edited in its place. Validate here, once, before anything reads it -- this
+		// covers every rebuild path (re-mesh, clearUnstructuredGeometry, project load)
+		// without SolverGUI having to hear about each one. MeshGUI self-heals the same
+		// way in drawBoundaryGroupGUI; it keeps its own selection, separate from this.
+		if (selectedBoundaryGroupID >= 0 &&
+			!getBoundaryGroupByID(mesh.boundaryGroups, selectedBoundaryGroupID)) {
+
+			selectedBoundaryGroupID = -1;
+			mesh.highlightedBoundarySegmentIDs.clear();
+
+			if (selectedItem == "Boundary Group") {
+				selectedItem = "General";
+			}
+		}
 
 		ImGui::BeginChild("SetupTree", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() - 40.0f), true);
 

@@ -974,7 +974,13 @@ bool Mesh::convertSketchToUnstructuredMesh(const SketchModel& sketch) {
 	currentMeshType = MeshType::Unstructured;
 	clearUnstructuredGeometry();
 	nextLoopID = 0;
-	nextGroupID = 0;
+
+	// nextGroupID is deliberately NOT rewound here. The preserved groups below are
+	// re-added with the IDs they already had, and any group that fails to re-match
+	// the new geometry is dropped -- rewinding would hand its retired ID to the next
+	// group the user creates, so a selection still holding it would silently land on
+	// a different boundary. Loop/segment IDs have no such exposure: they are rebuilt
+	// wholesale here and every reference to them is rewritten in the same pass.
 
 	std::vector<int> segmentIDByDraft(drafts.size(), -1);
 
@@ -2245,6 +2251,7 @@ std::vector<FVCell> createStructuredFVCells(
 			double r1 = rFace[i + 1];
 			double dz = zFace[j + 1] - zFace[j];
 
+			cell.area2D = (r1 - r0) * dz;
 			cell.volume = PI * (r1 * r1 - r0 * r0) * dz;
 
 			cell.active = activeCell[n] != 0;
@@ -2376,11 +2383,8 @@ int Mesh::getAvailableLoopID() {
 	return nextLoopID++;
 }
 
-int Mesh::getAvailableBoundaryGroupID() const {
-	int id = 0;
-	for (const auto& g : boundaryGroups)
-		id = std::max(id, g.id + 1);
-	return id;
+int Mesh::getAvailableBoundaryGroupID() {
+	return nextGroupID++;
 }
 
 
@@ -2689,6 +2693,11 @@ FVMesh Mesh::createMultiBlockFVMesh() const {
 		FVCell& cell = out.cells[c];
 		cell.center = Vec2{ packed.cellCenterZ[c], packed.cellCenterR[c] };
 		cell.volume = packed.cellVolume[c];
+		// The packer revolves each quad (volume = 2*pi*|r_c| * area2D) and emits only
+		// the revolved volume, so the cross-section is divided back out here. r_c is a
+		// centroid and so never lands exactly on the axis for a non-degenerate cell.
+		const double revolve = 2.0 * PI * std::abs(cell.center.r);
+		cell.area2D = (revolve > 0.0) ? cell.volume / revolve : 0.0;
 		cell.active = packed.cellActive[c] != 0;
 		cell.solid  = packed.cellSolid[c] != 0;
 		cell.faceIDs.reserve(packed.cellFaceStart[c + 1] - packed.cellFaceStart[c]);

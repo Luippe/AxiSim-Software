@@ -93,6 +93,12 @@ private:
 	// segment it touches (Ctrl adds to the current selection). The box starts at
 	// initLeftMouse and follows currentMousePos while active.
 	bool isBoxSelecting = false;
+
+	// whether the left button went DOWN over the canvas. A gesture belongs to
+	// whatever it started on, so a press that began elsewhere must not turn into a
+	// box selection the moment it is dragged in here.
+	bool leftPressedOnCanvas = false;
+
 	Vec2 roiStartWorld{};
 	Vec2 roiCurrentWorld{};
 

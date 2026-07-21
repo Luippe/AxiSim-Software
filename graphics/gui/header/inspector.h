@@ -101,6 +101,9 @@ private:
 	const SolutionField* getCurrentSolution() const;
 
 	// compute the value range of a solution field
+	// how many cells drawField will iterate, so the range pass can match it
+	int drawableCellCount() const;
+
 	bool computeFieldRange(const SolutionField& sol, float& vmin, float& vmax) const;
 
 	// map a scalar value to a color using the active colormap LUT

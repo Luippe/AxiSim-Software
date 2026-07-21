@@ -510,9 +510,60 @@ double rhieChowNormalVelocityToFace(
 
 	double unLinear = uFace * normalZ + vFace * normalR;
 
-	// Boundary faces: use the boundary/interpolated velocity directly for now
+	// ---------------- boundary face ----------------
 	if (neighbor < 0) {
-		return unLinear;
+		// Only a fixed-pressure boundary (pressure outlet) couples its face flux
+		// to the pressure field. Every other boundary type carries zero-gradient
+		// p and has its flux set by the velocity BC alone; adding a pressure term
+		// there would inject a flux the p' equation never accounts for, since
+		// createPPCoeff and updateMassFlux both skip non-Dirichlet p faces.
+		//
+		// Without this branch the outlet flux was rho*A*u_P.n, so the prescribed
+		// p_b reached the solution only through the momentum body force. That
+		// left the two halves of SIMPLE inconsistent: the p' equation already
+		// assembles d(mDot_b)/d(p_P) = +rho*A*Df/dPB for this face (the exact
+		// sensitivity the term below produces), while the flux it corrects had
+		// no pressure dependence at all. A case driven purely by a pressure
+		// difference therefore never felt the outlet pressure.
+		int groupID = mesh.faces.boundaryGroupID[faceID];
+
+		if (groupID < 0 || groupID >= bc.p.nGroups) {
+			return unLinear;
+		}
+
+		if (!isDirichletType(bc.p.typeByGroup[groupID])) {
+			return unLinear;
+		}
+
+		double dPB = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
+
+		if (dPB <= 1.0e-30) {
+			return unLinear;
+		}
+
+		// Same Rhie-Chow form as the interior face below, with the neighbour cell
+		// replaced by the boundary face: compact pressure difference across
+		// P -> b, minus the smooth cell-centred gradient. There is no second cell
+		// to interpolate that gradient with, so P's own value is used directly.
+		//
+		// The two gradients cancel to leading order for a smooth pressure field,
+		// so this reduces to unLinear once p_P sits where the prescribed p_b
+		// implies -- including on a cold start, where p = 0 everywhere but
+		// grad(p) already carries p_b through interpolateFieldToFace.
+		double DfB = interpolateNormalCorrectionCoeffToFace(
+			cellID,
+			faceID,
+			mesh,
+			simple
+		);
+
+		double gradPCompact = (bc.p.valueByGroup[groupID] - simple.p[cellID]) / dPB;
+
+		double gradPCellNormal =
+			simple.gradPZ[cellID] * normalZ +
+			simple.gradPR[cellID] * normalR;
+
+		return unLinear - DfB * (gradPCompact - gradPCellNormal);
 	}
 
 	int nb = (owner == cellID) ? neighbor : owner;

@@ -33,11 +33,20 @@ bool fileExists(const std::string& filename);
 // open .bin file and return stream
 std::ofstream openBinaryFile(const char* path);
 
+// which kind of file a dialog is for -- selects the extension filter and the
+// default extension appended when the user types a bare name
+enum class FileKind {
+	Project,	// .axi
+	Geometry,	// .axigeom
+	Mesh,		// .aximesh
+	Solver		// .axislv
+};
+
 // open file dialog for saving
-std::wstring saveFileDialog();
+std::wstring saveFileDialog(FileKind kind);
 
 // open file dialog for loading
-std::wstring loadFileDialog();
+std::wstring loadFileDialog(FileKind kind);
 // ====================================================
 // -------------------SETTINGS-------------------------
 // ====================================================
@@ -72,6 +81,8 @@ void loadPresetProject(const std::string& fileName, Project& project);
 void saveFromExplorerGeometry(Geometry& geometry);
 
 void saveFromPathGeometry(std::ofstream& out, Geometry& geometry);
+
+void loadFromExplorerGeometry(Geometry& geometry);
 
 void loadFromPathGeometry(std::ifstream& in, Geometry& geometry);
 

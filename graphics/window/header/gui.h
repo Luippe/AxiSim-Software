@@ -65,6 +65,15 @@ private:
 
 	const float statusBarHeight = 26.0f;
 
+	// project.simpleView as it stood when newFrame() ran. newFrame() sizes the
+	// dockspace and render() decides which panels to submit, but the menu item that
+	// flips simpleView is itself drawn from render(). Reading the live flag in both
+	// would, on the frame it is toggled, skip the toolbar strip and status bar while
+	// the dockspace was still shrunk to leave room for them, baring a band of empty
+	// background top and bottom for that frame. Latching defers it to the next frame,
+	// so the two always agree on the same layout.
+	bool simpleViewThisFrame = false;
+
 
 	// main context
 	ImGuiContext* mainImGuiContext = nullptr;
