@@ -51,8 +51,9 @@ public:
 
 	ColorRangeMode currentColorRangeMode = ColorRangeMode::Global;
 
-	// build the animation frames from the solver's captured time frames
-	void createAnimationFrames(const Mesh& mesh, const Solver& solver);
+	// build the animation frames from the solver's captured time frames. rasterToCell
+	// is the shared multiblock raster map (see rasterMap).
+	void createAnimationFrames(const Mesh& mesh, const Solver& solver, const std::vector<int>& rasterToCell);
 
 	// push one frame's data into solutions/fields so every results view shows that
 	// instant. No-op on an out-of-range index.
@@ -61,10 +62,10 @@ public:
 	CompareType currentCompareType = CompareType::None;
 	FilterValues filterValues;
 
-	int nseg;
+	int nseg = 0;
 	std::vector<double> dz;
 	std::vector<double> dr;
-	int nr, nz;
+	int nr = 0, nz = 0;
 
 	int currentItem = 0;
 
@@ -80,15 +81,25 @@ public:
 	// order must match enum ColorRangeMode
 	const char* colorRangeModeType[2] = { "Global (whole run)", "Local (per frame)" };
 
-	Results(Config& config);
-
 	void render();
 
 	// upload colormap to shader
 	void uploadUniforms();
 
-	// update the results after loading a file
-	void updateAfterLoadingFile();
+	// Set by loadFromPathResults when a project carried saved results. The load runs
+	// off the GL thread (loadAtLaunch happens before the window exists), and rebuilding
+	// fields allocates textures, so the GUI consumes this flag on its next frame and
+	// calls rebuildAfterLoad there instead.
+	bool pendingRebuild = false;
+
+	// Rebuild everything that generate() derives from solutions/animationFrames but
+	// that is NOT serialized: the grid taken from the live mesh, the cylinder template,
+	// the per-field CPU values and GL textures, and each animation frame's Field.
+	// Shares copyGrid/rebuildRenderData with generate() so a loaded project reaches the
+	// same state a freshly generated one is in.
+	// solver.fvMesh is reconstructed from the mesh first when it is empty (a load
+	// restores the solution values but never ran a solve).
+	void rebuildAfterLoad(const Mesh& mesh, Solver& solver);
 
 	// drop all displayed fields/solutions so a new project starts with an empty
 	// Results panel and inspector instead of the previous project's data.
@@ -135,12 +146,27 @@ public:
 	// copy variables from mesh and solver class
 	void copyData(const Mesh& mesh, const Solver& solver);
 
-	// generate all fields
-	void createFields(const Mesh& mesh, const Solver& solver);
+	// generate all fields. rasterToCell is the shared multiblock raster map (see
+	// rasterMap); passing it in lets a caller that already built one avoid rebuilding it.
+	void createFields(const Mesh& mesh, const Solver& solver, const std::vector<int>& rasterToCell);
 
 	void generate(Mesh& mesh, Solver& solver);
 
 private:
+
+	// Take the grid and everything sized by it from the live mesh. Shared by copyData
+	// and rebuildAfterLoad, which must agree: buildField always resamples against
+	// mesh.g, so these have to describe the CURRENT raster, never a saved one.
+	void copyGrid(const Mesh& mesh);
+
+	// Rebuild the render-side data derived from solutions: the cylinder template and
+	// every Field (values + GL texture). Shared tail of generate and rebuildAfterLoad.
+	void rebuildRenderData(const Mesh& mesh, const Solver& solver, const std::vector<int>& rasterToCell);
+
+	// Raster -> multiblock-cell map for this mesh, or empty on the non-multiblock path
+	// where buildField never reads it. Built once per generate/rebuild and shared by
+	// every buildField call, since it is O(nr*nz) plus a search per block sub-cell.
+	std::vector<int> rasterMap(const Mesh& mesh) const;
 
 	// Build one Field from a cell-centered solution. A multiblock mesh has no single
 	// nr x nz raster -- its FVMesh cells are numbered per block and fvMesh.nr/nz are
@@ -160,6 +186,5 @@ private:
 	//Field pField;
 	//Field concField;
 	//Field tempField;
-	Config& config;
 
 };

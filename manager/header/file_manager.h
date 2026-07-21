@@ -4,6 +4,8 @@
 #include <string>
 #include <fstream>
 #include <filesystem>
+#include <type_traits>
+#include <utility>
 #include <unordered_set>
 #include <unordered_map>
 
@@ -18,6 +20,7 @@ struct AppSettings;
 struct Config;
 struct BoundaryCondition;
 struct BoundaryConditionConfig;
+struct SolutionField;
 
 // ====================================================
 // -------------------FILED DIALOG---------------------
@@ -130,24 +133,23 @@ void loadFromPathResults(std::ifstream& in, Results& results);
 // load a value
 template<typename T>
 bool readVar(std::ifstream& in, T& val) {
+	// This overload accepts anything, so a type that owns memory silently reaching it
+	// would read raw pointers off disk. The declaration order of the overloads below
+	// is what prevents that; this turns a mistake there into a compile error instead.
+	static_assert(std::is_trivially_copyable_v<T>,
+		"readVar: type owns memory -- declare a readVar overload for it above the container templates");
 	return (bool)in.read((char*)&val, sizeof(T));
 }
 
-// load one vector
-template<typename T>
-bool readVar(std::ifstream& in, std::vector<T>& vec) {
-	size_t size = 0;
+// SolutionField owns vectors, so it can't be raw-copied. Declared here (defined in
+// file_manager.cpp, which has the complete type) so the vector/map templates below
+// resolve to it at their definition context rather than falling back to the generic
+// memcpy overload -- ADL alone would not find it for a std:: container element.
+bool readVar(std::ifstream& in, SolutionField& value);
 
-	if (!(bool)in.read((char*)&size, sizeof(size))) {
-		return false;
-	}
-
-	vec.resize(size);
-	return (bool)in.read((char*)vec.data(), size * sizeof(T));
-}
-
-// load a std::string (length-prefixed). must be declared before readAll so the
-// variadic dispatch picks this overload instead of raw-copying the string object.
+// load a std::string (length-prefixed). must be declared before the vector/map
+// templates and readAll so the dispatch picks this overload instead of raw-copying
+// the string object.
 inline bool readVar(std::ifstream& in, std::string& value) {
 	size_t size = 0;
 
@@ -182,6 +184,33 @@ inline bool readVar(std::ifstream& in, std::wstring& value) {
 	}
 
 	return (bool)in.read((char*)value.data(), size * sizeof(wchar_t));
+}
+
+// load one vector. Trivially-copyable elements are read as one bulk block (the
+// original on-disk layout, unchanged); anything that owns memory -- std::string,
+// SolutionField -- is read element-wise through its own overload, which is why this
+// template sits below them.
+template<typename T>
+bool readVar(std::ifstream& in, std::vector<T>& vec) {
+	size_t size = 0;
+
+	if (!(bool)in.read((char*)&size, sizeof(size))) {
+		return false;
+	}
+
+	vec.resize(size);
+
+	if constexpr (std::is_trivially_copyable_v<T>) {
+		return (bool)in.read((char*)vec.data(), size * sizeof(T));
+	}
+	else {
+		for (T& value : vec) {
+			if (!readVar(in, value)) {
+				return false;
+			}
+		}
+		return true;
+	}
 }
 
 template<typename T,
@@ -236,7 +265,9 @@ bool readVar(std::ifstream& in,	std::unordered_map<Key, Value, Hash, KeyEqual, A
 
 		if (!readVar(in, key) || !readVar(in, value)) return false;
 
-		map.emplace(key, value);
+		// move, not copy -- Value can own vectors (SolutionField), and copying here
+		// would deep-copy every loaded solution into the node and throw the original away.
+		map.emplace(std::move(key), std::move(value));
 	}
 
 	return true;
@@ -278,19 +309,20 @@ bool readBinary(std::ifstream& in, Args&... args) {
 // save any single object
 template <typename T>
 void writeVar(std::ofstream& out, const T& value) {
+	// See the readVar counterpart: catches a memory-owning type falling through to the
+	// raw-copy path at compile time rather than writing pointers into the .bin.
+	static_assert(std::is_trivially_copyable_v<T>,
+		"writeVar: type owns memory -- declare a writeVar overload for it above the container templates");
 	out.write((const char*)(&value), sizeof(T));
 }
 
-// save std::vector
-template <typename T>
-void writeVar(std::ofstream& out, const std::vector<T>& vec) {
-	size_t size = vec.size();
-	out.write((const char*)&size, sizeof(size));
-	out.write((const char*)vec.data(), size * sizeof(T));
-}
+// See the readVar counterpart: declared ahead of the vector/map templates so they
+// resolve to it instead of memcpy-ing a struct that owns vectors.
+void writeVar(std::ofstream& out, const SolutionField& value);
 
-// save a std::string (length-prefixed). must be declared before writeAll so the
-// variadic dispatch picks this overload instead of raw-copying the string object.
+// save a std::string (length-prefixed). must be declared before the vector/map
+// templates and writeAll so the dispatch picks this overload instead of raw-copying
+// the string object.
 inline void writeVar(std::ofstream& out, const std::string& value) {
 	size_t size = value.size();
 	out.write((const char*)&size, sizeof(size));
@@ -301,6 +333,24 @@ inline void writeVar(std::ofstream& out, const std::wstring& value) {
 	size_t size = value.size();
 	out.write((const char*)&size, sizeof(size));
 	out.write((const char*)value.data(), size * sizeof(wchar_t));
+}
+
+// save std::vector. Trivially-copyable elements go out as one bulk block (the
+// original on-disk layout, unchanged); memory-owning elements are written
+// element-wise through their own overload declared above.
+template <typename T>
+void writeVar(std::ofstream& out, const std::vector<T>& vec) {
+	size_t size = vec.size();
+	out.write((const char*)&size, sizeof(size));
+
+	if constexpr (std::is_trivially_copyable_v<T>) {
+		out.write((const char*)vec.data(), size * sizeof(T));
+	}
+	else {
+		for (const T& value : vec) {
+			writeVar(out, value);
+		}
+	}
 }
 
 // save std::unordered_set

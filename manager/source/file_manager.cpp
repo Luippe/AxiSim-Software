@@ -753,7 +753,7 @@ void saveFromPathProject(const std::wstring& path, Project& project) {
 	saveFromPathMesh(out, project.mesh);
 	saveFromPathSolver(out, project.solver);
 	saveEtc(out, project);
-	//saveFromPathResults(out, project.results);
+	saveFromPathResults(out, project.results);
 	//saveKeyboardShortcuts(out);
 	out.close();
 }
@@ -786,6 +786,12 @@ void loadFromPathProject(std::ifstream& in, Project& project) {
 	//// instead of falling back to the raster grid. Must run after loadEtc, which loads
 	//// the band cells buildStructuredMultiBlock consumes.
 	project.mesh.rebuildMultiBlockAfterLoad(project.geometry.sketch);
+
+	// Must run after rebuildMultiBlockAfterLoad: the results rebuild resamples a
+	// multiblock solution through mesh.buildMultiBlockRasterMap(), which needs the
+	// blocks to exist. Only restores CPU data and raises pendingRebuild -- the GUI
+	// does the GL-dependent half on its next frame.
+	loadFromPathResults(in, project.results);
 }
 
 void loadFromExplorerProject(Project& project) {
@@ -1070,14 +1076,184 @@ void loadFromExplorerSolver(Solver& solver) {
 }
 
 // ====================================================
-// -------------------REUSLTS--------------------------
+// -------------------RESULTS--------------------------
 // ====================================================
+
+// SolutionField owns three vectors, so the generic memcpy writeVar would persist
+// pointers. Declared in file_manager.h ahead of the container templates.
+void writeVar(std::ofstream& out, const SolutionField& value) {
+	writeAll(out, value.field, value.dr, value.dz, value.boundaryVariable);
+}
+
+bool readVar(std::ifstream& in, SolutionField& value) {
+	return readAll(in, value.field, value.dr, value.dz, value.boundaryVariable);
+}
+
+namespace {
+	constexpr std::uint32_t resultsFileMagic = 0x53525641u;   // "AVRS" little-endian
+	constexpr std::uint32_t resultsFileVersion = 1u;
+
+	// Clamp an enum loaded from disk into the range of the GUI name table it indexes.
+	// Pass the table itself so the bound cannot drift from the array the combo draws.
+	template <typename E, typename Table>
+	void clampEnum(E& value, const Table& nameTable) {
+		if ((int)value < 0 || (int)value >= (int)std::size(nameTable)) {
+			value = (E)0;
+		}
+	}
+}
+
 void saveFromPathResults(std::ofstream& out, const Results& results) {
 
+	writeAll(out, resultsFileMagic, resultsFileVersion);
+
+	// Nothing solved yet: write the header and stop, so the reader still finds a
+	// well-formed (empty) block instead of having to guess from the byte count.
+	const std::uint8_t hasResults = (results.isReady && !results.fieldType.empty()) ? 1u : 0u;
+	writeAll(out, hasResults);
+
+	if (!hasResults) {
+		return;
+	}
+
+	// The grid (results.g) and everything derived from it -- nseg, nr, nz, dr, dz --
+	// is deliberately NOT written. buildField resamples against the LIVE mesh.g, so
+	// rebuildAfterLoad re-takes all of it from the mesh exactly as copyData does;
+	// anything stored here would be read and then immediately overwritten.
+	writeAll(
+		out,
+		results.fieldType,
+		results.shownFields,
+		results.solutions
+	);
+
+	// display state. The enums are plain enum class over int and the flags are bool,
+	// so the generic trivially-copyable writeVar handles them directly -- same as
+	// mesh.currentMeshType and solver.currentVelocitySolver elsewhere in this file.
+	writeAll(
+		out,
+		results.currentItem,
+		results.currentShadingType,
+		results.currentCompareType,
+		results.currentColorRangeMode,
+		results.filterValues,
+		results.show,
+		results.showOutline,
+		results.isMultipleInstancing
+	);
+
+	// Transient playback. Only each frame's solutions are written; its Fields are
+	// derived (and hold no GL texture anyway), so rebuildAfterLoad regenerates them
+	// through the same buildField path createAnimationFrames used.
+	writeAll(out, results.currentAnimationFrame, results.animationRanges);
+
+	const size_t frameCount = results.animationFrames.size();
+	writeVar(out, frameCount);
+
+	for (const Results::AnimationFrame& frame : results.animationFrames) {
+		writeAll(out, frame.time, frame.solutions);
+	}
 }
 
 void loadFromPathResults(std::ifstream& in, Results& results) {
 
+	results.reset();
+
+	// Projects saved before results were persisted end right after saveEtc. Rewind and
+	// leave the stream where it was so those still load with an empty Results panel.
+	const std::streampos start = in.tellg();
+
+	auto bail = [&]() {
+		in.clear();
+		in.seekg(start);
+		results.reset();
+	};
+
+	// A failed tellg gives bail() nothing to seek back to, so treat it as "no block"
+	// up front -- same guard loadFromPathSolver uses.
+	if (start == std::streampos(-1) ||
+		remainingBytes(in) < (std::streamoff)(2 * sizeof(std::uint32_t))) {
+		bail();
+		return;
+	}
+
+	std::uint32_t magic = 0;
+	std::uint32_t version = 0;
+
+	if (!readAll(in, magic, version) ||
+		magic != resultsFileMagic ||
+		version != resultsFileVersion) {
+		bail();
+		return;
+	}
+
+	std::uint8_t hasResults = 0;
+	if (!readAll(in, hasResults) || hasResults == 0) {
+		return;
+	}
+
+	size_t frameCount = 0;
+
+	const bool ok =
+		readAll(
+			in,
+			results.fieldType,
+			results.shownFields,
+			results.solutions
+		) &&
+		readAll(
+			in,
+			results.currentItem,
+			results.currentShadingType,
+			results.currentCompareType,
+			results.currentColorRangeMode,
+			results.filterValues,
+			results.show,
+			results.showOutline,
+			results.isMultipleInstancing
+		) &&
+		readAll(in, results.currentAnimationFrame, results.animationRanges) &&
+		readVar(in, frameCount);
+
+	if (!ok) {
+		bail();
+		return;
+	}
+
+	// A truncated or hand-edited file must not index past the name tables the GUI
+	// draws from.
+	clampEnum(results.currentShadingType, results.shadingType);
+	clampEnum(results.currentCompareType, results.compareType);
+	clampEnum(results.currentColorRangeMode, results.colorRangeModeType);
+
+	if (results.currentItem < 0 || results.currentItem >= (int)results.fieldType.size()) {
+		results.currentItem = 0;
+	}
+
+	// A truncated file can hand us a garbage frame count, and each frame is large --
+	// resizing to it up front would try to allocate the whole bogus amount before the
+	// first failed read. Every frame costs at least a time and a map size on disk, so
+	// the bytes left are a hard ceiling; grow one frame at a time under it.
+	constexpr std::streamoff minFrameBytes = (std::streamoff)(sizeof(double) + sizeof(size_t));
+
+	if ((std::streamoff)frameCount > remainingBytes(in) / minFrameBytes) {
+		bail();
+		return;
+	}
+
+	results.animationFrames.reserve(frameCount);
+
+	for (size_t i = 0; i < frameCount; i++) {
+		Results::AnimationFrame frame;
+		if (!readAll(in, frame.time, frame.solutions)) {
+			bail();
+			return;
+		}
+		results.animationFrames.push_back(std::move(frame));
+	}
+
+	// Fields, GL textures and the cylinder template are rebuilt on the GUI thread.
+	results.pendingRebuild = true;
 }
 
 void loadAtLaunch(Project& project, AppSettings& settings) {

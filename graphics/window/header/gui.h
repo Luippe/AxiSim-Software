@@ -54,6 +54,11 @@ public:
 	// render the entire UI
 	void render();
 
+	// Re-point the results views at whatever Results now holds. Called after either
+	// path that produces fields -- the Generate Results button and the post-load
+	// rebuild -- so both land in the same state.
+	void refreshResultsViews();
+
 	bool showingTutorial = false;
 
 private:

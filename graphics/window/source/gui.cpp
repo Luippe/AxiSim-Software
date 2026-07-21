@@ -449,6 +449,12 @@ void GUI::handleKeyInput() {
 // ======================================================================
 // -----------------------MAIN RENDER LOOP-------------------------------
 // ======================================================================
+void GUI::refreshResultsViews() {
+
+	inspector.generate();
+	scene.createBuffer();
+}
+
 void GUI::render() {
 
 	menu.render();
@@ -461,6 +467,15 @@ void GUI::render() {
 		meshInspector.requestResetView();
 		inspector.requestResetView();
 		project.resetInspectorViews = false;
+	}
+
+	// A loaded project restores solution values but not the Fields built from them,
+	// because that allocates GL textures and loadAtLaunch runs before the context
+	// exists. Finish the job here, then refresh the views exactly as the Generate
+	// Results button does, so a loaded result lands in the identical state.
+	if (results.pendingRebuild) {
+		results.rebuildAfterLoad(project.mesh, project.solver);
+		refreshResultsViews();
 	}
 
 	console.draw();

@@ -15,11 +15,6 @@
 #include "time_manager.h"
 
 
-Results::Results(Config& config) :
-
-	config(config) {
-}
-
 void createCylinderTemplate(std::vector<CylinderTemplateVertex>& vertices, std::vector<unsigned int>& indices, int nseg) {
 
 	vertices.clear();
@@ -108,10 +103,63 @@ void createCylinderTemplate(std::vector<CylinderTemplateVertex>& vertices, std::
 }
 
 
-void Results::updateAfterLoadingFile() {
+void Results::rebuildAfterLoad(const Mesh& mesh, Solver& solver) {
+
+	pendingRebuild = false;
+
+	if (fieldType.empty()) {
+		isReady = false;
+		return;
+	}
+
+	// A load restores the solved values but never ran a solve, so the solver holds no
+	// fvMesh. buildField needs one on the non-multiblock path (Field::generate reads
+	// its cells/faces); rebuild it from the loaded mesh, which is deterministic.
+	if (solver.fvMesh.numCells() == 0) {
+		solver.fvMesh = mesh.isMultiBlock
+			? mesh.createMultiBlockFVMesh()
+			: mesh.createFVMesh(mesh.g.activeCell);
+	}
+
+	// The grid is NOT restored from the file -- it is re-taken from the live mesh,
+	// because buildField resamples against mesh.g. If the mesh was edited between
+	// saving and loading, the rebuilt Fields are sized to the CURRENT raster; a saved
+	// grid would leave scene_view looping nr x nz over a differently-sized cellValues.
+	copyGrid(mesh);
+
+	const std::vector<int> rasterToCell = rasterMap(mesh);
+
+	// Fields carry GL textures and are rebuilt, not saved. animationRanges IS saved,
+	// so it is left alone here -- recomputing it from the frames would give the same
+	// answer, but only for the fields this session happens to rebuild.
+	fields.clear();
+	rebuildRenderData(mesh, solver, rasterToCell);
+
+	for (AnimationFrame& frame : animationFrames) {
+		frame.fields.clear();
+		for (const auto& [name, sol] : frame.solutions) {
+			frame.fields[name] = buildField(mesh, solver, sol, rasterToCell, false);
+		}
+	}
+
+	// shownFields came out of the same file as fieldType, so it cannot hold stale
+	// names and needs no pruning. Only seed defaults when the save carried none --
+	// syncShownFields re-adds every default tab, which would undo tabs the user
+	// deliberately removed before saving.
+	if (shownFields.empty()) {
+		syncShownFields();
+	}
 
 	isReady = true;
 
+	// Saved frame index is only meaningful against the frames we actually loaded.
+	if (currentAnimationFrame < 0 || currentAnimationFrame >= (int)animationFrames.size()) {
+		currentAnimationFrame = 0;
+	}
+
+	if (!animationFrames.empty()) {
+		showAnimationFrame(currentAnimationFrame);
+	}
 }
 
 void Results::reset() {
@@ -125,6 +173,7 @@ void Results::reset() {
 	animationFrames.clear();
 	animationRanges.clear();
 	currentAnimationFrame = 0;
+	pendingRebuild = false;
 
 	currentField = nullptr;
 	currentItem = 0;
@@ -144,15 +193,32 @@ void Results::setTextureShadingAllField(GLint shadingMode) {
 	//results.currentField->textureBuffer.setTextureShading(shadingMode);
 }
 
-void Results::copyData(const Mesh& mesh, const Solver& solver) {
+void Results::copyGrid(const Mesh& mesh) {
 
-	// copy variables and structs
 	g = mesh.g;
 	nseg = mesh.nseg;
 	nr = g.nr;
 	nz = g.nz;
 	dr = g.dr;
 	dz = g.dz;
+}
+
+void Results::rebuildRenderData(const Mesh& mesh, const Solver& solver, const std::vector<int>& rasterToCell) {
+
+	// create instances and create buffer
+	verticesCV.clear();
+	indicesCV.clear();
+	createCylinderTemplate(verticesCV, indicesCV, nseg);
+
+	// generate all fields (values and buffers)
+	createFields(mesh, solver, rasterToCell);
+	updateCurrentField();
+}
+
+void Results::copyData(const Mesh& mesh, const Solver& solver) {
+
+	// copy variables and structs
+	copyGrid(mesh);
 
 	fieldType = solver.fieldType;
 	solutions = solver.solutions;
@@ -163,22 +229,17 @@ void Results::generate(Mesh& mesh, Solver& solver) {
 
 	Clock::time_point startTime = startTimer();
 
-	verticesCV.clear();
-	indicesCV.clear();
-
 	// copy all relevant data from mesh class
 	copyData(mesh, solver);
 
-	// create instances and create buffer
-	createCylinderTemplate(verticesCV, indicesCV, nseg);
+	// One raster -> multiblock-cell map, shared by every buildField below.
+	const std::vector<int> rasterToCell = rasterMap(mesh);
 
-	// generate all fields (values and buffers)
-	createFields(mesh, solver);
-	updateCurrentField();
+	rebuildRenderData(mesh, solver, rasterToCell);
 
 	// transient snapshots, if the run captured any. Built after createFields so the
 	// frames can reuse each solution's geometry/metadata.
-	createAnimationFrames(mesh, solver);
+	createAnimationFrames(mesh, solver, rasterToCell);
 
 	// prune stale shown-field names and seed a default so the inspector has a tab
 	syncShownFields();
@@ -218,7 +279,11 @@ Field Results::buildField(
 	// inspector renders the real block cells and indexes solutions[].field in
 	// block/cellGlobal order (the exact solver values). Cells with no covering
 	// block (obstacles / outside the domain) read 0 in the raster.
-	SolutionField rasterSol = solution;
+	// Only boundaryVariable carries over -- field/dr/dz are all replaced below, so
+	// copying the source solution here would allocate and discard the whole field.
+	SolutionField rasterSol;
+	rasterSol.boundaryVariable = solution.boundaryVariable;
+
 	std::vector<double> raster(static_cast<size_t>(nRasterCells), 0.0);
 
 	for (int n = 0; n < nRasterCells && n < (int)rasterToCell.size(); n++) {
@@ -236,11 +301,12 @@ Field Results::buildField(
 	return newField;
 }
 
-void Results::createFields(const Mesh& mesh, const Solver& solver) {
+std::vector<int> Results::rasterMap(const Mesh& mesh) const {
 
-	// One raster -> multiblock-cell map, shared by every field this generate.
-	const std::vector<int> rasterToCell =
-		mesh.isMultiBlock ? mesh.buildMultiBlockRasterMap() : std::vector<int>{};
+	return mesh.isMultiBlock ? mesh.buildMultiBlockRasterMap() : std::vector<int>{};
+}
+
+void Results::createFields(const Mesh& mesh, const Solver& solver, const std::vector<int>& rasterToCell) {
 
 	for (const std::string& name : fieldType) {
 		fields[name] = buildField(mesh, solver, solutions[name], rasterToCell, true);
@@ -266,7 +332,7 @@ bool Results::animationRangeFor(const std::string& name, float& vmin, float& vma
 	return true;
 }
 
-void Results::createAnimationFrames(const Mesh& mesh, const Solver& solver) {
+void Results::createAnimationFrames(const Mesh& mesh, const Solver& solver, const std::vector<int>& rasterToCell) {
 
 	animationFrames.clear();
 	animationRanges.clear();
@@ -275,9 +341,6 @@ void Results::createAnimationFrames(const Mesh& mesh, const Solver& solver) {
 	if (solver.timeFrames.empty()) {
 		return;
 	}
-
-	const std::vector<int> rasterToCell =
-		mesh.isMultiBlock ? mesh.buildMultiBlockRasterMap() : std::vector<int>{};
 
 	animationFrames.reserve(solver.timeFrames.size());
 

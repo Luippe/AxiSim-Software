@@ -244,8 +244,7 @@ void ResultsGUI::draw() {
 		if (actionButton("Generate Results")) {
 			if (project.solver.isReady) {
 				project.results.generate(project.mesh, project.solver);
-				gui.inspector.generate();
-				scene.createBuffer();
+				gui.refreshResultsViews();
 			}
 		}
 

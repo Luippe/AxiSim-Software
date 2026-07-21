@@ -17,7 +17,7 @@ public:
 	Geometry geometry{ config };
 	Mesh mesh{ config };
 	Solver solver{ config };
-	Results results{ config };
+	Results results;
 
 	ViewTab currentTab = ViewTab::TAB_MESH;
 
