@@ -2,6 +2,7 @@
   "name": "axisim-software",
   "version-string": "1.04-alpha",
   "description": "GPU-accelerated axisymmetric CFD application",
+  "builtin-baseline": "5d57f5a0a5469a23e005fc79a7c1814ab4fc967e",
   "dependencies": [
     "glad",
     "glfw3",

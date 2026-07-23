@@ -25,7 +25,8 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "AXISIM_CUDA_ARCHITECTURES": "86-real"
+        "AXISIM_CUDA_ARCHITECTURES": "86-real",
+        "VCPKG_INSTALLED_DIR": "$env{LOCALAPPDATA}/axisim-vcpkg/${presetName}"
       }
     },
     {
@@ -40,7 +41,8 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "AXISIM_CUDA_ARCHITECTURES": "86-real"
+        "AXISIM_CUDA_ARCHITECTURES": "86-real",
+        "VCPKG_INSTALLED_DIR": "$env{LOCALAPPDATA}/axisim-vcpkg/${presetName}"
       }
     },
     {
