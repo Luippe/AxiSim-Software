@@ -121,7 +121,11 @@ endforeach()
 # ImPlot
 # ------------------------------------------------------------
 
-set(IMPLOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/graphics/imgui")
+# Vendored here rather than inside graphics/imgui: that directory is the upstream
+# Dear ImGui submodule, which does not ship ImPlot and cannot track files the
+# parent repository adds to it. Sources kept under externals/ are version
+# controlled, so a fresh clone builds.
+set(IMPLOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/externals/implot")
 
 set(IMPLOT_SOURCES
     "${IMPLOT_DIR}/implot.cpp"
