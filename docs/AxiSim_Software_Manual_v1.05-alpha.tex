@@ -193,16 +193,14 @@ third-party components and their licenses are listed in Section~\ref{sec:librari
 \end{itemize}
 
 \subsection{Building from source}
-Dependencies that come from vcpkg (GLFW, GLAD, GLM, OpenGL) are installed first; Gmsh
-and Dear ImGui/ImPlot are bundled in the repository. The repository currently includes
-\texttt{CMakeSettings.json} for Visual Studio's CMake integration. If configuring from
-the command line, use the vcpkg toolchain file explicitly:
+Dependencies that come from vcpkg (GLFW, GLAD, GLM, libpng, nativefiledialog) are declared
+in \texttt{vcpkg.json} and installed automatically during configuration; Gmsh and Dear
+ImGui/ImPlot are bundled in the repository. The repository includes
+\texttt{CMakePresets.json}, which Visual Studio reads directly. Point \texttt{VCPKG\_ROOT}
+at your vcpkg checkout, then configure and build through the preset:
 \begin{lstlisting}[language={}]
-vcpkg install glfw3 glad glm
-cmake -S . -B out/build/x64-Release -G Ninja ^
-  -DCMAKE_BUILD_TYPE=RelWithDebInfo ^
-  -DCMAKE_TOOLCHAIN_FILE=<path-to-vcpkg>/scripts/buildsystems/vcpkg.cmake
-cmake --build out/build/x64-Release --target AxiSim
+cmake --preset x64-Release
+cmake --build --preset x64-Release
 \end{lstlisting}
 
 \warnbox{\textbf{CUDA architecture note.} The checked-in CMake file currently targets
