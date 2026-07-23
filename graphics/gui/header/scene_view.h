@@ -2,7 +2,7 @@
 #include "mouse_picker.h"
 
 #include "renderer.h"
-#include "bounding.h"
+#include "axis_gizmo.h"
 #include "colormap.h"
 #include "shader.h"
 #include "camera.h"
@@ -37,11 +37,19 @@ public:
 
 	Camera3D camera;
 	Renderer renderer;
-	Bounding bound{ renderer };
 	Colormap colormap;
+	AxisGizmo axisGizmo;
+
+	// navigation triad in the corner of the viewport; its pixel size lives on
+	// the gizmo itself. Toggled from View -> Results -> Axis Gizmo.
+	bool showAxisGizmo = true;
+
+	// flat colored line cross through world zero. Decoration only -- it is not
+	// clickable, the gizmo is what drives the camera.
+	bool showOriginAxis = true;
 
 	Console& console;
-	MousePicker picker;	// picker depends on camera, renderer, and bound being initialized first
+	MousePicker picker;	// picker depends on camera and renderer being initialized first
 	ImVec2 rectPos;		// top left corner of window
 	ImVec2 rectSize;	// width and height of window
 
@@ -56,6 +64,10 @@ private:
 	bool dragging = false;
 	bool rotating = false;
 	bool leftMouseDown = false;
+
+	// a press that started on the navigation triad snaps the camera on release
+	// instead of picking, and must not pan the scene in between
+	bool pressedOnGizmo = false;
 
 	float initX = 0.0f;
 	float initY = 0.0f;

@@ -15,7 +15,6 @@
 MousePicker::MousePicker(Project& project, SceneView& scene) :
 	project(project),
 	scene(scene),
-	bound(scene.bound),
 	camera(scene.camera),
 	results(project.results),
 	g(project.config.g){
@@ -23,16 +22,42 @@ MousePicker::MousePicker(Project& project, SceneView& scene) :
 
 void MousePicker::pick() {
 
-	if (dataPick()) return;
-
-	axisBBPick();
+	dataPick();
 
 }
 
 void MousePicker::update() {
 
-	currentRay = calculateMouseRay();
+	ImVec2 mouse = ImGui::GetMousePos();   // absolute mouse position
+	glm::vec2 mousePos(mouse.x - rectPos.x, mouse.y - rectPos.y); // relative mouse position to the top left corner of the window
+	glm::vec2 normalizedCoords = getNormalizedDeviceCoords(mousePos.x, mousePos.y, width, height);
 
+	const glm::mat4 invertedView = glm::inverse(camera.view);
+
+	if (camera.projectionType == ProjectionType::Orthographic) {
+
+		// parallel rays: the direction is the same everywhere and the pixel
+		// slides the origin across the view plane
+		const float halfHeight = camera.viewHalfHeight();
+		const float halfWidth = halfHeight * ((float)width / (float)std::max(height, 1));
+
+		glm::vec4 eyeCoords(normalizedCoords.x * halfWidth, normalizedCoords.y * halfHeight, 0.0f, 1.0f);
+
+		rayOrigin = glm::vec3(invertedView * eyeCoords);
+		currentRay = camera.getFront();
+	}
+	else {
+
+		glm::vec4 clipCoords(normalizedCoords, -1.0f, 1.0f);
+		glm::vec4 eyeCoords = glm::inverse(camera.projection) * clipCoords;
+
+		// force a pure direction down the view axis; only valid because a
+		// perspective frustum has a single shared apex
+		eyeCoords = glm::vec4(eyeCoords.x, eyeCoords.y, -1.0f, 0.0f);
+
+		rayOrigin = camera.position;
+		currentRay = glm::normalize(glm::vec3(invertedView * eyeCoords));
+	}
 }
 
 void MousePicker::setDimensions(int w, int h, ImVec2 pos) {
@@ -47,57 +72,11 @@ glm::vec3 MousePicker::getCurrentRay() {
 	return currentRay;
 };
 
-glm::vec3 MousePicker::calculateMouseRay() {
-	ImVec2 mouse = ImGui::GetMousePos();   // absolute mouse position
-	glm::vec2 mousePos(mouse.x - rectPos.x, mouse.y - rectPos.y); // relative mouse position to the top left corner of the window
-	glm::vec2 normalizedCoords = getNormalizedDeviceCoords(mousePos.x, mousePos.y, width, height);
-	glm::vec4 clipCoords(normalizedCoords, -1.0f, 1.0f);
-	glm::vec4 eyeCoords = toEyeCoords(clipCoords);
-	glm::vec3 worldRay = toWorldCoords(eyeCoords);
-	return worldRay;
-}
-
-glm::vec4 MousePicker::toEyeCoords(glm::vec4 clipCoords) {
-	glm::mat4 invertedProjection = glm::inverse(camera.projection);
-	glm::vec4 eyeCoords = invertedProjection * clipCoords;
-	return glm::vec4(eyeCoords.x, eyeCoords.y, -1.0f, 0.0f);
-}
-
-glm::vec3 MousePicker::toWorldCoords(glm::vec4 eyeCoords) {
-	glm::mat4 invertedView = glm::inverse(camera.view);
-	glm::vec4 rayWorld = invertedView * eyeCoords;
-	return glm::normalize(glm::vec3(rayWorld.x, rayWorld.y, rayWorld.z));
-}
-
-bool MousePicker::BBIntersect(BoundingBox& box, float& t) {
-
-	// AABB method (slab method)
-	float tMin = 0.0f;
-	float tMax = FLT_MAX;
-
-	for (int i = 0; i < 3; i++) {
-
-		float inversedDir = 1.0f / (currentRay[i]);
-		float t0 = (box.min[i] - camera.position[i]) * inversedDir;
-		float t1 = (box.max[i] - camera.position[i]) * inversedDir;
-		if (t0 > t1) std::swap(t0, t1);
-
-		tMin = std::max(tMin, t0);
-		tMax = std::min(tMax, t1);
-
-		if (tMax < tMin) {
-			return false;
-		}
-	}
-	t = tMin;
-	return true;
-}
-
 bool MousePicker::capIntersect(const glm::vec3& capCenter, const glm::vec3& capNormal, float innerRadius, float outerRadius, float& t) {
-	float t0 = glm::dot(capCenter - camera.position, capNormal) / glm::dot(currentRay, capNormal);
+	float t0 = glm::dot(capCenter - rayOrigin, capNormal) / glm::dot(currentRay, capNormal);
 	if (t0 < 0.0f) return false;
 
-	glm::vec3 P = camera.position + t0 * currentRay - capCenter;
+	glm::vec3 P = rayOrigin + t0 * currentRay - capCenter;
 	// radial distance from cap center, ignoring axis direction
 	glm::vec3 radial = P - glm::dot(P, capNormal) * capNormal;
 	float rad = glm::dot(radial, radial);
@@ -118,7 +97,7 @@ bool MousePicker::ringIntersect(float radius, float front, float back, float& t)
 
 	bool collided = false;
 	glm::vec3 cylinderDirection = glm::vec3(1.0f, 0.0f, 0.0f);
-	glm::vec3 position = camera.position;
+	glm::vec3 position = rayOrigin;
 	glm::vec3 OC = position;
 	glm::vec3 Dperp = currentRay - glm::dot(currentRay, cylinderDirection) * cylinderDirection;
 	glm::vec3 OCperp = OC - glm::dot(OC, cylinderDirection) * cylinderDirection;
@@ -184,7 +163,7 @@ bool MousePicker::dataPick() {
 
 	// get value at given location and print to console
 	if (t != FLT_MAX) {
-		glm::vec3 P = camera.position + t * currentRay;
+		glm::vec3 P = rayOrigin + t * currentRay;
 		float val = results.currentField->getData(P);
 		std::string s = " (" + 
 			std::to_string(P.x) + ", " +
@@ -198,29 +177,3 @@ bool MousePicker::dataPick() {
 	return false;
 }
 
-void MousePicker::axisBBPick() {
-
-	float tClosest = FLT_MAX;
-	int pickedID = -1;
-
-	for (int i = 0; i < bound.axisBB.size(); i++) {
-		float t;
-		if (BBIntersect(bound.axisBB[i], t)) {
-			if (t < tClosest) {
-				tClosest = t;
-				pickedID = bound.axisBB[i].ID;
-			}
-		}
-	}
-
-	if (pickedID != -1) {
-		glm::vec3 axis = getPickedAxis(pickedID);
-		camera.updateTargetRotation(axis);
-	}
-}
-
-glm::vec3 MousePicker::getPickedAxis(int& pickedID) {
-	glm::vec3 axis = glm::vec3(0.0f);
-	axis[pickedID % 3] = pickedID < 3 ? -1 : 1;
-	return axis;
-}

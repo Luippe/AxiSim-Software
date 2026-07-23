@@ -62,6 +62,18 @@ struct VertexLine {
 	glm::vec3 color;
 };
 
+// solid geometry that carries its own color and is lit in the shader
+// (axis gizmo arms, hub)
+struct VertexShaded {
+	glm::vec3 position;
+	glm::vec3 normal;
+	glm::vec3 color;
+
+	// caller-defined group id, so one draw call can highlight a subset of the
+	// mesh from a uniform instead of re-uploading colors (gizmo hover)
+	float id;
+};
+
 enum class ViewTab {
 	TAB_GEOMETRY = 0,
 	TAB_MESH = 1,

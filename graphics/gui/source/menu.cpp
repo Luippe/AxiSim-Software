@@ -200,6 +200,67 @@ void Menu::drawView() {
 	if (menuItem("GUI", nullptr, !project.simpleView)) {
 		project.simpleView = !project.simpleView;
 	}
+
+	ImGui::Separator();
+
+	// What the Results scene draws on top of the solution itself.
+	if (beginMenu("Results")) {
+
+		SceneView& scene = gui.scene;
+
+		// Perspective reads depth better; orthographic keeps parallel lines
+		// parallel, which is what you want when comparing sizes across the
+		// domain. Both are framed from the same view height, so switching does
+		// not change how big the scene looks.
+		if (beginMenu("Projection")) {
+
+			const bool perspective = scene.camera.projectionType == ProjectionType::Perspective;
+
+			if (menuItem("Perspective", nullptr, perspective)) {
+				scene.camera.projectionType = ProjectionType::Perspective;
+			}
+
+			if (menuItem("Orthographic", nullptr, !perspective)) {
+				scene.camera.projectionType = ProjectionType::Orthographic;
+			}
+
+			ImGui::EndMenu();
+		}
+
+		ImGui::Separator();
+
+		// flat line cross through world zero, part of the scene
+		if (menuItem("Origin Axis", nullptr, scene.showOriginAxis)) {
+			scene.showOriginAxis = !scene.showOriginAxis;
+		}
+
+		// Orientation triad in the corner. Off by default -- it is a navigation
+		// aid, not part of the result being read.
+		if (menuItem("Axis Gizmo", nullptr, scene.showAxisGizmo)) {
+			scene.showAxisGizmo = !scene.showAxisGizmo;
+		}
+
+		// Size only matters once the triad is on, so the submenu greys out with it.
+		if (beginMenu("Axis Gizmo Size", scene.showAxisGizmo)) {
+
+			ImGui::SetNextItemWidth(160.0f);
+			ImGui::SliderInt(
+				"##axisGizmoSize",
+				&scene.axisGizmo.overlaySizePx,
+				AxisGizmo::minOverlaySizePx,
+				AxisGizmo::maxOverlaySizePx,
+				"%d px"
+			);
+
+			if (ImGui::Button("Reset")) {
+				scene.axisGizmo.overlaySizePx = AxisGizmo::defaultOverlaySizePx;
+			}
+
+			ImGui::EndMenu();
+		}
+
+		ImGui::EndMenu();
+	}
 }
 
 

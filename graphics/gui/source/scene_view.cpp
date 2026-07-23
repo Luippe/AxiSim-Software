@@ -74,9 +74,44 @@ void SceneView::handleMouse() {
 	hovered = ImGui::IsItemHovered();
 	focused = ImGui::IsWindowFocused();
 
-	if (!(hovered && focused)) return;
+	if (!(hovered && focused)) {
+		axisGizmo.highlightArm = AxisGizmo::ArmNone;
+		axisGizmo.showNegativeArms = false;
+		return;
+	}
 
 	ImGuiIO& io = ImGui::GetIO();
+
+	// ------------ Navigation Triad ---------------
+	// The triad is drawn straight into the viewport in pixel coordinates, so it
+	// is hit-tested against the image rect rather than through the 3D picker.
+	// GetItemRectMin is the image just submitted, which stays correct even when
+	// the window moves without resizing.
+	int gizmoArm = AxisGizmo::ArmNone;
+	bool overGizmo = false;
+
+	if (showAxisGizmo) {
+
+		ImVec2 imageMin = ImGui::GetItemRectMin();
+		glm::vec2 localMouse(io.MousePos.x - imageMin.x, io.MousePos.y - imageMin.y);
+
+		// picked against what was actually on screen last frame, which is what
+		// showNegativeArms still holds at this point
+		gizmoArm = axisGizmo.pickOverlay(
+			camera.view,
+			localMouse,
+			frameBuffer.width,
+			frameBuffer.height
+		);
+
+		overGizmo = axisGizmo.overlayContains(localMouse, frameBuffer.width, frameBuffer.height);
+	}
+
+	// both land on the next frame's draw, which is soon enough to read as
+	// instant feedback. The negative arms follow the whole square rather than
+	// the arms themselves -- they cannot be hovered before they are visible.
+	axisGizmo.highlightArm = gizmoArm;
+	axisGizmo.showNegativeArms = overGizmo;
 
 	// ------------ Mouse Clicking -----------------
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -86,6 +121,7 @@ void SceneView::handleMouse() {
 
 		dragging = true;
 		leftMouseDown = true;
+		pressedOnGizmo = (gizmoArm != AxisGizmo::ArmNone);
 
 	}
 
@@ -99,15 +135,25 @@ void SceneView::handleMouse() {
 		bool wasClick = abs(drag.x) < 3.0f && abs(drag.y) < 3.0f;	// check if the mouse movement is small enough to be considered a click
 
 		if (wasClick) {
-			check();
-			picker.pick();
+
+			// clicking an arm snaps the camera onto that axis; only a click that
+			// missed the triad reaches the scene picker
+			if (pressedOnGizmo && gizmoArm != AxisGizmo::ArmNone) {
+				camera.snapToAxis(axisGizmo.snapAxis(gizmoArm, camera.view));
+			}
+			else {
+				check();
+				picker.pick();
+			}
 		}
+
+		pressedOnGizmo = false;
 
 		ImGui::ResetMouseDragDelta(ImGuiMouseButton_Left);
 	}
 
 	// ------------ Camera Panning -----------------
-	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+	if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) && !pressedOnGizmo) {
 		camera.calculatePan(io.MouseDelta.x, -io.MouseDelta.y);
 	}
 
@@ -122,11 +168,7 @@ void SceneView::handleMouse() {
 	}
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-
-		glm::vec2 currentMouse(io.MousePos.x, io.MousePos.y);
-		glm::vec2 previousMouse = currentMouse - glm::vec2(io.MouseDelta.x, io.MouseDelta.y);
-
-		camera.calculateRotation(previousMouse, currentMouse);
+		camera.calculateRotation(io.MouseDelta.x, io.MouseDelta.y);
 	}
 
 	// ------------ Camera Zooming -----------------
@@ -283,11 +325,10 @@ void SceneView::draw3DPreview() {
 		results.currentField->textureBuffer.unbind();
 	}
 
-	// draw coordinate axes
-	renderer.renderAxis(shaderLine);
-
-	// draw bounding box
-	bound.renderBB(shaderLine);
+	// draw the coordinate axes through world zero
+	if (showOriginAxis) {
+		renderer.renderAxis(shaderLine);
+	}
 
 }
 
@@ -596,9 +637,10 @@ void SceneView::render() {
 		picker.setDimensions(viewportWidth, viewportHeight, rectPos);
 	}
 
-	// update transformation matrix and snap camera
+	// advance any in-flight axis snap first, so the matrices below are built
+	// from this frame's orientation rather than last frame's
+	camera.snapCamera(ImGui::GetIO().DeltaTime);
 	camera.updateTransformationMatrix();
-	camera.snapCamera();
 
 	// draw and render calls
 	frameBuffer.bind();
@@ -618,6 +660,12 @@ void SceneView::render() {
 	picker.update();
 
 	draw3DPreview();
+
+	// navigation triad, last so it owns its corner of the viewport. Drawn even
+	// with no result loaded -- it is an orientation cue, not part of the scene.
+	if (showAxisGizmo) {
+		axisGizmo.drawOverlay(camera.view, viewportWidth, viewportHeight);
+	}
 
 	// end draw and render calls
 	frameBuffer.unbind();

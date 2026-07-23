@@ -10,146 +10,209 @@
 // ======================================================================
 // -----------------------CAMERA 3D--------------------------------------
 // ======================================================================
+namespace {
+
+	// wrap an angle into (-pi, pi], so interpolating between two yaws always
+	// takes the short way round instead of unwinding several turns
+	float wrapPi(float angle) {
+		constexpr float twoPi = 6.28318530718f;
+		angle = std::fmod(angle + 3.14159265359f, twoPi);
+		if (angle < 0.0f) angle += twoPi;
+		return angle - 3.14159265359f;
+	}
+
+	// ease in and out, so a snap starts and lands gently instead of stopping dead
+	float smoothStep(float t) {
+		return t * t * (3.0f - 2.0f * t);
+	}
+
+}
+
+
 Camera3D::Camera3D() {
 	initPositionAndAngle();
 }
 
 void Camera3D::initPositionAndAngle() {
 
-	constexpr float yaw = glm::radians(-45.0f);
-	constexpr float pitch = glm::radians(-35.264f);
-	//constexpr float zRot = glm::radians(45.0f);
+	yaw = glm::radians(-45.0f);
+	pitch = glm::radians(-35.264f);
 
-	glm::quat quatYaw = glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f));
-	glm::quat quatPitch = glm::angleAxis(pitch, glm::vec3(1.0f, 0.0f, 0.0f));
-	//glm::quat quatZ = glm::angleAxis(zRot, glm::vec3(0.0f, 0.0f, 1.0f));
+	snapping = false;
 
-	rotation = glm::normalize(quatYaw * quatPitch);
+	updateRotation();
+}
 
+
+void Camera3D::updateRotation() {
+
+	// yaw first, then pitch: the pitch axis rides along with the yaw, which is
+	// exactly what "orbit left/right, then tilt up/down" means
+	rotation = glm::normalize(
+		glm::angleAxis(yaw, glm::vec3(0.0f, 1.0f, 0.0f)) *
+		glm::angleAxis(pitch, glm::vec3(1.0f, 0.0f, 0.0f))
+	);
+}
+
+
+float Camera3D::viewHalfHeight() const {
+	return distance * std::tan(glm::radians(fov) * 0.5f);
+}
+
+
+float Camera3D::worldPerPixel() const {
+	return 2.0f * viewHalfHeight() / (float)std::max(height, 1);
 }
 
 
 void Camera3D::updateTransformationMatrix() {
 
-	float aspect = (float)width / (float)height;
+	const float aspect = (float)std::max(width, 1) / (float)std::max(height, 1);
 
 	model = glm::mat4(1.0f);
 
 	position = getPosition();
 	view = glm::lookAt(position, target, getUp());
-	projection = glm::perspective(glm::radians(fov), aspect, 0.1f, 100.0f);
 
-}
+	// the clip planes follow the orbit distance instead of sitting at a fixed
+	// 0.1/100. Zooming far out used to clip the scene away and zooming in close
+	// wasted depth precision on empty space in front of the near plane.
+	const float farPlane = distance * 100.0f + 100.0f;
 
-void Camera3D::calculateRotation(const glm::vec2& prevMouse, const glm::vec2& currMouse) {
+	if (projectionType == ProjectionType::Orthographic) {
 
-	glm::vec3 va = mapToSphere(prevMouse);
-	glm::vec3 vb = mapToSphere(currMouse);
+		const float halfHeight = viewHalfHeight();
+		const float halfWidth = halfHeight * aspect;
 
-	if (va == vb) {	// if va == vb, then the vectors are on top of each other
-		return;
-	}
-
-	glm::quat dq = getQuat(vb, va);
-	rotation = glm::normalize(rotation * dq);
-}
-
-void Camera3D::calculateZoom(double yoffset) {
-	// use exponential zoom to feel smoother
-	zoom = std::exp((float)(-yoffset * 0.1f));
-	distance *= zoom;
-	distance = glm::clamp(distance, 0.1f, 50.0f);
-}
-
-void Camera3D::calculatePan(float dx, float dy) {
-	float panSpeed = 0.001f * distance;
-	target += -dx * getRight() * panSpeed;
-	target += -dy * getUp()	   * panSpeed;
-}
-
-glm::vec3 Camera3D::mapToSphere(const glm::vec2& mouse) {
-	glm::vec2 mousePos(mouse.x - rectPos.x, mouse.y - rectPos.y); // relative mouse position to the top left corner of the window
-	glm::vec2 screenPos = getNormalizedDeviceCoords(mousePos.x, mousePos.y, width, height);
-	float length2 = screenPos.x * screenPos.x + screenPos.y * screenPos.y;
-
-	if (length2 < 1.0f) {
-		return glm::vec3(screenPos.x, screenPos.y, std::sqrt(1.0f - length2));
+		// a symmetric depth range keeps geometry behind the eye plane visible;
+		// an orthographic view has no reason to cull it
+		projection = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, -farPlane, farPlane);
 	}
 	else {
-		return glm::vec3(screenPos, 0.0f) / std::sqrt(length2);
+
+		const float nearPlane = std::max(1.0e-3f, distance * 0.005f);
+		projection = glm::perspective(glm::radians(fov), aspect, nearPlane, farPlane);
 	}
 }
 
-void Camera3D::updateTargetRotation(glm::vec3& axis) {
+
+void Camera3D::calculateRotation(float dx, float dy) {
+
+	if (dx == 0.0f && dy == 0.0f) return;
+
+	// grabbing and dragging moves the scene with the cursor, so the camera
+	// orbits the other way
+	const float step = glm::radians(rotateSensitivity);
+
+	yaw = wrapPi(yaw - dx * step);
+	pitch = glm::clamp(pitch - dy * step, -maxPitch, maxPitch);
+
+	// a manual drag wins over an in-flight snap rather than fighting it
+	snapping = false;
+
+	updateRotation();
+}
+
+
+void Camera3D::calculateZoom(double yoffset) {
+
+	if (yoffset == 0.0) return;
+
+	// exponential, so each notch changes the view by the same proportion
+	distance *= std::exp((float)(-yoffset * 0.12));
+	distance = glm::clamp(distance, minDistance, maxDistance);
+}
+
+
+void Camera3D::calculatePan(float dx, float dy) {
+
+	// one pixel of drag moves the target by exactly one pixel's worth of world,
+	// measured at the orbit target -- so the scene stays under the cursor
+	const float step = worldPerPixel();
+
+	target -= dx * getRight() * step;
+	target -= dy * getUp() * step;
+}
+
+
+void Camera3D::snapToAxis(const glm::vec3& axis) {
+
+	const float len = glm::length(axis);
+	if (len < 1.0e-6f) return;
+
+	const glm::vec3 d = axis / len;
+
+	startYaw = yaw;
+	startPitch = pitch;
+
+	// invert getPosition's direction, which is
+	//   (cos(pitch)sin(yaw), -sin(pitch), cos(pitch)cos(yaw))
+	targetPitch = glm::clamp(std::asin(glm::clamp(-d.y, -1.0f, 1.0f)), -maxPitch, maxPitch);
+
+	// straight up or down leaves the azimuth undefined; keeping the current one
+	// means a top view does not also spin the scene on the way there
+	targetYaw = (std::abs(d.y) > 0.9999f) ? startYaw : std::atan2(d.x, d.z);
+
+	// take the short way round
+	targetYaw = startYaw + wrapPi(targetYaw - startYaw);
+
+	snapT = 0.0f;
 	snapping = true;
-
-	// if already looking at the axis, then dont do anything
-	if (glm::normalize(position - target) == axis) return;
-
-	// get the quaternion between the two vectors
-	glm::vec3 posNorm = glm::normalize(position);
-	glm::quat dq = getQuat(posNorm, axis);
-
-	// get final camera rotation and desired up vector
-	glm::quat finalRotation = glm::normalize(dq * rotation);
-	glm::vec3 finalUpNorm = glm::normalize(finalRotation * glm::vec3(0.0f, 1.0f, 0.0f));
-	glm::vec3 bestUp = finalUpNorm;
-	float bestScore = 0.0f;
-	for (const glm::vec3& axis : candidates) {
-		float currentScore = glm::dot(axis, finalUpNorm);
-		if (currentScore > bestScore) {
-			bestScore = currentScore;
-			bestUp = axis;
-		}
-	}
-
-	// construct target rotation with the best up vector, target axis, and right vector
-	glm::vec3 right = glm::normalize(glm::cross(bestUp, axis));
-	glm::mat3 R(right, bestUp, axis);
-	targetRotation = glm::normalize(glm::quat_cast(R));
 }
 
-void Camera3D::snapCamera() {
+
+void Camera3D::snapCamera(float dt) {
 
 	if (!snapping) return;
 
-	if (glm::dot(rotation, targetRotation) < 0.0f) {	// makes sure it takes the shortest path
-		targetRotation = -targetRotation;
+	if (snapSeconds <= 0.0f) {
+		yaw = wrapPi(targetYaw);
+		pitch = targetPitch;
+		snapping = false;
+		updateRotation();
+		return;
 	}
 
-	// compute the angle between the current rotation and the target rotation
-	float cosTheta = glm::clamp(glm::dot(rotation, targetRotation), -1.0f, 1.0f);
-	float angle = 2.0f * std::acos(cosTheta);
-	
-	// get rotation matrix for moving the camera
-	if (angle < maxStep) {
-		rotation = targetRotation;
+	// a stall (a slow frame, a dragged window) must not teleport the camera
+	snapT += glm::clamp(dt, 0.0f, 0.1f) / snapSeconds;
+
+	if (snapT >= 1.0f) {
+		yaw = wrapPi(targetYaw);
+		pitch = targetPitch;
 		snapping = false;
 	}
 	else {
-		float alpha = maxStep / angle;
-		rotation = glm::normalize(glm::slerp(rotation, targetRotation, alpha));
+		const float a = smoothStep(snapT);
+		yaw = startYaw + (targetYaw - startYaw) * a;
+		pitch = startPitch + (targetPitch - startPitch) * a;
 	}
+
+	updateRotation();
 }
+
 
 void Camera3D::home() {
 
+	target = glm::vec3(0.0f);
+	distance = 1.0f;
+
+	initPositionAndAngle();
 }
 
-glm::vec3 Camera3D::getFront() {
+glm::vec3 Camera3D::getFront() const {
 	return glm::normalize(target - position);
 }
 
-glm::vec3 Camera3D::getPosition() {
+glm::vec3 Camera3D::getPosition() const {
 	glm::vec3 offset = rotation * glm::vec3(0.0f, 0.0f, distance);
 	return target + offset;
 }
 
-glm::vec3 Camera3D::getRight() {
+glm::vec3 Camera3D::getRight() const {
 	return rotation * glm::vec3(1.0f, 0.0f, 0.0f);
 }
 
-glm::vec3 Camera3D::getUp() {
+glm::vec3 Camera3D::getUp() const {
 	return rotation * glm::vec3(0.0f, 1.0f, 0.0f);
 }
 

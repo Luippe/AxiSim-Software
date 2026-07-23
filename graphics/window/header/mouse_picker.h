@@ -1,6 +1,5 @@
 #pragma once
 #include "pch.h"
-#include "bounding.h"
 
 class SceneView;
 class Camera3D;
@@ -15,7 +14,6 @@ public:
 
 	//Console& console;
 	Project& project;
-	Bounding& bound;
 	Camera3D& camera;
 	Results& results;
 	SceneView& scene;
@@ -37,29 +35,23 @@ public:
 
 private:
 
-	int width, height;
+	int width = 1, height = 1;
 	ImVec2 rectPos;
-
-	// picker for axis
-	void axisBBPick();
 
 	// warpper for finding ray-cylinder intersection
 	bool dataPick();
 
 	glm::vec3 currentRay;
-	glm::vec3 calculateMouseRay();
-	glm::vec4 toEyeCoords(glm::vec4 clipCoords);
-	glm::vec3 toWorldCoords(glm::vec4 eyeCoords);
 
-	// check if ray has collided with a given bounding box. assign distance t
-	bool BBIntersect(BoundingBox& box, float& t);
+	// Where the pick ray starts. Under perspective that is always the eye, but
+	// an orthographic view has parallel rays, so the pixel chooses the origin
+	// instead of the direction -- every intersection test works off this rather
+	// than camera.position.
+	glm::vec3 rayOrigin;
 
 	// check if ray intersects cap of cylinder
 	bool capIntersect(const glm::vec3& capCenter, const glm::vec3& capNormal, float innerRadius, float outerRadius, float& t);
 
 	// check if ray intersects ring of cylinder with radius rad
 	bool ringIntersect(float radius, float front, float back, float& t);
-
-	// given a bounding box ID, return the picked axis
-	glm::vec3 getPickedAxis(int& pickedID);
 };
