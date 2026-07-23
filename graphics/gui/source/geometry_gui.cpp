@@ -173,13 +173,17 @@ void GeometryGUI::drawEntityGroup(
 		return;
 	}
 
-	auto row = [&](int id, bool selected, double a, double b, const char* fmt) {
+	// entity sizes are stored in base SI; the rows read in the project's display
+	// unit, like every other length in the UI
+	const UnitOption& unit = Units::lengthUnits[project.lengthScale.index];
+
+	char text[128];
+
+	// `text` is filled in by the caller just above each call
+	auto row = [&](int id, bool selected) {
 		// ids restart per type, so scope the ImGui id by type to keep rows unique
 		ImGui::PushID(static_cast<int>(type));
 		ImGui::PushID(id);
-
-		char text[96];
-		snprintf(text, sizeof(text), fmt, id, a, b);
 
 		if (ImGui::Selectable(text, selected)) {
 			// selection lives on the model, so the sketch view highlights it
@@ -190,31 +194,40 @@ void GeometryGUI::drawEntityGroup(
 		ImGui::PopID();
 	};
 
+	auto display = [&](double baseValue) {
+		return fromBaseValue(baseValue, unit);
+	};
+
 	switch (type) {
 	case SketchEntityType::Line:
 		for (const SketchLine& line : sketch.lines) {
-			row(line.id, line.selected, sketch.getLineLength(line.id), 0.0,
-				"Line %d  —  length %.4g");
+			snprintf(text, sizeof(text), "Line %d  —  length %.4g %s",
+				line.id, display(sketch.getLineLength(line.id)), unit.name);
+			row(line.id, line.selected);
 		}
 		break;
 	case SketchEntityType::Rectangle:
 		for (const SketchRectangle& rect : sketch.rectangles) {
-			row(rect.id, rect.selected,
-				sketch.getRectangleWidth(rect.id),
-				sketch.getRectangleHeight(rect.id),
-				"Rectangle %d  —  %.4g x %.4g");
+			snprintf(text, sizeof(text), "Rectangle %d  —  %.4g x %.4g %s",
+				rect.id,
+				display(sketch.getRectangleWidth(rect.id)),
+				display(sketch.getRectangleHeight(rect.id)),
+				unit.name);
+			row(rect.id, rect.selected);
 		}
 		break;
 	case SketchEntityType::Circle:
 		for (const SketchCircle& circle : sketch.circles) {
-			row(circle.id, circle.selected, circle.radius, 0.0,
-				"Circle %d  —  r %.4g");
+			snprintf(text, sizeof(text), "Circle %d  —  r %.4g %s",
+				circle.id, display(circle.radius), unit.name);
+			row(circle.id, circle.selected);
 		}
 		break;
 	case SketchEntityType::Arc:
 		for (const SketchArc& arc : sketch.arcs) {
-			row(arc.id, arc.selected, arc.radius, 0.0,
-				"Arc %d  —  r %.4g");
+			snprintf(text, sizeof(text), "Arc %d  —  r %.4g %s",
+				arc.id, display(arc.radius), unit.name);
+			row(arc.id, arc.selected);
 		}
 		break;
 	default:

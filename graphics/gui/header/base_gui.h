@@ -193,7 +193,7 @@ public:
 
 		ImGui::TableNextColumn();
 
-		return true;
+		return changed;
 	}
 
 private:

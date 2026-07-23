@@ -19,17 +19,13 @@ using namespace Snapping;
 using namespace UIDockFlags;
 
 namespace {
-	Vec2 translatePoint(Vec2 point, Vec2 delta) {
-		return Vec2{ point.z + delta.z, point.r + delta.r };
-	}
-
 	TrimPreviewResult translatedPreview(
 		TrimPreviewResult preview,
 		Vec2 delta
 	) {
-		preview.a = translatePoint(preview.a, delta);
-		preview.b = translatePoint(preview.b, delta);
-		preview.center = translatePoint(preview.center, delta);
+		preview.a = translate(preview.a, delta);
+		preview.b = translate(preview.b, delta);
+		preview.center = translate(preview.center, delta);
 		return preview;
 	}
 
@@ -118,25 +114,7 @@ void SketchView::restoreSketchState(const SketchModel& state) {
 	SketchTool activeTool = geometry.sketch.activeTool;
 	geometry.sketch = state;
 	geometry.sketch.activeTool = activeTool;
-
-	for (SketchPoint& point : geometry.sketch.points) {
-		point.selected = false;
-	}
-	for (SketchLine& line : geometry.sketch.lines) {
-		line.selected = false;
-	}
-	for (SketchCircle& circle : geometry.sketch.circles) {
-		circle.selected = false;
-	}
-	for (SketchArc& arc : geometry.sketch.arcs) {
-		arc.selected = false;
-	}
-	for (SketchRectangle& rect : geometry.sketch.rectangles) {
-		rect.selected = false;
-	}
-	for (SketchDimension& dimension : geometry.sketch.dimensions) {
-		dimension.selected = false;
-	}
+	geometry.sketch.clearEntitySelection();
 
 	selectedTrimSegments.clear();
 	movingTrimSegments.clear();
@@ -183,6 +161,11 @@ void SketchView::clearToolToggles() {
 	isMovingSelection = false;
 	hasMoveToBase = false;
 	movingTrimSegments.clear();
+
+	// a half-finished label drag belongs to the tool being left: only Select and
+	// Dimension run updateDimensionLabelDrag(), so leaving for any other tool
+	// would strand the drag and resume it on the way back
+	draggingDimensionID = -1;
 }
 
 void SketchView::setActiveSketchTool(SketchTool tool) {
@@ -289,30 +272,12 @@ std::optional<SnapResult> SketchView::findSnap(ImVec2 mouse) {
 	}
 
 	for (const SketchRectangle& rect : geometry.sketch.rectangles) {
-		Vec2 corners[4] = {
-			Vec2{ rect.min.z, rect.min.r },
-			Vec2{ rect.max.z, rect.min.r },
-			Vec2{ rect.max.z, rect.max.r },
-			Vec2{ rect.min.z, rect.max.r }
-		};
-
-		for (int edge = 0; edge < 4; edge++) {
-			Vec2 a = corners[edge];
-			Vec2 b = corners[(edge + 1) % 4];
-
+		forEachRectEdge(rect, [&](int, Vec2 a, Vec2 b) {
 			tryCandidate(SnapType::Vertex, a, rect.id);
 			tryCandidate(SnapType::Line, closestPointOnSegment(mouseWorld, a, b), rect.id);
-		}
+		});
 
-		// center
-		tryCandidate(
-			SnapType::Vertex,
-			Vec2{
-				0.5 * (rect.min.z + rect.max.z),
-				0.5 * (rect.min.r + rect.max.r)
-			},
-			rect.id
-		);
+		tryCandidate(SnapType::Vertex, rectangleCenter(rect), rect.id);
 	}
 
 	// snap to circle edge
@@ -409,34 +374,16 @@ std::optional<DimensionPickResult> SketchView::findDimensionTarget(ImVec2 mouse)
 	}
 
 	for (const SketchRectangle& rect : geometry.sketch.rectangles) {
-		Vec2 a{ rect.min.z, rect.min.r };
-		Vec2 b{ rect.max.z, rect.min.r };
-		Vec2 c{ rect.max.z, rect.max.r };
-		Vec2 d{ rect.min.z, rect.max.r };
-
-		tryCandidate(
-			SketchDimensionType::RectangleWidth,
-			rect.id,
-			closestPointOnSegment(mouseWorld, a, b)
-		);
-
-		tryCandidate(
-			SketchDimensionType::RectangleWidth,
-			rect.id,
-			closestPointOnSegment(mouseWorld, d, c)
-		);
-
-		tryCandidate(
-			SketchDimensionType::RectangleHeight,
-			rect.id,
-			closestPointOnSegment(mouseWorld, a, d)
-		);
-
-		tryCandidate(
-			SketchDimensionType::RectangleHeight,
-			rect.id,
-			closestPointOnSegment(mouseWorld, b, c)
-		);
+		// edges 0 and 2 run along z (width), edges 1 and 3 along r (height)
+		forEachRectEdge(rect, [&](int edge, Vec2 a, Vec2 b) {
+			tryCandidate(
+				edge % 2 == 0 ?
+				SketchDimensionType::RectangleWidth :
+				SketchDimensionType::RectangleHeight,
+				rect.id,
+				closestPointOnSegment(mouseWorld, a, b)
+			);
+		});
 	}
 
 	return best;
@@ -450,22 +397,24 @@ std::string SketchView::getDimensionLabel(
 	const UnitOption& unit = Units::lengthUnits[gui.project.lengthScale.index];
 	double displayValue = fromBaseValue(value, unit);
 
-	char buffer[64] = {};
-
+	// a line's length carries no prefix; the others say what they measure
+	const char* prefix = "";
 	switch (dimension.type) {
-	case SketchDimensionType::LineLength:
-		std::snprintf(buffer, sizeof(buffer), "%.6g %s", displayValue, unit.name);
-		break;
 	case SketchDimensionType::CircleRadius:
-		std::snprintf(buffer, sizeof(buffer), "R %.6g %s", displayValue, unit.name);
+		prefix = "R ";
 		break;
 	case SketchDimensionType::RectangleWidth:
-		std::snprintf(buffer, sizeof(buffer), "W %.6g %s", displayValue, unit.name);
+		prefix = "W ";
 		break;
 	case SketchDimensionType::RectangleHeight:
-		std::snprintf(buffer, sizeof(buffer), "H %.6g %s", displayValue, unit.name);
+		prefix = "H ";
+		break;
+	default:
 		break;
 	}
+
+	char buffer[64] = {};
+	std::snprintf(buffer, sizeof(buffer), "%s%.6g %s", prefix, displayValue, unit.name);
 
 	return buffer;
 }
@@ -829,22 +778,7 @@ void SketchView::handleSelect() {
 
 	auto clearSelection = [&]() {
 		selectedTrimSegments.clear();
-
-		for (SketchPoint& point : geometry.sketch.points) {
-			point.selected = false;
-		}
-		for (SketchLine& line : geometry.sketch.lines) {
-			line.selected = false;
-		}
-		for (SketchCircle& circle : geometry.sketch.circles) {
-			circle.selected = false;
-		}
-		for (SketchArc& arc : geometry.sketch.arcs) {
-			arc.selected = false;
-		}
-		for (SketchRectangle& rect : geometry.sketch.rectangles) {
-			rect.selected = false;
-		}
+		geometry.sketch.clearEntitySelection();
 	};
 
 	if (isMovingSelection) {
@@ -881,6 +815,14 @@ void SketchView::handleSelect() {
 	if (!isSelecting) {
 		if (ImGui::IsItemHovered() &&
 			ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+			// The press was consumed by handleDimensionLabels() as a label
+			// drag/edit, which cleared draggingDimensionID on this same release
+			// frame. Without this the click would fall through to a pick and
+			// wipe the selection every time a label is nudged.
+			if (findDimensionLabel(currentMousePos)) {
+				return;
+			}
+
 			if (!io.KeyCtrl) {
 				clearSelection();
 			}
@@ -1171,59 +1113,38 @@ void SketchView::handleMouseAndKey() {
 
 	handleOpenPopup();
 
-	if (!isDrawingEntity) {
+	if (!isDrawingEntity || !ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
 		return;
 	}
 
+	// the drag is over either way; whether it produced anything is decided below
+	isDrawingEntity = false;
 
-	if (geometry.sketch.activeTool == SketchTool::Line &&
-		ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-		Vec2 start = pendingStartWorld;
-		Vec2 end = pendingCurrentWorld;
-
-		double length = distance(start, end);
-
-		if (length > 1e-12) {
-			SketchModel beforeLine = geometry.sketch;
-			geometry.sketch.addLine(start, end);
-			recordSketchUndoState(beforeLine);
-		}
-
-		isDrawingEntity = false;
+	// start is the first corner (line/rectangle) or the center (circle), so a
+	// zero-length drag means there is nothing to add for any of the three
+	Vec2 start = pendingStartWorld;
+	Vec2 end = pendingCurrentWorld;
+	if (distance(start, end) <= 1e-12) {
+		return;
 	}
 
-	if (geometry.sketch.activeTool == SketchTool::Circle &&
-		ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-		Vec2 center = pendingStartWorld;
-		Vec2 edge = pendingCurrentWorld;
-		double radius = distance(center, edge);
+	SketchModel beforeAdd = geometry.sketch;
 
-		if (radius > 1e-12) {
-			SketchModel beforeCircle = geometry.sketch;
-			geometry.sketch.addCircle(center, radius);
-			recordSketchUndoState(beforeCircle);
-		}
-
-		isDrawingEntity = false;
+	switch (geometry.sketch.activeTool) {
+	case SketchTool::Line:
+		geometry.sketch.addLine(start, end);
+		break;
+	case SketchTool::Circle:
+		geometry.sketch.addCircle(start, distance(start, end));
+		break;
+	case SketchTool::Rectangle:
+		geometry.sketch.addRectangle(start, end);
+		break;
+	default:
+		return;
 	}
 
-	if (geometry.sketch.activeTool == SketchTool::Rectangle &&
-		ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-		Vec2 cornerA = pendingStartWorld;
-		Vec2 cornerB = pendingCurrentWorld;
-
-		if (distance(cornerA, cornerB) > 1e-12) {
-			SketchModel beforeRectangle = geometry.sketch;
-			geometry.sketch.addRectangle(cornerA, cornerB);
-			recordSketchUndoState(beforeRectangle);
-		}
-
-		isDrawingEntity = false;
-	}
-
-	if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-		isDrawingEntity = false;
-	}
+	recordSketchUndoState(beforeAdd);
 }
 
 void SketchView::handleDimensionLabels() {
@@ -1348,6 +1269,39 @@ void SketchView::updateDimensionLabelDrag() {
 }
 
 
+void SketchView::drawArc(
+	ImDrawList* drawList,
+	Vec2 center,
+	double radius,
+	double startAngle,
+	double endAngle,
+	ImU32 color,
+	float thickness
+) {
+	constexpr int segmentsPerTurn = 96;
+
+	double span = positiveSpan(startAngle, endAngle);
+	int segments = std::max(8, (int)(span / twoPi * segmentsPerTurn));
+	Vec2 prev = pointOnCircle(center, radius, startAngle);
+
+	for (int i = 1; i <= segments; i++) {
+		Vec2 next = pointOnCircle(
+			center,
+			radius,
+			startAngle + span * ((double)(i) / (double)(segments))
+		);
+
+		drawList->AddLine(
+			camera.worldToScreen(prev),
+			camera.worldToScreen(next),
+			color,
+			thickness
+		);
+
+		prev = next;
+	}
+}
+
 void SketchView::drawSketchEntities(ImDrawList* drawList) {
 
 	std::optional<TrimPreviewResult> hoveredSegment =
@@ -1392,36 +1346,17 @@ void SketchView::drawSketchEntities(ImDrawList* drawList) {
 				hoverLineThickness
 			);
 			break;
-		case TrimPreviewGeometry::Arc: {
-			double startAngle = segment.startAngle;
-			double endAngle = segment.endAngle;
-			while (endAngle < startAngle) {
-				endAngle += twoPi;
-			}
-
-			double span = endAngle - startAngle;
-			int segments = std::max(8, (int)(std::abs(span) / twoPi * 96.0));
-			Vec2 prev = pointOnCircle(segment.center, segment.radius, startAngle);
-
-			for (int i = 1; i <= segments; i++) {
-				double t = (double)(i) / (double)(segments);
-				Vec2 next = pointOnCircle(
-					segment.center,
-					segment.radius,
-					startAngle + span * t
-				);
-
-				drawList->AddLine(
-					camera.worldToScreen(prev),
-					camera.worldToScreen(next),
-					hoverLineColor,
-					hoverLineThickness
-				);
-
-				prev = next;
-			}
+		case TrimPreviewGeometry::Arc:
+			drawArc(
+				drawList,
+				segment.center,
+				segment.radius,
+				segment.startAngle,
+				segment.endAngle,
+				hoverLineColor,
+				hoverLineThickness
+			);
 			break;
-		}
 		default:
 			break;
 		}
@@ -1474,34 +1409,18 @@ void SketchView::drawSketchEntities(ImDrawList* drawList) {
 	}
 
 	for (const SketchArc& arc : geometry.sketch.arcs) {
-		double endAngle = arc.endAngle;
-		while (endAngle < arc.startAngle) {
-			endAngle += twoPi;
-		}
-
-		double span = endAngle - arc.startAngle;
-		int segments = std::max(8, (int)(std::abs(span) / twoPi * 80.0));
-		Vec2 prev = pointOnCircle(arc.center, arc.radius, arc.startAngle);
 		bool highlight =
 			arc.selected || isEraseHovered(SketchEntityType::Arc, arc.id);
 
-		for (int i = 1; i <= segments; i++) {
-			double t = (double)(i) / (double)(segments);
-			Vec2 next = pointOnCircle(
-				arc.center,
-				arc.radius,
-				arc.startAngle + span * t
-			);
-
-			drawList->AddLine(
-				camera.worldToScreen(prev),
-				camera.worldToScreen(next),
-				highlight ? hoverLineColor : sketchLineColor,
-				highlight ? hoverLineThickness : sketchLineThickness
-			);
-
-			prev = next;
-		}
+		drawArc(
+			drawList,
+			arc.center,
+			arc.radius,
+			arc.startAngle,
+			arc.endAngle,
+			highlight ? hoverLineColor : sketchLineColor,
+			highlight ? hoverLineThickness : sketchLineThickness
+		);
 	}
 
 	Vec2 selectionDelta{};
@@ -1608,6 +1527,14 @@ void SketchView::drawDimensions(ImDrawList* drawList) {
 }
 
 void SketchView::drawDimensionEditor() {
+	// The popup can go away without Apply or Cancel — ImGui drops it if this
+	// window stops being submitted (switching setup tabs with it open). Clear the
+	// id then, or it stays latched and keeps blocking the Delete key, which is
+	// gated on "no dimension being edited".
+	if (editingDimensionID >= 0 && !ImGui::IsPopupOpen("Edit Dimension")) {
+		editingDimensionID = -1;
+	}
+
 	if (ImGui::BeginPopupModal(
 		"Edit Dimension",
 		nullptr,
@@ -1734,29 +1661,17 @@ void SketchView::drawPopup(ImDrawList* drawList) {
 			resetView();
 		}
 
-		if (undoSketchStates.empty()) {
-			ImGui::BeginDisabled();
-		}
-
+		ImGui::BeginDisabled(undoSketchStates.empty());
 		if (ImGui::MenuItem("Undo", ImGui::GetKeyChordName(undoShortcut))) {
 			undoSketchEdit();
 		}
+		ImGui::EndDisabled();
 
-		if (undoSketchStates.empty()) {
-			ImGui::EndDisabled();
-		}
-
-		if (redoSketchStates.empty()) {
-			ImGui::BeginDisabled();
-		}
-
+		ImGui::BeginDisabled(redoSketchStates.empty());
 		if (ImGui::MenuItem("Redo", ImGui::GetKeyChordName(redoShortcut))) {
 			redoSketchEdit();
 		}
-
-		if (redoSketchStates.empty()) {
-			ImGui::EndDisabled();
-		}
+		ImGui::EndDisabled();
 
 		// Segment naming lives in the Mesh tab; the Geometry/sketch view no
 		// longer creates or lists named selections.

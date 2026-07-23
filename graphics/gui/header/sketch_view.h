@@ -2,6 +2,7 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <optional>
 #include <string>
@@ -40,6 +41,10 @@ namespace sketchmath {
 
 	inline Vec2 subtract(Vec2 a, Vec2 b) {
 		return Vec2{ a.z - b.z, a.r - b.r };
+	}
+
+	inline Vec2 translate(Vec2 point, Vec2 delta) {
+		return Vec2{ point.z + delta.z, point.r + delta.r };
 	}
 
 	inline Vec2 interpolate(Vec2 a, Vec2 b, double t) {
@@ -82,6 +87,55 @@ namespace sketchmath {
 		}
 
 		return angle >= start - 1e-7 && angle <= end + 1e-7;
+	}
+
+	// End angle brought ahead of the start angle before subtracting, so the span
+	// is right for arcs stored with end < start (a trim that wrapped past 0).
+	inline double positiveSpan(double startAngle, double endAngle) {
+		while (endAngle < startAngle) {
+			endAngle += twoPi;
+		}
+
+		return endAngle - startAngle;
+	}
+
+	inline double arcSpan(const SketchArc& arc) {
+		return positiveSpan(arc.startAngle, arc.endAngle);
+	}
+
+	// Bring an arc's angles into a canonical form: startAngle in [0, 2*pi) with
+	// the span preserved. Normalizing startAngle on its own would drop it below
+	// endAngle and inflate the span whenever startAngle >= 2*pi (arcs crossing 0
+	// degrees), turning a small piece into a near-full circle.
+	inline void normalizeArc(double& startAngle, double& endAngle) {
+		double span = positiveSpan(startAngle, endAngle);
+		startAngle = normalizeAngle(startAngle);
+		endAngle = startAngle + span;
+	}
+
+	inline std::array<Vec2, 4> rectangleCorners(const SketchRectangle& rect) {
+		return {
+			Vec2{ rect.min.z, rect.min.r },
+			Vec2{ rect.max.z, rect.min.r },
+			Vec2{ rect.max.z, rect.max.r },
+			Vec2{ rect.min.z, rect.max.r }
+		};
+	}
+
+	inline Vec2 rectangleCenter(const SketchRectangle& rect) {
+		return Vec2{
+			0.5 * (rect.min.z + rect.max.z),
+			0.5 * (rect.min.r + rect.max.r)
+		};
+	}
+
+	// Invokes func(edgeIndex, cornerA, cornerB) for each of the 4 edges.
+	template <typename Func>
+	void forEachRectEdge(const SketchRectangle& rect, Func&& func) {
+		std::array<Vec2, 4> corners = rectangleCorners(rect);
+		for (int edge = 0; edge < 4; edge++) {
+			func(edge, corners[edge], corners[(edge + 1) % 4]);
+		}
 	}
 
 	inline double arcParameter(double angle, const SketchArc& arc) {
@@ -262,6 +316,19 @@ private:
 	void handleOpenPopup();
 
 	void drawPopup(ImDrawList* drawList);
+
+	// polyline approximation of an arc, shared by the entity, selection and trim
+	// draws so all three curve the same way
+	void drawArc(
+		ImDrawList* drawList,
+		Vec2 center,
+		double radius,
+		double startAngle,
+		double endAngle,
+		ImU32 color,
+		float thickness
+	);
+
 	void drawSketchEntities(ImDrawList* drawList);
 	void drawTrimPreview(ImDrawList* drawList);
 	void drawDimensions(ImDrawList* drawList);

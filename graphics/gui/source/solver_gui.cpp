@@ -559,30 +559,20 @@ void SolverGUI::drawPropertiesPanel() {
 			labelRow("Linear Solver");
 			drawLinearSolverCombo();
 
-			// Multigrid accelerates the pressure-correction solve specifically, so
-			// it belongs next to the linear solver it replaces there -- not in the
-			// General tab's field checkboxes, which pick which EQUATIONS are solved.
-			labelRow("Multigrid");
-			checkBox("##Multigrid", &solver.useMultigrid);
-
 			ImGui::EndTable();
 		}
 
 		sectionHeader("Options");
 		if (beginPropertyTable("SolverOptions")) {
 
+			// Multigrid accelerates the pressure-correction solve specifically, so
+			// it belongs next to the linear solver it replaces there -- not in the
+			// General tab's field checkboxes, which pick which EQUATIONS are solved.
+			labelRow("Multigrid");
+			checkBox("##Multigrid", &solver.useMultigrid);
+
 			labelRow("Add Convection Term");
 			checkBox("##ConvectionTerm", &solver.configSolver.addConvectionTerm);
-
-			// The discretization only describes a term that is being assembled,
-			// so it is meaningless with convection off.
-			const bool convectionOff = !solver.configSolver.addConvectionTerm;
-
-			labelRow("Convection Discretization");
-			ImGui::BeginDisabled(convectionOff);
-			createSimpleCombo("##ConvectionScheme", solver.convectionDiscretizationType, (int&)(solver.convectionScheme), IM_ARRAYSIZE(solver.convectionDiscretizationType));
-			ImGui::EndDisabled();
-			disabledHint(convectionOff, "Enable Add Convection Term to choose a discretization.");
 
 			// A structured mesh is orthogonal by construction, so the deferred
 			// cross term is identically zero. Force the flag off as well as
@@ -598,6 +588,16 @@ void SolverGUI::drawPropertiesPanel() {
 			checkBox("##NonOrthCorrector", &project.solver.configSimple.useNonOrthCorrector);
 			ImGui::EndDisabled();
 			disabledHint(orthogonalMesh, "A structured mesh is orthogonal, so there is no cross term to correct.");
+
+			// The discretization only describes a term that is being assembled,
+			// so it is meaningless with convection off.
+			const bool convectionOff = !solver.configSolver.addConvectionTerm;
+
+			labelRow("Convection Discretization");
+			ImGui::BeginDisabled(convectionOff);
+			createSimpleCombo("##ConvectionScheme", solver.convectionDiscretizationType, (int&)(solver.convectionScheme), IM_ARRAYSIZE(solver.convectionDiscretizationType));
+			ImGui::EndDisabled();
+			disabledHint(convectionOff, "Enable Add Convection Term to choose a discretization.");
 
 			labelRow("Pressure Gradient");
 			createSimpleCombo(

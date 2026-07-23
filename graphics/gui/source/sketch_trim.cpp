@@ -67,36 +67,6 @@ namespace {
 		addUniqueParameter(values, angleOfPoint(center, point) / twoPi);
 	}
 
-	std::array<Vec2, 4> rectangleCorners(const SketchRectangle& rect) {
-		return {
-			Vec2{ rect.min.z, rect.min.r },
-			Vec2{ rect.max.z, rect.min.r },
-			Vec2{ rect.max.z, rect.max.r },
-			Vec2{ rect.min.z, rect.max.r }
-		};
-	}
-
-	// Invokes func(edgeIndex, cornerA, cornerB) for each of the 4 edges.
-	template <typename Func>
-	void forEachRectEdge(const SketchRectangle& rect, Func&& func) {
-		std::array<Vec2, 4> corners = rectangleCorners(rect);
-		for (int edge = 0; edge < 4; edge++) {
-			func(edge, corners[edge], corners[(edge + 1) % 4]);
-		}
-	}
-
-	template <typename T>
-	void eraseByID(std::vector<T>& items, int id) {
-		items.erase(
-			std::remove_if(
-				items.begin(),
-				items.end(),
-				[&](const T& item) { return item.id == id; }
-			),
-			items.end()
-		);
-	}
-
 	void addLineLineIntersection(
 		std::vector<double>& values,
 		Vec2 targetA,
@@ -563,24 +533,6 @@ namespace {
 		return std::nullopt;
 	}
 
-	void eraseDimensionsForEntity(
-		SketchModel& sketch,
-		SketchDimensionType type,
-		int entityID
-	) {
-		sketch.dimensions.erase(
-			std::remove_if(
-				sketch.dimensions.begin(),
-				sketch.dimensions.end(),
-				[&](const SketchDimension& dimension) {
-					return dimension.type == type &&
-						dimension.entityID == entityID;
-				}
-			),
-			sketch.dimensions.end()
-		);
-	}
-
 	void addLineIfLong(SketchModel& sketch, Vec2 a, Vec2 b) {
 		if (distance(a, b) > 1e-9) {
 			sketch.addLine(a, b);
@@ -594,27 +546,13 @@ namespace {
 		double startAngle,
 		double endAngle
 	) {
-		// Bring endAngle ahead of startAngle first (handles the circle-trim
-		// wraparound case where endAngle < startAngle), capture the span, then
-		// normalize startAngle and re-derive endAngle from that span. Normalizing
-		// startAngle on its own would drop it below endAngle and inflate the span
-		// whenever startAngle >= 2*pi (e.g. arcs that cross 0 degrees), turning a
-		// small kept piece into a near-full circle.
-		while (endAngle < startAngle) {
-			endAngle += twoPi;
-		}
+		// normalizeArc keeps the span (which may have wrapped past 2*pi during a
+		// circle trim) while bringing startAngle back into [0, 2*pi)
+		normalizeArc(startAngle, endAngle);
 
-		double span = endAngle - startAngle;
-		startAngle = normalizeAngle(startAngle);
-		endAngle = startAngle + span;
-
-		if (span * radius > 1e-9) {
+		if ((endAngle - startAngle) * radius > 1e-9) {
 			sketch.addArc(center, radius, startAngle, endAngle);
 		}
-	}
-
-	Vec2 translatePoint(Vec2 point, Vec2 delta) {
-		return Vec2{ point.z + delta.z, point.r + delta.r };
 	}
 
 	TrimPreviewResult linePreview(
@@ -944,8 +882,8 @@ namespace {
 		for (const TrimPreviewResult& segment : segments) {
 			switch (segment.geometry) {
 			case TrimPreviewGeometry::Line: {
-				Vec2 a = translatePoint(segment.a, delta);
-				Vec2 b = translatePoint(segment.b, delta);
+				Vec2 a = translate(segment.a, delta);
+				Vec2 b = translate(segment.b, delta);
 				if (distance(a, b) <= 1e-9) {
 					break;
 				}
@@ -969,7 +907,7 @@ namespace {
 					break;
 				}
 
-				Vec2 center = translatePoint(segment.center, delta);
+				Vec2 center = translate(segment.center, delta);
 				int circleID = sketch.addCircle(center, segment.radius);
 				added.push_back(circlePreview(center, segment.radius, circleID));
 				break;
@@ -979,24 +917,18 @@ namespace {
 					break;
 				}
 
-				// normalize startAngle and endAngle together so the span is preserved
-				// even when the segment's startAngle wrapped past 2*pi (otherwise a
-				// moved arc balloons into a near-full circle)
+				// normalize the two angles together so the span is preserved even
+				// when the segment's startAngle wrapped past 2*pi (otherwise a moved
+				// arc balloons into a near-full circle)
 				double startAngle = segment.startAngle;
 				double endAngle = segment.endAngle;
-				while (endAngle < startAngle) {
-					endAngle += twoPi;
-				}
+				normalizeArc(startAngle, endAngle);
 
-				double span = endAngle - startAngle;
-				startAngle = normalizeAngle(startAngle);
-				endAngle = startAngle + span;
-
-				if (span * segment.radius <= 1e-9) {
+				if ((endAngle - startAngle) * segment.radius <= 1e-9) {
 					break;
 				}
 
-				Vec2 center = translatePoint(segment.center, delta);
+				Vec2 center = translate(segment.center, delta);
 				int arcID = sketch.addArc(
 					center,
 					segment.radius,
@@ -1024,15 +956,6 @@ namespace {
 		}
 
 		return added;
-	}
-
-	double positiveArcSpan(const SketchArc& arc) {
-		double endAngle = arc.endAngle;
-		while (endAngle < arc.startAngle) {
-			endAngle += twoPi;
-		}
-
-		return endAngle - arc.startAngle;
 	}
 
 	int entityHoverPriority(SketchEntityType type) {
@@ -1280,7 +1203,7 @@ std::optional<TrimPreviewResult> SketchView::findTrimPreview(ImVec2 mouse) {
 			return std::nullopt;
 		}
 
-		double span = positiveArcSpan(*arc);
+		double span = arcSpan(*arc);
 		return arcPreview(
 			arc->center,
 			arc->radius,
@@ -1407,7 +1330,7 @@ std::vector<TrimPreviewResult> SketchView::findTrimPreviewsInRegion(
 	for (const SketchArc& arc : geometry.sketch.arcs) {
 		std::vector<double> splitParameters =
 			collectArcSplitParameters(geometry.sketch, arc, arc.id);
-		double span = positiveArcSpan(arc);
+		double span = arcSpan(arc);
 
 		for (int i = 0; i < (int)(splitParameters.size()) - 1; i++) {
 			double startAngle = arc.startAngle + splitParameters[i] * span;
@@ -1485,12 +1408,7 @@ bool SketchView::deleteSelectedTrimSegments() {
 				break;
 			}
 
-			eraseByID(geometry.sketch.lines, line.id);
-			eraseDimensionsForEntity(
-				geometry.sketch,
-				SketchDimensionType::LineLength,
-				line.id
-			);
+			geometry.sketch.removeEntity(SketchEntityType::Line, line.id);
 
 			for (ParamInterval kept : keptIntervalsFromRemoved(removed)) {
 				addLineIfLong(
@@ -1531,17 +1449,7 @@ bool SketchView::deleteSelectedTrimSegments() {
 				break;
 			}
 
-			eraseByID(geometry.sketch.rectangles, rect.id);
-			eraseDimensionsForEntity(
-				geometry.sketch,
-				SketchDimensionType::RectangleWidth,
-				rect.id
-			);
-			eraseDimensionsForEntity(
-				geometry.sketch,
-				SketchDimensionType::RectangleHeight,
-				rect.id
-			);
+			geometry.sketch.removeEntity(SketchEntityType::Rectangle, rect.id);
 
 			forEachRectEdge(rect, [&](int edge, Vec2 a, Vec2 b) {
 				for (ParamInterval kept :
@@ -1577,12 +1485,7 @@ bool SketchView::deleteSelectedTrimSegments() {
 				break;
 			}
 
-			eraseByID(geometry.sketch.circles, circle.id);
-			eraseDimensionsForEntity(
-				geometry.sketch,
-				SketchDimensionType::CircleRadius,
-				circle.id
-			);
+			geometry.sketch.removeEntity(SketchEntityType::Circle, circle.id);
 
 			for (ParamInterval kept : keptIntervalsFromRemoved(removed)) {
 				addArcIfLong(
@@ -1617,9 +1520,9 @@ bool SketchView::deleteSelectedTrimSegments() {
 				break;
 			}
 
-			eraseByID(geometry.sketch.arcs, arc.id);
+			geometry.sketch.removeEntity(SketchEntityType::Arc, arc.id);
 
-			double span = positiveArcSpan(arc);
+			double span = arcSpan(arc);
 			for (ParamInterval kept : keptIntervalsFromRemoved(removed)) {
 				addArcIfLong(
 					geometry.sketch,
@@ -1773,10 +1676,8 @@ bool SketchView::pasteClipboardAt(Vec2 target) {
 		return false;
 	}
 
-	// setActiveSketchTool clears the drawing/selection interaction state for us;
-	// a label drag is the one thing it doesn't know about.
+	// clears the drawing/selection/label-drag interaction state for us
 	setActiveSketchTool(SketchTool::Select);
-	draggingDimensionID = -1;
 
 	SketchModel beforePaste = geometry.sketch;
 	if (!pasteClipboardSegments(subtract(target, clipboardAnchor))) {
@@ -1817,12 +1718,7 @@ bool SketchView::trimLineAtMouse(ImVec2 mouse) {
 		return false;
 	}
 
-	eraseByID(geometry.sketch.lines, lineID);
-	eraseDimensionsForEntity(
-		geometry.sketch,
-		SketchDimensionType::LineLength,
-		lineID
-	);
+	geometry.sketch.removeEntity(SketchEntityType::Line, lineID);
 
 	double removeLeft = splitParameters[*interval];
 	double removeRight = splitParameters[*interval + 1];
@@ -1865,17 +1761,7 @@ bool SketchView::trimRectangleAtMouse(ImVec2 mouse) {
 		return false;
 	}
 
-	eraseByID(geometry.sketch.rectangles, rect.id);
-	eraseDimensionsForEntity(
-		geometry.sketch,
-		SketchDimensionType::RectangleWidth,
-		rect.id
-	);
-	eraseDimensionsForEntity(
-		geometry.sketch,
-		SketchDimensionType::RectangleHeight,
-		rect.id
-	);
+	geometry.sketch.removeEntity(SketchEntityType::Rectangle, rect.id);
 
 	double removeLeft = splitParameters[*interval];
 	double removeRight = splitParameters[*interval + 1];
@@ -1909,13 +1795,9 @@ bool SketchView::trimCircleAtMouse(ImVec2 mouse, int circleID) {
 	std::vector<double> splitParameters =
 		collectCircleSplitParameters(geometry.sketch, circle, circleID);
 
+	// nothing crosses it, so there is no piece to keep: trimming takes the circle
 	if (splitParameters.size() < 2) {
-		eraseByID(geometry.sketch.circles, circleID);
-		eraseDimensionsForEntity(
-			geometry.sketch,
-			SketchDimensionType::CircleRadius,
-			circleID
-		);
+		geometry.sketch.removeEntity(SketchEntityType::Circle, circleID);
 		return true;
 	}
 
@@ -1928,12 +1810,7 @@ bool SketchView::trimCircleAtMouse(ImVec2 mouse, int circleID) {
 		return false;
 	}
 
-	eraseByID(geometry.sketch.circles, circleID);
-	eraseDimensionsForEntity(
-		geometry.sketch,
-		SketchDimensionType::CircleRadius,
-		circleID
-	);
+	geometry.sketch.removeEntity(SketchEntityType::Circle, circleID);
 
 	for (int i = 0; i < (int)(splitParameters.size()); i++) {
 		if (i == *interval) {
@@ -1975,9 +1852,9 @@ bool SketchView::trimArcAtMouse(ImVec2 mouse, int arcID) {
 		return false;
 	}
 
-	eraseByID(geometry.sketch.arcs, arcID);
+	geometry.sketch.removeEntity(SketchEntityType::Arc, arcID);
 
-	double span = positiveArcSpan(arc);
+	double span = arcSpan(arc);
 	for (int i = 0; i < (int)(splitParameters.size()) - 1; i++) {
 		if (i == *interval) {
 			continue;
@@ -2060,37 +1937,17 @@ void SketchView::drawTrimPreview(ImDrawList* drawList) {
 			previewThickness
 		);
 		break;
-	case TrimPreviewGeometry::Arc: {
-		double startAngle = preview->startAngle;
-		double endAngle = preview->endAngle;
-		while (endAngle < startAngle) {
-			endAngle += twoPi;
-		}
-
-		double span = endAngle - startAngle;
-		int segments = std::max(8, (int)(std::abs(span) / twoPi * 96.0));
-		Vec2 prev =
-			pointOnCircle(preview->center, preview->radius, startAngle);
-
-		for (int i = 1; i <= segments; i++) {
-			double t = (double)(i) / (double)(segments);
-			Vec2 next = pointOnCircle(
-				preview->center,
-				preview->radius,
-				startAngle + span * t
-			);
-
-			drawList->AddLine(
-				camera.worldToScreen(prev),
-				camera.worldToScreen(next),
-				previewColor,
-				previewThickness
-			);
-
-			prev = next;
-		}
+	case TrimPreviewGeometry::Arc:
+		drawArc(
+			drawList,
+			preview->center,
+			preview->radius,
+			preview->startAngle,
+			preview->endAngle,
+			previewColor,
+			previewThickness
+		);
 		break;
-	}
 	default:
 		break;
 	}
