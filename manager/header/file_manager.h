@@ -5,6 +5,8 @@
 #include <fstream>
 #include <filesystem>
 #include <cstdint>
+#include <codecvt>
+#include <locale>
 #include <type_traits>
 #include <utility>
 #include <unordered_set>
@@ -216,9 +218,41 @@ inline bool readVar(std::ifstream& in, std::string& value) {
 }
 
 
-// load a std::wstring (length-prefixed by CHARACTER count). wchar_t is 2 bytes on
-// Windows, so we read size*sizeof(wchar_t) bytes. Must be declared before readAll so
-// the variadic dispatch picks this overload instead of raw-copying the object.
+namespace FileEncoding {
+	// Project files historically stored Windows UTF-16 wchar_t bytes. Keep that
+	// exact representation on every platform so a Linux build can exchange .axi
+	// files with the existing Windows release (Linux wchar_t is normally UTF-32).
+	inline std::u16string wideToUtf16(const std::wstring& value) {
+		if constexpr (sizeof(wchar_t) == sizeof(char16_t)) {
+			return std::u16string(
+				reinterpret_cast<const char16_t*>(value.data()),
+				value.size()
+			);
+		}
+		else {
+			std::wstring_convert<std::codecvt_utf8<wchar_t>> wideUtf8;
+			std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> utf16Utf8;
+			return utf16Utf8.from_bytes(wideUtf8.to_bytes(value));
+		}
+	}
+
+	inline std::wstring utf16ToWide(const std::u16string& value) {
+		if constexpr (sizeof(wchar_t) == sizeof(char16_t)) {
+			return std::wstring(
+				reinterpret_cast<const wchar_t*>(value.data()),
+				value.size()
+			);
+		}
+		else {
+			std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> utf16Utf8;
+			std::wstring_convert<std::codecvt_utf8<wchar_t>> wideUtf8;
+			return wideUtf8.from_bytes(utf16Utf8.to_bytes(value));
+		}
+	}
+}
+
+// Load a std::wstring stored as UTF-16 code units. Must be declared before
+// readAll so variadic dispatch picks this overload instead of raw-copying it.
 inline bool readVar(std::ifstream& in, std::wstring& value) {
 	size_t size = 0;
 
@@ -226,17 +260,29 @@ inline bool readVar(std::ifstream& in, std::wstring& value) {
 		return false;
 	}
 
-	if (sizeExceedsFile(in, size, sizeof(wchar_t))) {
+	if (sizeExceedsFile(in, size, sizeof(char16_t))) {
 		return false;
 	}
 
-	value.resize(size);
+	std::u16string utf16(size, u'\0');
 
 	if (size == 0) {
+		value.clear();
 		return true;
 	}
 
-	return (bool)in.read((char*)value.data(), size * sizeof(wchar_t));
+	if (!in.read(reinterpret_cast<char*>(utf16.data()), size * sizeof(char16_t))) {
+		return false;
+	}
+
+	try {
+		value = FileEncoding::utf16ToWide(utf16);
+		return true;
+	}
+	catch (const std::range_error&) {
+		value.clear();
+		return false;
+	}
 }
 
 // load one vector. Trivially-copyable elements are read as one bulk block (the
@@ -403,9 +449,10 @@ inline void writeVar(std::ofstream& out, const std::string& value) {
 }
 
 inline void writeVar(std::ofstream& out, const std::wstring& value) {
-	size_t size = value.size();
+	const std::u16string utf16 = FileEncoding::wideToUtf16(value);
+	size_t size = utf16.size();
 	out.write((const char*)&size, sizeof(size));
-	out.write((const char*)value.data(), size * sizeof(wchar_t));
+	out.write((const char*)utf16.data(), size * sizeof(char16_t));
 }
 
 // save std::vector. Trivially-copyable elements go out as one bulk block (the

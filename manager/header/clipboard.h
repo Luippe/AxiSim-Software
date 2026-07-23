@@ -1,7 +1,7 @@
 #pragma once
 #include <string>
 
-// Windows clipboard helpers (Win32). These replace the clip library.
+// Cross-platform text clipboard plus the native image clipboard where available.
 
 // copy UTF-8 text to the clipboard. returns false on failure.
 bool copyTextToClipboard(const std::string& text);
@@ -10,3 +10,7 @@ bool copyTextToClipboard(const std::string& text);
 // the data is expected bottom-up (as produced by glReadPixels) and is made opaque.
 // returns false on failure.
 bool copyRGBAToClipboard(const unsigned char* rgbaBottomUp, int width, int height);
+
+// Linux/Wayland and Linux/X11 require different image clipboard protocols; the
+// first Linux release exposes PNG export instead of pretending a copy succeeded.
+bool imageClipboardSupported();

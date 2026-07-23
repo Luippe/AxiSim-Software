@@ -144,12 +144,14 @@ void AnimationGUI::beginExport(const std::filesystem::path& target) {
 
         exportTarget = target;
 
-        if (!video.open(target.wstring(), captureWidth, captureHeight, fps)) {
-            console.addLine(
-                "could not start the video encoder -- on Windows N/KN editions "
-                "this needs the Media Feature Pack. Export as .png instead to get "
-                "the frames."
-            );
+		if (!video.open(target, captureWidth, captureHeight, fps)) {
+			console.addLine(VideoWriter::supported()
+				? "could not start the video encoder -- on Windows N/KN editions "
+				  "this needs the Media Feature Pack. Export as .png instead to get "
+				  "the frames."
+				: "MP4 export is not available in this build; choose .png to export "
+				  "a numbered frame sequence."
+			);
             return;
         }
 
@@ -200,8 +202,8 @@ void AnimationGUI::onFrameCaptured(const std::vector<unsigned char>& pixels) {
     bool ok = !pixels.empty();
 
     if (ok) {
-        ok = (format == ExportFormat::PNGSequence)
-            ? writeRGBAToPNG(exportFramePath().wstring(), pixels.data(), captureWidth, captureHeight)
+		ok = (format == ExportFormat::PNGSequence)
+			? writeRGBAToPNG(exportFramePath(), pixels.data(), captureWidth, captureHeight)
             : video.writeFrame(pixels.data());
     }
 

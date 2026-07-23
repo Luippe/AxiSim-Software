@@ -1,17 +1,24 @@
 #include "display.h"
 #include <iostream>
+#include <stdexcept>
 #include <GLFW/glfw3.h>
 
 
 Display::Display() {
 
 	// initialize display
-	glfwInit();
+	if (!glfwInit()) {
+		throw std::runtime_error("Failed to initialize GLFW");
+	}
 	
-	// get monitor
+	// Pick the requested monitor when it exists, otherwise use GLFW's primary
+	// monitor. The previous release unconditionally selected monitor 1, which
+	// dereferenced past the array on the common single-monitor setup.
 	GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
-	GLFWmonitor* monitor = monitors[monitorIndex];
-	const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+	GLFWmonitor* monitor = (monitors && monitorIndex >= 0 && monitorIndex < monitorCount)
+		? monitors[monitorIndex]
+		: glfwGetPrimaryMonitor();
+	const GLFWvidmode* mode = monitor ? glfwGetVideoMode(monitor) : nullptr;
 
 	//for (int i = 0; i < monitorCount; i++) {
 	//	int x, y;
@@ -29,10 +36,19 @@ Display::Display() {
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+#ifdef __APPLE__
+	// macOS only creates 3.2+ core contexts when forward compatibility is set.
+	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+#endif
 	glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
 	
-	window = glfwCreateWindow(mode->width, mode->height, "AxiSim", nullptr, nullptr);
-	windowHandle = glfwGetWin32Window(window);
+	const int initialWidth = mode ? mode->width : 1280;
+	const int initialHeight = mode ? mode->height : 720;
+	window = glfwCreateWindow(initialWidth, initialHeight, "AxiSim", nullptr, nullptr);
+	if (!window) {
+		glfwTerminate();
+		throw std::runtime_error("Failed to create the AxiSim OpenGL window");
+	}
 
 	glfwMakeContextCurrent(window);
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);

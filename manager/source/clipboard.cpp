@@ -1,42 +1,28 @@
 #include "clipboard.h"
 
+#ifndef GLFW_INCLUDE_NONE
+#define GLFW_INCLUDE_NONE
+#endif
+#include <GLFW/glfw3.h>
+
+#ifdef _WIN32
 #include <windows.h>
 #include <cstring>
+#endif
 
 bool copyTextToClipboard(const std::string& text) {
-
-	// convert UTF-8 -> UTF-16 (CF_UNICODETEXT). +1/-1 handles the null terminator.
-	int wideLen = MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, nullptr, 0);
-	if (wideLen <= 0) {
+	GLFWwindow* window = glfwGetCurrentContext();
+	if (!window) {
 		return false;
 	}
 
-	HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (size_t)wideLen * sizeof(wchar_t));
-	if (!hMem) {
-		return false;
-	}
-
-	wchar_t* dst = static_cast<wchar_t*>(GlobalLock(hMem));
-	MultiByteToWideChar(CP_UTF8, 0, text.c_str(), -1, dst, wideLen);
-	GlobalUnlock(hMem);
-
-	if (!OpenClipboard(nullptr)) {
-		GlobalFree(hMem);
-		return false;
-	}
-	EmptyClipboard();
-
-	bool ok = SetClipboardData(CF_UNICODETEXT, hMem) != nullptr;
-	CloseClipboard();
-
-	// on success the clipboard owns hMem; only free it if SetClipboardData failed
-	if (!ok) {
-		GlobalFree(hMem);
-	}
-	return ok;
+	glfwSetClipboardString(window, text.c_str());
+	return true;
 }
 
 bool copyRGBAToClipboard(const unsigned char* rgbaBottomUp, int width, int height) {
+
+#ifdef _WIN32
 
 	if (!rgbaBottomUp || width <= 0 || height <= 0) {
 		return false;
@@ -92,4 +78,18 @@ bool copyRGBAToClipboard(const unsigned char* rgbaBottomUp, int width, int heigh
 		GlobalFree(hMem);
 	}
 	return ok;
+#else
+	(void)rgbaBottomUp;
+	(void)width;
+	(void)height;
+	return false;
+#endif
+}
+
+bool imageClipboardSupported() {
+#ifdef _WIN32
+	return true;
+#else
+	return false;
+#endif
 }

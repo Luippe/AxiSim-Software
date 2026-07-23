@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AxiSim
+Comment=GPU-accelerated axisymmetric CFD
+Exec=axisim
+Icon=axisim
+Terminal=false
+Categories=Science;Education;Engineering;
+Keywords=CFD;simulation;fluid;mesh;CUDA;

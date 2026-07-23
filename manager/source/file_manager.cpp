@@ -1,24 +1,21 @@
 ﻿#include "file_manager.h"
 
-#ifndef GLFW_INCLUDE_NONE
-#define GLFW_INCLUDE_NONE
-#endif
+#include <nfd.h>
 
-#ifndef GLFW_EXPOSE_NATIVE_WIN32
-#define GLFW_EXPOSE_NATIVE_WIN32
-#endif
-
-#include <GLFW/glfw3.h>
-#include <GLFW/glfw3native.h>
-
+#ifdef _WIN32
 #include <windows.h>
-#include <commdlg.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#elif defined(__linux__)
+#include <unistd.h>
+#endif
 #include <string>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <vector>
 
 #include "project.h"
 #include "mesh.h"
@@ -32,27 +29,6 @@
 #include "printer.h"
 
 using namespace Shortcuts;
-
-std::string wStringToString(std::wstring path) {
-
-	// Calculating the length of the multibyte string
-	size_t len = wcstombs(nullptr, path.c_str(), 0) + 1;
-
-	// Creating a buffer to hold the multibyte string
-	char* buffer = new char[len];
-
-	// Converting wstring to string
-	wcstombs(buffer, path.c_str(), len);
-
-	// Creating std::string from char buffer
-	std::string str(buffer);
-
-	// Cleaning up the buffer
-	delete[] buffer;
-
-	return str;
-
-}
 
 namespace {
 	constexpr std::uint32_t solverFileMagic = 0x53585641u; // "AXVS" little-endian
@@ -89,12 +65,38 @@ namespace {
 	// works no matter where the app is launched from. Falls back to the CWD if the
 	// exe path can't be read.
 	std::filesystem::path executableDir() {
+	#ifdef _WIN32
 		wchar_t buffer[MAX_PATH];
 		DWORD len = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
 		if (len == 0 || len >= MAX_PATH) {
 			return std::filesystem::current_path();
 		}
 		return std::filesystem::path(buffer).parent_path();
+	#elif defined(__APPLE__)
+		std::uint32_t size = 0;
+		_NSGetExecutablePath(nullptr, &size);
+		std::vector<char> buffer(size);
+		if (_NSGetExecutablePath(buffer.data(), &size) != 0) {
+			return std::filesystem::current_path();
+		}
+		return std::filesystem::weakly_canonical(buffer.data()).parent_path();
+	#elif defined(__linux__)
+		std::vector<char> buffer(1024);
+		for (;;) {
+			const ssize_t len = readlink("/proc/self/exe", buffer.data(), buffer.size());
+			if (len < 0) {
+				return std::filesystem::current_path();
+			}
+			if (static_cast<size_t>(len) < buffer.size()) {
+				return std::filesystem::path(
+					std::string(buffer.data(), static_cast<size_t>(len))
+				).parent_path();
+			}
+			buffer.resize(buffer.size() * 2);
+		}
+	#else
+		return std::filesystem::current_path();
+	#endif
 	}
 
 	std::streamoff remainingBytes(std::ifstream& in) {
@@ -312,9 +314,64 @@ namespace {
 namespace {
 
 	struct DialogSpec {
-		const wchar_t* filter;	// double-null-terminated label/pattern pairs
-		const wchar_t* defExt;	// appended when the user types a bare name
+		const nfdu8filteritem_t* filters;
+		nfdfiltersize_t filterCount;
+		const char* defaultExtension;
 	};
+
+	const nfdu8filteritem_t projectFilters[] = {
+		{ "AxiSim Project", "axi" },
+		{ "Legacy Binary", "bin" }
+	};
+	const nfdu8filteritem_t geometryFilters[] = {
+		{ "AxiSim Geometry", "axigeom" },
+		{ "Legacy Binary", "bin" }
+	};
+	const nfdu8filteritem_t meshFilters[] = {
+		{ "AxiSim Mesh", "aximesh" },
+		{ "Legacy Binary", "bin" }
+	};
+	const nfdu8filteritem_t solverFilters[] = {
+		{ "AxiSim Solver", "axislv" },
+		{ "Legacy Binary", "bin" }
+	};
+	#ifdef _WIN32
+	const nfdu8filteritem_t animationFilters[] = {
+		{ "MP4 Video", "mp4" },
+		{ "PNG Sequence", "png" }
+	};
+	#else
+	const nfdu8filteritem_t animationFilters[] = {
+		{ "PNG Sequence", "png" }
+	};
+	#endif
+
+	class NfdSession {
+	public:
+		NfdSession() : initialized(NFD_Init() == NFD_OKAY) {
+			if (!initialized) {
+				const char* error = NFD_GetError();
+				std::cerr << "Failed to initialize file dialogs: "
+					<< (error ? error : "unknown error") << '\n';
+			}
+		}
+
+		~NfdSession() {
+			if (initialized) {
+				NFD_Quit();
+			}
+		}
+
+		bool ready() const { return initialized; }
+
+	private:
+		bool initialized = false;
+	};
+
+	NfdSession& nfdSession() {
+		static NfdSession session;
+		return session;
+	}
 
 	// Each kind gets its own extension so a project, geometry, mesh and solver file
 	// are distinguishable in explorer, and so the load dialog stops offering files of
@@ -325,98 +382,92 @@ namespace {
 		switch (kind) {
 
 		case FileKind::Geometry:
-			return {
-				L"AxiSim Geometry (*.axigeom)\0*.axigeom\0"
-				L"Legacy Binary (*.bin)\0*.bin\0"
-				L"All Files\0*.*\0",
-				L"axigeom"
-			};
+			return { geometryFilters, 2, "axigeom" };
 
 		case FileKind::Mesh:
-			return {
-				L"AxiSim Mesh (*.aximesh)\0*.aximesh\0"
-				L"Legacy Binary (*.bin)\0*.bin\0"
-				L"All Files\0*.*\0",
-				L"aximesh"
-			};
+			return { meshFilters, 2, "aximesh" };
 
 		case FileKind::Solver:
-			return {
-				L"AxiSim Solver (*.axislv)\0*.axislv\0"
-				L"Legacy Binary (*.bin)\0*.bin\0"
-				L"All Files\0*.*\0",
-				L"axislv"
-			};
+			return { solverFilters, 2, "axislv" };
 
 		case FileKind::Animation:
-			return {
-				L"MP4 Video (*.mp4)\0*.mp4\0"
-				L"PNG Sequence (*.png)\0*.png\0"
-				L"All Files\0*.*\0",
-				L"mp4"
-			};
+		#ifdef _WIN32
+			return { animationFilters, 2, "mp4" };
+		#else
+			return { animationFilters, 1, "png" };
+		#endif
 
 		case FileKind::Project:
 		default:
-			return {
-				L"AxiSim Project (*.axi)\0*.axi\0"
-				L"Legacy Binary (*.bin)\0*.bin\0"
-				L"All Files\0*.*\0",
-				L"axi"
-			};
+			return { projectFilters, 2, "axi" };
 		}
+	}
+
+	std::wstring dialogPathToWide(nfdu8char_t* outPath, const char* defaultExtension) {
+		if (!outPath) {
+			return L"";
+		}
+
+		std::filesystem::path path = std::filesystem::u8path(outPath);
+		NFD_FreePathU8(outPath);
+
+		if (defaultExtension && !path.has_extension()) {
+			path.replace_extension(std::string(".") + defaultExtension);
+		}
+
+		return path.wstring();
+	}
+
+	void reportDialogError() {
+		const char* error = NFD_GetError();
+		std::cerr << "File dialog failed: " << (error ? error : "unknown error") << '\n';
 	}
 }
 
 std::wstring saveFileDialog(FileKind kind) {
-	wchar_t filePath[MAX_PATH] = L"";
-
-	OPENFILENAMEW ofn{};
-	GLFWwindow* window = glfwGetCurrentContext();
 	const DialogSpec spec = dialogSpec(kind);
-
-	ofn.lStructSize = sizeof(ofn);
-	ofn.hwndOwner = window ? glfwGetWin32Window(window) : nullptr;
-	ofn.lpstrFile = filePath;
-	ofn.nMaxFile = MAX_PATH;
-
-	ofn.lpstrFilter = spec.filter;
-
-	ofn.nFilterIndex = 1;
-	ofn.lpstrDefExt = spec.defExt;
-	ofn.Flags = OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR;
-
-	if (GetSaveFileNameW(&ofn)) {
-		return filePath;
+	if (!nfdSession().ready()) {
+		return L"";
 	}
 
+	nfdu8char_t* outPath = nullptr;
+	const nfdresult_t result = NFD_SaveDialogU8(
+		&outPath,
+		spec.filters,
+		spec.filterCount,
+		nullptr,
+		nullptr
+	);
+
+	if (result == NFD_OKAY) {
+		return dialogPathToWide(outPath, spec.defaultExtension);
+	}
+	if (result == NFD_ERROR) {
+		reportDialogError();
+	}
 	return L"";
 }
 
 std::wstring loadFileDialog(FileKind kind) {
-	wchar_t filePath[MAX_PATH] = L"";
-
-	OPENFILENAMEW ofn{};
-	GLFWwindow* window = glfwGetCurrentContext();
 	const DialogSpec spec = dialogSpec(kind);
-
-	ofn.lStructSize = sizeof(ofn);
-	ofn.hwndOwner = window ? glfwGetWin32Window(window) : nullptr;
-	ofn.lpstrFile = filePath;
-	ofn.nMaxFile = MAX_PATH;
-
-	ofn.lpstrFilter = spec.filter;
-
-	ofn.nFilterIndex = 1;
-	ofn.Flags =
-		OFN_PATHMUSTEXIST |
-		OFN_FILEMUSTEXIST |
-		OFN_NOCHANGEDIR;
-
-	if (GetOpenFileNameW(&ofn)) {
-		return filePath;
+	if (!nfdSession().ready()) {
+		return L"";
 	}
 
+	nfdu8char_t* outPath = nullptr;
+	const nfdresult_t result = NFD_OpenDialogU8(
+		&outPath,
+		spec.filters,
+		spec.filterCount,
+		nullptr
+	);
+
+	if (result == NFD_OKAY) {
+		return dialogPathToWide(outPath, nullptr);
+	}
+	if (result == NFD_ERROR) {
+		reportDialogError();
+	}
 	return L"";
 }
 

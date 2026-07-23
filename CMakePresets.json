@@ -1,0 +1,75 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "vcpkg-ninja",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+    },
+    {
+      "name": "x64-Debug",
+      "inherits": "vcpkg-ninja",
+      "displayName": "Windows x64 Debug",
+      "binaryDir": "${sourceDir}/out/build/x64-Debug-vcpkg",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "AXISIM_CUDA_ARCHITECTURES": "86-real"
+      }
+    },
+    {
+      "name": "x64-Release",
+      "inherits": "vcpkg-ninja",
+      "displayName": "Windows x64 Release",
+      "binaryDir": "${sourceDir}/out/build/x64-Release-vcpkg",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "AXISIM_CUDA_ARCHITECTURES": "86-real"
+      }
+    },
+    {
+      "name": "linux-release",
+      "inherits": "vcpkg-ninja",
+      "displayName": "Linux x86-64 Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "AXISIM_CUDA_ARCHITECTURES": "75-real;86-real;89-real;120-real;75-virtual"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "x64-Debug",
+      "configurePreset": "x64-Debug"
+    },
+    {
+      "name": "x64-Release",
+      "configurePreset": "x64-Release"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release"
+    }
+  ]
+}

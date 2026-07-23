@@ -1,0 +1,12 @@
+{
+  "name": "axisim-software",
+  "version-string": "1.04-alpha",
+  "description": "GPU-accelerated axisymmetric CFD application",
+  "dependencies": [
+    "glad",
+    "glfw3",
+    "glm",
+    "libpng",
+    "nativefiledialog-extended"
+  ]
+}

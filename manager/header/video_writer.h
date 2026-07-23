@@ -1,5 +1,5 @@
 #pragma once
-#include <string>
+#include <filesystem>
 
 // Encodes frames to an H.264 .mp4 through Media Foundation, which ships with
 // Windows -- so nothing has to be bundled and the user needs no ffmpeg on PATH.
@@ -20,7 +20,11 @@ public:
 	// H.264 only encodes even dimensions, so an odd width or height loses its
 	// last column/row. Returns false if the encoder could not be set up -- most
 	// likely a Windows N/KN edition with no Media Feature Pack installed.
-	bool open(const std::wstring& path, int width, int height, int fps);
+	bool open(const std::filesystem::path& path, int width, int height, int fps);
+
+	// MP4 uses Media Foundation for now. Linux builds keep PNG-sequence export
+	// available and report MP4 as unsupported until an FFmpeg backend is added.
+	static bool supported();
 
 	bool isOpen() const;
 

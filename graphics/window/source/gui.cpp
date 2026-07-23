@@ -15,6 +15,7 @@
 #include "results.h"
 
 #include "printer.h"
+#include "clipboard.h"
 #include "file_manager.h"
 #include "solver_struct.h"
 
@@ -535,54 +536,78 @@ void GUI::render() {
 
 	// copy to clipboard if there are any pending copies
 	if (residualPlot.pendingCopy) {
-
-		setContext(exportImGuiContext, exportImPlotContext);
-
 		residualPlot.pendingCopy = false;
-		residualPlot.copyActivePlotToClipboard();
 
-		setContext(mainImGuiContext, mainImPlotContext);
+		if (!imageClipboardSupported()) {
+			console.addLine("image clipboard is unavailable on Linux; use PNG export instead");
+		}
+		else {
 
-		console.addLine("copied to clipboard!");
+			setContext(exportImGuiContext, exportImPlotContext);
+
+			residualPlot.copyActivePlotToClipboard();
+
+			setContext(mainImGuiContext, mainImPlotContext);
+
+			console.addLine("copied to clipboard!");
+		}
 
 	}
 
 	if (inspector.pendingCopy) {
-
-		setContext(exportImGuiContext, exportImPlotContext);
-
 		inspector.pendingCopy = false;
-		inspector.copyActiveSurfaceToClipboard();
 
-		setContext(mainImGuiContext, mainImPlotContext);
+		if (!imageClipboardSupported()) {
+			console.addLine("image clipboard is unavailable on Linux; use PNG export instead");
+		}
+		else {
 
-		console.addLine("copied to clipboard!");
+			setContext(exportImGuiContext, exportImPlotContext);
+
+			inspector.copyActiveSurfaceToClipboard();
+
+			setContext(mainImGuiContext, mainImPlotContext);
+
+			console.addLine("copied to clipboard!");
+		}
 
 	}
 
 	if (meshInspector.pendingCopy) {
-
-		setContext(exportImGuiContext, exportImPlotContext);
-
 		meshInspector.pendingCopy = false;
-		meshInspector.copyActiveSurfaceToClipboard();
 
-		setContext(mainImGuiContext, mainImPlotContext);
+		if (!imageClipboardSupported()) {
+			console.addLine("image clipboard is unavailable on Linux; use PNG export instead");
+		}
+		else {
 
-		console.addLine("copied to clipboard!");
+			setContext(exportImGuiContext, exportImPlotContext);
+
+			meshInspector.copyActiveSurfaceToClipboard();
+
+			setContext(mainImGuiContext, mainImPlotContext);
+
+			console.addLine("copied to clipboard!");
+		}
 
 	}
 
 	if (sketch.pendingCopy) {
-
-		setContext(exportImGuiContext, exportImPlotContext);
-
 		sketch.pendingCopy = false;
-		sketch.copyActiveSurfaceToClipboard();
 
-		setContext(mainImGuiContext, mainImPlotContext);
+		if (!imageClipboardSupported()) {
+			console.addLine("image clipboard is unavailable on Linux; use PNG export instead");
+		}
+		else {
 
-		console.addLine("copied to clipboard!");
+			setContext(exportImGuiContext, exportImPlotContext);
+
+			sketch.copyActiveSurfaceToClipboard();
+
+			setContext(mainImGuiContext, mainImPlotContext);
+
+			console.addLine("copied to clipboard!");
+		}
 
 	}
 

@@ -14,7 +14,24 @@ find_package(OpenGL REQUIRED)
 find_package(glad CONFIG REQUIRED)
 find_package(glfw3 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
+find_package(nfd CONFIG REQUIRED)
+find_package(PNG REQUIRED)
 find_package(CUDAToolkit REQUIRED)
+
+if(WIN32)
+    file(GLOB CUDART_RUNTIME_FILES CONFIGURE_DEPENDS
+        "${CUDAToolkit_BIN_DIR}/cudart64_*.dll"
+        "${CUDAToolkit_BIN_DIR}/x64/cudart64_*.dll"
+    )
+elseif(UNIX)
+    file(GLOB CUDART_RUNTIME_FILES CONFIGURE_DEPENDS
+        "${CUDAToolkit_LIBRARY_DIR}/libcudart.so*"
+    )
+endif()
+
+if(NOT CUDART_RUNTIME_FILES)
+    message(FATAL_ERROR "Could not locate the CUDA runtime library for packaging")
+endif()
 
 # ------------------------------------------------------------
 # Project source files
@@ -116,17 +133,114 @@ set(IMPLOT_SOURCES
 # gmsh
 # ------------------------------------------------------------
 
-set(GMSH_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/externals/gmsh")
+set(AXISIM_GMSH_SDK_ROOT "" CACHE PATH
+    "Optional path to an already-extracted Gmsh SDK (must contain include/ and lib/)")
+
+if(AXISIM_GMSH_SDK_ROOT)
+    set(GMSH_ROOT "${AXISIM_GMSH_SDK_ROOT}")
+elseif(WIN32)
+    set(GMSH_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/externals/gmsh/windows")
+elseif(UNIX AND NOT APPLE)
+    set(GMSH_LINUX_ARCHIVE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/externals/gmsh/linux")
+    file(GLOB GMSH_LINUX_ARCHIVES CONFIGURE_DEPENDS LIST_DIRECTORIES FALSE
+        "${GMSH_LINUX_ARCHIVE_DIR}/gmsh-*-Linux64-sdk.tgz"
+    )
+    list(LENGTH GMSH_LINUX_ARCHIVES GMSH_LINUX_ARCHIVE_COUNT)
+
+    if(GMSH_LINUX_ARCHIVE_COUNT EQUAL 0)
+        message(FATAL_ERROR
+            "Could not find a Linux Gmsh SDK archive matching "
+            "${GMSH_LINUX_ARCHIVE_DIR}/gmsh-*-Linux64-sdk.tgz")
+    elseif(GMSH_LINUX_ARCHIVE_COUNT GREATER 1)
+        message(FATAL_ERROR
+            "Found multiple Linux Gmsh SDK archives in ${GMSH_LINUX_ARCHIVE_DIR}. "
+            "Keep exactly one archive there or set AXISIM_GMSH_SDK_ROOT.")
+    endif()
+
+    list(GET GMSH_LINUX_ARCHIVES 0 GMSH_LINUX_ARCHIVE)
+    get_filename_component(GMSH_LINUX_ARCHIVE_NAME "${GMSH_LINUX_ARCHIVE}" NAME)
+    string(REGEX REPLACE "\\.tgz$" "" GMSH_LINUX_SDK_DIR_NAME
+        "${GMSH_LINUX_ARCHIVE_NAME}")
+
+    set(GMSH_EXTRACT_BASE "${CMAKE_CURRENT_BINARY_DIR}/_deps/gmsh")
+    set(GMSH_ROOT "${GMSH_EXTRACT_BASE}/${GMSH_LINUX_SDK_DIR_NAME}")
+    file(TIMESTAMP "${GMSH_LINUX_ARCHIVE}" GMSH_LINUX_ARCHIVE_TIMESTAMP
+        "%Y%m%d%H%M%S" UTC)
+    file(SIZE "${GMSH_LINUX_ARCHIVE}" GMSH_LINUX_ARCHIVE_SIZE)
+    set(GMSH_EXTRACT_STAMP
+        "${GMSH_EXTRACT_BASE}/.${GMSH_LINUX_SDK_DIR_NAME}-${GMSH_LINUX_ARCHIVE_TIMESTAMP}-${GMSH_LINUX_ARCHIVE_SIZE}.stamp")
+
+    if(NOT EXISTS "${GMSH_ROOT}/include/gmsh.h_cwrap"
+       OR NOT EXISTS "${GMSH_EXTRACT_STAMP}")
+        message(STATUS "Extracting Linux Gmsh SDK: ${GMSH_LINUX_ARCHIVE_NAME}")
+        file(REMOVE_RECURSE "${GMSH_EXTRACT_BASE}")
+        file(MAKE_DIRECTORY "${GMSH_EXTRACT_BASE}")
+        file(ARCHIVE_EXTRACT
+            INPUT "${GMSH_LINUX_ARCHIVE}"
+            DESTINATION "${GMSH_EXTRACT_BASE}"
+        )
+        file(WRITE "${GMSH_EXTRACT_STAMP}"
+            "Extracted from ${GMSH_LINUX_ARCHIVE_NAME}\n")
+    endif()
+else()
+    message(FATAL_ERROR
+        "No bundled Gmsh SDK is configured for this platform. "
+        "Set AXISIM_GMSH_SDK_ROOT to an already-extracted SDK.")
+endif()
+
+message(STATUS "Using Gmsh SDK: ${GMSH_ROOT}")
 
 set(GMSH_INCLUDE_DIR "${GMSH_ROOT}/include")
-set(GMSH_LIB "${GMSH_ROOT}/lib/gmsh.dll.lib")
 
 if(NOT EXISTS "${GMSH_INCLUDE_DIR}/gmsh.h_cwrap")
     message(FATAL_ERROR "Could not find gmsh.h_cwrap at: ${GMSH_INCLUDE_DIR}/gmsh.h_cwrap")
 endif()
 
-if(NOT EXISTS "${GMSH_LIB}")
-    message(FATAL_ERROR "Could not find gmsh.dll.lib at: ${GMSH_LIB}")
+if(WIN32)
+    set(GMSH_LIBRARY "${GMSH_ROOT}/lib/gmsh.dll.lib")
+
+    if(NOT EXISTS "${GMSH_LIBRARY}")
+        message(FATAL_ERROR "Could not find the Gmsh import library at: ${GMSH_LIBRARY}")
+    endif()
+
+    set(GMSH_RUNTIME "${GMSH_ROOT}/lib/gmsh.dll")
+    if(NOT EXISTS "${GMSH_RUNTIME}")
+        set(GMSH_RUNTIME "${GMSH_ROOT}/bin/gmsh.dll")
+    endif()
+    if(NOT EXISTS "${GMSH_RUNTIME}")
+        set(GMSH_RUNTIME "${GMSH_ROOT}/lib/gmsh-4.15.dll")
+    endif()
+
+    add_library(Gmsh::gmsh SHARED IMPORTED)
+    set_target_properties(Gmsh::gmsh PROPERTIES
+        IMPORTED_IMPLIB "${GMSH_LIBRARY}"
+        IMPORTED_LOCATION "${GMSH_RUNTIME}"
+    )
+else()
+    # The official Linux SDK provides lib/libgmsh.so plus its versioned
+    # SONAME symlinks. An explicit AXISIM_GMSH_SDK_ROOT can also point to a
+    # compatible extracted SDK.
+    find_library(GMSH_LIBRARY
+        NAMES gmsh
+        HINTS "${GMSH_ROOT}"
+        PATH_SUFFIXES lib
+        REQUIRED
+    )
+
+    get_filename_component(GMSH_LIBRARY_DIR "${GMSH_LIBRARY}" DIRECTORY)
+    file(GLOB GMSH_RUNTIME_FILES CONFIGURE_DEPENDS
+        "${GMSH_LIBRARY_DIR}/libgmsh.so*"
+        "${GMSH_LIBRARY_DIR}/libgmsh.dylib*"
+    )
+
+    if(NOT GMSH_RUNTIME_FILES)
+        message(FATAL_ERROR "Could not locate the Gmsh shared-library runtime in ${GMSH_LIBRARY_DIR}")
+    endif()
+
+    add_library(Gmsh::gmsh SHARED IMPORTED)
+    set_target_properties(Gmsh::gmsh PROPERTIES
+        IMPORTED_LOCATION "${GMSH_LIBRARY}"
+    )
 endif()
 
 # ------------------------------------------------------------
@@ -159,23 +273,13 @@ add_executable(AxiSim
     "${CMAKE_CURRENT_SOURCE_DIR}/externals/stb_image/stb_image.cpp"
  "structs/app_struct.h")
 
-set(GMSH_DLL "${GMSH_ROOT}/lib/gmsh.dll")
-
-if(NOT EXISTS "${GMSH_DLL}")
-    set(GMSH_DLL "${GMSH_ROOT}/bin/gmsh.dll")
-endif()
-
-if(NOT EXISTS "${GMSH_DLL}")
-    set(GMSH_DLL "${GMSH_ROOT}/lib/gmsh-4.15.dll")
-endif()
-
-if(EXISTS "${GMSH_DLL}")
+if(WIN32 AND EXISTS "${GMSH_RUNTIME}")
     add_custom_command(TARGET AxiSim POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${GMSH_DLL}"
+        "${GMSH_RUNTIME}"
         "$<TARGET_FILE_DIR:AxiSim>"
     )
-else()
+elseif(WIN32)
     message(WARNING "gmsh.dll was not found. The project may compile but fail to run.")
 endif()
 
@@ -208,8 +312,10 @@ target_link_libraries(AxiSim PRIVATE
     glad::glad
     glfw
     glm::glm
+    nfd::nfd
+    PNG::PNG
     CUDA::cudart
-    "${GMSH_LIB}"
+    Gmsh::gmsh
 )
 
 if(WIN32)
@@ -219,14 +325,21 @@ if(WIN32)
     )
 
     target_link_libraries(AxiSim PRIVATE
-        Comdlg32
-        Windowscodecs	# WIC, used by image_writer.cpp to encode PNG frames
-
         # Media Foundation, used by video_writer.cpp to encode H.264 mp4 without
         # bundling an encoder or needing ffmpeg on the user's PATH
         Mfplat
         Mfreadwrite
         Mfuuid
+    )
+endif()
+
+if(UNIX)
+    # The portable archive/AppImage keeps shared libraries beside AxiSim.
+    # Preserve the SDK path for build-tree runs, then use the executable's
+    # directory after installation.
+    set_target_properties(AxiSim PROPERTIES
+        BUILD_RPATH "${GMSH_LIBRARY_DIR}"
+        INSTALL_RPATH "$ORIGIN"
     )
 endif()
 
@@ -238,9 +351,12 @@ endif()
 # SASS plus compute_75 PTX as a JIT fallback for anything >= 7.5). CUDA 13.0
 # dropped Maxwell/Pascal/Volta, so 7.5 is the floor. Check arches with
 # `nvcc --list-gpu-arch`.
+set(AXISIM_CUDA_ARCHITECTURES "86-real" CACHE STRING
+    "CUDA architectures passed to CMake (release packages should use a fat binary)")
+
 set_target_properties(AxiSim PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
-    CUDA_ARCHITECTURES "86-real"
+    CUDA_ARCHITECTURES "${AXISIM_CUDA_ARCHITECTURES}"
 )
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
@@ -283,20 +399,48 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/graphics/shaders" DESTINATION gra
 # Bundled presets, resolved next to the exe by loadPresetProject().
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/presets" DESTINATION .)
 
-# gmsh ships only as a DLL (GMSH_DLL is resolved above in the build section).
-if(EXISTS "${GMSH_DLL}")
-    install(FILES "${GMSH_DLL}" DESTINATION .)
+if(UNIX)
+    install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/axisim" DESTINATION .)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/AxiSim.desktop"
+            DESTINATION share/applications)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/image_buttons/house.png"
+            DESTINATION share/icons/hicolor/128x128/apps
+            RENAME axisim.png)
+endif()
+
+# Install the native Gmsh runtime. Linux SDKs include both an unversioned .so
+# and versioned SONAME links, all of which are required in a relocatable bundle.
+if(WIN32 AND EXISTS "${GMSH_RUNTIME}")
+    install(FILES "${GMSH_RUNTIME}" DESTINATION .)
+elseif(UNIX)
+    install(FILES ${GMSH_RUNTIME_FILES} DESTINATION .)
+    install(FILES ${CUDART_RUNTIME_FILES} DESTINATION .)
 endif()
 
 # DLLs of linked imported targets (glfw3.dll, and any others vcpkg provides).
 # gmsh is linked via a raw .lib path, not an imported target, so it is not
 # captured here -- hence the explicit install above.
-install(FILES $<TARGET_RUNTIME_DLLS:AxiSim> DESTINATION .)
+if(WIN32)
+    # vcpkg's app-local step resolves transitive runtime dependencies (including
+    # libpng's zlib dependency) beside the built executable. Install that exact
+    # resolved set rather than relying only on TARGET_RUNTIME_DLLS, which does
+    # not see dependencies hidden behind some Find-module interface targets.
+    install(CODE "
+        file(GLOB AXISIM_APPLOCAL_DLLS \"${CMAKE_CURRENT_BINARY_DIR}/*.dll\")
+        if(AXISIM_APPLOCAL_DLLS)
+            file(INSTALL DESTINATION \"\${CMAKE_INSTALL_PREFIX}\"
+                 TYPE FILE FILES \${AXISIM_APPLOCAL_DLLS})
+        endif()
+    ")
+    install(FILES ${CUDART_RUNTIME_FILES} DESTINATION .)
+endif()
 
 # Bundle the Visual C++ runtime DLLs (MSVCP140.dll, VCRUNTIME140*.dll) so
 # users do not need to install the redistributable separately.
-set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP ON)
-include(InstallRequiredSystemLibraries)
-if(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
-    install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS} DESTINATION .)
+if(WIN32)
+    set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP ON)
+    include(InstallRequiredSystemLibraries)
+    if(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS)
+        install(PROGRAMS ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS} DESTINATION .)
+    endif()
 endif()

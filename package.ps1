@@ -31,7 +31,7 @@
 [CmdletBinding()]
 param(
     [string]$Version  = "",
-    [string]$BuildDir = "out\build\x64-Release",
+    [string]$BuildDir = "out\build\x64-Release-vcpkg",
     [switch]$SkipBuild
 )
 
@@ -104,7 +104,12 @@ Write-Host "==> Assembling package in $stagePath ..." -ForegroundColor Cyan
 if ($LASTEXITCODE -ne 0) { throw "cmake --install failed (exit $LASTEXITCODE)." }
 
 # --- sanity check: the runtime asset folders must be present ----------------
-foreach ($req in @("AxiSim.exe", "assets\fonts\Roboto-Regular.ttf", "graphics\shaders\mesh.vert")) {
+foreach ($req in @(
+    "AxiSim.exe",
+    "cudart64_13.dll",
+    "assets\fonts\Roboto-Regular.ttf",
+    "graphics\shaders\mesh.vert"
+)) {
     if (-not (Test-Path (Join-Path $stagePath $req))) {
         throw "Package is missing required file: $req"
     }

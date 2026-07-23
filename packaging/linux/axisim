@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+set -eu
+
+axisim_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$axisim_dir"
+exec "$axisim_dir/AxiSim" "$@"

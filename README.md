@@ -80,6 +80,11 @@ problems without stitching together separate CAD, meshing, solver, and visualiza
 - An **NVIDIA GPU** with compute capability **7.5 or newer** (Turing / GTX 16 / RTX 20 series and up) and a recent driver
 - *To build from source:* CUDA Toolkit 13.0, a C++20 compiler (Visual Studio 2022), CMake ≥ 3.24, and [vcpkg](https://vcpkg.io)
 
+An experimental **Linux x86-64** source build is also available. It requires an
+NVIDIA GPU, CUDA Toolkit 13, GCC, CMake, Ninja, vcpkg, and the official Gmsh Linux
+SDK. Linux MP4 export and image clipboard copy are not implemented yet; PNG
+sequence export is available.
+
 > **Note:** AxiSim runs its solver on the GPU and requires a compatible NVIDIA card. It will not run on machines without one.
 
 ## Download
@@ -97,16 +102,43 @@ All releases, with notes, are on the [Releases page](https://github.com/Luippe/A
 
 ## Building from source
 
-AxiSim uses CMake with vcpkg for its dependencies (GLFW, GLAD, GLM, OpenGL). Gmsh and Dear ImGui/ImPlot are bundled.
+AxiSim uses CMake with a vcpkg manifest for GLFW, GLAD, GLM, libpng, and native
+file dialogs. Dear ImGui/ImPlot are bundled. CUDA comes from the NVIDIA toolkit,
+and Gmsh comes from its official platform SDK.
+
+Set `VCPKG_ROOT` to your vcpkg checkout before using the presets.
+
+### Windows
 
 ```sh
-# install dependencies via vcpkg
-vcpkg install glfw3 glad glm
-
 # configure & build (or open the folder directly in Visual Studio 2022)
 cmake --preset x64-Release
-cmake --build out/build/x64-Release
+cmake --build --preset x64-Release
 ```
+
+### Linux (experimental)
+
+1. Install CUDA Toolkit 13, a supported GCC toolchain, CMake, Ninja, and the
+   OpenGL/X11 or Wayland development packages for your distribution.
+2. Put exactly one official Linux SDK archive in `externals/gmsh/linux/`, named
+   like `gmsh-4.15.2-Linux64-sdk.tgz`. CMake extracts it into the build tree
+   automatically; do not commit the extracted Linux SDK.
+3. Configure, build, and package:
+
+```sh
+export VCPKG_ROOT=/path/to/vcpkg
+cmake --preset linux-release
+cmake --build --preset linux-release
+bash package-linux.sh v1.04-alpha
+```
+
+To use an SDK that is already extracted elsewhere, configure with
+`-DAXISIM_GMSH_SDK_ROOT=/opt/gmsh-sdk`.
+
+The archive is written under `dist/`. Extract it and run the included `axisim`
+launcher; the launcher keeps runtime assets relative to the executable. See
+[`docs/linux-build.md`](docs/linux-build.md) for troubleshooting and packaging
+details.
 
 ## Documentation
 

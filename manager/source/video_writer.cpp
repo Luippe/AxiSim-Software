@@ -1,5 +1,7 @@
 #include "video_writer.h"
 
+#ifdef _WIN32
+
 #include <windows.h>
 #include <mfapi.h>
 #include <mfidl.h>
@@ -64,7 +66,7 @@ int VideoWriter::encodedHeight() const {
 	return impl ? impl->height : 0;
 }
 
-bool VideoWriter::open(const std::wstring& path, int width, int height, int fps) {
+bool VideoWriter::open(const std::filesystem::path& path, int width, int height, int fps) {
 
 	if (impl || path.empty() || width <= 1 || height <= 1 || fps <= 0) {
 		return false;
@@ -229,3 +231,43 @@ bool VideoWriter::close() {
 
 	return SUCCEEDED(hr);
 }
+
+bool VideoWriter::supported() {
+	return true;
+}
+
+#else
+
+struct VideoWriter::Impl {};
+
+VideoWriter::~VideoWriter() = default;
+
+bool VideoWriter::open(const std::filesystem::path&, int, int, int) {
+	return false;
+}
+
+bool VideoWriter::isOpen() const {
+	return false;
+}
+
+bool VideoWriter::writeFrame(const unsigned char*) {
+	return false;
+}
+
+bool VideoWriter::close() {
+	return false;
+}
+
+int VideoWriter::encodedWidth() const {
+	return 0;
+}
+
+int VideoWriter::encodedHeight() const {
+	return 0;
+}
+
+bool VideoWriter::supported() {
+	return false;
+}
+
+#endif

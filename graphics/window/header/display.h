@@ -6,12 +6,7 @@
 
 #include <glad/glad.h>
 
-#ifndef GLFW_EXPOSE_NATIVE_WIN32
-#define GLFW_EXPOSE_NATIVE_WIN32
-#endif
-
 #include <GLFW/glfw3.h>
-#include <GLFW/glfw3native.h>
 
 class Camera3D;
 struct GLFWwindow;
@@ -27,7 +22,7 @@ public:
 
 	Display();
 
-	int monitorIndex = 1;	// on release, this would run on a nvidia gpu
+	int monitorIndex = 0;
 	int monitorCount = 0;
 	bool fullScreen = false;
 
@@ -37,6 +32,5 @@ public:
 	int windowedW, windowedH;
 
 	GLFWwindow* window = nullptr;
-	HWND windowHandle;
 
 };
