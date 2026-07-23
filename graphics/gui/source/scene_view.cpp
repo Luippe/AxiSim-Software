@@ -82,18 +82,19 @@ void SceneView::handleMouse() {
 
 	ImGuiIO& io = ImGui::GetIO();
 
+	// GetItemRectMin is the image just submitted, which stays correct even when
+	// the window moves without resizing. Both the triad and the trackball work
+	// in pixels from its top-left corner.
+	const ImVec2 imageMin = ImGui::GetItemRectMin();
+	const glm::vec2 localMouse(io.MousePos.x - imageMin.x, io.MousePos.y - imageMin.y);
+
 	// ------------ Navigation Triad ---------------
 	// The triad is drawn straight into the viewport in pixel coordinates, so it
 	// is hit-tested against the image rect rather than through the 3D picker.
-	// GetItemRectMin is the image just submitted, which stays correct even when
-	// the window moves without resizing.
 	int gizmoArm = AxisGizmo::ArmNone;
 	bool overGizmo = false;
 
 	if (showAxisGizmo) {
-
-		ImVec2 imageMin = ImGui::GetItemRectMin();
-		glm::vec2 localMouse(io.MousePos.x - imageMin.x, io.MousePos.y - imageMin.y);
 
 		// picked against what was actually on screen last frame, which is what
 		// showNegativeArms still holds at this point
@@ -168,7 +169,25 @@ void SceneView::handleMouse() {
 	}
 
 	if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-		camera.calculateRotation(io.MouseDelta.x, io.MouseDelta.y);
+
+		// the trackball needs where the cursor was as well as where it is: the
+		// same delta turns the view differently depending on where in the
+		// viewport it happens, and near the border it rolls instead
+		const glm::vec2 prevMouse = localMouse - glm::vec2(io.MouseDelta.x, io.MouseDelta.y);
+
+		// holding X, Y or Z locks the turn to that world axis, as in Fluent
+		if (ImGui::IsKeyDown(ImGuiKey_X)) {
+			camera.calculateRotationAbout(glm::vec3(1.0f, 0.0f, 0.0f), prevMouse, localMouse);
+		}
+		else if (ImGui::IsKeyDown(ImGuiKey_Y)) {
+			camera.calculateRotationAbout(glm::vec3(0.0f, 1.0f, 0.0f), prevMouse, localMouse);
+		}
+		else if (ImGui::IsKeyDown(ImGuiKey_Z)) {
+			camera.calculateRotationAbout(glm::vec3(0.0f, 0.0f, 1.0f), prevMouse, localMouse);
+		}
+		else {
+			camera.calculateRotation(prevMouse, localMouse);
+		}
 	}
 
 	// ------------ Camera Zooming -----------------
@@ -615,6 +634,22 @@ void SceneView::drawUnstructured3D() {
 	colormap.unbind();
 }
 
+glm::vec3 SceneView::modelCentre() const {
+
+	const std::vector<double>& zFace = results.g.zFace;
+
+	// nothing loaded yet: the world origin is as good a guess as any, and it is
+	// what the camera starts on anyway
+	if (!results.isReady || zFace.size() < 2) return glm::vec3(0.0f);
+
+	// the model matrix scales the geometry by lengthScale, so the centre has to
+	// be scaled the same way to land on it
+	const float scale = (float)project.lengthScale.value;
+
+	return glm::vec3(0.5f * (float)(zFace.front() + zFace.back()) * scale, 0.0f, 0.0f);
+}
+
+
 void SceneView::render() {
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
@@ -636,6 +671,10 @@ void SceneView::render() {
 		camera.setDimensions(viewportWidth, viewportHeight, rectPos);
 		picker.setDimensions(viewportWidth, viewportHeight, rectPos);
 	}
+
+	// drags and snaps both turn about the middle of the model. Set before the
+	// snap below so an in-flight one swings about this frame's centre.
+	camera.pivot = modelCentre();
 
 	// advance any in-flight axis snap first, so the matrices below are built
 	// from this frame's orientation rather than last frame's

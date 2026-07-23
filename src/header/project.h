@@ -32,6 +32,15 @@ public:
 	// to recenter/re-zoom every surface inspector to the loaded project's units.
 	bool resetInspectorViews = false;
 
+	// Projection and rotation style for the results scene. Saved with the
+	// project; the scene camera holds the live copy.
+	SceneViewSettings sceneView;
+
+	// set true when a project is loaded or created; the GUI consumes it to push
+	// sceneView out to the scene camera. Needed because the camera, not this,
+	// is what the scene actually reads.
+	bool applySceneViewSettings = false;
+
 	// Simple view: every panel but the live viewport is hidden (setup tabs, console,
 	// toolbar strip, status bar), leaving the inspector full-window. Toggled from
 	// View > GUI; the GUI latches it once per frame (see GUI::simpleViewThisFrame).

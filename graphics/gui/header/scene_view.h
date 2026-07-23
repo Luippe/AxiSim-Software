@@ -41,7 +41,8 @@ public:
 	AxisGizmo axisGizmo;
 
 	// navigation triad in the corner of the viewport; its pixel size lives on
-	// the gizmo itself. Toggled from View -> Results -> Axis Gizmo.
+	// the gizmo itself. No longer exposed in the View menu -- it is how the
+	// camera is aimed, not decoration, so there is nothing to turn off.
 	bool showAxisGizmo = true;
 
 	// flat colored line cross through world zero. Decoration only -- it is not
@@ -103,6 +104,13 @@ private:
 
 	// upload colormap/value-range uniforms for the unstructured shader
 	void uploadUnstructuredUniforms();
+
+	// middle of the model in world space, which is what the camera turns about.
+	// World x is the axis of revolution and the radial plane is y/z, so this is
+	// halfway along the axis and on it. Recomputed every frame rather than
+	// cached -- it is two floats, and it then cannot go stale when the mesh is
+	// rebuilt or the display length unit changes.
+	glm::vec3 modelCentre() const;
 
 	// handle mouse inputs
 	void handleMouse();

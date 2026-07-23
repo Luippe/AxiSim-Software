@@ -474,6 +474,25 @@ void GUI::render() {
 		project.resetInspectorViews = false;
 	}
 
+	// A load or a New also restores how the results scene is viewed. Pushed
+	// from here rather than from SceneView because only one viewport is
+	// submitted per frame -- the scene may not be the one drawing, and the
+	// setting still has to land.
+	if (project.applySceneViewSettings) {
+
+		scene.camera.projectionType =
+			(project.sceneView.projection == SceneViewSettings::Perspective)
+			? ProjectionType::Perspective
+			: ProjectionType::Orthographic;
+
+		scene.camera.rotationStyle =
+			(project.sceneView.rotationStyle == SceneViewSettings::Arcball)
+			? RotationStyle::Arcball
+			: RotationStyle::Turntable;
+
+		project.applySceneViewSettings = false;
+	}
+
 	// A loaded project restores solution values but not the Fields built from them,
 	// because that allocates GL textures and loadAtLaunch runs before the context
 	// exists. Finish the job here, then refresh the views exactly as the Generate

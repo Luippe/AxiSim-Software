@@ -23,4 +23,9 @@ void Project::createNew() {
 	// units/length are back to defaults: let the GUI recenter every inspector view.
 	resetInspectorViews = true;
 
+	// a new project views the scene the default way too, not however the last
+	// one left it
+	sceneView = SceneViewSettings{};
+	applySceneViewSettings = true;
+
 }

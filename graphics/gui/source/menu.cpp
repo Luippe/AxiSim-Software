@@ -216,12 +216,50 @@ void Menu::drawView() {
 
 			const bool perspective = scene.camera.projectionType == ProjectionType::Perspective;
 
+			// the camera holds the live value and project.sceneView is the copy
+			// that gets saved, so both move together
 			if (menuItem("Perspective", nullptr, perspective)) {
 				scene.camera.projectionType = ProjectionType::Perspective;
+				project.sceneView.projection = SceneViewSettings::Perspective;
 			}
 
 			if (menuItem("Orthographic", nullptr, !perspective)) {
 				scene.camera.projectionType = ProjectionType::Orthographic;
+				project.sceneView.projection = SceneViewSettings::Orthographic;
+			}
+
+			ImGui::EndMenu();
+		}
+
+		// What a middle-drag in the scene does. Neither one clamps, so both
+		// reach every orientation -- the difference is roll. Switching is
+		// jump-free; it only changes what the next drag does.
+		if (beginMenu("Rotation")) {
+
+			const bool turntable = scene.camera.rotationStyle == RotationStyle::Turntable;
+
+			if (menuItem("Turntable", nullptr, turntable)) {
+				scene.camera.rotationStyle = RotationStyle::Turntable;
+				project.sceneView.rotationStyle = SceneViewSettings::Turntable;
+			}
+
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip(
+					"Yaw about up, pitch about the screen's horizontal.\n"
+					"The horizon never tips, and the same drag always does the same thing."
+				);
+			}
+
+			if (menuItem("Arcball", nullptr, !turntable)) {
+				scene.camera.rotationStyle = RotationStyle::Arcball;
+				project.sceneView.rotationStyle = SceneViewSettings::Arcball;
+			}
+
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip(
+					"Virtual trackball, as in Fluent. Free tumble in the middle of the\n"
+					"viewport, roll near the borders. Reaches rolled views a turntable cannot."
+				);
 			}
 
 			ImGui::EndMenu();
@@ -232,31 +270,6 @@ void Menu::drawView() {
 		// flat line cross through world zero, part of the scene
 		if (menuItem("Origin Axis", nullptr, scene.showOriginAxis)) {
 			scene.showOriginAxis = !scene.showOriginAxis;
-		}
-
-		// Orientation triad in the corner. Off by default -- it is a navigation
-		// aid, not part of the result being read.
-		if (menuItem("Axis Gizmo", nullptr, scene.showAxisGizmo)) {
-			scene.showAxisGizmo = !scene.showAxisGizmo;
-		}
-
-		// Size only matters once the triad is on, so the submenu greys out with it.
-		if (beginMenu("Axis Gizmo Size", scene.showAxisGizmo)) {
-
-			ImGui::SetNextItemWidth(160.0f);
-			ImGui::SliderInt(
-				"##axisGizmoSize",
-				&scene.axisGizmo.overlaySizePx,
-				AxisGizmo::minOverlaySizePx,
-				AxisGizmo::maxOverlaySizePx,
-				"%d px"
-			);
-
-			if (ImGui::Button("Reset")) {
-				scene.axisGizmo.overlaySizePx = AxisGizmo::defaultOverlaySizePx;
-			}
-
-			ImGui::EndMenu();
 		}
 
 		ImGui::EndMenu();

@@ -35,6 +35,24 @@ struct LengthScale {
 	float value = 1.0f;
 };
 
+// How the results scene is viewed, saved with the project so a reopened one
+// looks the way it was left.
+//
+// These mirror the scene camera's ProjectionType and RotationStyle (camera.h)
+// but are held as plain bytes on purpose: this struct is written to disk, and
+// the values must keep meaning the same thing even if those enums later gain a
+// member in the middle. The camera owns the live setting -- View > Results
+// writes both it and the mirror, and a project load pushes the mirror back out
+// (see Project::applySceneViewSettings).
+struct SceneViewSettings {
+
+	enum : uint8_t { Perspective = 0, Orthographic = 1 };
+	enum : uint8_t { Turntable = 0, Arcball = 1 };
+
+	uint8_t projection = Orthographic;
+	uint8_t rotationStyle = Turntable;
+};
+
 struct SurfacePoint {
 
 	// i and j indices

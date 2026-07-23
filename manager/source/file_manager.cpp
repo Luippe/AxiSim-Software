@@ -42,6 +42,8 @@ namespace {
 	constexpr std::uint32_t solverFileVersionNoGradientScheme = 3u;
 	constexpr std::uint32_t meshRegionFileMagic = 0x494F5241u; // "AROI" little-endian
 	constexpr std::uint32_t meshRegionFileVersion = 1u;
+	constexpr std::uint32_t sceneViewFileMagic = 0x57565641u;  // "AVVW" little-endian
+	constexpr std::uint32_t sceneViewFileVersion = 1u;
 
 	// Region vectors were originally raw-copied, including this struct's padding.
 	// Keep the old layout available so existing project files can be upgraded to
@@ -843,6 +845,58 @@ void loadEtc(std::ifstream& in, Project& project) {
 	}
 }
 
+// Projection and rotation style for the results scene. Written last, after the
+// results block, and read back the same way. It carries its own magic rather
+// than relying on "is there anything left": everything before it is
+// variable-length, so byte counting cannot tell an absent block from the tail
+// of the previous one. A project saved before this existed simply fails the
+// magic check and keeps the defaults.
+void saveSceneView(std::ofstream& out, const Project& project) {
+
+	writeAll(out, sceneViewFileMagic, sceneViewFileVersion);
+	writeAll(out, project.sceneView.projection, project.sceneView.rotationStyle);
+}
+
+void loadSceneView(std::ifstream& in, Project& project) {
+
+	// whatever happens, the camera gets told what to use -- an older project
+	// that has no block means the defaults, not whatever the last one left
+	project.sceneView = SceneViewSettings{};
+	project.applySceneViewSettings = true;
+
+	const std::streampos start = in.tellg();
+
+	auto bail = [&]() {
+		in.clear();
+		if (start != std::streampos(-1)) {
+			in.seekg(start);
+		}
+		project.sceneView = SceneViewSettings{};
+	};
+
+	constexpr std::streamoff blockBytes =
+		2 * sizeof(std::uint32_t) + 2 * sizeof(std::uint8_t);
+
+	if (start == std::streampos(-1) || remainingBytes(in) < blockBytes) {
+		bail();
+		return;
+	}
+
+	std::uint32_t magic = 0;
+	std::uint32_t version = 0;
+
+	if (!readAll(in, magic, version) ||
+		magic != sceneViewFileMagic ||
+		version != sceneViewFileVersion) {
+		bail();
+		return;
+	}
+
+	if (!readAll(in, project.sceneView.projection, project.sceneView.rotationStyle)) {
+		bail();
+	}
+}
+
 bool saveHotkeyPressed(Project& project) {
 
 	if (!project.name.empty()) {
@@ -862,6 +916,7 @@ void saveFromPathProject(const std::wstring& path, Project& project) {
 	saveFromPathSolver(out, project.solver);
 	saveEtc(out, project);
 	saveFromPathResults(out, project.results);
+	saveSceneView(out, project);
 	//saveKeyboardShortcuts(out);
 	out.close();
 }
@@ -900,6 +955,10 @@ void loadFromPathProject(std::ifstream& in, Project& project) {
 	// blocks to exist. Only restores CPU data and raises pendingRebuild -- the GUI
 	// does the GL-dependent half on its next frame.
 	loadFromPathResults(in, project.results);
+
+	// last block in the file, so it reads from wherever the results block left
+	// the stream -- including the rewound position an absent one leaves behind
+	loadSceneView(in, project);
 }
 
 void loadFromExplorerProject(Project& project) {

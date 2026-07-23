@@ -116,9 +116,9 @@ public:
 
 	// ---------------- overlay placement (no rebuild needed) ----------------
 
-	static constexpr int minOverlaySizePx = 60;
-	static constexpr int maxOverlaySizePx = 300;
-	static constexpr int defaultOverlaySizePx = 200;
+	static constexpr int minOverlaySizePx = 100;
+	static constexpr int maxOverlaySizePx = 350;
+	static constexpr int defaultOverlaySizePx = 250;
 
 	// side of the square the corner triad occupies, in viewport pixels
 	int overlaySizePx = defaultOverlaySizePx;

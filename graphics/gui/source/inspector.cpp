@@ -569,6 +569,10 @@ void Inspector::drawToolBar() {
 			selectedMirrored = false;
 		}
 	}
+	//ImGui::SameLine();
+	//if (addImageButton("SnapFront", "Front", "Snap to Front of Model", assets.icon("front"))) {
+
+	//}
 	endSection("View");
 
 	endToolbar();
