@@ -160,6 +160,12 @@ public:
 	// (non-axis-aligned) outline edges, open line loops, or degenerate rectangles.
 	bool sketchSupportsStructured(const SketchModel& sketch, std::string& reason) const;
 
+	// Returns false (with a user-facing reason) if any non-construction sketch entity
+	// dips below r = 0. The domain is the axisymmetric half-plane, so negative radius
+	// has no physical meaning -- it would revolve inside-out. Applies to both mesh
+	// types; checked before either conversion path runs.
+	bool sketchIsAboveAxis(const SketchModel& sketch, std::string& reason) const;
+
 	// Build the multi-block structured grid by trellis decomposition: every distinct
 	// z/r coordinate of the geometry becomes a grid line, and each interior cell
 	// (center inside the domain) becomes a conformal block. Sets multiBlock +

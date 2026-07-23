@@ -51,3 +51,8 @@ CLAUDE.local.md
 # Local icon pipeline (not shared): raw exports + helper scripts
 /assets/raw icons/
 /tools/
+
+# Animation/video export scratch output (was committed by accident once)
+/test.mp4
+/test_frames/
+*.nsys-rep.lock

@@ -135,11 +135,11 @@ void GeometryGUI::drawMoveSection(std::optional<std::pair<SketchEntityType, int>
 		ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 		ImGui::TableSetupColumn("Unit", ImGuiTableColumnFlags_WidthFixed, 40.0f);
 
-		labelRow("Z");
+		labelRow("z");
 		inputDouble("##moveZ", moveTargetZ, project.lengthScale.index, Units::lengthUnits, "%.6g");
 		unitLabel(Units::lengthUnits, project.lengthScale.index);
 
-		labelRow("R");
+		labelRow("r");
 		inputDouble("##moveR", moveTargetR, project.lengthScale.index, Units::lengthUnits, "%.6g");
 		unitLabel(Units::lengthUnits, project.lengthScale.index);
 

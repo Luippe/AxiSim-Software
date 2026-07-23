@@ -111,9 +111,9 @@ bool VideoWriter::open(const std::wstring& path, int width, int height, int fps)
 	if (SUCCEEDED(hr)) hr = inType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
 	if (SUCCEEDED(hr)) hr = inType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
 
-	// Stated rather than left to the default: for RGB formats a POSITIVE stride
-	// means bottom-up rows, which is the order glReadPixels hands us. Saying so
-	// explicitly is what keeps the video from coming out vertically mirrored.
+	// Row pitch only. This does NOT settle which way up the rows run: setting it
+	// positive (documented as bottom-up) and feeding bottom-up rows still came
+	// out mirrored, so writeFrame flips the data itself instead.
 	if (SUCCEEDED(hr)) hr = inType->SetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32)(impl->width * 4));
 	if (SUCCEEDED(hr)) hr = MFSetAttributeSize(inType, MF_MT_FRAME_SIZE, impl->width, impl->height);
 	if (SUCCEEDED(hr)) hr = MFSetAttributeRatio(inType, MF_MT_FRAME_RATE, fps, 1);
@@ -154,15 +154,21 @@ bool VideoWriter::writeFrame(const unsigned char* rgbaBottomUp) {
 
 		if (SUCCEEDED(hr)) {
 
-			// RGB32 with a positive stride is bottom-up, the same convention the
-			// DIB in clipboard.cpp relies on -- so the rows go across untouched
-			// and only the channel order changes. The source may be wider than
-			// what is encoded, hence the separate strides.
+			// Rows are flipped on the way in, exactly as image_writer.cpp does for
+			// PNG. MF documents a positive RGB32 stride as bottom-up, but feeding
+			// it bottom-up rows produced an upside-down video, so the encoder
+			// reads this buffer top-down whatever the stride says. The PNG path is
+			// the reference here -- it round-trips correctly against stb_image --
+			// and the two must not disagree about which way up a frame is.
+			//
+			// Only the bottom `height` source rows are kept, so an odd-height
+			// frame drops its top row; the source may also be wider than what is
+			// encoded, hence the separate strides.
 			const size_t sourceStride = (size_t)impl->sourceWidth * 4;
 
 			for (int y = 0; y < impl->height; y++) {
 
-				const unsigned char* src = rgbaBottomUp + (size_t)y * sourceStride;
+				const unsigned char* src = rgbaBottomUp + (size_t)(impl->height - 1 - y) * sourceStride;
 				BYTE* row = dst + (size_t)y * stride;
 
 				for (int x = 0; x < impl->width; x++) {

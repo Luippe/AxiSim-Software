@@ -55,39 +55,44 @@ void MeshGUI::drawBoundaryGroupGUI() {
 	ImGui::Text("Group ID: %d", selectedGroup->id);
 	ImGui::Text("Total Length: %g", selectedGroup->totalLength);
 
-	ImGui::SeparatorText("Sizing");
+	// Boundary sizing only drives the gmsh triangulation. A structured mesh takes its
+	// resolution from the grid bands instead, and runs the sketch -> boundary pipeline
+	// only to classify faces into groups, so these rows would be dead controls there.
+	if (mesh.currentMeshType == MeshType::Unstructured) {
+		ImGui::SeparatorText("Sizing");
 
-	BoundarySizing& sizing = selectedGroup->sizing;
+		BoundarySizing& sizing = selectedGroup->sizing;
 
-	if (createSimpleCombo("##SizingType", mesh.sizingType, (int&)sizing.mode, IM_ARRAYSIZE(mesh.sizingType))) {
-		if (!(sizing.mode == BoundarySizingMode::None)) {
-			sizing.enabled = true;
+		if (createSimpleCombo("##SizingType", mesh.sizingType, (int&)sizing.mode, IM_ARRAYSIZE(mesh.sizingType))) {
+			if (!(sizing.mode == BoundarySizingMode::None)) {
+				sizing.enabled = true;
+			}
+			else {
+				sizing.enabled = false;
+			}
 		}
-		else {
-			sizing.enabled = false;
+
+		if (sizing.mode == BoundarySizingMode::EdgeCount) {
+			ImGui::InputInt("Edge Count", &sizing.edgeCount);
+			ImGui::InputDouble("Bias", &sizing.bias, 0.1, 0.5, "%.3f");
 		}
-	}
-
-	if (sizing.mode == BoundarySizingMode::EdgeCount) {
-		ImGui::InputInt("Edge Count", &sizing.edgeCount);
-		ImGui::InputDouble("Bias", &sizing.bias, 0.1, 0.5, "%.3f");
-	}
-	else if (sizing.mode == BoundarySizingMode::TargetSpacing) {
-		ImGui::InputDouble("Target spacing", &sizing.targetSpacing, 0.0001, 0.001, "%.6f");
-		ImGui::InputDouble("Bias", &sizing.bias, 0.1, 0.5, "%.3f");
-	}
+		else if (sizing.mode == BoundarySizingMode::TargetSpacing) {
+			ImGui::InputDouble("Target spacing", &sizing.targetSpacing, 0.0001, 0.001, "%.6f");
+			ImGui::InputDouble("Bias", &sizing.bias, 0.1, 0.5, "%.3f");
+		}
 
 
-	if (sizing.targetSpacing < 1e-12) {
-		sizing.targetSpacing = 1e-12;
-	}
+		if (sizing.targetSpacing < 1e-12) {
+			sizing.targetSpacing = 1e-12;
+		}
 
-	if (sizing.bias < 0.05) {
-		sizing.bias = 0.05;
-	}
+		if (sizing.bias < 0.05) {
+			sizing.bias = 0.05;
+		}
 
-	if (sizing.edgeCount < 1) {
-		sizing.edgeCount = 1;
+		if (sizing.edgeCount < 1) {
+			sizing.edgeCount = 1;
+		}
 	}
 
 	ImGui::Spacing();
@@ -366,55 +371,67 @@ void MeshGUI::drawPropertiesPanel() {
 		}
 	}
 	else if (selectedItem == "Edit") {
-		sectionHeader("Grid Bands");
-
-		const SketchModel& sketch = project.geometry.sketch;
-
-		std::vector<double> zL, rL;
-		mesh.computeTrellisLines(sketch, zL, rL);
-
-		if (zL.size() >= 2 && rL.size() >= 2) {
-			mesh.ensureBandSizes(zL.size() - 1, rL.size() - 1);
-
-			if (ImGui::BeginTable("BandTable", 2, UIFlags::TableSimpleFlags)) {
-				setupTableColumns(
-					autoColumn("Band"),
-					column("Cells", 100.0f, ImGuiTableColumnFlags_WidthStretch)
-				);
-
-				for (size_t i = 0; i + 1 < zL.size(); i++) {
-					ImGui::PushID(static_cast<int>(i));
-					char label[64];
-					snprintf(label, sizeof(label), "z: %.4g - %.4g", zL[i], zL[i + 1]);
-					labelRow(label);
-					if (inputInt("##zband", &mesh.zBandCells[i]) && mesh.zBandCells[i] < 1) {
-						mesh.zBandCells[i] = 1;
-					}
-					ImGui::PopID();
-				}
-
-				for (size_t j = 0; j + 1 < rL.size(); j++) {
-					ImGui::PushID(1000000 + static_cast<int>(j));
-					char label[64];
-					snprintf(label, sizeof(label), "r: %.4g - %.4g", rL[j], rL[j + 1]);
-					labelRow(label);
-					if (inputInt("##rband", &mesh.rBandCells[j]) && mesh.rBandCells[j] < 1) {
-						mesh.rBandCells[j] = 1;
-					}
-					ImGui::PopID();
-				}
-
-				ImGui::EndTable();
-			}
+		// Grid bands are the multiblock trellis decomposition, which only exists for a
+		// structured mesh -- an unstructured mesh clears isMultiBlock and takes its
+		// resolution from boundary sizing / regions of influence instead.
+		if (mesh.currentMeshType == MeshType::Unstructured) {
+			sectionHeader("Edit");
 
 			ImGui::TextWrapped(
-				"Axial cells per z-band and radial cells per r-band. "
-				"Applies on the next Generate Mesh.");
+				"Grid bands apply to structured meshes only. Size an unstructured "
+				"mesh with boundary sizing and regions of influence.");
 		}
 		else {
-			ImGui::TextWrapped(
-				"Draw a rectangle or a closed rectilinear outline in the sketch "
-				"to define grid bands.");
+			sectionHeader("Grid Bands");
+
+			const SketchModel& sketch = project.geometry.sketch;
+
+			std::vector<double> zL, rL;
+			mesh.computeTrellisLines(sketch, zL, rL);
+
+			if (zL.size() >= 2 && rL.size() >= 2) {
+				mesh.ensureBandSizes(zL.size() - 1, rL.size() - 1);
+
+				if (ImGui::BeginTable("BandTable", 2, UIFlags::TableSimpleFlags)) {
+					setupTableColumns(
+						autoColumn("Band"),
+						column("Cells", 100.0f, ImGuiTableColumnFlags_WidthStretch)
+					);
+
+					for (size_t i = 0; i + 1 < zL.size(); i++) {
+						ImGui::PushID(static_cast<int>(i));
+						char label[64];
+						snprintf(label, sizeof(label), "z: %.4g - %.4g", zL[i], zL[i + 1]);
+						labelRow(label);
+						if (inputInt("##zband", &mesh.zBandCells[i]) && mesh.zBandCells[i] < 1) {
+							mesh.zBandCells[i] = 1;
+						}
+						ImGui::PopID();
+					}
+
+					for (size_t j = 0; j + 1 < rL.size(); j++) {
+						ImGui::PushID(1000000 + static_cast<int>(j));
+						char label[64];
+						snprintf(label, sizeof(label), "r: %.4g - %.4g", rL[j], rL[j + 1]);
+						labelRow(label);
+						if (inputInt("##rband", &mesh.rBandCells[j]) && mesh.rBandCells[j] < 1) {
+							mesh.rBandCells[j] = 1;
+						}
+						ImGui::PopID();
+					}
+
+					ImGui::EndTable();
+				}
+
+				ImGui::TextWrapped(
+					"Axial cells per z-band and radial cells per r-band. "
+					"Applies on the next Generate Mesh.");
+			}
+			else {
+				ImGui::TextWrapped(
+					"Draw a rectangle or a closed rectilinear outline in the sketch "
+					"to define grid bands.");
+			}
 		}
 	}
 	else if (selectedItem == "Region of Influence") {
@@ -499,8 +516,22 @@ void MeshGUI::draw() {
 
 			bool shouldGenerate = true;
 
+			// The domain is the axisymmetric half-plane r >= 0, so geometry below the
+			// z axis has no physical meaning -- it would revolve inside-out. Reject it
+			// up front, as the first link of the chain, so neither mesh type's
+			// conversion path ever sees a negative radius.
+			std::string axisReason;
+			bool aboveAxis =
+				!hasSketchGeometry || mesh.sketchIsAboveAxis(sketch, axisReason);
 
-			if (mesh.currentMeshType == MeshType::Unstructured &&
+			if (!aboveAxis) {
+				if (mesh.console) {
+					mesh.console->addLine(
+						("Cannot generate mesh: " + axisReason + "\n").c_str());
+				}
+				shouldGenerate = false;
+			}
+			else if (mesh.currentMeshType == MeshType::Unstructured &&
 				hasSketchGeometry) {
 				if (!mesh.convertSketchToUnstructuredMesh(sketch)) {
 					shouldGenerate = false;

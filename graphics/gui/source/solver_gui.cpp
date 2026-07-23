@@ -32,7 +32,7 @@ namespace {
 			case BoundaryType::VELOCITY_INLET:  return &assets.icon("inlet");
 			case BoundaryType::PRESSURE_OUTLET: return &assets.icon("outlet");
 			case BoundaryType::SYMMETRY:        return &assets.icon("symmetry");
-			case BoundaryType::FAR_FIELD:       return &assets.icon("boundary");
+			case BoundaryType::FAR_FIELD:       return &assets.icon("far_field");
 		}
 		return nullptr;
 	}

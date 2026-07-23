@@ -2851,6 +2851,94 @@ void Mesh::ensureBandSizes(size_t nZBands, size_t nRBands) {
 	if (rBandCells.size() != nRBands) rBandCells.resize(nRBands, 20);
 }
 
+bool Mesh::sketchIsAboveAxis(const SketchModel& sketch, std::string& reason) const {
+	// Scale the tolerance off the sketch's own extent rather than g.L / g.R: this runs
+	// before any conversion, so on a fresh project the grid extent has not been set
+	// from the sketch yet.
+	double extent = 0.0;
+	auto grow = [&extent](double r) {
+		extent = std::max(extent, std::fabs(r));
+	};
+
+	for (const SketchLine& ln : sketch.lines) {
+		if (ln.construction) continue;
+		const SketchPoint* p0 = sketch.findPoint(ln.p0);
+		const SketchPoint* p1 = sketch.findPoint(ln.p1);
+		if (p0) grow(p0->pos.r);
+		if (p1) grow(p1->pos.r);
+	}
+	for (const SketchRectangle& rc : sketch.rectangles) {
+		if (rc.construction) continue;
+		grow(rc.min.r);
+		grow(rc.max.r);
+	}
+	for (const SketchCircle& ci : sketch.circles) {
+		if (ci.construction) continue;
+		grow(ci.center.r + ci.radius);
+	}
+	for (const SketchArc& ar : sketch.arcs) {
+		if (ar.construction) continue;
+		grow(ar.center.r + ar.radius);
+	}
+
+	if (extent <= 0.0) {
+		extent = 1.0;
+	}
+
+	const double tol = extent * 1e-9;
+
+	// An arc only reaches center.r - radius if its sweep actually passes through
+	// 3*pi/2, where sin is at its minimum; otherwise the lowest point is an endpoint.
+	// Using the full-circle bound instead would reject arcs that stay clear of the
+	// axis.
+	auto arcMinR = [](const SketchArc& ar) {
+		const double start = normalizeSketchAngle(ar.startAngle);
+		const double span = positiveSketchAngleSpan(ar.startAngle, ar.endAngle);
+		const double end = start + span;
+
+		const double bottom = 1.5 * PI;
+		if ((bottom >= start && bottom <= end) ||
+			(bottom + sketchMeshTwoPi >= start && bottom + sketchMeshTwoPi <= end)) {
+			return ar.center.r - ar.radius;
+		}
+
+		return ar.center.r + ar.radius * std::min(std::sin(start), std::sin(end));
+	};
+
+	for (const SketchLine& ln : sketch.lines) {
+		if (ln.construction) continue;
+		const SketchPoint* p0 = sketch.findPoint(ln.p0);
+		const SketchPoint* p1 = sketch.findPoint(ln.p1);
+		if ((p0 && p0->pos.r < -tol) || (p1 && p1->pos.r < -tol)) {
+			reason = "A line crosses below the z axis.";
+			return false;
+		}
+	}
+	for (const SketchRectangle& rc : sketch.rectangles) {
+		if (rc.construction) continue;
+		if (std::min(rc.min.r, rc.max.r) < -tol) {
+			reason = "A rectangle extends below the z axis.";
+			return false;
+		}
+	}
+	for (const SketchCircle& ci : sketch.circles) {
+		if (ci.construction) continue;
+		if (ci.center.r - ci.radius < -tol) {
+			reason = "A circle extends below the z axis.";
+			return false;
+		}
+	}
+	for (const SketchArc& ar : sketch.arcs) {
+		if (ar.construction) continue;
+		if (arcMinR(ar) < -tol) {
+			reason = "An arc extends below the z axis.";
+			return false;
+		}
+	}
+
+	return true;
+}
+
 bool Mesh::sketchSupportsStructured(const SketchModel& sketch, std::string& reason) const {
 	auto anyReal = [](const auto& items) {
 		for (const auto& it : items) if (!it.construction) return true;
