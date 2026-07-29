@@ -512,8 +512,7 @@ void Results::syncShownFields() {
 	// exist in fieldType when their corresponding solver is enabled, so they are
 	// added automatically as soon as results are regenerated with that solver.
 	const char* defaults[] = {
-		"Axial Velocity", "Radial Velocity", "Velocity Magnitude",
-		"Continuity", "Pressure", "Cell Reynolds Number",
+		"Axial Velocity", "Radial Velocity", "Pressure",
 		"Temperature", "Concentration"
 	};
 

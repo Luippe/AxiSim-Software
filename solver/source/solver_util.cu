@@ -864,31 +864,6 @@ addDiffusionCoefficient(
 	}
 }
 
-__global__
-void addRadialMomentumCylindricalSource(
-	Config config,
-	FVMeshDevice mesh,
-	Coefficients vCoeff
-) {
-	int n = blockIdx.x * blockDim.x + threadIdx.x;
-
-	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) return;
-
-	double r = mesh.cells.centerR[n];
-	double volume = mesh.cells.volume[n];
-	double mu = config.f.mu;
-
-	double r2 = r * r;
-	if (r2 <= 1.0e-30 || volume <= 0.0) return;
-
-	// Cylindrical radial momentum uses the vector Laplacian:
-	// mu * (laplacian(V) - V / r^2). The scalar Laplacian part is assembled
-	// by addDiffusionCoefficient; moving diffusion to the matrix leaves this
-	// extra term as a positive implicit diagonal contribution.
-	vCoeff.AC[n] += mu * volume / r2;
-}
-
 // ==============================================================
 // ==================CONVECTION TERM=============================
 // ==============================================================
@@ -1034,11 +1009,33 @@ void addConvectionContribution(
 			coeff.AC[n] += F;
 		}
 	}
-	else if (isNeumannType(bcType) || isFullyDevelopedType(bcType)) {
+	else if (isNeumannType(bcType)) {
 		// zero-gradient / fully developed types:
 		// phi_f = phi_P.
 		coeff.AC[n] += F;
 	}
+	else if (isFullyDevelopedType(bcType)) {
+
+	}
+}
+
+__global__
+void addRadialMomentumCylindricalSource(
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	double scalar
+) {
+
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (n >= mesh.cells.nCells) return;
+	if (!mesh.cells.active[n]) return;
+
+	double volume = mesh.cells.volume[n];
+	double r = mesh.cells.centerR[n];
+
+	coeff.AC[n] += scalar * volume / (r * r);
+
 }
 
 __global__

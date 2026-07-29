@@ -327,6 +327,13 @@ void addTransientCoefficient(
 	double dt
 );
 
+__global__
+void addRadialMomentumCylindricalSource(
+	FVMeshDevice mesh,
+	Coefficients coeff,
+	double scalar
+);
+
 // fluxScale multiplies the face MASS flux (mDot = rho*u*area) before it is used
 // as the convecting flux F. Momentum convects mass, so it passes 1.0. A passive
 // scalar (species concentration) convects with the VOLUMETRIC flux u*area, so it

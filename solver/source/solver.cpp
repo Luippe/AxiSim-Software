@@ -362,8 +362,7 @@ void Solver::addFieldType() {
     fieldType.push_back("Radial Velocity");
     fieldType.push_back("Velocity Magnitude");
     fieldType.push_back("Pressure");
-    fieldType.push_back("Continuity");
-    fieldType.push_back("Cell Reynolds Number");
+
 
     if (fieldOption.solveEnergy) {
         fieldType.push_back("Temperature");
@@ -377,6 +376,8 @@ void Solver::addFieldType() {
         fieldType.push_back("dC/dr");
     }
 
+    fieldType.push_back("Continuity");
+    fieldType.push_back("Cell Reynolds Number");
     fieldType.push_back("dU/dz");
     fieldType.push_back("dU/dr");
     fieldType.push_back("dV/dz");
@@ -1220,12 +1221,14 @@ void Solver::runSimple(const Mesh& mesh) {
             addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, applyNonOrtho, f.mu);
             addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, applyNonOrtho, f.mu);
 
-            //addRadialMomentumCylindricalSource << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, vCoeff);
-            if (addConvectionTerm) {
+           if (addConvectionTerm) {
                 addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, uCoeff, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, convectionScheme, 1.0);
                 addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, vCoeff, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, convectionScheme, 1.0);
             }
 
+            // add mu * ur / r^2 contribution
+            addRadialMomentumCylindricalSource << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, f.mu);
+            
             // Unsteady term, added before under-relaxation and before DU/DV are read
             // off the diagonal: rho*V/dt belongs to the momentum diagonal, so the
             // Rhie-Chow interpolation and the pressure-correction equation both have
