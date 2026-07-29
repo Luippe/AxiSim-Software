@@ -2798,12 +2798,19 @@ void Mesh::buildMultiBlockInspectMesh(FVMesh& out,
 	std::vector<std::array<Vec2, 4>>& quads) const {
 
 	out = createMultiBlockFVMesh();
+	multiBlockCellCorners(quads);
+}
+
+bool Mesh::multiBlockCellCorners(std::vector<std::array<Vec2, 4>>& quads) const {
+
 	quads.clear();
-	if (multiBlock.blocks.empty()) return;
+	if (multiBlock.blocks.empty()) return false;
 
 	// Corner vertices per cell, in the same global order toPackedMesh assigns
 	// (block.cellGlobal(i,j)), for point-in-cell picking and highlight drawing.
-	quads.assign(out.numCells(), std::array<Vec2, 4>{});
+	// Sized off multiBlock.totalCells -- the same count toPackedMesh allocates
+	// against, so the indices below cannot run past the end.
+	quads.assign(multiBlock.totalCells, std::array<Vec2, 4>{});
 	for (const Block& b : multiBlock.blocks) {
 		for (int i = 0; i < b.nr; i++) {
 			for (int j = 0; j < b.nz; j++) {
@@ -2813,6 +2820,8 @@ void Mesh::buildMultiBlockInspectMesh(FVMesh& out,
 			}
 		}
 	}
+
+	return true;
 }
 
 void Mesh::computeTrellisLines(const SketchModel& sketch,

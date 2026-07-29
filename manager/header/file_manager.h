@@ -11,6 +11,7 @@
 #include <utility>
 #include <unordered_set>
 #include <unordered_map>
+#include <vector>
 
 class Project;
 class Solution;
@@ -45,7 +46,11 @@ enum class FileKind {
 
 	// Names the animation export. An .mp4 target is written directly; a .png one
 	// names a numbered frame sequence written into a folder derived from it.
-	Animation
+	Animation,
+
+	// Names the analysis export. Like the .png sequence above, the target is a
+	// folder derived from the chosen name, not the single .npy the dialog shows.
+	Solution
 };
 
 // open file dialog for saving
@@ -420,6 +425,66 @@ bool readBinary(std::ifstream& in, Args&... args) {
 	return readAll(in, args...);
 }
 
+
+// ====================================================
+// -------------------NUMPY EXPORT---------------------
+// ====================================================
+
+// Write a rows x cols double table as a NumPy .npy file (format v1.0, C order,
+// dtype '<f8'), readable with a bare np.load() -- no dependency on our .axi
+// reader and no CSV parsing cost on the Python side.
+//
+// This is for analysis export only, NOT a save format: it carries no version
+// tag and is never read back by the app, so unlike the .axi writers above it
+// can change shape freely without breaking old projects.
+//
+// data must hold exactly rows*cols values laid out row-major. Returns false on
+// a size mismatch or an unwritable path.
+bool writeNpy(
+	const std::filesystem::path& path,
+	const std::vector<double>& data,
+	std::size_t rows,
+	std::size_t cols
+);
+
+// Same container, dtype '<i4'. Connectivity is indices, and writing them as
+// doubles would both double the file and invite a reader to do arithmetic on
+// them -- np.load gives an integer array that can index directly.
+bool writeNpyInt32(
+	const std::filesystem::path& path,
+	const std::vector<std::int32_t>& data,
+	std::size_t rows,
+	std::size_t cols
+);
+
+// Export the current solution for offline analysis (validation against analytic
+// solutions, grid-convergence studies). Writes into dir, creating it if needed:
+//
+//   solution.npy   nCells x nColumns, one row per cell
+//   meta.json      column names, mesh shape, fluid properties, frame index
+//   frame_NNNN.npy one per captured transient frame, field columns only
+//   points.npy     nPoints x 2 (z, r) welded cell corners  } multiblock only,
+//   cells.npy      nCells x 4 indices into points.npy      } see "cellCorners"
+//
+// Read meta.json "columns" for the layout rather than assuming one -- the field
+// set follows whatever the run solved. Frames carry "frameColumns" only, since
+// the geometry columns are in solution.npy and do not move between frames.
+//
+// points/cells give the real cell outlines, in cell order, so a reader can draw
+// and integrate on the mesh that was solved on instead of triangulating the cell
+// centers -- which would put vertices half a cell off and hull away obstacles.
+// Both files, and the "points"/"cellCorners" keys, are absent on the paths that
+// have no corners to give; test for the key, do not assume.
+//
+// Cell values are exported raw and in base SI, on every mesh type. Nothing is
+// resampled onto the render raster: that path zeroes cells no block covers, and
+// a zero is indistinguishable from a result once it is in NumPy.
+bool saveSolutionNpy(const std::filesystem::path& dir, const Project& project);
+
+// Ask for a name, then export beside it. The dialog names one .npy but an export
+// is a folder (see saveSolutionNpy), so the chosen stem becomes "<stem>_solution"
+// in the same directory -- the rule the PNG sequence export already follows.
+void saveFromExplorerSolution(const Project& project);
 
 // ====================================================
 // -------------------WRITING FILE---------------------

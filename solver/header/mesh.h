@@ -147,6 +147,14 @@ public:
 	void buildMultiBlockInspectMesh(FVMesh& out,
 		std::vector<std::array<Vec2, 4>>& quads) const;
 
+	// The 4 corner vertices of every multiblock cell, indexed by the same global
+	// cell number toPackedMesh assigns -- so quads[c] bounds fvMesh.cells[c]. The
+	// corners are the only place the real cell outline exists: the FVFace v0/v1
+	// vertex indices are left at -1 on this path (createMultiBlockFVMesh fills
+	// faces from the packer, which carries no vertex IDs). False, and quads
+	// cleared, when there is no multiblock to read.
+	bool multiBlockCellCorners(std::vector<std::array<Vec2, 4>>& quads) const;
+
 	// Map each raster cell (g.nr x g.nz, row-major i*nz+j) to the global index of the
 	// multiblock cell covering its center, or -1 if none (obstacles / outside domain).
 	// The results pipeline is raster-based (it revolves g.zFace/g.rFace and samples a

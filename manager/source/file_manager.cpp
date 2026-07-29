@@ -10,6 +10,9 @@
 #include <unistd.h>
 #endif
 #include <string>
+#include <algorithm>
+#include <array>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -347,6 +350,9 @@ namespace {
 		{ "PNG Sequence", "png" }
 	};
 	#endif
+	const nfdu8filteritem_t solutionFilters[] = {
+		{ "NumPy Solution Export", "npy" }
+	};
 
 	class NfdSession {
 	public:
@@ -398,6 +404,9 @@ namespace {
 		#else
 			return { animationFilters, 1, "png" };
 		#endif
+
+		case FileKind::Solution:
+			return { solutionFilters, 1, "npy" };
 
 		case FileKind::Project:
 		default:
@@ -1526,4 +1535,520 @@ void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc) {
 
 std::ofstream openBinaryFile(const char* path) {
 	return std::ofstream(path, std::ios::binary);
+}
+
+// ====================================================
+// -------------------NUMPY EXPORT---------------------
+// ====================================================
+
+namespace {
+
+	// The container is identical for every dtype we export -- only the descr string
+	// and the element width change -- so the header padding and length rules live
+	// here once instead of being copied per dtype.
+	bool writeNpyRaw(
+		const std::filesystem::path& path,
+		const char* descr,
+		const void* data,
+		std::size_t elemSize,
+		std::size_t rows,
+		std::size_t cols
+	) {
+		std::ofstream out(path, std::ios::binary);
+		if (!out) {
+			std::cerr << "writeNpy: cannot open " << path.string() << '\n';
+			return false;
+		}
+
+		// The shape is always written as a 2-tuple, so a single-column export loads
+		// as (N, 1) rather than (N,). Python side does a[:, 0] -- cheaper than
+		// teaching this writer a 1-D spelling that needs the "(N,)" trailing comma.
+		std::string header = std::string("{'descr': '") + descr
+			+ "', 'fortran_order': False, 'shape': ("
+			+ std::to_string(rows) + ", " + std::to_string(cols) + "), }";
+
+		// Spec: magic(6) + version(2) + headerLen(2) + header must be a multiple of
+		// 64 so the payload lands 64-byte aligned. The header counts its own
+		// terminating newline, so reserve it before rounding up.
+		constexpr std::size_t prefix = 6 + 2 + 2;
+		const std::size_t unpadded = prefix + header.size() + 1;
+		const std::size_t total = ((unpadded + 63) / 64) * 64;
+
+		header.append(total - unpadded, ' ');
+		header.push_back('\n');
+
+		// v1.0 stores the header length as uint16; the dict above is ~60 bytes and
+		// grows only with the digit count of the shape, so it cannot reach the cap.
+		const std::size_t headerLen = header.size();
+
+		out.write("\x93NUMPY", 6);
+		out.put('\x01');	// major version
+		out.put('\x00');	// minor version
+
+		// written byte-by-byte instead of as a uint16 so the little-endian order is
+		// the format's, not the host's
+		out.put((char)(std::uint8_t)(headerLen & 0xFFu));
+		out.put((char)(std::uint8_t)((headerLen >> 8) & 0xFFu));
+
+		out.write(header.data(), (std::streamsize)headerLen);
+
+		if (rows * cols != 0) {
+			out.write((const char*)data, (std::streamsize)(rows * cols * elemSize));
+		}
+
+		if (!out) {
+			std::cerr << "writeNpy: failed while writing " << path.string() << '\n';
+			return false;
+		}
+
+		return true;
+	}
+
+}
+
+bool writeNpy(
+	const std::filesystem::path& path,
+	const std::vector<double>& data,
+	std::size_t rows,
+	std::size_t cols
+) {
+	// '<f8' below promises little-endian IEEE-754 binary64, and the payload is
+	// blitted straight out of the vector -- so assert the host actually matches
+	// rather than letting a reader silently get byte-swapped garbage.
+	static_assert(sizeof(double) == 8, "writeNpy: '<f8' requires an 8-byte double");
+	static_assert(std::endian::native == std::endian::little,
+		"writeNpy: '<f8' requires a little-endian host");
+
+	if (data.size() != rows * cols) {
+		std::cerr << "writeNpy: expected " << rows * cols << " values for a "
+			<< rows << "x" << cols << " array, got " << data.size() << '\n';
+		return false;
+	}
+
+	return writeNpyRaw(path, "<f8", data.data(), sizeof(double), rows, cols);
+}
+
+bool writeNpyInt32(
+	const std::filesystem::path& path,
+	const std::vector<std::int32_t>& data,
+	std::size_t rows,
+	std::size_t cols
+) {
+	static_assert(std::endian::native == std::endian::little,
+		"writeNpyInt32: '<i4' requires a little-endian host");
+
+	if (data.size() != rows * cols) {
+		std::cerr << "writeNpyInt32: expected " << rows * cols << " values for a "
+			<< rows << "x" << cols << " array, got " << data.size() << '\n';
+		return false;
+	}
+
+	return writeNpyRaw(path, "<i4", data.data(), sizeof(std::int32_t), rows, cols);
+}
+
+namespace {
+
+	// Flatten per-cell corner quads into a shared point array plus 4 indices per
+	// cell. Blocks own their own node arrays, so a vertex lying on a block
+	// interface exists once per block that touches it -- welding those duplicates
+	// is the whole reason cells.npy carries indices instead of four coordinate
+	// pairs: without it a "shared" edge is shared by nothing and every topological
+	// query on the export comes back empty.
+	void weldCellCorners(
+		const std::vector<std::array<Vec2, 4>>& quads,
+		std::vector<double>& pointXY,
+		std::vector<std::int32_t>& cellIdx
+	) {
+		// Scaled off the geometry rather than fixed: the same duct modelled in
+		// metres and in microns has to weld identically.
+		double extent = 1.0;
+		for (const std::array<Vec2, 4>& q : quads) {
+			for (const Vec2& p : q) {
+				extent = std::max(extent, std::max(std::fabs(p.z), std::fabs(p.r)));
+			}
+		}
+		const double tol = extent * 1e-9;
+
+		struct Key {
+			long long z, r;
+			bool operator==(const Key& o) const { return z == o.z && r == o.r; }
+		};
+
+		struct Hash {
+			std::size_t operator()(const Key& k) const {
+				const std::size_t h = std::hash<long long>{}(k.z);
+				return h ^ (std::hash<long long>{}(k.r) + 0x9e3779b97f4a7c15ULL
+					+ (h << 6) + (h >> 2));
+			}
+		};
+
+		std::unordered_map<Key, std::int32_t, Hash> seen;
+		seen.reserve(quads.size() * 2);
+
+		pointXY.clear();
+		pointXY.reserve(quads.size() * 2);
+
+		cellIdx.clear();
+		cellIdx.reserve(quads.size() * 4);
+
+		for (const std::array<Vec2, 4>& q : quads) {
+			for (const Vec2& p : q) {
+
+				const Key key{ std::llround(p.z / tol), std::llround(p.r / tol) };
+
+				// Two coordinates closer than tol can still round into adjacent
+				// buckets, so probe the neighbours before calling this vertex new.
+				// Cell spacing is many orders above tol, so a probe can never reach
+				// a genuinely different vertex.
+				std::int32_t id = -1;
+				for (int dz = -1; dz <= 1 && id < 0; dz++) {
+					for (int dr = -1; dr <= 1 && id < 0; dr++) {
+						const auto it = seen.find(Key{ key.z + dz, key.r + dr });
+						if (it != seen.end()) {
+							id = it->second;
+						}
+					}
+				}
+
+				if (id < 0) {
+					id = (std::int32_t)(pointXY.size() / 2);
+					pointXY.push_back(p.z);
+					pointXY.push_back(p.r);
+					seen.emplace(key, id);
+				}
+
+				cellIdx.push_back(id);
+			}
+		}
+	}
+
+	// Field names are ours ("dP/dz" and friends), so only the two characters JSON
+	// always forbids can turn up. Kept anyway so a future field name with a quote
+	// in it produces valid JSON instead of an unparseable file.
+	std::string jsonEscape(const std::string& s) {
+
+		std::string out;
+		out.reserve(s.size());
+
+		for (char c : s) {
+			if (c == '"' || c == '\\') {
+				out.push_back('\\');
+			}
+			out.push_back(c);
+		}
+
+		return out;
+	}
+
+	// Round-trip precision. std::to_string would give 6 decimals, quietly
+	// truncating mu (~1e-3) and D (~3e-9) in the metadata.
+	std::string jsonNumber(double v) {
+
+		// JSON has no NaN or Infinity literal; null at least parses, and reads as
+		// "the solver produced no usable value here" rather than a plausible number.
+		if (!std::isfinite(v)) {
+			return "null";
+		}
+
+		char buf[40];
+		std::snprintf(buf, sizeof(buf), "%.17g", v);
+		return buf;
+	}
+
+	// Names of the fields that can go out as columns, in fieldType order. Taken
+	// from fieldType rather than by iterating solutions, whose unordered_map order
+	// is not reproducible between runs -- a shifting column layout would silently
+	// invalidate any Python script that cached indices.
+	//
+	// A field sized to anything but the cell count cannot sit alongside the
+	// geometry columns, so it is dropped with a warning rather than making the
+	// table ragged.
+	std::vector<std::string> solutionColumnNames(
+		const std::vector<std::string>& fieldType,
+		const std::unordered_map<std::string, SolutionField>& solutions,
+		std::size_t nCells
+	) {
+		std::vector<std::string> names;
+
+		for (const std::string& name : fieldType) {
+
+			auto it = solutions.find(name);
+			if (it == solutions.end()) {
+				continue;
+			}
+
+			if (it->second.field.size() != nCells) {
+				std::cerr << "saveSolutionNpy: skipping '" << name << "' -- "
+					<< it->second.field.size() << " values for " << nCells << " cells\n";
+				continue;
+			}
+
+			names.push_back(name);
+		}
+
+		return names;
+	}
+
+	// Row-major pack of the named fields, so Python slices a column as a[:, k].
+	// leadCols reserves that many columns at the front of each row for the caller
+	// to fill with geometry; frames pass 0.
+	std::vector<double> packSolutionTable(
+		const std::vector<std::string>& names,
+		const std::unordered_map<std::string, SolutionField>& solutions,
+		std::size_t nCells,
+		std::size_t leadCols
+	) {
+		const std::size_t nCols = leadCols + names.size();
+		std::vector<double> table(nCells * nCols, 0.0);
+
+		for (std::size_t k = 0; k < names.size(); k++) {
+
+			auto it = solutions.find(names[k]);
+			if (it == solutions.end() || it->second.field.size() != nCells) {
+				continue;
+			}
+
+			const std::vector<double>& field = it->second.field;
+			const std::size_t col = leadCols + k;
+
+			for (std::size_t c = 0; c < nCells; c++) {
+				table[c * nCols + col] = field[c];
+			}
+		}
+
+		return table;
+	}
+
+}
+
+bool saveSolutionNpy(const std::filesystem::path& dir, const Project& project) {
+
+	const Solver& solver = project.solver;
+	const Mesh& mesh = project.mesh;
+	const Results& results = project.results;
+
+	const FVMesh& fvMesh = solver.fvMesh;
+	const std::size_t nCells = (std::size_t)fvMesh.numCells();
+
+	if (nCells == 0) {
+		std::cerr << "saveSolutionNpy: no cells to export -- mesh and solve first\n";
+		return false;
+	}
+
+	std::error_code ec;
+	std::filesystem::create_directories(dir, ec);
+	if (ec) {
+		std::cerr << "saveSolutionNpy: cannot create " << dir.string()
+			<< " -- " << ec.message() << '\n';
+		return false;
+	}
+
+	// Both cell measures go out. volume is the revolved 2*pi*r*area2D, which is
+	// the right weight for an axisymmetric integral but is ZERO on the axis --
+	// weighting an error norm by it drops the centerline cells entirely, exactly
+	// where a Poiseuille peak lives. area2D is the r-z measure to use instead
+	// when the norm is meant to be over the meridional plane.
+	const std::vector<std::string> geomColumns = { "z", "r", "volume", "area2D", "active" };
+	const std::size_t nGeom = geomColumns.size();
+
+	const std::vector<std::string> fieldColumns =
+		solutionColumnNames(results.fieldType, results.solutions, nCells);
+
+	std::vector<double> table =
+		packSolutionTable(fieldColumns, results.solutions, nCells, nGeom);
+
+	const std::size_t nCols = nGeom + fieldColumns.size();
+
+	for (std::size_t c = 0; c < nCells; c++) {
+
+		const FVCell& cell = fvMesh.cells[c];
+		double* row = table.data() + c * nCols;
+
+		row[0] = cell.center.z;
+		row[1] = cell.center.r;
+		row[2] = cell.volume;
+		row[3] = cell.area2D;
+
+		// The solve skips these cells, so their entries hold zeros rather than
+		// results. Flagged instead of dropped: removing rows would break the
+		// nr x nz reshape that a structured mesh gets in Python.
+		row[4] = (cell.active && !cell.solid) ? 1.0 : 0.0;
+	}
+
+	if (!writeNpy(dir / "solution.npy", table, nCells, nCols)) {
+		return false;
+	}
+
+	// Cell outlines, multiblock only. Centers alone leave a Python reader nothing
+	// but a scatter: triangulating them puts vertices at cell CENTERS (half a cell
+	// off the real ones), turns each quad into two triangles on an arbitrary
+	// diagonal, and convex-hulls away every obstacle and concavity. points.npy +
+	// cells.npy carry the actual quads, so a reader can draw and integrate on the
+	// mesh that was solved on.
+	//
+	// Only the multiblock path has corners to give -- createMultiBlockFVMesh fills
+	// faces from the packer, which carries no vertex IDs, so FVFace::v0/v1 stay -1
+	// there. The meta keys below are omitted rather than zeroed when the pair is
+	// absent, so a reader that assumes them raises KeyError instead of silently
+	// reshaping nothing -- the same rule nr/nz follow.
+	std::size_t nPoints = 0;
+	bool wroteCorners = false;
+
+	std::vector<std::array<Vec2, 4>> quads;
+	if (mesh.multiBlockCellCorners(quads) && quads.size() == nCells) {
+
+		std::vector<double> pointXY;
+		std::vector<std::int32_t> cellIdx;
+		weldCellCorners(quads, pointXY, cellIdx);
+
+		nPoints = pointXY.size() / 2;
+
+		if (!writeNpy(dir / "points.npy", pointXY, nPoints, 2) ||
+			!writeNpyInt32(dir / "cells.npy", cellIdx, nCells, 4)) {
+			return false;
+		}
+
+		wroteCorners = true;
+	}
+
+	// Transient frames: field columns only. Geometry is in solution.npy and does
+	// not move between frames, so repeating it would cost five columns per frame
+	// across a run that can be hundreds of frames long.
+	std::vector<std::pair<std::string, double>> frameIndex;
+
+	if (results.hasAnimation()) {
+
+		for (std::size_t i = 0; i < results.animationFrames.size(); i++) {
+
+			const Results::AnimationFrame& frame = results.animationFrames[i];
+
+			char name[32];
+			std::snprintf(name, sizeof(name), "frame_%04zu.npy", i);
+
+			const std::vector<double> frameTable =
+				packSolutionTable(fieldColumns, frame.solutions, nCells, 0);
+
+			if (!writeNpy(dir / name, frameTable, nCells, fieldColumns.size())) {
+				return false;
+			}
+
+			frameIndex.emplace_back(name, frame.time);
+		}
+	}
+
+	std::ofstream meta(dir / "meta.json");
+	if (!meta) {
+		std::cerr << "saveSolutionNpy: cannot open " << (dir / "meta.json").string() << '\n';
+		return false;
+	}
+
+	// A single raster exists only on a structured single-block mesh. The trellis
+	// path reports MeshType::Structured too but numbers cells per block, leaving
+	// fvMesh.nr/nz at 0 -- so the reshape is gated on those, not on the mesh type.
+	// nr/nz are omitted rather than written as 0 when there is no raster, so a
+	// Python reader that assumes one raises KeyError instead of reshaping to
+	// nothing.
+	const bool reshapable = fvMesh.nr > 0 && fvMesh.nz > 0;
+
+	meta << "{\n";
+	meta << "  \"app\": \"AxiSim\",\n";
+	meta << "  \"format\": 1,\n";
+	meta << "  \"note\": \"cell-centered values, base SI units\",\n";
+	meta << "  \"cells\": " << nCells << ",\n";
+
+	meta << "  \"meshType\": \""
+		<< (mesh.currentMeshType == MeshType::Structured ? "Structured" : "Unstructured")
+		<< "\",\n";
+	meta << "  \"multiBlock\": " << (mesh.isMultiBlock ? "true" : "false") << ",\n";
+	meta << "  \"structured\": " << (reshapable ? "true" : "false") << ",\n";
+
+	if (reshapable) {
+		meta << "  \"nr\": " << fvMesh.nr << ",\n";
+		meta << "  \"nz\": " << fvMesh.nz << ",\n";
+	}
+
+	if (wroteCorners) {
+		meta << "  \"points\": " << nPoints << ",\n";
+		meta << "  \"cellCorners\": 4,\n";
+	}
+
+	meta << "  \"fluid\": {"
+		<< "\"rho\": " << jsonNumber(solver.f.rho)
+		<< ", \"mu\": " << jsonNumber(solver.f.mu)
+		<< ", \"cp\": " << jsonNumber(solver.f.cp)
+		<< ", \"k\": " << jsonNumber(solver.f.k)
+		<< ", \"D\": " << jsonNumber(solver.f.D)
+		<< "},\n";
+
+	meta << "  \"transient\": " << (solver.configSolver.transient ? "true" : "false") << ",\n";
+	meta << "  \"dt\": " << jsonNumber(solver.configSolver.dt) << ",\n";
+
+	meta << "  \"columns\": [";
+	for (std::size_t i = 0; i < geomColumns.size(); i++) {
+		meta << (i ? ", " : "") << '"' << jsonEscape(geomColumns[i]) << '"';
+	}
+	for (const std::string& name : fieldColumns) {
+		meta << ", \"" << jsonEscape(name) << '"';
+	}
+	meta << "],\n";
+
+	meta << "  \"frameColumns\": [";
+	for (std::size_t i = 0; i < fieldColumns.size(); i++) {
+		meta << (i ? ", " : "") << '"' << jsonEscape(fieldColumns[i]) << '"';
+	}
+	meta << "],\n";
+
+	meta << "  \"frames\": [";
+	for (std::size_t i = 0; i < frameIndex.size(); i++) {
+		meta << (i ? ",\n    " : "\n    ")
+			<< "{\"file\": \"" << frameIndex[i].first
+			<< "\", \"time\": " << jsonNumber(frameIndex[i].second) << "}";
+	}
+	meta << (frameIndex.empty() ? "]\n" : "\n  ]\n");
+
+	meta << "}\n";
+
+	if (!meta) {
+		std::cerr << "saveSolutionNpy: failed while writing meta.json\n";
+		return false;
+	}
+
+	std::cout << "saveSolutionNpy: wrote " << nCells << " cells x " << nCols
+		<< " columns";
+	if (wroteCorners) {
+		std::cout << " + " << nPoints << " corner points";
+	}
+	if (!frameIndex.empty()) {
+		std::cout << " + " << frameIndex.size() << " frames";
+	}
+	std::cout << " to " << dir.string() << '\n';
+
+	return true;
+}
+
+void saveFromExplorerSolution(const Project& project) {
+
+	// The menu item is already gated on this, but the check is repeated here so
+	// a call from anywhere else cannot walk into saveSolutionNpy with an empty
+	// mesh and get the less obvious "no cells to export".
+	if (!project.results.isReady) {
+		std::cerr << "saveFromExplorerSolution: nothing to export -- run a solve first\n";
+		return;
+	}
+
+	const std::wstring path = saveFileDialog(FileKind::Solution);
+	if (path.empty()) {
+		return;
+	}
+
+	// The dialog names one .npy, but an export is solution.npy + meta.json plus a
+	// file per transient frame, so they get a folder of their own beside the name
+	// that was picked instead of being tipped into whatever is already there --
+	// the same rule the PNG sequence export follows (AnimationGUI::beginExport).
+	const std::filesystem::path target(path);
+
+	saveSolutionNpy(
+		target.parent_path() / (target.stem().wstring() + L"_solution"),
+		project
+	);
 }

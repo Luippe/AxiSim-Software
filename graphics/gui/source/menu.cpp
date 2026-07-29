@@ -189,6 +189,9 @@ void Menu::drawExport() {
 			}
 		}
 
+		if (menuItem("Solution", nullptr, false, project.results.isReady)) {
+			saveFromExplorerSolution(project);
+		}
 		ImGui::EndMenu();
 	}
 }
