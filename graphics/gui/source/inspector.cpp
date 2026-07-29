@@ -540,9 +540,13 @@ void Inspector::drawToolBar() {
 
 	// --- home ---
 	beginSection();
-	if (addImageButton("Reset", "Home", "Reset view", assets.icon("house"))) {
+	if (addImageButton("Reset", "Home", "Reset both views", assets.icon("house"))) {
 		camera.initPosition();
 		pendingFrame = true;
+
+		// the 3D scene is this same result seen another way, so Home resets it
+		// too and lands it framed on what the inspector is framing
+		scene.resetView();
 	}
 	ImGui::SameLine();
 	if (addImageButton("Copy", "Copy", "Copy to clipboard", assets.icon("clipboard")) || consoleCopy) {
@@ -569,10 +573,45 @@ void Inspector::drawToolBar() {
 			selectedMirrored = false;
 		}
 	}
-	//ImGui::SameLine();
-	//if (addImageButton("SnapFront", "Front", "Snap to Front of Model", assets.icon("front"))) {
+	ImGui::SameLine();
 
-	//}
+	// Standard views for the 3D scene, two rows of three. World x is the axis
+	// of revolution and the radial plane is y/z: Front looks at the same z-r
+	// plane this inspector draws, and Left/Right look straight down the axis at
+	// the circular section. Each direction points from the model toward where
+	// the camera ends up. Groups so the second row lands under the first
+	// instead of back at the band's left edge.
+	ImGui::BeginGroup();
+	if (addImageButtonRow("SnapFront", "Front", "View the model from the front", assets.icon("front"))) {
+		scene.camera.snapToAxis(glm::vec3(0.0f, 0.0f, 1.0f));
+	}
+	if (addImageButtonRow("SnapBack", "Back", "View the model from the back", assets.icon("back"))) {
+		scene.camera.snapToAxis(glm::vec3(0.0f, 0.0f, -1.0f));
+	}
+	ImGui::EndGroup();
+
+	ImGui::SameLine();
+
+	ImGui::BeginGroup();
+	if (addImageButtonRow("SnapRight", "Right", "View the model down the axis from the right", assets.icon("right"))) {
+		scene.camera.snapToAxis(glm::vec3(1.0f, 0.0f, 0.0f));
+	}
+	if (addImageButtonRow("SnapLeft", "Left", "View the model down the axis from the left", assets.icon("left"))) {
+		scene.camera.snapToAxis(glm::vec3(-1.0f, 0.0f, 0.0f));
+	}
+	ImGui::EndGroup();
+
+	ImGui::SameLine();
+
+	ImGui::BeginGroup();
+	if (addImageButtonRow("SnapTop", "Top", "View the model from above", assets.icon("top"))) {
+		scene.camera.snapToAxis(glm::vec3(0.0f, 1.0f, 0.0f));
+	}
+	if (addImageButtonRow("SnapBottom", "Bottom", "View the model from below", assets.icon("bottom"))) {
+		scene.camera.snapToAxis(glm::vec3(0.0f, -1.0f, 0.0f));
+	}
+	ImGui::EndGroup();
+
 	endSection("View");
 
 	endToolbar();

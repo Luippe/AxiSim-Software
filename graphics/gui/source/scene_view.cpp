@@ -36,6 +36,17 @@ SceneView::SceneView(Project& project, GUI& gui) :
 
 	frameBuffer.createBuffer(500, 500, samples);
 	createBuffer();
+
+	// The origin triad is the same arrow mesh as the corner gizmo, but drawn out
+	// in the scene it needs to be far slimmer -- the default proportions read as
+	// a fat, intrusive triad at model scale. These are fractions of arm length,
+	// so they hold whatever the arms are scaled to each frame. The hub shrinks
+	// to a small origin dot rather than a big ball sitting on the results.
+	originAxis.shaftRadius = 0.012f;
+	originAxis.headRadius = 0.04f;
+	originAxis.headLength = 0.16f;
+	originAxis.hubRadius = 0.03f;
+	originAxis.generate();
 };
 
 
@@ -74,13 +85,19 @@ void SceneView::handleMouse() {
 	hovered = ImGui::IsItemHovered();
 	focused = ImGui::IsWindowFocused();
 
+	ImGuiIO& io = ImGui::GetIO();
+
+	// Ctrl + arrows orbit without the mouse. Focus is enough -- unlike the
+	// drags below, it does not need the cursor over the image.
+	if (focused) {
+		handleKeyboard(io);
+	}
+
 	if (!(hovered && focused)) {
 		axisGizmo.highlightArm = AxisGizmo::ArmNone;
 		axisGizmo.showNegativeArms = false;
 		return;
 	}
-
-	ImGuiIO& io = ImGui::GetIO();
 
 	// GetItemRectMin is the image just submitted, which stays correct even when
 	// the window moves without resizing. Both the triad and the trackball work
@@ -288,6 +305,11 @@ void SceneView::createBuffer() {
 	// a freshly generated result needs its revolved surface rebuilt
 	usDirty = true;
 
+	// ...and framing on the next render, the same way Inspector::generate asks
+	// for its own. Both are driven from GUI::refreshResultsViews, so a result
+	// that has just been generated or loaded lands framed in both views.
+	framedOnModel = false;
+
 }
 
 void SceneView::markUnstructuredDirty() {
@@ -298,6 +320,20 @@ void SceneView::draw3DPreview() {
 
 	// draw results
 	if (!results.isReady) return;
+
+	// The revolved result surfaces are NOT built with a consistent outward
+	// winding, so back-face culling (enabled globally in Display) leaves the
+	// model see-through in patches -- the reported bug. The unstructured path
+	// stitches its lateral quads from edges taken in vertex-index order rather
+	// than geometric orientation (see buildUnstructuredSurface), so roughly half
+	// face inward and get culled; the end caps -- the profile's vertical
+	// boundary edges revolved -- are among them, which is why the ends read as
+	// open. A partial (< 360 degree) revolve is worse still: its flat cut-plane
+	// caps are meant to be seen from either side as the camera orbits past them,
+	// and culling can only ever show one. These surfaces are opaque and
+	// depth-tested, so drawing them double-sided is correct. Restore the global
+	// cull state at the end so nothing else in the frame is affected.
+	glDisable(GL_CULL_FACE);
 
 	if (project.mesh.currentMeshType == MeshType::Unstructured) {
 
@@ -344,11 +380,60 @@ void SceneView::draw3DPreview() {
 		results.currentField->textureBuffer.unbind();
 	}
 
-	// draw the coordinate axes through world zero
+	// gizmo-style colored arrows on +x/+y/+z, plus long black dotted reference
+	// lines, all through world zero
 	if (showOriginAxis) {
-		renderer.renderAxis(shaderLine);
+		drawOriginAxes();
 	}
 
+	// back to the global default the rest of the frame expects
+	glEnable(GL_CULL_FACE);
+
+}
+
+
+void SceneView::drawOriginAxes() {
+
+	float axialMin = 0.0f;
+	float axialMax = 0.0f;
+	float radius = 0.0f;
+
+	if (!modelBounds(axialMin, axialMax, radius)) return;
+
+	const float centreX = 0.5f * (axialMin + axialMax);
+	const float half = 0.5f * (axialMax - axialMin);
+
+	// radius of the sphere that bounds the model about its own centre
+	const float boundR = std::sqrt(half * half + radius * radius);
+
+	// farthest the model reaches from world zero. Sizing off this rather than the
+	// bounding radius alone matters because zero is not the model's centre -- it
+	// sits on the axis of revolution, often near one end -- so this is what makes
+	// every positive arm tip clear the model whichever way it points.
+	const float reach = std::abs(centreX) + boundR;
+	if (!(reach > 0.0f)) return;
+
+	// Arrows just clear the model's radial surface -- far enough that the x/y/z
+	// heads poke out, but sized off the radial extent (the model's "thickness")
+	// rather than the reach the dotted lines use, so a long thin model does not
+	// get a triad as long as itself. This is what keeps them out of the way of
+	// the results while still scaling with the model.
+	const float radial = (radius > 1.0e-6f) ? radius : boundR;
+	const float arrowLength = 1.3f * radial;
+
+	// the dotted reference lines run much further, well past the whole model
+	const float lineLength = 6.0f * reach;
+
+	// Both are built in unit space and placed with a plain scale in WORLD space
+	// (identity base), so they are independent of the length-unit scale the
+	// results carry -- the lengths above are already in world units, measured off
+	// modelBounds which applies that scale itself.
+	const glm::mat4 lineModel = scaleMat4(glm::mat4(1.0f), lineLength);
+	shaderLine.loadTransformationMatrix(lineModel, camera.view, camera.projection);
+	renderer.renderDottedAxes(shaderLine);
+
+	const glm::mat4 arrowModel = scaleMat4(glm::mat4(1.0f), arrowLength);
+	originAxis.drawAtOrigin(arrowModel, camera.view, camera.projection);
 }
 
 // ======================================================================
@@ -634,19 +719,113 @@ void SceneView::drawUnstructured3D() {
 	colormap.unbind();
 }
 
-glm::vec3 SceneView::modelCentre() const {
+bool SceneView::modelBounds(float& axialMin, float& axialMax, float& radius) const {
 
-	const std::vector<double>& zFace = results.g.zFace;
+	if (!results.isReady) return false;
 
-	// nothing loaded yet: the world origin is as good a guess as any, and it is
-	// what the camera starts on anyway
-	if (!results.isReady || zFace.size() < 2) return glm::vec3(0.0f);
+	// Measured off the geometry that is actually drawn, which is not the same
+	// source for both mesh types: createGrid fills the raster faces and it only
+	// ever runs on the structured path, so reading g for an unstructured mesh
+	// finds it empty -- and an empty span used to park the pivot on the world
+	// origin instead of on the model.
+	double zMin = 0.0;
+	double zMax = 0.0;
+	double rMax = 0.0;
 
-	// the model matrix scales the geometry by lengthScale, so the centre has to
-	// be scaled the same way to land on it
+	if (project.mesh.currentMeshType == MeshType::Unstructured) {
+
+		const std::vector<Vec2>& pts = project.mesh.unstructuredPoints;
+		if (pts.empty()) return false;
+
+		zMin = zMax = pts.front().z;
+
+		for (const Vec2& p : pts) {
+			zMin = std::min(zMin, p.z);
+			zMax = std::max(zMax, p.z);
+			rMax = std::max(rMax, std::abs(p.r));
+		}
+	}
+	else {
+
+		const std::vector<double>& zFace = results.g.zFace;
+		const std::vector<double>& rFace = results.g.rFace;
+
+		if (zFace.size() < 2 || rFace.empty()) return false;
+
+		// linspace built both, so they run one way -- but reading the ends as a
+		// min and a max costs nothing and does not care which way that is
+		zMin = std::min(zFace.front(), zFace.back());
+		zMax = std::max(zFace.front(), zFace.back());
+		rMax = std::abs(rFace.back());
+	}
+
+	// the model matrix scales the geometry by lengthScale, so the bounds have
+	// to be scaled the same way to land on it
 	const float scale = (float)project.lengthScale.value;
 
-	return glm::vec3(0.5f * (float)(zFace.front() + zFace.back()) * scale, 0.0f, 0.0f);
+	axialMin = (float)zMin * scale;
+	axialMax = (float)zMax * scale;
+	radius = (float)rMax * scale;
+
+	return true;
+}
+
+
+glm::vec3 SceneView::modelCentre(float axialMin, float axialMax) {
+
+	// the model is a solid of revolution about world x, so its middle is on
+	// that axis by construction -- only the axial half-way point is in question
+	return glm::vec3(0.5f * (axialMin + axialMax), 0.0f, 0.0f);
+}
+
+
+void SceneView::resetView() {
+
+	camera.home();
+
+	float axialMin = 0.0f;
+	float axialMax = 0.0f;
+	float radius = 0.0f;
+
+	if (!modelBounds(axialMin, axialMax, radius)) return;
+
+	// the revolved solid is a cylinder about world x, so half its length and
+	// its radius in quadrature bound it exactly
+	const float half = 0.5f * (axialMax - axialMin);
+
+	camera.frameTo(
+		modelCentre(axialMin, axialMax),
+		std::sqrt(half * half + radius * radius)
+	);
+}
+
+
+void SceneView::handleKeyboard(ImGuiIO& io) {
+
+	if (!ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) return;
+
+	float dx = 0.0f;
+	float dy = 0.0f;
+
+	if (ImGui::IsKeyDown(ImGuiKey_LeftArrow))  dx -= 1.0f;
+	if (ImGui::IsKeyDown(ImGuiKey_RightArrow)) dx += 1.0f;
+	if (ImGui::IsKeyDown(ImGuiKey_UpArrow))    dy -= 1.0f;
+	if (ImGui::IsKeyDown(ImGuiKey_DownArrow))  dy += 1.0f;
+
+	if (dx == 0.0f && dy == 0.0f) return;
+
+	// the arrows stand in for a drag rather than turning the camera themselves,
+	// so they pick up the selected rotation style and its sensitivity for free.
+	// The drag runs through the middle of the viewport, which is where a
+	// trackball turns about a screen axis instead of rolling.
+	const float step = keyRotateSpeed * std::min(io.DeltaTime, 0.1f);
+
+	const glm::vec2 centre(
+		0.5f * (float)frameBuffer.width,
+		0.5f * (float)frameBuffer.height
+	);
+
+	camera.calculateRotation(centre, centre + glm::vec2(dx, dy) * step);
 }
 
 
@@ -664,17 +843,46 @@ void SceneView::render() {
 
 		// resize scene framebuffer
 		frameBuffer.createBuffer(viewportWidth, viewportHeight, samples);
-
-		//update camera and picker width and height and position
-		rectPos = ImGui::GetCursorScreenPos();
-
-		camera.setDimensions(viewportWidth, viewportHeight, rectPos);
-		picker.setDimensions(viewportWidth, viewportHeight, rectPos);
 	}
 
-	// drags and snaps both turn about the middle of the model. Set before the
-	// snap below so an in-flight one swings about this frame's centre.
-	camera.pivot = modelCentre();
+	// Every frame, not just on a resize: a docked panel can move without
+	// changing size, and the framing below needs the real viewport on the very
+	// first frame -- before that the camera is 1x1 and frames to a square.
+	rectPos = ImGui::GetCursorScreenPos();
+
+	camera.setDimensions(viewportWidth, viewportHeight, rectPos);
+	picker.setDimensions(viewportWidth, viewportHeight, rectPos);
+
+	// Drags and snaps both turn about the middle of the model, so the pivot
+	// follows it. Set before the snap below so an in-flight one swings about
+	// this frame's centre.
+	float axialMin = 0.0f;
+	float axialMax = 0.0f;
+	float radius = 0.0f;
+
+	if (!modelBounds(axialMin, axialMax, radius)) {
+
+		// nothing loaded to turn about, and nothing to frame -- whichever model
+		// appears next gets the framing below
+		camera.pivot = glm::vec3(0.0f);
+		framedOnModel = false;
+	}
+	else if (!framedOnModel) {
+
+		// A freshly generated or loaded model frames itself. Without this the
+		// camera is left on the startup view -- one unit out from the world
+		// origin -- so however exactly the pivot is placed on the model it is
+		// nowhere near the middle of the screen, and the scene reads as turning
+		// about a point that is not the one it is turning about.
+		resetView();
+		framedOnModel = true;
+	}
+	else {
+
+		// a re-mesh or a change of display length unit moves the model out from
+		// under the camera; follow it without dragging the framing sideways
+		camera.movePivot(modelCentre(axialMin, axialMax));
+	}
 
 	// advance any in-flight axis snap first, so the matrices below are built
 	// from this frame's orientation rather than last frame's

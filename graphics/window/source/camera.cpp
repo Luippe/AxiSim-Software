@@ -13,6 +13,8 @@
 // ======================================================================
 namespace {
 
+	constexpr float PI = 3.14159265358979f;
+
 	// ease in and out, so a snap starts and lands gently instead of stopping dead
 	float smoothStep(float t) {
 		return t * t * (3.0f - 2.0f * t);
@@ -27,11 +29,15 @@ Camera3D::Camera3D() {
 
 void Camera3D::initPositionAndAngle() {
 
-	// the usual three-quarter view: down the (-1, 1, 1) diagonal, upright
-	rotation = glm::normalize(
-		glm::angleAxis(glm::radians(-45.0f), glm::vec3(0.0f, 1.0f, 0.0f)) *
-		glm::angleAxis(glm::radians(-35.264f), glm::vec3(1.0f, 0.0f, 0.0f))
-	);
+	// Square on to the x-y plane, looking straight down -z at the orbit target,
+	// x to the right and y up. The identity is exactly that orientation: the eye
+	// sits at target + rotation * (0, 0, distance) (see getPosition), so leaving
+	// the rotation alone puts it on +z looking back. A three-quarter view reads
+	// as more of a 3D scene, but this is the view the sketch and the inspector
+	// draw -- the axis of revolution across the screen, the radial direction up
+	// it -- and starting somewhere else means the model shows up rotated away
+	// from the two views it is meant to be read against.
+	rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 
 	snapping = false;
 }
@@ -249,11 +255,30 @@ void Camera3D::snapToAxis(const glm::vec3& axis) {
 	// where the camera's local +Z has to end up (see getPosition)
 	const glm::vec3 d = axis / len;
 
-	// land upright, which is also how accumulated trackball roll gets undone.
-	// Looking straight down the world up leaves "upright" undefined, so a top
-	// view keeps the spin the camera already has instead of picking one.
-	glm::vec3 ref = glm::vec3(0.0f, 1.0f, 0.0f);
-	if (std::abs(glm::dot(d, ref)) > 0.9999f) ref = getUp();
+	// which way is up in the world. Normalized up front and kept, because the
+	// turntable test in the candidate loop still needs it after `ref` below has
+	// been reassigned to something else.
+	const float upLen = glm::length(worldUp);
+	const glm::vec3 up = (upLen > 1.0e-6f) ? (worldUp / upLen) : glm::vec3(0.0f, 1.0f, 0.0f);
+
+	// Start from the upright frame for this direction. The reference is always a
+	// WORLD axis, never where the camera happens to be pointing: looking
+	// straight down world up leaves "upright" undefined, and taking the
+	// camera's own up there would build the frame around whatever arbitrary
+	// angle the horizon was already at -- a top view would snap the direction
+	// but leave the up vector off-axis. Falling back to another world axis
+	// keeps all four candidates below on axes too.
+	glm::vec3 ref = up;
+
+	if (std::abs(glm::dot(d, ref)) > 0.9999f) {
+
+		// d is world up itself, so build from whichever remaining axis is least
+		// parallel to it -- the one that gives the steadiest cross product
+		const glm::vec3 z(0.0f, 0.0f, 1.0f);
+		const glm::vec3 x(1.0f, 0.0f, 0.0f);
+
+		ref = (std::abs(glm::dot(d, z)) < std::abs(glm::dot(d, x))) ? z : x;
+	}
 
 	glm::vec3 right = glm::cross(ref, d);
 	float rightLen = glm::length(right);
@@ -268,18 +293,129 @@ void Camera3D::snapToAxis(const glm::vec3& axis) {
 
 	right /= rightLen;
 
-	// columns are where the camera's local axes land, so this is exactly the
-	// orientation getRight/getUp/getPosition read back out
+	// ---- the swing: where the view direction lands once it faces `d` ----
+	// The slerp turns the whole orientation at once, but the LANDING still has to
+	// be chosen, and choosing it is a question about roll alone -- `d` is where
+	// the camera is going whichever roll wins. `afterSwing` below is the view
+	// swung onto `d` carrying no extra roll, the reference the candidate rolls are
+	// measured from. Its axis also settles the opposite case: which way a half
+	// turn goes round is fixed here, and the slerp then follows it.
+	const glm::vec3 d0 = rotation * glm::vec3(0.0f, 0.0f, 1.0f);
+
+	glm::vec3 m = glm::cross(d0, d);
+	float mLen = glm::length(m);
+
+	float swing = std::atan2(mLen, glm::clamp(glm::dot(d0, d), -1.0f, 1.0f));
+
+	if (mLen > 1.0e-6f) {
+		m /= mLen;
+	}
+	else if (glm::dot(d0, d) > 0.0f) {
+
+		// already looking down the axis, so there is nothing to swing -- only
+		// the roll below, if the click was to straighten the view up
+		m = up;
+		swing = 0.0f;
+	}
+	else {
+
+		// exactly opposite: every axis through the middle arrives, so take the
+		// one that swings the camera round the side rather than up over the top
+		glm::vec3 side = (std::abs(glm::dot(up, d0)) > 0.9f) ? getRight() : up;
+
+		// square it against d0, so the half turn lands on -d0 and not near it
+		side -= d0 * glm::dot(side, d0);
+
+		const float sideLen = glm::length(side);
+		if (sideLen < 1.0e-6f) return;
+
+		m = side / sideLen;
+		swing = PI;
+	}
+
+	const glm::quat afterSwing = glm::normalize(glm::angleAxis(swing, m) * rotation);
+
+	// ---- the landing roll ----
+	// The direction is settled; the roll about it is not. Landing strictly
+	// upright bundles a roll correction into what was asked to be a change of
+	// viewing direction, and from an upside-down view that correction is a half
+	// turn the camera has to sit through for nothing. So all four quarter turns
+	// are candidates and the smallest roll wins. Home is what resets the
+	// orientation outright.
+	const glm::vec3 upright = glm::cross(d, right);
+	const glm::vec3 candidates[4] = { upright, right, -upright, -right };
+
+	glm::quat landing = rotation;
+	float roll = 0.0f;
+
+	bool found = false;
+
+	for (int i = 0; i < 4; i++) {
+
+		const glm::vec3 landUp = candidates[i];
+		const glm::vec3 landRight = glm::cross(landUp, d);
+
+		// A turntable is only a turntable while the camera's right stays
+		// perpendicular to world up -- that is the whole no-roll guarantee (see
+		// turntableDrag), and it is load-bearing for more than tidiness: let the
+		// right vector line up with world up and the yaw and pitch axes become
+		// the same axis, so both drag directions do the one thing and the view
+		// cannot be turned the other way at all. A quarter turn that would land
+		// there is not a landing a turntable may make. Looking straight down
+		// world up none of them do, and all four stay in.
+		if (rotationStyle == RotationStyle::Turntable &&
+			std::abs(glm::dot(landRight, up)) > 1.0e-3f) continue;
+
+		// columns are where the camera's local axes land, so this is exactly the
+		// orientation getRight/getUp/getPosition read back out
+		const glm::quat q = glm::normalize(glm::quat_cast(glm::mat3(landRight, landUp, d)));
+
+		// Measured AFTER the swing, which is the only place it means anything:
+		// what is left to do once the camera has arrived is a roll and nothing
+		// else, so the candidate needing least of it is the shortest landing.
+		// Comparing up vectors from where the camera is now instead answers a
+		// different question -- one that ignores that the view has to travel.
+		const float r = rollBetween(afterSwing, q, d);
+
+		if (!found || std::abs(r) < std::abs(roll)) {
+			roll = r;
+			landing = q;
+			found = true;
+		}
+	}
+
+	// +-upright always keeps the right vector off world up, so the loop cannot
+	// come away empty -- but nothing downstream should have to know that
+	if (!found) return;
+
 	startRotation = rotation;
 	startTarget = target;
-	targetRotation = glm::normalize(glm::quat_cast(glm::mat3(right, glm::cross(d, right), d)));
 
 	// q and -q are the same orientation but opposite ways round the sphere;
 	// flipping the sign here is what makes the slerp take the short way
-	if (glm::dot(startRotation, targetRotation) < 0.0f) targetRotation = -targetRotation;
+	targetRotation = (glm::dot(startRotation, landing) < 0.0f) ? -landing : landing;
 
 	snapT = 0.0f;
 	snapping = true;
+}
+
+
+float Camera3D::rollBetween(const glm::quat& from, const glm::quat& to, const glm::vec3& axis) {
+
+	// q and -q are the same orientation but opposite ways round the sphere;
+	// flipping the sign is what makes the turn come out the short way
+	const glm::quat a = (glm::dot(to, from) < 0.0f) ? -to : to;
+
+	const glm::quat r = glm::normalize(a * glm::inverse(from));
+
+	const glm::vec3 v(r.x, r.y, r.z);
+	const float s = glm::length(v);
+
+	// the flip above leaves r.w >= 0 -- it IS dot(a, from) -- so the angle comes
+	// out in [0, pi] and never the reflex way round
+	const float angle = 2.0f * std::atan2(s, r.w);
+
+	return (glm::dot(v, axis) < 0.0f) ? -angle : angle;
 }
 
 
@@ -301,6 +437,17 @@ void Camera3D::snapCamera(float dt) {
 			snapping = false;
 		}
 		else {
+
+			// One slerp of the whole orientation: the geodesic, the least the
+			// view can turn and still arrive. `targetRotation` is already the
+			// roll-minimised landing (see snapToAxis) put in the same hemisphere
+			// as the start, so the short way round is the direct interpolation.
+			//
+			// Where the landing carries a roll -- a turntable snapping from a
+			// pole view onto a side, which can only arrive the right way up --
+			// this folds that roll into the one turn instead of running it off
+			// while the view swings across, so the scene lands in a single clean
+			// move rather than swinging wide and rolling as it travels.
 			next = glm::normalize(glm::slerp(startRotation, targetRotation, smoothStep(snapT)));
 		}
 	}
@@ -320,6 +467,46 @@ void Camera3D::home() {
 	distance = 1.0f;
 
 	initPositionAndAngle();
+}
+
+
+void Camera3D::frameTo(const glm::vec3& centre, float radius) {
+
+	pivot = centre;
+	target = centre;
+
+	// an in-flight snap interpolates from where the view centre was when it
+	// started, so leaving one running here would drag the framing back out
+	snapping = false;
+
+	if (!(radius > 0.0f)) return;
+
+	const float tanHalf = std::tan(glm::radians(fov) * 0.5f);
+	if (tanHalf < 1.0e-6f) return;
+
+	// viewHalfHeight() is distance * tan(fov/2) and BOTH projections are built
+	// from it, so solving for the distance that makes it the radius frames the
+	// scene identically whichever one is active
+	float d = radius / tanHalf;
+
+	// height is only half the story: a panel taller than it is wide runs out of
+	// width first, and the model has to fit across as well
+	const float aspect = (float)std::max(width, 1) / (float)std::max(height, 1);
+	if (aspect < 1.0f) d /= std::max(aspect, 1.0e-3f);
+
+	// same 15% margin the inspector leaves, so the two views read as one framing
+	distance = glm::clamp(d * 1.15f, minDistance, maxDistance);
+}
+
+
+void Camera3D::movePivot(const glm::vec3& newPivot) {
+
+	// carrying the centre by the same step is what keeps this from being a
+	// camera move: the pivot ends up in exactly the same place in the view as
+	// before, so a model that grew or shrank under the camera does not drag the
+	// framing sideways with it
+	target += newPivot - pivot;
+	pivot = newPivot;
 }
 
 glm::vec3 Camera3D::getFront() const {

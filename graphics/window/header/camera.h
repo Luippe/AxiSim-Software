@@ -39,8 +39,9 @@ enum class RotationStyle {
 //
 // Consequence worth knowing: switching style mid-session is free and jump-free,
 // but the turntable inherits whatever roll the arcball left behind -- it never
-// adds roll, and it never takes it away either. Clicking an arm of the
-// navigation triad lands upright and clears it.
+// adds roll, and it never takes it away either. What clears it is Home, or any
+// snap made while the turntable is the live style: those land only on
+// orientations the turntable can go on driving (see snapToAxis).
 class Camera3D {
 
 public:
@@ -75,8 +76,9 @@ public:
 	// ------------------------- framing -------------------------
 
 	// begin a smooth move to look down `axis`, a unit world direction pointing
-	// from the orbit target toward where the camera should end up. The landing
-	// view is upright, so this doubles as the way to undo accumulated roll.
+	// from the orbit target toward where the camera should end up. The roll it
+	// lands with is whichever quarter turn about `axis` is the shortest move
+	// from here -- and, on a turntable, one the turntable can go on driving.
 	void snapToAxis(const glm::vec3& axis);
 
 	// advance an in-flight snap. `dt` is seconds since the last frame, so the
@@ -85,8 +87,21 @@ public:
 
 	bool isSnapping() const { return snapping; }
 
-	// go back to the starting three-quarter view
+	// Back to the starting view: square on to the x-y plane, looking straight
+	// down -z at the pivot. This is the one place the orientation is reset
+	// outright, so it is also what clears accumulated roll.
 	void home();
+
+	// look at `centre` from far enough away that a sphere of `radius` about it
+	// fits the viewport. Moves the pivot there too: framing something says both
+	// what you are looking at and what you expect to turn about.
+	void frameTo(const glm::vec3& centre, float radius);
+
+	// Follow a pivot that has moved -- the model was re-meshed, or the display
+	// length unit changed under it. The view centre travels the same step, so
+	// nothing jumps and the pivot keeps the place in the view the user last put
+	// it: this tracks a model, it does not re-aim the camera (frameTo does).
+	void movePivot(const glm::vec3& newPivot);
 
 	// ------------------------- state -------------------------
 
@@ -120,11 +135,12 @@ public:
 	glm::vec3 worldUp = glm::vec3(0.0f, 1.0f, 0.0f);
 
 	// TURNTABLE: degrees of orbit per pixel dragged
-	float rotateSensitivity = 0.4f;
+	float rotateSensitivity = 0.22f;
 
-	// ARCBALL: how much of the trackball turn to apply. 1.0 is one-to-one --
-	// the point of the scene you grabbed stays under the cursor.
-	float rotateGain = 1.0f;
+	// ARCBALL: how much of the trackball turn to apply. 1.0 would be
+	// one-to-one, keeping the point you grabbed under the cursor; below that
+	// the scene lags the cursor, which is easier to aim with.
+	float rotateGain = 0.55f;
 
 	// ARCBALL: size of the virtual sphere, as a fraction of half the SHORTER
 	// viewport side. Below 1.0 the sphere's rim sits inside the viewport,
@@ -171,6 +187,11 @@ private:
 	glm::quat startRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 	glm::quat targetRotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
 	glm::vec3 startTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+
+	// Signed turn about `axis` that takes orientation `from` to orientation
+	// `to`, taking the short way round. Only meaningful when the two differ by a
+	// turn about `axis` alone; anything off that axis is dropped.
+	static float rollBetween(const glm::quat& from, const glm::quat& to, const glm::vec3& axis);
 
 	// initialize position and angle of camera when constructing class
 	void initPositionAndAngle();

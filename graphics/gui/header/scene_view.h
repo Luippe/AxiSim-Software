@@ -35,10 +35,23 @@ public:
 	// force the unstructured 3D surface to rebuild on the next frame
 	void markUnstructuredDirty();
 
+	// Square on to the model and framed on it, turning about its middle. Driven
+	// by the Results toolbar's Home button, which resets this and the inspector
+	// together so the two views end up looking at the same thing -- and they
+	// land on the same plane, since the inspector draws that same z-r section.
+	void resetView();
+
 	Camera3D camera;
 	Renderer renderer;
 	Colormap colormap;
 	AxisGizmo axisGizmo;
+
+	// A second, world-anchored copy of the navigation triad, drawn at the scene
+	// origin and scaled to the model so the axes read as arrows sitting in the
+	// scene rather than a flat cross. Kept separate from axisGizmo (the corner
+	// triad) on purpose: sharing it would light this one up and sprout negative
+	// arms on it whenever the corner is hovered, since those are member state.
+	AxisGizmo originAxis;
 
 	// navigation triad in the corner of the viewport; its pixel size lives on
 	// the gizmo itself. No longer exposed in the View menu -- it is how the
@@ -69,6 +82,11 @@ private:
 	// a press that started on the navigation triad snaps the camera on release
 	// instead of picking, and must not pan the scene in between
 	bool pressedOnGizmo = false;
+
+	// whether the camera has been framed on the model now loaded. Cleared by
+	// createBuffer, so a result that has just been generated or loaded frames
+	// itself on the next render -- Inspector::pendingFrame for this view.
+	bool framedOnModel = false;
 
 	float initX = 0.0f;
 	float initY = 0.0f;
@@ -105,15 +123,27 @@ private:
 	// upload colormap/value-range uniforms for the unstructured shader
 	void uploadUnstructuredUniforms();
 
-	// middle of the model in world space, which is what the camera turns about.
-	// World x is the axis of revolution and the radial plane is y/z, so this is
-	// halfway along the axis and on it. Recomputed every frame rather than
-	// cached -- it is two floats, and it then cannot go stale when the mesh is
-	// rebuilt or the display length unit changes.
-	glm::vec3 modelCentre() const;
+	// Extent of the revolved model in world space, measured off the geometry
+	// being drawn. World x is the axis of revolution and the radial plane is
+	// y/z, so the solid is bounded by an axial span and a radius. False when
+	// there is nothing loaded. Recomputed every frame rather than cached -- it
+	// is three floats, and it then cannot go stale when the mesh is rebuilt or
+	// the display length unit changes.
+	bool modelBounds(float& axialMin, float& axialMax, float& radius) const;
+
+	// middle of the model in world space, which is what the camera turns about
+	static glm::vec3 modelCentre(float axialMin, float axialMax);
 
 	// handle mouse inputs
 	void handleMouse();
+
+	// Ctrl + arrow keys orbit without the mouse. Runs through the same drag
+	// path, so it honours the selected rotation style and sensitivity.
+	void handleKeyboard(ImGuiIO& io);
+
+	// how fast Ctrl + arrows orbit, as the pixels of drag they stand in for
+	// per second
+	static constexpr float keyRotateSpeed = 260.0f;
 
 	// upload all uniforms onto shader
 	void uploadUniforms();
@@ -123,6 +153,11 @@ private:
 
 	// draw the main 3d space
 	void draw3DPreview();
+
+	// Coordinate axes anchored at the scene origin: gizmo-style colored arrows
+	// on +x/+y/+z, plus much longer black dotted reference lines through zero.
+	// Both are sized off the model so they clear it and scale with it.
+	void drawOriginAxes();
 
 	FrameBuffer frameBuffer;
 	VertexBuffer cvBuffer;
