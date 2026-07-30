@@ -230,6 +230,132 @@ bool isHillType(uint8_t type) {
 	return type == (uint8_t)(HILL);
 }
 
+// Position of a face centre along the boundary it sits on, measured from the
+// axis for a vertical boundary and from z = 0 for a horizontal one. normalZ^2 /
+// normalR^2 pick the in-plane coordinate branchlessly, same trick as
+// getNormalCorrectionCoeff.
+__device__ __forceinline__
+double getFaceCenterAlongOrientation(
+	const FVMeshDevice& mesh,
+	int faceID
+) {
+	double normalZ = mesh.faces.normalZ[faceID];
+	double normalR = mesh.faces.normalR[faceID];
+
+	double zF = mesh.faces.centerZ[faceID];
+	double rF = mesh.faces.centerR[faceID];
+
+	return rF * normalZ * normalZ
+		+ zF * normalR * normalR;
+}
+
+// Face value for a boundary that prescribes one. DIRICHLET is uniform, but
+// FULLY_DEVELOPED is a Dirichlet BC whose value VARIES along the boundary: a
+// parabola peaking at bcValue on the axis and vanishing at totalLength.
+//
+// Every site needing a prescribed boundary face value must come through here.
+// The profile used to be spelled out inline in the diffusion assembly and
+// nowhere else, so the convection term and interpolateFieldToFace -- and
+// therefore the Rhie-Chow face mass flux -- silently treated a fully-developed
+// inlet as zero-gradient. The prescribed profile never reached the mass flux, so
+// the realised inlet ran ~4% under the requested flow rate and the flow rate was
+// an outcome of the solve rather than a boundary condition.
+//
+// totalLength is a float on the host and stays 0 for a group with no segments,
+// so the degenerate case returns the uniform value instead of dividing by zero
+// and seeding the whole solve with a NaN.
+__device__ __forceinline__
+double prescribedBoundaryFaceValue(
+	const FVMeshDevice& mesh,
+	int faceID,
+	uint8_t bcType,
+	double bcValue,
+	double totalLength
+) {
+	if (!isFullyDevelopedType(bcType)) {
+		return bcValue;
+	}
+
+	if (totalLength <= 1.0e-30) {
+		return bcValue;
+	}
+
+	double x = getFaceCenterAlongOrientation(mesh, faceID) / totalLength;
+
+	return bcValue * (1.0 - x * x);
+}
+
+__device__ __forceinline__
+double interpolateFieldToFace(
+	int cellID,
+	int faceID,
+	const FVMeshDevice& mesh,
+	const BoundaryFieldDevice& fieldBC,
+	const double* phi
+) {
+	int owner = mesh.faces.owner[faceID];
+	int neighbor = mesh.faces.neighbor[faceID];
+
+	double phiP = phi[cellID];
+
+	double normalZ, normalR;
+	getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
+
+	double dPF = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
+
+	// ---------------- interior face ----------------
+	if (neighbor >= 0) {
+		int nb = (owner == cellID) ? neighbor : owner;
+
+		double phiN = phi[nb];
+
+		double dNF = getDistanceCellToFace(mesh, nb, faceID, normalZ, normalR);
+
+		double denom = dPF + dNF;
+
+		if (denom <= 0.0) {
+			return 0.5 * (phiP + phiN);
+		}
+
+		// Linear interpolation to face
+		return (dNF * phiP + dPF * phiN) / denom;
+	}
+
+	// ---------------- boundary face ----------------
+	int groupID = mesh.faces.boundaryGroupID[faceID];
+
+	if (groupID < 0 || groupID >= fieldBC.nGroups) {
+		// Default: zero-gradient
+		return phiP;
+	}
+
+	uint8_t bcType = fieldBC.typeByGroup[groupID];
+	double bcValue = fieldBC.valueByGroup[groupID];
+
+	// Prescribed-value boundaries. DIRICHLET is uniform, FULLY_DEVELOPED varies
+	// along the boundary; the helper resolves which.
+	if (isDirichletType(bcType) || isFullyDevelopedType(bcType)) {
+		return prescribedBoundaryFaceValue(
+			mesh,
+			faceID,
+			bcType,
+			bcValue,
+			fieldBC.lengthByGroup[groupID]
+		);
+	}
+	else if (isNeumannType(bcType)) {
+		// dphi/dn = bcValue
+		// zero-gradient means bcValue = 0, so phiF = phiP
+		return phiP + bcValue * dPF;
+	}
+
+	// Only NONE and the kinetics walls (Michaelis-Menten / Hill) land here. Note
+	// the face value at a reactive wall is really mesh.faces.cw, which the
+	// diffusion assembly uses directly -- so a gradient taken through this
+	// function sees a reactive wall as zero-gradient.
+	return phiP;
+}
+
 // computational helper functions
 __device__
 void phiGradientGreenGauss(
@@ -249,16 +375,6 @@ void phiGradientLeastSquare(
 	const double* phi,
 	double& gradZ,
 	double& gradR
-);
-
-
-__device__
-double interpolateFieldToFace(
-	int cellID,
-	int faceID,
-	FVMeshDevice mesh,
-	BoundaryFieldDevice fieldBC,
-	const double* phi
 );
 
 __device__

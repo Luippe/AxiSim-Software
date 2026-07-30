@@ -79,66 +79,6 @@ void getCorrectionCoefficient(
 
 }
 
-
-__device__
-double interpolateFieldToFace(
-	int cellID,
-	int faceID,
-	FVMeshDevice mesh,
-	BoundaryFieldDevice fieldBC,
-	const double* phi
-) {
-	int owner = mesh.faces.owner[faceID];
-	int neighbor = mesh.faces.neighbor[faceID];
-
-	double phiP = phi[cellID];
-
-	double normalZ, normalR;
-	getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
-
-	double dPF = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
-
-	// ---------------- interior face ----------------
-	if (neighbor >= 0) {
-		int nb = (owner == cellID) ? neighbor : owner;
-
-		double phiN = phi[nb];
-
-		double dNF = getDistanceCellToFace(mesh, nb, faceID, normalZ, normalR);
-
-		double denom = dPF + dNF;
-
-		if (denom <= 0.0) {
-			return 0.5 * (phiP + phiN);
-		}
-
-		// Linear interpolation to face
-		return (dNF * phiP + dPF * phiN) / denom;
-	}
-
-	// ---------------- boundary face ----------------
-	int groupID = mesh.faces.boundaryGroupID[faceID];
-
-	if (groupID < 0 || groupID >= fieldBC.nGroups) {
-		// Default: zero-gradient
-		return phiP;
-	}
-
-	uint8_t bcType = fieldBC.typeByGroup[groupID];
-	double bcValue = fieldBC.valueByGroup[groupID];
-
-	if (isDirichletType(bcType)) {
-		return bcValue;
-	}
-	else if (isNeumannType(bcType)) {
-		// dphi/dn = bcValue
-		// zero-gradient means bcValue = 0, so phiF = phiP
-		return phiP + bcValue * dPF;
-	}
-
-	return phiP;
-}
-
 // find value of varaible at the adjacent cell. also finds coord, the coordinate of the cell
 __device__
 double phiAtSide(
@@ -176,21 +116,6 @@ double phiAtSide(
 	);
 }
 
-
-__device__
-double getFaceCenterAlongOrientation(
-	FVMeshDevice mesh,
-	int faceID
-) {
-	double normalZ = mesh.faces.normalZ[faceID];
-	double normalR = mesh.faces.normalR[faceID];
-
-	double zF = mesh.faces.centerZ[faceID];
-	double rF = mesh.faces.centerR[faceID];
-
-	return rF * normalZ * normalZ
-		+ zF * normalR * normalR;
-}
 
 __device__
 double getCellToCellDotNorm(
@@ -830,9 +755,14 @@ addDiffusionCoefficient(
 				b[n] += constVar * area * bcValue;
 			}
 			else if (isFullyDevelopedType(bcType)) {
-				double length = getFaceCenterAlongOrientation(mesh, faceID);
 				AC[n] += K;
-				b[n] += K * bcValue * (1 - ((length * length) / (totalLength * totalLength)));
+				b[n] += K * prescribedBoundaryFaceValue(
+					mesh,
+					faceID,
+					bcType,
+					bcValue,
+					totalLength
+				);
 			}
 			else if (isMichaelisMentenType(bcType)) {
 
@@ -1010,12 +940,28 @@ void addConvectionContribution(
 		}
 	}
 	else if (isNeumannType(bcType)) {
-		// zero-gradient / fully developed types:
+		// zero-gradient:
 		// phi_f = phi_P.
 		coeff.AC[n] += F;
 	}
 	else if (isFullyDevelopedType(bcType)) {
-
+		// Prescribed parabolic inlet, so the same inflow/outflow split as
+		// Dirichlet above: the profile is only known on the way IN. Reverse flow
+		// out through a velocity inlet happens on a cold start, and the RHS form
+		// would flip the source sign there and leave AC without its outflow
+		// term, costing the row its diagonal dominance.
+		if (F < 0.0) {
+			coeff.b[n] += -F * prescribedBoundaryFaceValue(
+				mesh,
+				faceID,
+				bcType,
+				bcValue,
+				fieldBC.lengthByGroup[groupID]
+			);
+		}
+		else {
+			coeff.AC[n] += F;
+		}
 	}
 }
 
