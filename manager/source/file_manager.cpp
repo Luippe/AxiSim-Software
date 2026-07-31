@@ -1818,7 +1818,6 @@ namespace {
 
 		return table;
 	}
-
 }
 
 bool saveSolutionNpy(const std::filesystem::path& dir, const Project& project) {
