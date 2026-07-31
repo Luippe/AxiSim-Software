@@ -39,8 +39,10 @@ class Cell:
 class Poiseuille:
     R: float            # pipe radius
     Umean: float        # realised mean velocity, from the mass flux
-    Umax: float         # 2*Umean -- the analytic peak the solution must satisfy
-    UmaxDp: float       # peak implied by -dP/dz, independent cross-check
+    Umax: float         # the peak the analytic profile is built from
+    refName: str        # where that Umax came from
+    UmaxFlux: float     # 2*Umean -- peak implied by the mass flux
+    UmaxDp: float       # peak implied by -dP/dz
     Re: float
     zDev: float         # start of the fully developed region
     dev: np.ndarray     # live AND fully developed cell mask
@@ -80,20 +82,22 @@ def load_cells(folder_name: str) -> Cell:
     verts = pts[cells]
     return Cell(pts, cells, verts)
 
-def poiseuille_flow(s: Solution, c: Cell) -> Poiseuille:
-    """Analytic Hagen-Poiseuille profile for the solution's OWN flow rate.
+def poiseuille_flow(s: Solution, c: Cell, Umax=None) -> Poiseuille:
+    """Analytic Hagen-Poiseuille profile, u = Umax*(1 - r^2/R^2).
 
-    Umax is deliberately derived here rather than supplied. Two references look
-    tempting and both are wrong:
+    Umax defaults to the solution's own mass flux (2*Umean for a pipe). Pass a
+    value to compare against a prescribed peak instead -- e.g. the inlet BC.
 
-      u.max()     rescales the analytic curve to whatever the solver produced,
-                  so a uniform magnitude error is invisible by construction --
-                  and .max() lands on the inlet column, which has not developed.
-      INLET_PEAK  is a boundary condition, an input. The interior only carries it
-                  if the inlet BC actually delivered it, which is a separate
-                  question (see BC fidelity in poiseuille_report).
+    Whichever is chosen, both other routes to the peak are still computed and
+    reported as deviations from it. That split is load-bearing: Umax enters as a
+    scalar amplitude, so the error is minimised at whichever value best fits the
+    field, and a low L2 alone only says the reference happened to land near that
+    optimum. The cross-check lines are what distinguish a good solution from a
+    well-chosen reference.
 
-    The mass flux is the honest reference: for a pipe, Umax = 2*Umean exactly.
+    Note u.max() is never a valid choice: it rescales the curve to whatever the
+    solver produced, hiding a uniform magnitude error by construction, and lands
+    on the inlet column, which has not developed.
     """
     z, r, u, vol = s.c("z"), s.c("r"), s.c("Axial Velocity"), s.c("volume")
     rho, mu = s.meta["fluid"]["rho"], s.meta["fluid"]["mu"]
@@ -127,42 +131,52 @@ def poiseuille_flow(s: Solution, c: Cell) -> Poiseuille:
     # equal to the whole-domain value; they differ only if some z-column is
     # incomplete, in which case the developed one is the one to trust.
     Umean = (u[dev] * vol[dev]).sum() / vol[dev].sum()
-    Umax = 2.0 * Umean
+    UmaxFlux = 2.0 * Umean
 
-    # Second, independent route to the same peak. The two agreeing is what says
-    # the reference itself is sound.
+    # Second, independent route to the same peak. The routes agreeing is what
+    # says the reference itself is sound.
     UmaxDp = -s.c("dP/dz")[dev].mean() * R * R / (4.0 * mu)
 
+    if Umax is None:
+        Umax, refName = UmaxFlux, "2*Umean"
+    else:
+        refName = "prescribed"
+
     return Poiseuille(
-        R, Umean, Umax, UmaxDp, Re, zDev, dev,
+        R, Umean, Umax, refName, UmaxFlux, UmaxDp, Re, zDev, dev,
         Umax * (1.0 - (r * r) / (R * R)),
     )
 
-def poiseuille_report(s: Solution, p: Poiseuille, prescribed=None):
-    """Print the reference, the discretisation error, and BC fidelity.
+def poiseuille_report(s: Solution, p: Poiseuille):
+    """Print the reference, its two cross-checks, and the profile error.
 
-    Three different numbers. Collapsing them hides bugs: the solver can nail the
-    profile shape while the inlet delivers the wrong flow rate.
+    Separate numbers on purpose. Collapsing them hides bugs: the solver can nail
+    the profile shape while the inlet delivers the wrong flow rate.
     """
     res = (s.c("Axial Velocity") - p.u)[p.dev] / p.Umax
 
-    print(f"R                = {p.R:.6g} m")
-    print(f"Re               = {p.Re:.4g}")
-    print(f"entrance length  = {p.zDev:.6g} m  "
-          f"({p.dev.sum()} of {s.live.sum()} live cells kept)")
-    print(f"Umean            = {p.Umean:.6g} m/s")
-    print(f"Umax  (2*Umean)  = {p.Umax:.6g} m/s")
-    print(f"Umax  (-dP/dz)   = {p.UmaxDp:.6g} m/s   "
-          f"[{100.0 * (p.UmaxDp / p.Umax - 1.0):+.3f}% vs flux]")
-    print()
-    print(f"L2   error       = {100.0 * np.sqrt((res ** 2).mean()):.4f} % of Umax")
-    print(f"Linf error       = {100.0 * np.abs(res).max():.4f} % of Umax")
+    def line(name, val, note):
+        print(f"{'Umax  (' + name + ')':<19s}= {val:.6g} m/s   [{note}]")
 
-    if prescribed is not None:
-        print()
-        print(f"prescribed peak  = {prescribed:.6g} m/s")
-        print(f"BC fidelity      = {100.0 * (p.Umax / prescribed - 1.0):+.3f} %"
-              f"  (realised vs prescribed inlet)")
+    print(f"R                 = {p.R:.6g} m")
+    print(f"Re                = {p.Re:.4g}")
+    print(f"entrance length   = {p.zDev:.6g} m  "
+          f"({p.dev.sum()} of {s.live.sum()} live cells kept)")
+    print(f"Umean             = {p.Umean:.6g} m/s")
+    print()
+    line(p.refName, p.Umax, "reference")
+
+    # Skipped when the flux IS the reference, where the line is the identity.
+    if p.refName != "2*Umean":
+        print(f"{'Umax  (2*Umean)':<19s}= {p.UmaxFlux:.6g} m/s   "
+              f"[{100.0 * (p.UmaxFlux / p.Umax - 1.0):+.3f}%  BC fidelity,"
+              f" realised vs prescribed]")
+
+    print(f"{'Umax  (-dP/dz)':<19s}= {p.UmaxDp:.6g} m/s   "
+          f"[{100.0 * (p.UmaxDp / p.Umax - 1.0):+.3f}%  vs reference]")
+    print()
+    print(f"L2   error        = {100.0 * np.sqrt((res ** 2).mean()):.4f} % of Umax")
+    print(f"Linf error        = {100.0 * np.abs(res).max():.4f} % of Umax")
 
 def field_validation(s, c, compareType, p=None, ax=None):
 
@@ -201,9 +215,9 @@ def main():
     s = load_solution(folder_name)
     c = load_cells(folder_name)
 
-    p = poiseuille_flow(s, c)
+    p = poiseuille_flow(s, c, Umax=INLET_PEAK)
 
-    poiseuille_report(s, p, prescribed=INLET_PEAK)
+    poiseuille_report(s, p)
 
     field_map(s, c, "Axial Velocity")
 
