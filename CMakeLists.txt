@@ -275,7 +275,7 @@ add_executable(AxiSim
     ${IMGUI_SOURCES}
     ${IMPLOT_SOURCES}
     "${CMAKE_CURRENT_SOURCE_DIR}/externals/stb_image/stb_image.cpp"
- "structs/app_struct.h")
+ "structs/app_struct.h" "manager/header/file_converter.h")
 
 if(WIN32 AND EXISTS "${GMSH_RUNTIME}")
     add_custom_command(TARGET AxiSim POST_BUILD

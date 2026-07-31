@@ -57,3 +57,6 @@ CLAUDE.local.md
 /test.mp4
 /test_frames/
 *.nsys-rep.lock
+
+# OpenFOAM cross-validation cases (local WSL scratch, run dirs get huge)
+/openfoam/
