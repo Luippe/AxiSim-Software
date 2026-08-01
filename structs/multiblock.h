@@ -51,24 +51,30 @@ struct MeshZone {
     double  coef    = 1.0;       // Progression ratio (>1 grow, <1 shrink along +axis)
 };
 
+
+
 // Emit monotonically increasing cell-boundary coordinates for a zone list,
 // starting at `start`. Returns sum(cells)+1 face coordinates.
-inline std::vector<double> generateFaces(const std::vector<MeshZone>& zones, double start) {
+inline std::vector<double> generateFaces(const MeshZone& zone, double start) {
     std::vector<double> faces;
     faces.push_back(start);
     double x = start;
-    for (const MeshZone& z : zones) {
-        const int n = z.cells;
-        std::vector<double> d(n, z.length / n);  // uniform default
 
-        if (z.grading == Grading::Progression && n > 1 && z.coef > 0.0 && z.coef != 1.0) {
-            // Geometric progression: d_k = d0 * coef^k, sum_k d_k = length.
-            const double ratio = z.coef;
-            const double d0 = z.length * (ratio - 1.0) / (std::pow(ratio, n) - 1.0);
-            for (int k = 0; k < n; k++) d[k] = d0 * std::pow(ratio, k);
+    const int n = zone.cells;
+    std::vector<double> d(n, zone.length / n);  // uniform default
+
+    if (zone.grading == Grading::Progression && n > 1 && zone.coef > 0.0 && zone.coef != 1.0) {
+        // Geometric progression: d_k = d0 * coef^k, sum_k d_k = length.
+        const double ratio = zone.coef;
+        const double d0 = zone.length * (ratio - 1.0) / (std::pow(ratio, n) - 1.0);
+        for (int k = 0; k < n; k++) {
+            d[k] = d0 * std::pow(ratio, k);
         }
-        for (int k = 0; k < n; k++) { x += d[k]; faces.push_back(x); }
     }
+    for (int k = 0; k < n; k++) { 
+        x += d[k]; faces.push_back(x);
+    }
+    
     return faces;
 }
 
@@ -87,6 +93,9 @@ struct Block {
     std::vector<MBNode>  nodes;        // (nr+1)*(nz+1) node positions
     std::vector<uint8_t> active;       // nr*nz  (1 = fluid, 0 = inactive)
     int globalOffset = 0;              // first global cell index of this block
+
+    MeshZone axialZone;
+    MeshZone radialZone;
 
     // Boundary group id per edge, indexed by (int)Edge {West,East,South,North}.
     // Tags EXTERNAL faces (edges not claimed by an interface); -1 = unset, in
@@ -109,10 +118,10 @@ struct Block {
 // Axis-aligned rectangular block from axial (z) + radial (r) zone specs.
 // origin (z0, r0) is the block's minimum corner.
 inline Block makeRectBlock(int id, double z0, double r0,
-                           const std::vector<MeshZone>& axialZones,    // z (j)
-                           const std::vector<MeshZone>& radialZones) { // r (i)
-    const std::vector<double> zf = generateFaces(axialZones,  z0);     // nz+1
-    const std::vector<double> rf = generateFaces(radialZones, r0);     // nr+1
+                           const MeshZone& axialZone,    // z (j)
+                           const MeshZone& radialZone) { // r (i)
+    const std::vector<double> zf = generateFaces(axialZone,  z0);     // nz+1
+    const std::vector<double> rf = generateFaces(radialZone, r0);     // nr+1
 
     Block b;
     b.id = id;
@@ -123,70 +132,9 @@ inline Block makeRectBlock(int id, double z0, double r0,
         for (int J = 0; J <= b.nz; J++)
             b.node(I, J) = MBNode{ zf[J], rf[I] };   // separable tensor product
     b.active.assign(b.cellCount(), 1);
-    return b;
-}
+    b.axialZone = axialZone;
+    b.radialZone = radialZone;
 
-// Curvilinear block via a transfinite (Coons) blend of its 4 boundary edges.
-// Edge arrays list node positions ALONG each edge, consistent at the corners:
-//   south (I=0):   J = 0..nz   (length nz+1)     north (I=nr): J = 0..nz
-//   west  (J=0):   I = 0..nr   (length nr+1)     east  (J=nz): I = 0..nr
-// The 4 boundary polylines may be curved; interior nodes are interpolated.
-inline Block makeTransfiniteBlock(int id, int nr, int nz,
-                                  const std::vector<MBNode>& south,
-                                  const std::vector<MBNode>& north,
-                                  const std::vector<MBNode>& west,
-                                  const std::vector<MBNode>& east) {
-    Block b;
-    b.id = id; b.nr = nr; b.nz = nz;
-    b.nodes.resize((nr + 1) * (nz + 1));
-
-    const MBNode c00 = south[0];    // (I=0,  J=0)
-    const MBNode c0n = south[nz];   // (I=0,  J=nz)
-    const MBNode cn0 = north[0];    // (I=nr, J=0)
-    const MBNode cnn = north[nz];   // (I=nr, J=nz)
-
-    for (int I = 0; I <= nr; I++) {
-        const double u = (double)I / nr;               // radial param
-        for (int J = 0; J <= nz; J++) {
-            const double v = (double)J / nz;           // axial param
-            auto coons = [&](double S, double N, double W, double E,
-                             double q00, double q0n, double qn0, double qnn) {
-                return (1 - u) * S + u * N + (1 - v) * W + v * E
-                     - ((1 - u) * (1 - v) * q00 + (1 - u) * v * q0n
-                      +  u       * (1 - v) * qn0 + u       * v * qnn);
-            };
-            b.node(I, J) = MBNode{
-                coons(south[J].z, north[J].z, west[I].z, east[I].z,
-                      c00.z, c0n.z, cn0.z, cnn.z),
-                coons(south[J].r, north[J].r, west[I].r, east[I].r,
-                      c00.r, c0n.r, cn0.r, cnn.r)
-            };
-        }
-    }
-    b.active.assign(nr * nz, 1);
-    return b;
-}
-
-// Straight-edged quad block from 4 corners given in CCW order:
-//   A = node(0,0), B = node(0,nz), C = node(nr,nz), D = node(nr,0).
-// Bilinear map of the corners (a transfinite block whose 4 edges are straight);
-// used for blocks defined by a closed 4-line loop in the sketch.
-inline Block makeQuadBlock(int id, const MBNode& A, const MBNode& B,
-                           const MBNode& C, const MBNode& D, int nr, int nz) {
-    Block b;
-    b.id = id; b.nr = nr; b.nz = nz;
-    b.nodes.resize((nr + 1) * (nz + 1));
-    for (int I = 0; I <= nr; I++) {
-        const double t = (double)I / nr;                // radial param
-        for (int J = 0; J <= nz; J++) {
-            const double s = (double)J / nz;            // axial param
-            b.node(I, J) = MBNode{
-                (1 - t) * (1 - s) * A.z + (1 - t) * s * B.z + t * s * C.z + t * (1 - s) * D.z,
-                (1 - t) * (1 - s) * A.r + (1 - t) * s * B.r + t * s * C.r + t * (1 - s) * D.r
-            };
-        }
-    }
-    b.active.assign(nr * nz, 1);
     return b;
 }
 
@@ -415,11 +363,11 @@ inline void validateBoundaryTags(const MultiBlockMesh& mesh) {
 inline MultiBlockMesh buildFiveBlockExample() {
     // Shared radial distribution for the top row (r: 2 -> 5), clustered toward
     // the wall at r=5 (coef < 1 shrinks cells along +r). Reused by 1, 2, 3.
-    const std::vector<MeshZone> radTop = { { 3.0, 12, Grading::Progression, 0.9 } };
-    const std::vector<MeshZone> radBot = { { 2.0,  8, Grading::Uniform,     1.0 } };  // r: 0 -> 2
-    const std::vector<MeshZone> axLeft = { { 4.0, 16, Grading::Uniform,     1.0 } };  // z: 0 -> 4
-    const std::vector<MeshZone> axMid  = { { 1.0,  6, Grading::Uniform,     1.0 } };  // z: 4 -> 5 (fine)
-    const std::vector<MeshZone> axRight= { { 5.0, 20, Grading::Uniform,     1.0 } };  // z: 5 -> 10
+    const MeshZone radTop = { 3.0, 12, Grading::Progression, 0.9 };
+    const MeshZone radBot = { 2.0,  8, Grading::Uniform,     1.0 };  // r: 0 -> 2
+    const MeshZone axLeft = { 4.0, 16, Grading::Uniform,     1.0 };  // z: 0 -> 4
+    const MeshZone axMid  = { 1.0,  6, Grading::Uniform,     1.0 };  // z: 4 -> 5 (fine)
+    const MeshZone axRight= { 5.0, 20, Grading::Uniform,     1.0 };  // z: 5 -> 10
 
     MultiBlockMesh m;
     m.blocks = {

@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <cwctype>
 #include <filesystem>
 #include <iostream>
 #include <vector>
@@ -23,10 +24,12 @@
 #include "project.h"
 #include "mesh.h"
 
+
 #include "solver_struct.h"
 #include "boundary_struct.h"
 #include "app_struct.h"		// AppSettings (complete type for serialization)
 
+#include "file_converter.h"
 #include "keyboard_manager.h"
 #include "memory_manager.h"
 #include "printer.h"
@@ -332,9 +335,15 @@ namespace {
 		{ "AxiSim Geometry", "axigeom" },
 		{ "Legacy Binary", "bin" }
 	};
+	// The third entry is an EXPORT, not a save format: picking it writes an OpenFOAM
+	// case folder rather than an AxiSim file, and nothing reads it back. ".foam" is
+	// the marker extension ParaView uses for a case directory -- the dict itself is
+	// extensionless by OpenFOAM convention, so there is nothing better to filter on,
+	// and the chosen stem only ever names the folder.
 	const nfdu8filteritem_t meshFilters[] = {
 		{ "AxiSim Mesh", "aximesh" },
-		{ "Legacy Binary", "bin" }
+		{ "Legacy Binary", "bin" },
+		{ "OpenFOAM Case (blockMeshDict)", "foam" }
 	};
 	const nfdu8filteritem_t solverFilters[] = {
 		{ "AxiSim Solver", "axislv" },
@@ -393,7 +402,7 @@ namespace {
 			return { geometryFilters, 2, "axigeom" };
 
 		case FileKind::Mesh:
-			return { meshFilters, 2, "aximesh" };
+			return { meshFilters, 3, "aximesh" };
 
 		case FileKind::Solver:
 			return { solverFilters, 2, "axislv" };
@@ -1065,12 +1074,71 @@ void loadFromPathGeometry(std::ifstream& in, Geometry& geometry) {
 // ====================================================
 // -------------------MESH-----------------------------
 // ====================================================
+bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh) {
+
+	// The trellis decomposition is what carries the blocks, their interfaces and the
+	// per-edge boundary groups. A single-block or unstructured mesh has none of it,
+	// and blockMeshDictFromMultiblock would hand back an empty dict that blockMesh
+	// rejects with something far less informative than this.
+	if (!mesh.isMultiBlock || mesh.multiBlock.blocks.empty()) {
+		std::cerr << "saveBlockMeshCase: no multi-block mesh to export -- "
+			"generate a multi-block mesh first\n";
+		return false;
+	}
+
+	// blockMesh looks for the dict at <case>/system/blockMeshDict and nowhere else,
+	// so the folder IS the deliverable. Same shape as the .npy and PNG-sequence
+	// exports: the dialog names one thing, the export lays out a directory beside it.
+	const std::filesystem::path systemDir = dir / "system";
+
+	std::error_code ec;
+	std::filesystem::create_directories(systemDir, ec);
+	if (ec) {
+		std::cerr << "saveBlockMeshCase: cannot create " << systemDir.string()
+			<< " -- " << ec.message() << '\n';
+		return false;
+	}
+
+	const BlockMeshDict dict =
+		blockMeshDictFromMultiblock(mesh.multiBlock, mesh.boundaryGroups);
+
+	if (!writeBlockMeshDict(systemDir / "blockMeshDict", dict)) {
+		return false;
+	}
+
+	std::cout << "Exported OpenFOAM case to " << dir.string()
+		<< " -- run: blockMesh -case \"" << dir.string() << "\"\n";
+	return true;
+}
+
 void saveFromExplorerMesh(Mesh& mesh) {
 
 	std::wstring path = saveFileDialog(FileKind::Mesh);
 	if (path.empty()) return;
 
-	std::ofstream out(std::filesystem::path(path), std::ios::binary);
+	const std::filesystem::path target(path);
+
+	// The Save-as-type dropdown decides which writer runs, the same way the animation
+	// export picks mp4 or a PNG sequence off the extension. ".foam" is the only one
+	// that is an export rather than a save, and it consumes the stem as a folder name
+	// instead of writing the file the dialog appeared to name.
+	//
+	// Folded to lower case first: path comparison is case-sensitive even on Windows,
+	// where the filesystem is not, so a hand-typed "case.FOAM" would miss this branch
+	// and get a binary .aximesh written under an OpenFOAM name.
+	std::wstring extension = target.extension().wstring();
+	std::transform(extension.begin(), extension.end(), extension.begin(),
+		[](wchar_t c) { return (wchar_t)std::towlower(c); });
+
+	if (extension == L".foam") {
+		saveBlockMeshCase(
+			target.parent_path() / (target.stem().wstring() + L"_case"),
+			mesh
+		);
+		return;
+	}
+
+	std::ofstream out(target, std::ios::binary);
 	saveFromPathMesh(out, mesh);
 }
 

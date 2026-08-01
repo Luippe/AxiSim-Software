@@ -175,6 +175,11 @@ void Menu::drawExport() {
 
 		}
 
+		if (menuItem("Mesh")) {
+
+			saveFromExplorerMesh(project.mesh);
+
+		}
 		// Gated on frames actually existing rather than on the Transient checkbox,
 		// which can be turned on (or off) without a run behind it -- the same
 		// self-gating the playback bar uses.

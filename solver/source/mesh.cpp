@@ -3018,8 +3018,8 @@ void Mesh::buildStructuredMultiBlock(const SketchModel& sketch) {
 				const Vec2 center{ 0.5 * (zL[i] + zL[i + 1]), 0.5 * (rL[j] + rL[j + 1]) };
 				if (!pointInsideDomain(center)) continue;
 
-				const std::vector<MeshZone> ax  = { { zL[i + 1] - zL[i], std::max(zBandCells[i], 1), Grading::Uniform } };
-				const std::vector<MeshZone> rad = { { rL[j + 1] - rL[j], std::max(rBandCells[j], 1), Grading::Uniform } };
+				const MeshZone ax  = { zL[i + 1] - zL[i], std::max(zBandCells[i], 1), Grading::Uniform };
+				const MeshZone rad = { rL[j + 1] - rL[j], std::max(rBandCells[j], 1), Grading::Uniform };
 				m.blocks.push_back(makeRectBlock(id++, zL[i], rL[j], ax, rad));
 			}
 		}
@@ -3027,8 +3027,8 @@ void Mesh::buildStructuredMultiBlock(const SketchModel& sketch) {
 
 	if (m.blocks.empty()) {
 		// No geometry: one block spanning the whole domain [0,L] x [0,R].
-		const std::vector<MeshZone> ax  = { { g.L, std::max(g.nz, 1), Grading::Uniform } };
-		const std::vector<MeshZone> rad = { { g.R, std::max(g.nr, 1), Grading::Uniform } };
+		const MeshZone ax  = { g.L, std::max(g.nz, 1), Grading::Uniform };
+		const MeshZone rad = { g.R, std::max(g.nr, 1), Grading::Uniform };
 		m.blocks.push_back(makeRectBlock(1, 0.0, 0.0, ax, rad));
 	}
 
