@@ -1,6 +1,9 @@
 #pragma once
 #include "setting.cuh"
 
+// FoamCaseSetup, for the OpenFOAM case export below.
+#include "file_struct.h"
+
 #include <string>
 #include <fstream>
 #include <filesystem>
@@ -103,19 +106,28 @@ void loadFromPathGeometry(std::ifstream& in, Geometry& geometry);
 // Ask for a name, then write the mesh. The Save-as-type dropdown chooses between the
 // native .aximesh/.bin save and an OpenFOAM export; picking "OpenFOAM Case" routes to
 // saveBlockMeshCase below and produces a folder, not the file the dialog named.
-void saveFromExplorerMesh(Mesh& mesh);
+void saveFromExplorerMesh(Mesh& mesh, const Solver& solver);
 
-// Export the multi-block mesh as an OpenFOAM case: creates dir/system/ with
-// blockMeshDict and a stub controlDict, so `blockMesh -case <dir>` runs against it
-// as-is, and dir/0/ with one file per solved field carrying the boundary conditions.
+// Export the project as a complete, runnable OpenFOAM case:
 //
-// Not a runnable SOLVE yet: system/{fvSchemes,fvSolution} and
-// constant/transportProperties are still the user's to write.
+//   system/    blockMeshDict, controlDict, fvSchemes, fvSolution
+//   constant/  transportProperties, turbulenceProperties
+//   0/         U, p, and T/C for whichever scalars are being solved
+//
+// so `blockMesh -case <dir> && simpleFoam -case <dir>` runs it end to end. The mesh
+// supplies the geometry and the boundary conditions; `setup` supplies the fluid and
+// the numerics, and decides between simpleFoam and pimpleFoam.
 //
 // Requires a multi-block mesh -- the blocks, their interfaces and the per-edge
 // boundary groups all come from the trellis decomposition. Returns false and logs
 // if there is none, if a folder cannot be created, or if a write fails.
-bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh);
+bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh,
+                       const FoamCaseSetup& setup);
+
+// Flatten Solver into the FoamCaseSetup the case writers want: fluid properties,
+// the two field checkboxes, transient/dt/tEnd, the convection and gradient schemes,
+// and the SIMPLE relaxation factors.
+FoamCaseSetup foamCaseSetupFromSolver(const Solver& solver);
 
 // save mesh given a path
 void saveFromPathMesh(std::ofstream& out, Mesh& mesh);

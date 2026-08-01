@@ -1074,7 +1074,8 @@ void loadFromPathGeometry(std::ifstream& in, Geometry& geometry) {
 // ====================================================
 // -------------------MESH-----------------------------
 // ====================================================
-bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh) {
+bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh,
+                       const FoamCaseSetup& setup) {
 
 	// The trellis decomposition is what carries the blocks, their interfaces and the
 	// per-edge boundary groups. A single-block or unstructured mesh has none of it,
@@ -1091,26 +1092,20 @@ bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh) {
 	// exports: the dialog names one thing, the export lays out a directory beside it.
 	const std::filesystem::path systemDir = dir / "system";
 
-	// 0/ is the solver's, not blockMesh's: it holds one file per field, carrying the
-	// initial condition and every patch's boundary condition. blockMesh ignores it
-	// entirely, so an incomplete 0/ costs nothing until a solver is actually run --
-	// which is exactly when the boundary conditions are wanted in a form that can be
-	// compared against AxiSim's.
+	// The three directories an OpenFOAM case is made of: system/ for the dicts that
+	// control the run, constant/ for the fluid, 0/ for the initial and boundary
+	// conditions. blockMesh reads only system/; everything else is for the solver.
+	const std::filesystem::path constantDir = dir / "constant";
 	const std::filesystem::path zeroDir = dir / "0";
 
 	std::error_code ec;
-	std::filesystem::create_directories(systemDir, ec);
-	if (ec) {
-		std::cerr << "saveBlockMeshCase: cannot create " << systemDir.string()
-			<< " -- " << ec.message() << '\n';
-		return false;
-	}
-
-	std::filesystem::create_directories(zeroDir, ec);
-	if (ec) {
-		std::cerr << "saveBlockMeshCase: cannot create " << zeroDir.string()
-			<< " -- " << ec.message() << '\n';
-		return false;
+	for (const std::filesystem::path& sub : { systemDir, constantDir, zeroDir }) {
+		std::filesystem::create_directories(sub, ec);
+		if (ec) {
+			std::cerr << "saveBlockMeshCase: cannot create " << sub.string()
+				<< " -- " << ec.message() << '\n';
+			return false;
+		}
 	}
 
 	const BlockMeshDict dict =
@@ -1122,22 +1117,65 @@ bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh) {
 
 	// blockMesh reads system/controlDict before it ever opens the mesh dict, so this
 	// is not solver-only paperwork -- without it the export cannot even be meshed.
-	if (!writeControlDict(systemDir / "controlDict")) {
+	if (!writeControlDict(systemDir / "controlDict", setup) ||
+		!writeFvSchemes(systemDir / "fvSchemes", setup) ||
+		!writeFvSolution(systemDir / "fvSolution", setup) ||
+		!writeTransportProperties(constantDir / "transportProperties", setup) ||
+		!writeTurbulenceProperties(constantDir / "turbulenceProperties")) {
 		return false;
 	}
 
 	// From the dict, not the mesh: the patch names in 0/ must be the ones the dict
 	// settled on after sanitizing and de-colliding them.
-	if (!writeInitialFields(zeroDir, initialFieldsFromDict(dict, mesh.boundaryGroups))) {
+	if (!writeInitialFields(zeroDir, initialFieldsFromDict(dict, mesh.boundaryGroups, setup))) {
 		return false;
 	}
 
 	std::cout << "Exported OpenFOAM case to " << dir.string()
-		<< " -- run: blockMesh -case \"" << dir.string() << "\"\n";
+		<< " -- run: blockMesh -case \"" << dir.string() << "\" && "
+		<< (setup.transient ? "pimpleFoam" : "simpleFoam")
+		<< " -case \"" << dir.string() << "\"\n";
 	return true;
 }
 
-void saveFromExplorerMesh(Mesh& mesh) {
+// Flatten the run's physics and numerics out of Solver, which is where the export
+// stops being a mesh export: everything above this line comes from the geometry,
+// everything below from the Solver tab.
+FoamCaseSetup foamCaseSetupFromSolver(const Solver& solver) {
+
+	FoamCaseSetup setup;
+
+	setup.rho = solver.f.rho;
+	setup.mu  = solver.f.mu;
+	setup.D   = solver.f.D;
+	setup.cp  = solver.f.cp;
+	setup.k   = solver.f.k;
+
+	setup.solveEnergy        = solver.fieldOption.solveEnergy;
+	setup.solveConcentration = solver.fieldOption.solveConcentration;
+
+	setup.transient = solver.configSolver.transient;
+	setup.secondOrderTime =
+		solver.configSolver.timeScheme == TimeScheme::TIME_SECOND_ORDER;
+	setup.dt   = solver.configSolver.dt;
+	setup.tEnd = solver.configSolver.tEnd;
+
+	switch (solver.convectionScheme) {
+		case CONV_CENTRAL:             setup.convection = FoamConvection::Linear;       break;
+		case CONV_SECOND_ORDER_UPWIND: setup.convection = FoamConvection::LinearUpwind; break;
+		case CONV_QUICK:               setup.convection = FoamConvection::Quick;        break;
+		case CONV_UPWIND:              setup.convection = FoamConvection::Upwind;       break;
+	}
+
+	setup.leastSquaresGradient = solver.gradientScheme == GRAD_LSQ;
+
+	setup.momentumRelaxation = solver.simple.momentumRelaxation;
+	setup.pressureRelaxation = solver.simple.pressureRelaxation;
+
+	return setup;
+}
+
+void saveFromExplorerMesh(Mesh& mesh, const Solver& solver) {
 
 	std::wstring path = saveFileDialog(FileKind::Mesh);
 	if (path.empty()) return;
@@ -1159,7 +1197,8 @@ void saveFromExplorerMesh(Mesh& mesh) {
 	if (extension == L".foam") {
 		saveBlockMeshCase(
 			target.parent_path() / (target.stem().wstring() + L"_case"),
-			mesh
+			mesh,
+			foamCaseSetupFromSolver(solver)
 		);
 		return;
 	}

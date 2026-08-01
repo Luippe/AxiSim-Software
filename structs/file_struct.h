@@ -61,6 +61,58 @@ struct BlockMeshDict {
 
 };
 
+// Convection scheme for the exported divSchemes, mirroring the solver's own
+// ConvectionScheme. Mirrored rather than reused because solver_struct.h reaches
+// into setting.cuh and gpu_utils.h, and none of the case writers want that.
+enum class FoamConvection {
+	Upwind = 0,
+	Linear = 1,
+	LinearUpwind = 2,
+	Quick = 3
+};
+
+// Everything OUTSIDE the mesh that the case dictionaries need, flattened out of
+// Solver and FluidPropertyConfig at the call site. The mesh carries the geometry
+// and the boundary conditions; this carries the physics and the run control.
+struct FoamCaseSetup {
+
+	// Base SI, exactly as the solver stores them.
+	double rho = 998.0;        // kg/m^3
+	double mu  = 1.0518e-3;    // Pa.s
+	double D   = 3.0277e-9;    // mass diffusivity, m^2/s
+	double cp  = 4180.0;       // J/(kg.K)
+	double k   = 0.6;          // W/(m.K)
+
+	bool solveEnergy = false;
+	bool solveConcentration = false;
+
+	bool transient = false;
+	bool secondOrderTime = false;
+	double dt = 0.1;
+	double tEnd = 2.0;
+
+	// Iteration cap for a steady run. Only a cap: residualControl is what actually
+	// stops SIMPLE, and it normally trips long before this.
+	int steadyIterations = 2000;
+
+	FoamConvection convection = FoamConvection::Upwind;
+	bool leastSquaresGradient = true;
+
+	double momentumRelaxation = 0.7;
+	double pressureRelaxation = 0.3;
+
+	// OpenFOAM's incompressible solvers are written in kinematic terms: rho is
+	// divided out of the whole equation set and never appears in a dictionary.
+	// This is also why the exported p is p/rho rather than Pa.
+	double nu() const { return rho != 0.0 ? mu / rho : 0.0; }
+
+	// The energy equation's counterpart to D. scalarTransport takes a diffusivity,
+	// not a conductivity, so k has to be divided through by rho*cp on the way out.
+	double alpha() const {
+		return (rho != 0.0 && cp != 0.0) ? k / (rho * cp) : 0.0;
+	}
+};
+
 // One patch's entry in one 0/ field file.
 //
 // `type` is the OpenFOAM boundary-condition name. `entry` is the single keyword

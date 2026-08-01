@@ -60,30 +60,58 @@ BlockMeshDict blockMeshDictFromMultiblock(const MultiBlockMesh& mesh, const std:
 // out. This is the one place the two numbering spaces meet.
 bool writeBlockMeshDict(const std::filesystem::path& path, const BlockMeshDict& dict);
 
-// Write a stub system/controlDict at `path`. Nothing in it is derived from the
-// project -- it is the steady-state defaults, with the solver name and the run
-// length left for the user.
+// The four dictionaries that turn a meshed folder into a runnable case. Each
+// returns false and says why on stderr if its file cannot be written.
 //
-// Needed by blockMesh, not only by a solver: blockMesh constructs a Time object
-// before reading the mesh dict, and Time reads system/controlDict as MUST_READ, so
-// a case without one fails on a missing file rather than on anything about the mesh.
-bool writeControlDict(const std::filesystem::path& path);
+// system/controlDict picks pimpleFoam or simpleFoam off setup.transient, carries
+// the run length from the Solver tab, and appends a scalarTransport function
+// object per solved scalar -- stock OpenFOAM flow solvers transport no scalars, so
+// that is what lets one run produce U, T and C together.
+//
+// It is also needed by blockMesh, not only by a solver: blockMesh constructs a
+// Time object before reading the mesh dict, and Time reads controlDict as
+// MUST_READ, so a case without one fails on a missing file rather than on the mesh.
+bool writeControlDict(const std::filesystem::path& path, const FoamCaseSetup& setup);
 
-// Initial + boundary conditions for the 0/ directory, one FoamField per file.
+// system/fvSchemes. ddt follows transient + secondOrderTime, grad follows
+// leastSquaresGradient, div follows the Solver tab's convection scheme. `default
+// none` for divSchemes means every div the solver forms has to be named, so the
+// scalar entries are written only for the scalars actually being solved.
+bool writeFvSchemes(const std::filesystem::path& path, const FoamCaseSetup& setup);
+
+// system/fvSolution: linear solvers, the SIMPLE/PIMPLE block, and the project's
+// relaxation factors.
+//
+// residualControl is deliberately NOT the Solver tab's convergence tolerance. The
+// two are not comparable -- AxiSim's is its own scaled residual, OpenFOAM's is the
+// initial residual of an outer iteration under its own normalisation -- and
+// carrying AxiSim's 1e-3 across stops SIMPLE ~9% short of the developed profile.
+bool writeFvSolution(const std::filesystem::path& path, const FoamCaseSetup& setup);
+
+// constant/transportProperties. mu goes out as kinematic nu, since the
+// incompressible solvers divide rho out of the equation set entirely.
+bool writeTransportProperties(const std::filesystem::path& path, const FoamCaseSetup& setup);
+
+// constant/turbulenceProperties, always `laminar`. Not optional: the flow solvers
+// construct a turbulence model unconditionally and abort without this file.
+bool writeTurbulenceProperties(const std::filesystem::path& path);
+
+// Initial + boundary conditions for the 0/ directory, one FoamField per field.
 //
 // Built from the DICT rather than the multi-block mesh, because the patch names in
 // 0/ have to be the ones blockMeshDict already committed to -- foamPatchName
 // sanitizes and de-collides them, and that is not reversible. BoundaryFOAM::groupID
 // is the way back to each patch's conditions.
 //
-// U and p are always written. T and C are written only when some group carries a
-// condition for them, which is how the Solver tab's field checkboxes reach here.
+// U and p are always written; T and C follow setup's two field flags, the same two
+// that decide the scalarTransport entries in controlDict.
 //
 // Conditions AxiSim has and OpenFOAM does not -- pulsatile inlets, Michaelis-Menten
 // and Hill wall fluxes -- are written as their nearest steady equivalent with a //
 // note on the entry saying what was lost. Nothing is dropped silently.
 std::vector<FoamField> initialFieldsFromDict(
-	const BlockMeshDict& dict, const std::vector<BoundarySegmentGroup>& groups);
+	const BlockMeshDict& dict, const std::vector<BoundarySegmentGroup>& groups,
+	const FoamCaseSetup& setup);
 
 // Write one file per field into `dir`, which must already exist and should be the
 // case's 0/. Returns false (and says why on stderr) on the first field that cannot

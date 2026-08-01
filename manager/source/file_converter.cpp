@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iomanip>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <set>
 #include <string_view>
@@ -110,6 +111,27 @@ std::string foamPatchName(const BoundarySegmentGroup& group) {
 	if (name.empty() || std::isdigit((unsigned char)name.front()))
 		name = "group" + std::to_string(group.id) + (name.empty() ? "" : "_" + name);
 	return name;
+}
+
+// The SHORTEST spelling that still reads back as the same double.
+//
+// Exactness is not negotiable -- a value that round-trips to 6 digits is a
+// different value, which is the whole point of writeBlockMeshDict's setprecision.
+// But a flat %.17g turns a dt the user typed as 0.05 into 0.050000000000000003,
+// and these dictionaries are meant to be read and edited by hand. 15 digits covers
+// essentially everything anyone types; the ladder up to 17 is what guarantees the
+// round trip for the values it does not.
+std::string foamNumber(double value) {
+
+	char buffer[40];
+
+	for (int digits = 15; digits < 17; digits++) {
+		std::snprintf(buffer, sizeof(buffer), "%.*g", digits, value);
+		if (std::strtod(buffer, nullptr) == value) return buffer;
+	}
+
+	std::snprintf(buffer, sizeof(buffer), "%.17g", value);
+	return buffer;
 }
 
 // Every Foam file opens with a FoamFile sub-dict. It is not decoration: IOobject
@@ -429,7 +451,35 @@ bool writeBlockMeshDict(const std::filesystem::path& path, const BlockMeshDict& 
 	return true;
 }
 
-bool writeControlDict(const std::filesystem::path& path) {
+namespace {
+
+// The scalarTransport function object that carries one AxiSim scalar. Stock
+// simpleFoam/pimpleFoam solve momentum and pressure only, so a transported scalar
+// has to ride along as a function object -- this is the whole reason one run can
+// produce U, T and C together instead of needing a custom solver.
+void writeScalarTransport(std::ofstream& out, const char* field, double diffusivity) {
+
+	out << "    " << field << "\n"
+	       "    {\n"
+	       "        type            scalarTransport;\n"
+	       "        libs            (solverFunctionObjects);\n\n"
+	    << "        field           " << field << ";\n"
+	    << "        D               " << foamNumber(diffusivity) << ";\n\n";
+
+	// bounded01 defaults to TRUE, which clamps the field into [0,1] for multiphase
+	// work. Every AxiSim scalar is a physical value in its own units -- a
+	// concentration in mol/m^3, a temperature in K -- so leaving the default would
+	// silently flatten the solution instead of failing.
+	out << "        // Defaults to true, which would clamp the field to [0,1].\n"
+	       "        bounded01       false;\n\n"
+	       "        resetOnStartUp  false;\n"
+	       "        writeControl    writeTime;\n"
+	       "    }\n";
+}
+
+}
+
+bool writeControlDict(const std::filesystem::path& path, const FoamCaseSetup& setup) {
 
 	std::ofstream out(path, std::ios::binary | std::ios::trunc);
 	if (!out) {
@@ -439,40 +489,67 @@ bool writeControlDict(const std::filesystem::path& path) {
 
 	writeFoamHeader(out, "dictionary", "controlDict", "system");
 
-	out << "// Stub. Nothing here is derived from the AxiSim project -- these are the\n"
-	       "// steady-state defaults, and endTime / writeInterval / the solver name are\n"
-	       "// yours to set.\n"
-	       "//\n"
-	       "// It is written because blockMesh needs it, not only the solver: blockMesh\n"
-	       "// constructs a Time object before it reads the mesh dict, and Time reads\n"
-	       "// system/controlDict as MUST_READ. Without this file the export fails with a\n"
-	       "// missing-file error that says nothing about the mesh.\n\n";
+	// Needed by blockMesh, not only by a solver: blockMesh constructs a Time object
+	// before it opens the mesh dict, and Time reads this as MUST_READ. Without it the
+	// case fails on a missing file that says nothing about the mesh.
+	out << "// Written from the project's solver settings. pimpleFoam/simpleFoam follows\n"
+	       "// the Transient checkbox; endTime, deltaT and the relaxation factors all come\n"
+	       "// from the Solver tab.\n\n";
 
-	// simpleFoam because a steady incompressible run is the first thing worth
-	// comparing against AxiSim. Only utilities that launch a solver for you read this
-	// key -- running a different one is just a matter of typing its name.
-	out << "application     simpleFoam;\n\n";
+	out << "application     " << (setup.transient ? "pimpleFoam" : "simpleFoam") << ";\n\n";
 
 	// startTime, not latestTime: 0/ is the only time directory the export writes, and
 	// latestTime on a re-run would silently continue from a previous solution rather
 	// than from the conditions being validated.
 	out << "startFrom       startTime;\n"
 	       "startTime       0;\n\n"
-	       "stopAt          endTime;\n"
-	       "endTime         1000;\n\n";
+	       "stopAt          endTime;\n";
 
-	// For a steady solver deltaT is an iteration counter, so endTime/deltaT above is
-	// 1000 SIMPLE iterations, not 1000 seconds. A transient run needs both re-set.
-	out << "deltaT          1;\n\n"
-	       "writeControl    timeStep;\n"
-	       "writeInterval   100;\n"
-	       "purgeWrite      0;\n\n"
+	if (setup.transient) {
+		out << "endTime         " << foamNumber(setup.tEnd) << ";\n\n"
+		    << "deltaT          " << foamNumber(setup.dt) << ";\n\n";
+
+		// Ten dumps over the run, so a transient comparison has frames to line up
+		// against AxiSim's own keyframes without filling the disk.
+		const double interval = setup.tEnd > 0.0 ? setup.tEnd / 10.0 : setup.dt;
+		out << "writeControl    runTime;\n"
+		    << "writeInterval   " << foamNumber(interval) << ";\n";
+	}
+	else {
+		// For a steady solver deltaT is an iteration counter, so this is a cap of
+		// steadyIterations SIMPLE iterations, not a number of seconds. It is only a
+		// backstop -- residualControl in fvSolution is what normally stops the run.
+		out << "endTime         " << setup.steadyIterations << ";\n\n"
+		       "deltaT          1;\n\n"
+		       "writeControl    timeStep;\n"
+		    << "writeInterval   " << setup.steadyIterations << ";\n";
+	}
+
+	out << "purgeWrite      0;\n\n"
 	       "writeFormat     ascii;\n"
-	       "writePrecision  6;\n"
+	       "writePrecision  12;\n"
 	       "writeCompression off;\n\n"
 	       "timeFormat      general;\n"
 	       "timePrecision   6;\n\n"
 	       "runTimeModifiable true;\n\n";
+
+	if (setup.solveEnergy || setup.solveConcentration) {
+
+		out << "functions\n"
+		       "{\n";
+
+		if (setup.solveEnergy) {
+			// k is a conductivity; scalarTransport wants a diffusivity, so what goes
+			// out is alpha = k/(rho*cp).
+			writeScalarTransport(out, "T", setup.alpha());
+		}
+		if (setup.solveEnergy && setup.solveConcentration) out << '\n';
+		if (setup.solveConcentration) {
+			writeScalarTransport(out, "C", setup.D);
+		}
+
+		out << "}\n\n";
+	}
 
 	out << "// ************************************************************************* //\n";
 
@@ -485,21 +562,246 @@ bool writeControlDict(const std::filesystem::path& path) {
 	return true;
 }
 
+bool writeFvSchemes(const std::filesystem::path& path, const FoamCaseSetup& setup) {
+
+	std::ofstream out(path, std::ios::binary | std::ios::trunc);
+	if (!out) {
+		std::cerr << "writeFvSchemes: cannot open " << path.string() << '\n';
+		return false;
+	}
+
+	writeFoamHeader(out, "dictionary", "fvSchemes", "system");
+
+	out << "ddtSchemes\n"
+	       "{\n";
+	if (!setup.transient) {
+		out << "    default         steadyState;\n";
+	}
+	else {
+		// Euler is backward Euler, backward is BDF2 -- the same two schemes TimeScheme
+		// offers, under OpenFOAM's names.
+		out << "    default         " << (setup.secondOrderTime ? "backward" : "Euler") << ";\n";
+	}
+	out << "}\n\n";
+
+	out << "gradSchemes\n"
+	       "{\n"
+	    << "    default         "
+	    << (setup.leastSquaresGradient ? "leastSquares" : "Gauss linear") << ";\n"
+	       "}\n\n";
+
+	// `bounded` subtracts the (div(phi)*field) term that a not-yet-converged steady
+	// flux leaves behind. It is for steady runs only -- on a transient run the flux
+	// is meant to satisfy continuity at every step, and bounding it would be wrong.
+	const char* boundedPrefix = setup.transient ? "" : "bounded ";
+
+	const char* interp = "upwind";
+	switch (setup.convection) {
+		case FoamConvection::Linear:       interp = "linear";       break;
+		case FoamConvection::LinearUpwind: interp = "linearUpwind"; break;
+		case FoamConvection::Quick:        interp = "QUICK";        break;
+		case FoamConvection::Upwind:       break;
+	}
+
+	// linearUpwind is the one that needs a gradient to extrapolate with, and it wants
+	// the gradient OF THE FIELD being convected -- so these cannot share one entry.
+	const bool needsGrad = (setup.convection == FoamConvection::LinearUpwind);
+
+	// Six spaces lines the value up with `default         none;` above it -- every
+	// field name here is one character, so the padding is fixed.
+	auto divEntry = [&](const char* field) {
+		out << "    div(phi," << field << ")      "
+		    << boundedPrefix << "Gauss " << interp;
+		if (needsGrad) out << " grad(" << field << ")";
+		out << ";\n";
+	};
+
+	out << "divSchemes\n"
+	       "{\n"
+	       "    default         none;\n";
+	divEntry("U");
+	if (setup.solveEnergy)        divEntry("T");
+	if (setup.solveConcentration) divEntry("C");
+
+	// The viscous stress term simpleFoam/pimpleFoam always assembles. Not optional:
+	// `default none` means every div the solver forms has to be named here.
+	out << "    div((nuEff*dev2(T(grad(U))))) Gauss linear;\n"
+	       "}\n\n";
+
+	// `corrected` rather than `orthogonal`: the wedge planes are not parallel, so
+	// even a perfectly rectangular r-z grid has non-orthogonality to correct for.
+	out << "laplacianSchemes\n"
+	       "{\n"
+	       "    default         Gauss linear corrected;\n"
+	       "}\n\n"
+	       "interpolationSchemes\n"
+	       "{\n"
+	       "    default         linear;\n"
+	       "}\n\n"
+	       "snGradSchemes\n"
+	       "{\n"
+	       "    default         corrected;\n"
+	       "}\n\n";
+
+	out << "// ************************************************************************* //\n";
+
+	out.flush();
+	if (!out) {
+		std::cerr << "writeFvSchemes: write failed for " << path.string() << '\n';
+		return false;
+	}
+
+	return true;
+}
+
+bool writeFvSolution(const std::filesystem::path& path, const FoamCaseSetup& setup) {
+
+	std::ofstream out(path, std::ios::binary | std::ios::trunc);
+	if (!out) {
+		std::cerr << "writeFvSolution: cannot open " << path.string() << '\n';
+		return false;
+	}
+
+	writeFoamHeader(out, "dictionary", "fvSolution", "system");
+
+	// Regex keys rather than plain names so the *Final variants a PIMPLE run creates
+	// (pFinal, UFinal) are covered without a second copy of every block.
+	out << "solvers\n"
+	       "{\n"
+	       "    \"p.*\"\n"
+	       "    {\n"
+	       "        solver          GAMG;\n"
+	       "        smoother        GaussSeidel;\n"
+	       "        tolerance       1e-08;\n"
+	       "        relTol          0.01;\n"
+	       "    }\n\n"
+	       "    \"(U|T|C).*\"\n"
+	       "    {\n"
+	       "        solver          smoothSolver;\n"
+	       "        smoother        symGaussSeidel;\n"
+	       "        tolerance       1e-08;\n"
+	       "        relTol          0.1;\n"
+	       "    }\n"
+	       "}\n\n";
+
+	if (setup.transient) {
+		out << "PIMPLE\n"
+		       "{\n"
+		       "    nOuterCorrectors 1;\n"
+		       "    nCorrectors     2;\n"
+		       "    nNonOrthogonalCorrectors 0;\n"
+		       "}\n\n";
+	}
+	else {
+		// 1e-6, NOT the Solver tab's convergence tolerance. The two numbers are not
+		// comparable: AxiSim's is its own scaled residual, OpenFOAM's is the initial
+		// residual of each outer iteration under its own normalisation. Copying
+		// AxiSim's 1e-3 across stops SIMPLE about 9% short of the developed profile
+		// -- measured on a Poiseuille pipe, where it costs the peak velocity 0.0180
+		// against an analytic 0.0200. 1e-6 lands within 0.03% of a 1e-8 run.
+		out << "SIMPLE\n"
+		       "{\n"
+		       "    nNonOrthogonalCorrectors 0;\n"
+		       "    consistent      no;\n\n"
+		       "    residualControl\n"
+		       "    {\n"
+		       "        p               1e-06;\n"
+		       "        U               1e-06;\n"
+		       "        \"(T|C)\"         1e-06;\n"
+		       "    }\n"
+		       "}\n\n";
+
+		out << "relaxationFactors\n"
+		       "{\n"
+		       "    fields\n"
+		       "    {\n"
+		    << "        p               " << foamNumber(setup.pressureRelaxation) << ";\n"
+		       "    }\n"
+		       "    equations\n"
+		       "    {\n"
+		    << "        U               " << foamNumber(setup.momentumRelaxation) << ";\n"
+		    << "        \"(T|C)\"         " << foamNumber(setup.momentumRelaxation) << ";\n"
+		       "    }\n"
+		       "}\n\n";
+	}
+
+	out << "// ************************************************************************* //\n";
+
+	out.flush();
+	if (!out) {
+		std::cerr << "writeFvSolution: write failed for " << path.string() << '\n';
+		return false;
+	}
+
+	return true;
+}
+
+bool writeTransportProperties(const std::filesystem::path& path, const FoamCaseSetup& setup) {
+
+	std::ofstream out(path, std::ios::binary | std::ios::trunc);
+	if (!out) {
+		std::cerr << "writeTransportProperties: cannot open " << path.string() << '\n';
+		return false;
+	}
+
+	writeFoamHeader(out, "dictionary", "transportProperties", "constant");
+
+	out << "transportModel  Newtonian;\n\n";
+
+	// The incompressible solvers never see a density -- it divides out of the whole
+	// equation set -- so mu goes out as the kinematic nu and rho survives only in
+	// this comment and in the p field's units.
+	out << "// nu = mu / rho = " << foamNumber(setup.mu)
+	    << " / " << foamNumber(setup.rho) << "\n"
+	    << "nu              " << foamNumber(setup.nu()) << ";\n";
+
+	if (setup.solveConcentration) {
+		out << "\n// mass diffusivity. The scalarTransport function object in controlDict\n"
+		       "// reads its own copy of this; the entry here is for utilities that expect it.\n"
+		    << "DT              " << foamNumber(setup.D) << ";\n";
+	}
+
+	out << "\n// ************************************************************************* //\n";
+
+	out.flush();
+	if (!out) {
+		std::cerr << "writeTransportProperties: write failed for " << path.string() << '\n';
+		return false;
+	}
+
+	return true;
+}
+
+bool writeTurbulenceProperties(const std::filesystem::path& path) {
+
+	std::ofstream out(path, std::ios::binary | std::ios::trunc);
+	if (!out) {
+		std::cerr << "writeTurbulenceProperties: cannot open " << path.string() << '\n';
+		return false;
+	}
+
+	writeFoamHeader(out, "dictionary", "turbulenceProperties", "constant");
+
+	// Not optional even though nothing here is turbulent: simpleFoam and pimpleFoam
+	// construct a turbulence model unconditionally and abort without this file.
+	// AxiSim solves the laminar equations, so laminar is the honest setting.
+	out << "simulationType  laminar;\n\n";
+
+	out << "// ************************************************************************* //\n";
+
+	out.flush();
+	if (!out) {
+		std::cerr << "writeTurbulenceProperties: write failed for " << path.string() << '\n';
+		return false;
+	}
+
+	return true;
+}
+
 // ====================================================
 // -------------------0/ FIELDS------------------------
 // ====================================================
 namespace {
-
-// Full precision, for the reason writeBlockMeshDict spells out on its own stream:
-// a boundary value that round-trips to 6 digits is a different boundary value.
-// These strings are built before any stream exists, so they carry their own.
-// Same %.17g as file_manager's jsonNumber, minus its JSON-only non-finite policy.
-std::string foamNumber(double value) {
-
-	char buffer[40];
-	std::snprintf(buffer, sizeof(buffer), "%.17g", value);
-	return buffer;
-}
 
 // AxiSim scalar BC -> the patch entry that reproduces it. Every branch that wants
 // a plain zeroGradient just leaves FieldPatch's default alone.
@@ -640,19 +942,9 @@ const char* constraintPatchType(BoundaryFOAMType type) {
 
 std::vector<FoamField> initialFieldsFromDict(
 	const BlockMeshDict& dict,
-	const std::vector<BoundarySegmentGroup>& groups
+	const std::vector<BoundarySegmentGroup>& groups,
+	const FoamCaseSetup& setup
 ) {
-
-	// A field is exported when at least one group carries a condition for it. The
-	// Solver tab prunes bcs whenever a boundary type changes or a field is switched
-	// off, so this tracks solveEnergy / solveConcentration without the export having
-	// to reach for the solver settings.
-	auto anyGroupHas = [&groups](BoundaryVariable variable) {
-		return std::any_of(groups.begin(), groups.end(),
-			[variable](const BoundarySegmentGroup& group) {
-				return group.bcs.count(variable) != 0;
-			});
-	};
 
 	// Starting a scalar at 0 is plain wrong for temperature (0 K) and needlessly slow
 	// for concentration, so seed the interior from the inlet value where there is one.
@@ -687,7 +979,11 @@ std::vector<FoamField> initialFieldsFromDict(
 			" AxiSim stores pressure in Pa, so divide any non-zero value below by rho."
 	});
 
-	if (anyGroupHas(BoundaryVariable::StaticTemperature)) {
+	// Gated on the Solver tab's field checkboxes, not on which groups happen to hold
+	// a condition: a field that is being solved needs its file even if every patch
+	// ends up on a default, and the scalarTransport entries in controlDict are
+	// written off the same two flags, so the two must not be able to disagree.
+	if (setup.solveEnergy) {
 		fields.push_back({
 			.name = "T",
 			.variable = BoundaryVariable::StaticTemperature,
@@ -697,7 +993,7 @@ std::vector<FoamField> initialFieldsFromDict(
 		});
 	}
 
-	if (anyGroupHas(BoundaryVariable::Concentration)) {
+	if (setup.solveConcentration) {
 		fields.push_back({
 			.name = "C",
 			.variable = BoundaryVariable::Concentration,

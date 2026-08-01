@@ -177,7 +177,7 @@ void Menu::drawExport() {
 
 		if (menuItem("Mesh")) {
 
-			saveFromExplorerMesh(project.mesh);
+			saveFromExplorerMesh(project.mesh, project.solver);
 
 		}
 		// Gated on frames actually existing rather than on the Transient checkbox,
