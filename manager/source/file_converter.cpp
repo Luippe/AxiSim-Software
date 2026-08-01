@@ -5,9 +5,12 @@
 #include <cmath>
 #include <fstream>
 #include <iomanip>
+#include <cstdio>
 #include <iostream>
 #include <set>
+#include <string_view>
 
+#include "boundary_func.h"
 #include "multiblock.h"
 
 namespace {
@@ -27,10 +30,11 @@ std::array<int, 8> hexLabels(const Block& block) {
 
 	const MBNode onAxisCandidates[2] = { block.node(0, 0), block.node(0, block.nz) };
 
-	// Tolerance relative to the block's own radial extent, so a sketch corner
-	// that landed on the axis at 1e-17 still reads as on-axis in a domain
-	// measured in microns. makeRectBlock puts an exact 0.0 there, but blocks
-	// built from sketch geometry (makeQuadBlock/makeTransfiniteBlock) do not.
+	// Tolerance relative to the block's own radial extent, so a corner that landed
+	// on the axis at 1e-17 still reads as on-axis in a domain measured in microns.
+	// makeRectBlock, the only builder at present, writes an exact 0.0 there, so the
+	// tolerance is slack today -- it is what keeps this right for any builder that
+	// interpolates node positions rather than laying them on a tensor product.
 	const double extent = std::fabs(block.node(block.nr, 0).r);
 	const double tol = 1e-12 * (extent > 0.0 ? extent : 1.0);
 
@@ -108,10 +112,12 @@ std::string foamPatchName(const BoundarySegmentGroup& group) {
 	return name;
 }
 
-// Every Foam dictionary opens with a FoamFile sub-dict. It is not decoration:
-// IOobject reads it to decide the file's class, and a dict without one is rejected
-// before blockMesh ever reaches the vertices.
-void writeFoamHeader(std::ofstream& out) {
+// Every Foam file opens with a FoamFile sub-dict. It is not decoration: IOobject
+// reads it to decide the file's class, and a file without one is rejected before
+// blockMesh ever reaches the vertices. `location` is omitted when null -- the dict
+// does not need it, a 0/ field does.
+void writeFoamHeader(std::ofstream& out, std::string_view className, std::string_view object,
+                     const char* location = nullptr) {
 
 	out << "/*--------------------------------*- C++ -*----------------------------------*\\\n"
 	       "  Written by AxiSim. Axisymmetric wedge mesh, one cell thick in the\n"
@@ -121,8 +127,11 @@ void writeFoamHeader(std::ofstream& out) {
 	       "{\n"
 	       "    version     2.0;\n"
 	       "    format      ascii;\n"
-	       "    class       dictionary;\n"
-	       "    object      blockMeshDict;\n"
+	    << "    class       " << className << ";\n";
+
+	if (location) out << "    location    \"" << location << "\";\n";
+
+	out << "    object      " << object << ";\n"
 	       "}\n"
 	       "// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //\n\n";
 }
@@ -156,9 +165,9 @@ std::vector<Vec3> verticesFromBlock(const Block& block, double wedgeAngleDeg) {
 	// The four (z, r) corners, ordered min -> +z -> +z+r -> +r. makeRectBlock lays
 	// nodes out with I running +r and J running +z, so node(0,0) is the min corner
 	// and this traversal is counter-clockwise in the r-z plane -- which is what
-	// makes the hex's first face wind correctly. A block whose corners were handed
-	// to makeQuadBlock in another order comes out inside-out here, and blockMesh
-	// rejects it for negative volume.
+	// makes the hex's first face wind correctly. A builder that numbered its nodes
+	// the other way round would come out inside-out here, and blockMesh rejects it
+	// for negative volume.
 	const MBNode corners[4] = {
 		block.node(0, 0),
 		block.node(0, block.nz),
@@ -240,9 +249,8 @@ std::unordered_map<std::string, BoundaryFOAM> boundaryFromMultiblock(
 		const auto known = nameOfGroup.find(groupID);
 		if (known != nameOfGroup.end()) return boundary[known->second];
 
-		const BoundarySegmentGroup* group = nullptr;
-		for (const BoundarySegmentGroup& g : groups)
-			if (g.id == groupID) { group = &g; break; }
+		const BoundarySegmentGroup* group =
+			BoundaryGet::getBoundaryGroupByID(groups, groupID);
 
 		// An untagged external edge is an upstream bug (validateBoundaryTags
 		// throws on it), but silently dropping its faces would hand blockMesh a
@@ -258,6 +266,7 @@ std::unordered_map<std::string, BoundaryFOAM> boundaryFromMultiblock(
 		nameOfGroup[groupID] = name;
 		BoundaryFOAM& patch = boundary[name];
 		patch.type = group ? foamType(group->type) : BoundaryFOAMType::PATCH;
+		patch.groupID = group ? group->id : -1;
 		return patch;
 	};
 
@@ -334,7 +343,7 @@ bool writeBlockMeshDict(const std::filesystem::path& path, const BlockMeshDict& 
 	// blockMesh at all. 17 digits round-trips a double exactly.
 	out << std::setprecision(17);
 
-	writeFoamHeader(out);
+	writeFoamHeader(out, "dictionary", "blockMeshDict");
 
 	out << "scale   " << dict.scale << ";\n\n";
 
@@ -415,6 +424,380 @@ bool writeBlockMeshDict(const std::filesystem::path& path, const BlockMeshDict& 
 	if (!out) {
 		std::cerr << "writeBlockMeshDict: write failed for " << path.string() << '\n';
 		return false;
+	}
+
+	return true;
+}
+
+bool writeControlDict(const std::filesystem::path& path) {
+
+	std::ofstream out(path, std::ios::binary | std::ios::trunc);
+	if (!out) {
+		std::cerr << "writeControlDict: cannot open " << path.string() << '\n';
+		return false;
+	}
+
+	writeFoamHeader(out, "dictionary", "controlDict", "system");
+
+	out << "// Stub. Nothing here is derived from the AxiSim project -- these are the\n"
+	       "// steady-state defaults, and endTime / writeInterval / the solver name are\n"
+	       "// yours to set.\n"
+	       "//\n"
+	       "// It is written because blockMesh needs it, not only the solver: blockMesh\n"
+	       "// constructs a Time object before it reads the mesh dict, and Time reads\n"
+	       "// system/controlDict as MUST_READ. Without this file the export fails with a\n"
+	       "// missing-file error that says nothing about the mesh.\n\n";
+
+	// simpleFoam because a steady incompressible run is the first thing worth
+	// comparing against AxiSim. Only utilities that launch a solver for you read this
+	// key -- running a different one is just a matter of typing its name.
+	out << "application     simpleFoam;\n\n";
+
+	// startTime, not latestTime: 0/ is the only time directory the export writes, and
+	// latestTime on a re-run would silently continue from a previous solution rather
+	// than from the conditions being validated.
+	out << "startFrom       startTime;\n"
+	       "startTime       0;\n\n"
+	       "stopAt          endTime;\n"
+	       "endTime         1000;\n\n";
+
+	// For a steady solver deltaT is an iteration counter, so endTime/deltaT above is
+	// 1000 SIMPLE iterations, not 1000 seconds. A transient run needs both re-set.
+	out << "deltaT          1;\n\n"
+	       "writeControl    timeStep;\n"
+	       "writeInterval   100;\n"
+	       "purgeWrite      0;\n\n"
+	       "writeFormat     ascii;\n"
+	       "writePrecision  6;\n"
+	       "writeCompression off;\n\n"
+	       "timeFormat      general;\n"
+	       "timePrecision   6;\n\n"
+	       "runTimeModifiable true;\n\n";
+
+	out << "// ************************************************************************* //\n";
+
+	out.flush();
+	if (!out) {
+		std::cerr << "writeControlDict: write failed for " << path.string() << '\n';
+		return false;
+	}
+
+	return true;
+}
+
+// ====================================================
+// -------------------0/ FIELDS------------------------
+// ====================================================
+namespace {
+
+// Full precision, for the reason writeBlockMeshDict spells out on its own stream:
+// a boundary value that round-trips to 6 digits is a different boundary value.
+// These strings are built before any stream exists, so they carry their own.
+// Same %.17g as file_manager's jsonNumber, minus its JSON-only non-finite policy.
+std::string foamNumber(double value) {
+
+	char buffer[40];
+	std::snprintf(buffer, sizeof(buffer), "%.17g", value);
+	return buffer;
+}
+
+// AxiSim scalar BC -> the patch entry that reproduces it. Every branch that wants
+// a plain zeroGradient just leaves FieldPatch's default alone.
+FieldPatch scalarPatch(const BoundaryCondition& bc) {
+
+	FieldPatch patch;
+
+	switch (bc.type()) {
+
+	case DIRICHLET:
+		patch.type = "fixedValue";
+		patch.entry = "value           uniform " + foamNumber(bc.value()) + ";";
+		break;
+
+	case NEUMANN:
+		// A zero fixedGradient IS zeroGradient -- the default -- and zeroGradient is
+		// how every OpenFOAM case spells it. Writing the long form for the
+		// overwhelmingly common case would only make this harder to diff against a
+		// hand-written one.
+		if (bc.value() != 0.0) {
+			patch.type = "fixedGradient";
+			patch.entry = "gradient        uniform " + foamNumber(bc.value()) + ";";
+		}
+		break;
+
+	case PULSATILE:
+		// The mean is the most a time-independent 0/ file can carry. It is a real
+		// difference from what AxiSim solves, so it is flagged rather than left for
+		// the user to find by comparing two transient results.
+		patch.type = "fixedValue";
+		patch.entry = "value           uniform " + foamNumber(bc.value()) + ";";
+		patch.note = "steady mean of a pulsatile condition";
+
+		if (const auto* pulse = std::get_if<PulsatileParams>(&bc.params)) {
+			patch.note += ": value*(1 + " + foamNumber(pulse->amplitude) + "*sin(2*pi*"
+				+ foamNumber(pulse->frequency) + "*t))"
+				" -- reproduce with uniformFixedValue + a sine Function1";
+		}
+		break;
+
+	case MICHAELIS_MENTEN:
+	case HILL:
+		// A saturating consumption flux at the wall. OpenFOAM has no built-in for
+		// it, and the default -- no flux at all -- is a DIFFERENT problem, so the
+		// note has to be loud: a run made against this file is not a
+		// cross-validation of anything.
+		patch.note = "PLACEHOLDER, NOT THE SAME PROBLEM: AxiSim applies a saturating wall flux";
+
+		if (const auto* mm = std::get_if<MichaelisMentenParams>(&bc.params)) {
+			patch.note += " (Michaelis-Menten, Vmax=" + foamNumber(mm->Vmax)
+				+ " Km=" + foamNumber(mm->Km) + ")";
+		}
+		else if (const auto* hill = std::get_if<HillParams>(&bc.params)) {
+			patch.note += " (Hill, Vmax=" + foamNumber(hill->Vmax)
+				+ " Km=" + foamNumber(hill->Km) + " n=" + foamNumber(hill->n) + ")";
+		}
+
+		patch.note += "; swap in a codedMixed to match it";
+		break;
+
+	// FULLY_DEVELOPED is a zero streamwise gradient, which is what zeroGradient
+	// already is on a face whose normal points downstream. NONE has nothing to say.
+	// Both keep the default.
+	case FULLY_DEVELOPED:
+	case NONE:
+	default:
+		break;
+	}
+
+	return patch;
+}
+
+// U cannot go through scalarPatch: it is one vector field built from two scalar
+// conditions, and OpenFOAM's fixedValue/zeroGradient act on the whole vector. A
+// group that fixes one component and leaves the other free has no exact spelling.
+FieldPatch velocityPatch(const BoundarySegmentGroup& group) {
+
+	const BoundaryCondition axial =
+		BoundaryDefaults::getEffectiveBC(group, BoundaryVariable::UVelocity);
+	const BoundaryCondition radial =
+		BoundaryDefaults::getEffectiveBC(group, BoundaryVariable::VVelocity);
+
+	// PULSATILE counts as fixed -- its mean is what a steady export can carry.
+	auto isFixed = [](const BoundaryCondition& bc) {
+		return bc.type() == DIRICHLET || bc.type() == PULSATILE;
+	};
+
+	FieldPatch patch;
+
+	// Neither component pinned: the default zeroGradient is the whole answer.
+	if (!isFixed(axial) && !isFixed(radial)) return patch;
+
+	// x is axial, y is radial, z is the wedge direction -- verticesFromBlock lays
+	// every vertex out that way. A single-cell wedge carries no swirl, so z is 0.
+	const double u = isFixed(axial)  ? axial.value()  : 0.0;
+	const double v = isFixed(radial) ? radial.value() : 0.0;
+
+	if (isFixed(axial) && isFixed(radial) && u == 0.0 && v == 0.0) {
+		patch.type = "noSlip";
+		return patch;
+	}
+
+	patch.type = "fixedValue";
+	patch.entry = "value           uniform (" + foamNumber(u) + " " + foamNumber(v) + " 0);";
+
+	if (isFixed(axial) != isFixed(radial)) {
+		patch.note = "one velocity component was free in AxiSim; pinned to 0 here, "
+			"because fixedValue takes the whole vector";
+	}
+	else if (axial.type() == PULSATILE || radial.type() == PULSATILE) {
+		patch.note = "steady mean of a pulsatile inlet"
+			" -- reproduce with uniformFixedValue + a sine Function1";
+	}
+
+	return patch;
+}
+
+// Constraint patches are not a condition the user picks: the field entry MUST name
+// the same constraint as the mesh patch, in every field file, or the solver aborts
+// while constructing the field. Returns null for a patch whose entry comes from the
+// group's boundary conditions instead.
+//
+// The name comes from foamPatchTypeName rather than a second set of literals,
+// precisely because the two spellings have to agree.
+const char* constraintPatchType(BoundaryFOAMType type) {
+
+	switch (type) {
+		case BoundaryFOAMType::WEDGE:
+		case BoundaryFOAMType::SYMMETRY_PLANE:
+			return foamPatchTypeName(type);
+		default:
+			break;
+	}
+	return nullptr;
+}
+
+}
+
+std::vector<FoamField> initialFieldsFromDict(
+	const BlockMeshDict& dict,
+	const std::vector<BoundarySegmentGroup>& groups
+) {
+
+	// A field is exported when at least one group carries a condition for it. The
+	// Solver tab prunes bcs whenever a boundary type changes or a field is switched
+	// off, so this tracks solveEnergy / solveConcentration without the export having
+	// to reach for the solver settings.
+	auto anyGroupHas = [&groups](BoundaryVariable variable) {
+		return std::any_of(groups.begin(), groups.end(),
+			[variable](const BoundarySegmentGroup& group) {
+				return group.bcs.count(variable) != 0;
+			});
+	};
+
+	// Starting a scalar at 0 is plain wrong for temperature (0 K) and needlessly slow
+	// for concentration, so seed the interior from the inlet value where there is one.
+	auto inletValue = [&groups](BoundaryVariable variable) {
+
+		for (const BoundarySegmentGroup& group : groups) {
+
+			if (group.type != BoundaryType::VELOCITY_INLET) continue;
+
+			const auto found = group.bcs.find(variable);
+			if (found != group.bcs.end() && found->second.type() == DIRICHLET)
+				return found->second.value();
+		}
+		return 0.0;
+	};
+
+	std::vector<FoamField> fields;
+
+	fields.push_back({
+		.name = "U",
+		.className = "volVectorField",
+		.dimensions = "[0 1 -1 0 0 0 0]",
+		.internalField = "uniform (0 0 0)"
+	});
+
+	fields.push_back({
+		.name = "p",
+		.variable = BoundaryVariable::Pressure,
+		.dimensions = "[0 2 -2 0 0 0 0]",
+		.internalField = "uniform 0",
+		.note = "p is KINEMATIC (p/rho), which is what the incompressible solvers want."
+			" AxiSim stores pressure in Pa, so divide any non-zero value below by rho."
+	});
+
+	if (anyGroupHas(BoundaryVariable::StaticTemperature)) {
+		fields.push_back({
+			.name = "T",
+			.variable = BoundaryVariable::StaticTemperature,
+			.dimensions = "[0 0 0 1 0 0 0]",
+			.internalField = "uniform " + foamNumber(
+				inletValue(BoundaryVariable::StaticTemperature))
+		});
+	}
+
+	if (anyGroupHas(BoundaryVariable::Concentration)) {
+		fields.push_back({
+			.name = "C",
+			.variable = BoundaryVariable::Concentration,
+			.dimensions = "[0 -3 0 0 1 0 0]",
+			.internalField = "uniform " + foamNumber(
+				inletValue(BoundaryVariable::Concentration)),
+			.note = "dimensioned as mol/m^3, matching the base SI values AxiSim stores."
+		});
+	}
+
+	// One pass over the mesh's patches filling every field, rather than one pass per
+	// field: a patch can then never end up present in one file and missing from
+	// another, which the solver treats as fatal rather than defaulting.
+	for (const auto& entry : dict.boundary) {
+
+		const std::string& patchName = entry.first;
+		const BoundaryFOAM& patch = entry.second;
+
+		// Both of these depend on the patch alone, so they are resolved once here
+		// rather than per field.
+		const char* constraint = constraintPatchType(patch.type);
+		const BoundarySegmentGroup* group =
+			BoundaryGet::getBoundaryGroupByID(groups, patch.groupID);
+
+		for (FoamField& field : fields) {
+
+			FieldPatch fieldPatch;
+
+			if (constraint) {
+				fieldPatch.type = constraint;
+			}
+			else if (!group) {
+				// boundaryFromMultiblock's "unassigned" fallback, or a group that
+				// vanished between the two calls. Either way there is nothing to
+				// derive an entry from, so say so instead of guessing silently.
+				fieldPatch.note = "no boundary group behind this patch. zeroGradient is a guess";
+			}
+			else if (field.name == "U") {
+				fieldPatch = velocityPatch(*group);
+			}
+			else {
+				fieldPatch = scalarPatch(
+					BoundaryDefaults::getEffectiveBC(*group, field.variable));
+			}
+
+			field.boundaryField[patchName] = fieldPatch;
+		}
+	}
+
+	return fields;
+}
+
+bool writeInitialFields(const std::filesystem::path& dir, const std::vector<FoamField>& fields) {
+
+	for (const FoamField& field : fields) {
+
+		const std::filesystem::path path = dir / field.name;
+
+		// Binary for the same reason the dict is: written on Windows, read by a
+		// solver under WSL, and both sides should see the same bytes.
+		std::ofstream out(path, std::ios::binary | std::ios::trunc);
+		if (!out) {
+			std::cerr << "writeInitialFields: cannot open " << path.string() << '\n';
+			return false;
+		}
+
+		writeFoamHeader(out, field.className, field.name, "0");
+
+		if (!field.note.empty()) out << "// " << field.note << "\n\n";
+
+		out << "dimensions      " << field.dimensions << ";\n\n"
+			<< "internalField   " << field.internalField << ";\n\n"
+			   "boundaryField\n"
+			   "{\n";
+
+		for (const auto& entry : field.boundaryField) {
+
+			out << "    " << entry.first << "\n"
+			       "    {\n"
+			    << "        type            " << entry.second.type << ";\n";
+
+			if (!entry.second.entry.empty())
+				out << "        " << entry.second.entry << "\n";
+
+			if (!entry.second.note.empty())
+				out << "        // " << entry.second.note << "\n";
+
+			out << "    }\n";
+		}
+
+		out << "}\n\n"
+		       "// ************************************************************************* //\n";
+
+		// Buffered like the dict, so the stream state is worth one last look before
+		// claiming the file was written.
+		out.flush();
+		if (!out) {
+			std::cerr << "writeInitialFields: write failed for " << path.string() << '\n';
+			return false;
+		}
 	}
 
 	return true;

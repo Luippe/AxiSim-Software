@@ -102,6 +102,19 @@ namespace BoundaryDefaults {
 		return bc;
 	}
 
+	BoundaryCondition getEffectiveBC(
+		const BoundarySegmentGroup& group,
+		BoundaryVariable var
+	) {
+		const auto found = group.bcs.find(var);
+
+		if (found != group.bcs.end() && isVariableInBoundaryType(var, group.type)) {
+			return found->second;
+		}
+
+		return makeDefaultBC(group, var);
+	}
+
 	BCType getDefaultBCType(
 		BoundaryType boundaryType,
 		BoundaryVariable var

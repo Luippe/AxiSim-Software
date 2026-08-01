@@ -18,9 +18,10 @@
 //   - Global cell index      = block.globalOffset + local index.
 //
 // Geometry is stored as general node coordinates (nodePos), so a block can be a
-// plain axis-aligned rectangle OR a curvilinear/body-fitted patch. Axis-aligned
-// blocks come from makeRectBlock(); curved blocks from makeTransfiniteBlock().
-// The interface/halo logic below is purely topological and identical for both.
+// plain axis-aligned rectangle OR a curvilinear/body-fitted patch. makeRectBlock()
+// is the only builder at present and makes the rectangular kind -- the curved case
+// stays representable, just unbuilt. The interface/halo logic below is purely
+// topological and identical for both.
 
 #include <vector>
 #include <cstdint>
@@ -143,7 +144,7 @@ inline Block makeRectBlock(int id, double z0, double r0,
 // running along j (nr+1 of them), then those running along i. Shared by the
 // GL line-vertex builder and the inspector overlay so their traversals can't
 // drift. Per-segment (not full-span) so it stays correct for curvilinear
-// blocks (makeTransfiniteBlock/makeQuadBlock), not just axis-aligned ones.
+// blocks, not just axis-aligned ones.
 template <class Fn>
 inline void forEachBlockGridSegment(const Block& b, Fn&& emit) {
     for (int I = 0; I <= b.nr; I++)

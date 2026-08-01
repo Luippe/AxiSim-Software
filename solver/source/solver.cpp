@@ -393,21 +393,6 @@ namespace {
         }
     }
 
-    BoundaryCondition effectiveBoundaryCondition(
-        const BoundarySegmentGroup& group,
-        BoundaryVariable variable
-    ) {
-        BoundaryCondition bc = BoundaryDefaults::makeDefaultBC(group, variable);
-        auto it = group.bcs.find(variable);
-
-        if (it != group.bcs.end() &&
-            BoundaryDefaults::isVariableInBoundaryType(variable, group.type)) {
-            bc = it->second;
-        }
-
-        return bc;
-    }
-
     // Pulsatile conditions are uploaded once per physical time step. All device
     // kernels see them as ordinary Dirichlet conditions (set in memory_manager),
     // with only valueByGroup changing as physical time advances.
@@ -430,7 +415,7 @@ namespace {
                 continue;
             }
 
-            BoundaryCondition bc = effectiveBoundaryCondition(group, variable);
+            BoundaryCondition bc = BoundaryDefaults::getEffectiveBC(group, variable);
             values[(size_t)group.id] = bc.valueAtTime(time);
             hasPulsatile = hasPulsatile || bc.type() == BCType::PULSATILE;
         }
@@ -693,7 +678,7 @@ bool Solver::runCheck(const Mesh& mesh) {
         };
 
         for (BoundaryVariable variable : velocityVariables) {
-            BoundaryCondition bc = effectiveBoundaryCondition(group, variable);
+            BoundaryCondition bc = BoundaryDefaults::getEffectiveBC(group, variable);
             const auto* pulsatile = std::get_if<PulsatileParams>(&bc.params);
 
             if (!pulsatile) {
@@ -855,7 +840,7 @@ static void printBoundaryDiagnostics(
         const char* printNames[] = { "U", "V", "P" };
 
         for (int vi = 0; vi < 3; vi++) {
-            BoundaryCondition bc = effectiveBoundaryCondition(group, printVars[vi]);
+            BoundaryCondition bc = BoundaryDefaults::getEffectiveBC(group, printVars[vi]);
             line << "    " << printNames[vi] << ": " << bcTypeName(bc.type())
                  << " = " << bc.value();
 

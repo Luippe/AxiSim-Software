@@ -59,3 +59,33 @@ BlockMeshDict blockMeshDictFromMultiblock(const MultiBlockMesh& mesh, const std:
 // base b*8, so the block entries -- and only those -- get the base added on the way
 // out. This is the one place the two numbering spaces meet.
 bool writeBlockMeshDict(const std::filesystem::path& path, const BlockMeshDict& dict);
+
+// Write a stub system/controlDict at `path`. Nothing in it is derived from the
+// project -- it is the steady-state defaults, with the solver name and the run
+// length left for the user.
+//
+// Needed by blockMesh, not only by a solver: blockMesh constructs a Time object
+// before reading the mesh dict, and Time reads system/controlDict as MUST_READ, so
+// a case without one fails on a missing file rather than on anything about the mesh.
+bool writeControlDict(const std::filesystem::path& path);
+
+// Initial + boundary conditions for the 0/ directory, one FoamField per file.
+//
+// Built from the DICT rather than the multi-block mesh, because the patch names in
+// 0/ have to be the ones blockMeshDict already committed to -- foamPatchName
+// sanitizes and de-collides them, and that is not reversible. BoundaryFOAM::groupID
+// is the way back to each patch's conditions.
+//
+// U and p are always written. T and C are written only when some group carries a
+// condition for them, which is how the Solver tab's field checkboxes reach here.
+//
+// Conditions AxiSim has and OpenFOAM does not -- pulsatile inlets, Michaelis-Menten
+// and Hill wall fluxes -- are written as their nearest steady equivalent with a //
+// note on the entry saying what was lost. Nothing is dropped silently.
+std::vector<FoamField> initialFieldsFromDict(
+	const BlockMeshDict& dict, const std::vector<BoundarySegmentGroup>& groups);
+
+// Write one file per field into `dir`, which must already exist and should be the
+// case's 0/. Returns false (and says why on stderr) on the first field that cannot
+// be written, leaving the fields before it on disk.
+bool writeInitialFields(const std::filesystem::path& dir, const std::vector<FoamField>& fields);

@@ -1091,6 +1091,13 @@ bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh) {
 	// exports: the dialog names one thing, the export lays out a directory beside it.
 	const std::filesystem::path systemDir = dir / "system";
 
+	// 0/ is the solver's, not blockMesh's: it holds one file per field, carrying the
+	// initial condition and every patch's boundary condition. blockMesh ignores it
+	// entirely, so an incomplete 0/ costs nothing until a solver is actually run --
+	// which is exactly when the boundary conditions are wanted in a form that can be
+	// compared against AxiSim's.
+	const std::filesystem::path zeroDir = dir / "0";
+
 	std::error_code ec;
 	std::filesystem::create_directories(systemDir, ec);
 	if (ec) {
@@ -1099,10 +1106,29 @@ bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh) {
 		return false;
 	}
 
+	std::filesystem::create_directories(zeroDir, ec);
+	if (ec) {
+		std::cerr << "saveBlockMeshCase: cannot create " << zeroDir.string()
+			<< " -- " << ec.message() << '\n';
+		return false;
+	}
+
 	const BlockMeshDict dict =
 		blockMeshDictFromMultiblock(mesh.multiBlock, mesh.boundaryGroups);
 
 	if (!writeBlockMeshDict(systemDir / "blockMeshDict", dict)) {
+		return false;
+	}
+
+	// blockMesh reads system/controlDict before it ever opens the mesh dict, so this
+	// is not solver-only paperwork -- without it the export cannot even be meshed.
+	if (!writeControlDict(systemDir / "controlDict")) {
+		return false;
+	}
+
+	// From the dict, not the mesh: the patch names in 0/ must be the ones the dict
+	// settled on after sanitizing and de-colliding them.
+	if (!writeInitialFields(zeroDir, initialFieldsFromDict(dict, mesh.boundaryGroups))) {
 		return false;
 	}
 

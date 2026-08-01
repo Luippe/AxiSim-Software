@@ -105,12 +105,16 @@ void loadFromPathGeometry(std::ifstream& in, Geometry& geometry);
 // saveBlockMeshCase below and produces a folder, not the file the dialog named.
 void saveFromExplorerMesh(Mesh& mesh);
 
-// Export the multi-block mesh as an OpenFOAM case: creates dir/system/ and writes
-// blockMeshDict into it, so `blockMesh -case <dir>` runs against it as-is.
+// Export the multi-block mesh as an OpenFOAM case: creates dir/system/ with
+// blockMeshDict and a stub controlDict, so `blockMesh -case <dir>` runs against it
+// as-is, and dir/0/ with one file per solved field carrying the boundary conditions.
+//
+// Not a runnable SOLVE yet: system/{fvSchemes,fvSolution} and
+// constant/transportProperties are still the user's to write.
 //
 // Requires a multi-block mesh -- the blocks, their interfaces and the per-edge
 // boundary groups all come from the trellis decomposition. Returns false and logs
-// if there is none, if the folder cannot be created, or if the write fails.
+// if there is none, if a folder cannot be created, or if a write fails.
 bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh);
 
 // save mesh given a path

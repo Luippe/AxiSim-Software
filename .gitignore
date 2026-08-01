@@ -60,3 +60,10 @@ CLAUDE.local.md
 
 # OpenFOAM cross-validation cases (local WSL scratch, run dirs get huge)
 /openfoam/
+
+# Export output. Both folder names are derived from the stem typed in the save
+# dialog, not fixed, so these match the suffix the writers append rather than any
+# one case: saveBlockMeshCase makes <stem>_case, saveSolutionNpy <stem>_solution.
+# A blockMesh run then fills _case with constant/polyMesh and time dirs.
+*_case/
+*_solution/

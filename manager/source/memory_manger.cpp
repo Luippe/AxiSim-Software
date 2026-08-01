@@ -68,16 +68,10 @@ BoundaryFieldHost createBoundaryFieldHost(
 			continue;
 		}
 
-		// make default bc. if the bc already exists, replace the bc and use that instead
+		// The group's own condition where its boundary type makes that variable
+		// user-editable, the generated default otherwise.
 		BoundaryCondition bc =
-			BoundaryDefaults::makeDefaultBC(group, variable);
-
-		// find boundary variable inside the group, if it is, check if we should use the user specified or default value
-		auto it = group.bcs.find(variable);		
-
-		if ((it != group.bcs.end()) && (BoundaryDefaults::isVariableInBoundaryType(variable, group.type))) {
-			bc = it->second;
-		}
+			BoundaryDefaults::getEffectiveBC(group, variable);
 
 		// Pulsatile is mathematically a time-varying Dirichlet condition. Device
 		// kernels only need that mathematical type; Solver updates valueByGroup at

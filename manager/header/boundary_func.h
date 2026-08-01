@@ -41,6 +41,24 @@ namespace BoundaryDefaults {
 		const BoundaryVariable& var
 	);
 
+	// The condition a group ACTUALLY applies to `var`: its own stored entry when the
+	// group's boundary type lets the user edit that variable, and the generated
+	// default otherwise.
+	//
+	// Both halves of that are load-bearing. group.bcs is filled lazily by
+	// SolverGUI::getOrCreateBC, so a group whose row was never expanded holds nothing
+	// and needs the default; and bcs is pruned only while that group's tree is being
+	// drawn, so a group whose type changed off-screen still holds the old type's
+	// entries -- which isVariableInBoundaryType is what rejects.
+	//
+	// Every consumer of a group's conditions must resolve them through here. The
+	// solver, the device upload and the OpenFOAM export reading the same project
+	// differently is the failure mode this exists to prevent.
+	BoundaryCondition getEffectiveBC(
+		const BoundarySegmentGroup& group,
+		BoundaryVariable var
+	);
+
 	bool isVariableInBoundaryType(
 		BoundaryVariable variable,
 		BoundaryType type
