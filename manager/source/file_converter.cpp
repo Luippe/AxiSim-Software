@@ -12,6 +12,7 @@
 #include <string_view>
 
 #include "boundary_func.h"
+#include "math_func.h"
 #include "multiblock.h"
 
 namespace {
@@ -83,6 +84,86 @@ bool globalFace(const std::array<int, 4>& local, const std::array<int, 8>& label
 		if (!seen) distinct++;
 	}
 	return distinct >= 3;
+}
+
+const char* edgeName(Edge e) {
+	switch (e) {
+		case Edge::West:  return "West";
+		case Edge::East:  return "East";
+		case Edge::South: return "South";
+		case Edge::North: break;
+	}
+	return "North";
+}
+
+// The two (z, r) endpoints of a block edge. Mirrors edgeFaceLabels: West/East are
+// the fixed-J (axial) ends and run along i, South/North are the fixed-I (radial)
+// ends and run along j.
+void blockEdgeEndpoints(const Block& block, Edge e, Vec2& first, Vec2& second) {
+	switch (e) {
+		case Edge::East:
+			first = block.node(0, block.nz);
+			second = block.node(block.nr, block.nz);
+			return;
+		case Edge::South:
+			first = block.node(0, 0);
+			second = block.node(0, block.nz);
+			return;
+		case Edge::North:
+			first = block.node(block.nr, 0);
+			second = block.node(block.nr, block.nz);
+			return;
+		case Edge::West:
+			break;
+	}
+	first = block.node(0, 0);
+	second = block.node(block.nr, 0);
+}
+
+// Boundary group of the sketch edge nearest `point`, or -1 if none is within `tol`.
+//
+// Deliberately the same nearest-edge rule createMultiBlockFVMesh runs on face
+// centres (solver/source/mesh.cpp), so the exported patches and the solver's BC
+// groups cut the boundary the same way. Ungrouped sketch edges are skipped rather
+// than matched-then-rejected: an untagged edge lying closer must not shadow the
+// tagged one behind it.
+int groupAtPoint(Vec2 point, const std::vector<BoundaryEdge>& edges,
+                 const std::vector<BoundaryVertex>& vertices, double tol) {
+
+	int best = -1;
+	double bestDist = tol;
+
+	for (const BoundaryEdge& edge : edges) {
+		if (edge.groupID < 0) continue;
+		if (!edgeInRange(edge, vertices.size())) continue;
+
+		const Vec2 near = closestPointOnSegment(
+			point, vertices[edge.v0].pos, vertices[edge.v1].pos);
+
+		const double dz = point.z - near.z;
+		const double dr = point.r - near.r;
+		const double dist = std::sqrt(dz * dz + dr * dr);
+
+		if (dist < bestDist) {
+			bestDist = dist;
+			best = edge.groupID;
+		}
+	}
+
+	return best;
+}
+
+// Largest |z| or r anywhere in the mesh -- the length the match tolerance scales
+// with. Same quantity as createMultiBlockFVMesh's max(g.L, g.R) for a domain whose
+// blocks span it, so both paths end up with the same tolerance.
+double multiblockExtent(const MultiBlockMesh& mesh) {
+
+	double extent = 0.0;
+	for (const Block& block : mesh.blocks)
+		for (const MBNode& node : block.nodes)
+			extent = std::max(extent, std::max(std::fabs(node.z), std::fabs(node.r)));
+
+	return extent;
 }
 
 BoundaryFOAMType foamType(BoundaryType type) {
@@ -239,7 +320,9 @@ Hex hexFromBlock(const Block& block) {
 
 std::unordered_map<std::string, BoundaryFOAM> boundaryFromMultiblock(
 	const MultiBlockMesh& mesh,
-	const std::vector<BoundarySegmentGroup>& groups
+	const std::vector<BoundarySegmentGroup>& groups,
+	const std::vector<BoundaryEdge>& boundaryEdges,
+	const std::vector<BoundaryVertex>& boundaryVertices
 ) {
 
 	std::unordered_map<std::string, BoundaryFOAM> boundary;
@@ -274,9 +357,9 @@ std::unordered_map<std::string, BoundaryFOAM> boundaryFromMultiblock(
 		const BoundarySegmentGroup* group =
 			BoundaryGet::getBoundaryGroupByID(groups, groupID);
 
-		// An untagged external edge is an upstream bug (validateBoundaryTags
-		// throws on it), but silently dropping its faces would hand blockMesh a
-		// mesh with a hole and no clue where. Give them a patch so it surfaces.
+		// Dropping the faces of an unmatched edge would hand blockMesh a mesh with
+		// a hole and no clue where, so it gets a patch instead. The caller has
+		// already warned about the edge by the time this runs.
 		const std::string stem = group ? foamPatchName(*group) : "unassigned";
 
 		// Two groups can sanitize to the same word, and the map is keyed by name,
@@ -294,6 +377,13 @@ std::unordered_map<std::string, BoundaryFOAM> boundaryFromMultiblock(
 
 	const Edge allEdges[4] = { Edge::West, Edge::East, Edge::South, Edge::North };
 
+	// Boundary faces sit exactly on the sketch edges, so the match is tight and this
+	// only has to absorb floating-point drift. The max against 1.0 mirrors
+	// createMultiBlockFVMesh; it makes the tolerance absolute on any domain smaller
+	// than a metre, which is slack but harmless -- the search takes the NEAREST edge,
+	// so the tolerance only decides when nothing matches at all.
+	const double matchTol = 1e-4 * std::max(multiblockExtent(mesh), 1.0);
+
 	for (int bi = 0; bi < (int)mesh.blocks.size(); bi++) {
 
 		const Block& b = mesh.blocks[bi];
@@ -308,14 +398,53 @@ std::unordered_map<std::string, BoundaryFOAM> boundaryFromMultiblock(
 			if (claimed.count(mbEdgeKey(bi, e))) continue;              // interior
 			if (!globalFace(edgeFaceLabels(e), labels, base, face))     // on the axis:
 				continue;                                              // zero area
-			patchFor(b.edgeGroup[(int)e]).faces.push_back(face);
+
+			Vec2 first, second;
+			blockEdgeEndpoints(b, e, first, second);
+
+			auto sampleAt = [&](double t) {
+				return groupAtPoint(
+					{ first.z + t * (second.z - first.z),
+					  first.r + t * (second.r - first.r) },
+					boundaryEdges, boundaryVertices, matchTol);
+			};
+
+			const int groupID = sampleAt(0.5);
+
+			// Sampled at the quarter points, not the ends: a block corner lies where
+			// two sketch groups meet and is equidistant from both, so testing the
+			// endpoints would report a conflict on every ordinary corner.
+			//
+			// blockMeshDict gives a block edge exactly one patch, so an edge that
+			// really does span two groups cannot be exported faithfully without
+			// splitting the block. Say which one lost rather than let the midpoint
+			// decide in silence.
+			if (groupID >= 0 && (sampleAt(0.25) != groupID || sampleAt(0.75) != groupID)) {
+				std::cerr << "boundaryFromMultiblock: " << edgeName(e) << " edge of block "
+					<< b.id << " spans more than one boundary group -- taking the one at"
+					" its midpoint. Split the block to export both.\n";
+			}
+
+			if (groupID < 0) {
+				std::cerr << "boundaryFromMultiblock: " << edgeName(e) << " edge of block "
+					<< b.id << " matched no boundary group within " << matchTol
+					<< " -- exported as \"unassigned\", which carries no boundary"
+					" condition. Tag the sketch edge behind it.\n";
+			}
+
+			patchFor(groupID).faces.push_back(face);
 		}
 	}
 
 	return boundary;
 }
 
-BlockMeshDict blockMeshDictFromMultiblock(const MultiBlockMesh& mesh, const std::vector<BoundarySegmentGroup>& groups) {
+BlockMeshDict blockMeshDictFromMultiblock(
+	const MultiBlockMesh& mesh,
+	const std::vector<BoundarySegmentGroup>& groups,
+	const std::vector<BoundaryEdge>& boundaryEdges,
+	const std::vector<BoundaryVertex>& boundaryVertices
+) {
 
 	BlockMeshDict blockMeshDict;
 
@@ -324,7 +453,8 @@ BlockMeshDict blockMeshDictFromMultiblock(const MultiBlockMesh& mesh, const std:
 		blockMeshDict.hexes.push_back(hexFromBlock(mesh.blocks[i]));
 	}
 
-	blockMeshDict.boundary = boundaryFromMultiblock(mesh, groups);
+	blockMeshDict.boundary =
+		boundaryFromMultiblock(mesh, groups, boundaryEdges, boundaryVertices);
 
 	return blockMeshDict;
 }

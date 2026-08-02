@@ -40,14 +40,32 @@ Hex hexFromBlock(const Block& block);
 // Interface edges are skipped: the point merge makes them interior faces. Faces
 // lying on the axis are skipped too -- they collapse to zero area. `groups` is
 // only read for names and types, so Mesh::boundaryGroups can be passed straight in.
+//
+// The group of an edge is found GEOMETRICALLY, from the sketch boundary nearest its
+// midpoint -- not from Block::edgeGroup, which no trellis-decomposed mesh ever fills
+// in (the only setEdgeGroup calls in the tree are in buildFiveBlockExample). This is
+// deliberately the same nearest-edge rule createMultiBlockFVMesh applies to face
+// centres, because the export and the solver have to partition the boundary
+// identically: if they disagree about which face is the inlet, the two codes are not
+// solving the same problem and comparing their fields means nothing.
+//
+// An edge matching no group within tolerance still gets a patch -- named
+// "unassigned", warned about on stderr -- because dropping its faces would hand
+// blockMesh a mesh with a hole and no clue where.
 std::unordered_map<std::string, BoundaryFOAM> boundaryFromMultiblock(
-	const MultiBlockMesh& mesh, const std::vector<BoundarySegmentGroup>& groups);
+	const MultiBlockMesh& mesh, const std::vector<BoundarySegmentGroup>& groups,
+	const std::vector<BoundaryEdge>& boundaryEdges,
+	const std::vector<BoundaryVertex>& boundaryVertices);
 
 // blockMeshDict spelling of a patch type, for the dict writer.
 const char* foamPatchTypeName(BoundaryFOAMType type);
 
-// populate BlockMeshDict
-BlockMeshDict blockMeshDictFromMultiblock(const MultiBlockMesh& mesh, const std::vector<BoundarySegmentGroup>& groups);
+// populate BlockMeshDict. The two boundary vectors are forwarded to
+// boundaryFromMultiblock, which needs the sketch geometry to classify block edges.
+BlockMeshDict blockMeshDictFromMultiblock(
+	const MultiBlockMesh& mesh, const std::vector<BoundarySegmentGroup>& groups,
+	const std::vector<BoundaryEdge>& boundaryEdges,
+	const std::vector<BoundaryVertex>& boundaryVertices);
 
 // Write `dict` out as an OpenFOAM blockMeshDict, ready for `blockMesh` to read.
 // Returns false (and says why on stderr) if the file cannot be opened or written;

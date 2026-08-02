@@ -1142,8 +1142,12 @@ bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh,
 		}
 	}
 
-	const BlockMeshDict dict =
-		blockMeshDictFromMultiblock(mesh.multiBlock, mesh.boundaryGroups);
+	// boundaryEdges + boundaryVertices are the sketch boundary, and they are what
+	// carries the inlet/outlet/wall tags. Block::edgeGroup does not: the trellis
+	// decomposition never writes it, so classifying from the blocks alone put every
+	// external edge in one untagged patch and the case had no BCs at all.
+	const BlockMeshDict dict = blockMeshDictFromMultiblock(
+		mesh.multiBlock, mesh.boundaryGroups, mesh.boundaryEdges, mesh.boundaryVertices);
 
 	if (!writeBlockMeshDict(systemDir / "blockMeshDict", dict)) {
 		return false;
