@@ -62,22 +62,35 @@ class Poiseuille:
     u: np.ndarray       # analytic profile at every cell centre (full length)
 
 
-def field_map(s, c, field, mirror=True, ax=None):
+def cell_map(c, live, values, ax=None, cmap="turbo", label="", clim=None):
+    """Paint one value per live cell onto that cell's polygon.
 
+    The polygons are AxiSim's -- they are the only ones either loader builds --
+    so everything drawn here is drawn on AxiSim's mesh, whichever code the
+    values came from.
+    """
     if ax is None:
         _, ax = plt.subplots(figsize=(10,3.2))
 
-    live = s.live
-    pc = PolyCollection(c.verts[live], array=s.c(field)[live],
-                    cmap="turbo", edgecolors="none")
+    pc = PolyCollection(c.verts[live], array=values,
+                    cmap=cmap, edgecolors="none")
+
+    # Left alone, PolyCollection normalises to its own range. Passing clim is
+    # what lets two panels be compared by eye rather than only by their labels.
+    if clim is not None:
+        pc.set_clim(*clim)
 
     ax.add_collection(pc)
     ax.set_xlim(c.pts[:,0].min(), c.pts[:,0].max())
     ax.set_ylim(c.pts[:,1].min(), c.pts[:,1].max())
 
-    ax.figure.colorbar(pc, ax=ax, label=field)
+    ax.figure.colorbar(pc, ax=ax, label=label)
 
     return ax
+
+def field_map(s, c, field, mirror=True, ax=None, clim=None):
+
+    return cell_map(c, s.live, s.c(field)[s.live], ax, "turbo", field, clim)
 
 # load solution
 def load_solution(folder_name: str) -> Solution:
@@ -383,27 +396,65 @@ def foam_report(s: Solution, f: Foam, live, idx, dist):
 
 def foam_validation(s, c, f, live, idx, field="Axial Velocity", ax=None):
     """Map where AxiSim and OpenFOAM disagree, as a percentage of the field."""
-    if ax is None:
-        _, ax = plt.subplots(figsize=(10, 3.2))
-
     res, scale = foam_residual(s, f, live, idx, field)
 
-    # Painted on AxiSim's cells, since those are the polygons we have. Symmetric
-    # limits on a diverging map so the sign of the disagreement is readable.
-    full = np.zeros(len(s.sol))
-    full[live] = 100.0 * res / scale
-    lim = np.abs(full[live]).max()
+    # Symmetric limits on a diverging map so the sign of the disagreement is
+    # readable -- which way a cell is wrong is most of the diagnosis.
+    err = 100.0 * res / scale
+    lim = np.abs(err).max()
 
-    pc = PolyCollection(c.verts[live], array=full[live],
-                        cmap="RdBu_r", edgecolors="none")
-    pc.set_clim(-lim, lim)
+    return cell_map(c, live, err, ax, "RdBu_r",
+                    f"{field}: AxiSim - OpenFOAM [% of max]", (-lim, lim))
 
-    ax.add_collection(pc)
-    ax.set_xlim(c.pts[:, 0].min(), c.pts[:, 0].max())
-    ax.set_ylim(c.pts[:, 1].min(), c.pts[:, 1].max())
-    ax.figure.colorbar(pc, ax=ax, label=f"{field}: AxiSim - OpenFOAM [% of max]")
 
-    return ax
+def foam_map(f, c, live, idx, field, ax=None, clim=None, values=None):
+    """Draw an OpenFOAM field on its own, not as a difference.
+
+    Foam carries cell centres, not polygons, so the values are painted on the
+    AxiSim cells match_to_foam paired them with. That is exact when the two
+    meshes are the same mesh, which is the whole point of the export; against
+    any other mesh it is a nearest-neighbour resample onto AxiSim's cells and
+    throws away whatever the finer of the two resolves. foam_report prints the
+    pairing distance and the cell counts -- read those before trusting this.
+
+    `values` overrides the field, for a caller that has already adjusted it.
+    """
+    if values is None:
+        values = f.fields[field][idx]
+
+    return cell_map(c, live, values, ax, "turbo",
+                    f"{field}  [OpenFOAM t={f.time}]", clim)
+
+
+def foam_compare_maps(s, c, f, live, idx, field):
+    """One field drawn three ways: AxiSim, OpenFOAM, and the difference.
+
+    The two field maps share one colour scale, deliberately. Allowed to scale
+    themselves, both panels normalise to their own range and two fields whose
+    magnitudes differ by 20% render as the same picture -- the difference panel
+    would be the only sign of it, which defeats plotting the fields at all.
+    """
+    fig, axes = plt.subplots(3, 1, figsize=(10, 9), sharex=True, sharey=True)
+
+    a, b = s.c(field)[live], f.fields[field][idx]
+
+    if field == "Pressure":
+        # The same datum removal foam_residual does. Without it a shared scale
+        # renders the gap between the two datums -- OpenFOAM pins p = 0 at the
+        # outlet, AxiSim does not -- and the actual disagreement is invisible
+        # underneath a constant offset.
+        a, b = a - a.mean(), b - b.mean()
+
+    clim = (min(a.min(), b.min()), max(a.max(), b.max()))
+
+    cell_map(c, live, a, axes[0], "turbo", f"{field}  [AxiSim]", clim)
+    foam_map(f, c, live, idx, field, axes[1], clim, values=b)
+    foam_validation(s, c, f, live, idx, field, ax=axes[2])
+
+    axes[0].set_title(f"{field}:  AxiSim  /  OpenFOAM t={f.time}  /  difference")
+    fig.tight_layout()
+
+    return fig
 
 
 def main():
@@ -414,7 +465,7 @@ def main():
 
     # The exported case. Keep it on the WSL filesystem, not /mnt/c -- OpenFOAM's
     # tiny-file I/O crawls across the 9p mount.
-    foam_case = r"\\wsl$\Ubuntu\home\luits\run\test_case"
+    foam_case = r"\\wsl$\Ubuntu\home\luits\run\pipe-wedge3_case"
 
     s = load_solution(folder_name)
     c = load_cells(folder_name)
@@ -431,7 +482,7 @@ def main():
 
         for name in f.fields:
             if name in s.col:
-                foam_validation(s, c, f, live, idx, name)
+                foam_compare_maps(s, c, f, live, idx, name)
 
     field_map(s, c, "Axial Velocity")
 
