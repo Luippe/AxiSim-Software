@@ -15,18 +15,48 @@ struct MultiBlockMesh;
 //   0..3  back plane  (-angle/2):  node(0,0)  node(0,nz)  node(nr,nz)  node(nr,0)
 //   4..7  front plane (+angle/2):  same four corners, same order
 //
-// Vertex k of block b is therefore global label b*8 + k, so hexFromBlock is base
-// + 0..7 with no cross-block dedup pass -- that is what `mergeType points;` in the
-// dict handles. wedgeAngleDeg is the FULL included angle, as the dict quotes it.
+// These are POSITIONS only, block-local and un-deduplicated: a corner two blocks
+// share comes back from both of them. weldVertices is what turns the whole set
+// into dict labels. wedgeAngleDeg is the FULL included angle, as the dict quotes it.
 //
 // A block on the axis has r = 0 corners whose back and front points coincide. They
-// are still emitted, to keep the stride uniform, but the hex must reference the
-// BACK label twice for them: 8 distinct labels would leave the cell a zero-
-// thickness edge instead of collapsing it to a prism.
+// are still emitted, to keep the stride uniform; the weld is what collapses them
+// to one label, and with them the cell to a prism.
 std::vector<Vec3> verticesFromBlock(const Block& block, double wedgeAngleDeg = 5.0);
 
-// create hex from a block in multiblock mesh
-Hex hexFromBlock(const Block& block);
+// One global vertex label per distinct corner of the whole mesh.
+//
+// `points` is the dict's `vertices` list; `labels[b][k]` is the label of block b's
+// hex-local corner k, as verticesFromBlock orders them. Blocks that meet share the
+// labels along the seam, and a block on the axis repeats one.
+struct VertexWeld {
+	std::vector<Vec3> points;
+	std::vector<std::array<int, 8>> labels;
+};
+
+// Weld the per-block corners of `mesh` into that one global labelling.
+//
+// This is what CONNECTS the blocks, and it is not optional. blockMesh does not
+// discover adjacency from coordinates: even under `mergeType points` its geometric
+// pass only refines point matching across faces that are ALREADY internal in the
+// block topology (blockMeshMergeGeometrical.C gates the cross-block merge on
+// isInternalFace). Give every block its own 8 labels and blockMesh reports
+// "Number of internal faces : 0", drops both sides of every seam onto its default
+// patch -- type `empty`, which then costs the case its axial and radial solution
+// directions -- and writes one disconnected region per block. checkMesh calls that
+// mesh OK, and the run dies much later, inside GAMG, on a 0/0 in an all-zero
+// pressure field.
+//
+// Corners are matched by POSITION within a tolerance, not by exact equality: two
+// blocks reach a shared band corner through different arithmetic and land about an
+// ulp apart. The tolerance is relative to the mesh extent and sits orders of
+// magnitude below one cell, so it can only ever fuse corners meant to be the same
+// point.
+VertexWeld weldVertices(const MultiBlockMesh& mesh, double wedgeAngleDeg = 5.0);
+
+// create hex from a block in multiblock mesh. `labels` is the block's row of
+// VertexWeld::labels, and lands in Hex::indices unchanged.
+Hex hexFromBlock(const Block& block, const std::array<int, 8>& labels);
 
 // Sort every EXTERNAL block edge into blockMeshDict patches, keyed by patch name.
 //
@@ -52,10 +82,13 @@ Hex hexFromBlock(const Block& block);
 // An edge matching no group within tolerance still gets a patch -- named
 // "unassigned", warned about on stderr -- because dropping its faces would hand
 // blockMesh a mesh with a hole and no clue where.
+//
+// `weld` supplies the vertex labels the faces are written against, so it has to be
+// the same one the dict's `vertices` list came from.
 std::unordered_map<std::string, BoundaryFOAM> boundaryFromMultiblock(
 	const MultiBlockMesh& mesh, const std::vector<BoundarySegmentGroup>& groups,
 	const std::vector<BoundaryEdge>& boundaryEdges,
-	const std::vector<BoundaryVertex>& boundaryVertices);
+	const std::vector<BoundaryVertex>& boundaryVertices, const VertexWeld& weld);
 
 // blockMeshDict spelling of a patch type, for the dict writer.
 const char* foamPatchTypeName(BoundaryFOAMType type);
@@ -72,10 +105,9 @@ BlockMeshDict blockMeshDictFromMultiblock(
 // a partial file is left on disk either way, so a caller that needs atomicity has
 // to write to a scratch name and rename.
 //
-// Global vertex labels are formed HERE. hexFromBlock leaves Hex::indices hex-local
-// (0..7) while boundaryFromMultiblock has already resolved its faces against block
-// base b*8, so the block entries -- and only those -- get the base added on the way
-// out. This is the one place the two numbering spaces meet.
+// Labels are written verbatim -- weldVertices already made them global -- so the
+// only numbering work left here is checking that every one of them indexes
+// dict.vertices, which is done up front rather than left to blockMesh.
 bool writeBlockMeshDict(const std::filesystem::path& path, const BlockMeshDict& dict);
 
 // The four dictionaries that turn a meshed folder into a runnable case. Each

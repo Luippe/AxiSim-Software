@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <map>
 #include <set>
 #include <string_view>
 
@@ -16,35 +17,6 @@
 #include "multiblock.h"
 
 namespace {
-
-// The 8 hex-local vertex labels of a block, with the axis collapse applied.
-//
-// A corner at r = 0 has coincident back and front points, so the front label has
-// to alias the back one -- 8 distinct labels would leave the cell a zero-
-// thickness edge instead of collapsing it to a prism. Only the I=0 corners can
-// reach the axis (I runs +r), and they collapse INDEPENDENTLY: a curvilinear
-// block may meet the axis at one end of its south edge and not the other.
-//
-// Everything that names a vertex of this block goes through here. A patch face
-// written with the raw 0..7 numbering would reference a vertex the collapsed
-// cell no longer owns, and blockMesh rejects the whole dict for it.
-std::array<int, 8> hexLabels(const Block& block) {
-
-	const MBNode onAxisCandidates[2] = { block.node(0, 0), block.node(0, block.nz) };
-
-	// Tolerance relative to the block's own radial extent, so a corner that landed
-	// on the axis at 1e-17 still reads as on-axis in a domain measured in microns.
-	// makeRectBlock, the only builder at present, writes an exact 0.0 there, so the
-	// tolerance is slack today -- it is what keeps this right for any builder that
-	// interpolates node positions rather than laying them on a tensor product.
-	const double extent = std::fabs(block.node(block.nr, 0).r);
-	const double tol = 1e-12 * (extent > 0.0 ? extent : 1.0);
-
-	std::array<int, 8> labels = { 0,1,2,3,4,5,6,7 };
-	if (std::fabs(onAxisCandidates[0].r) <= tol) labels[4] = 0;
-	if (std::fabs(onAxisCandidates[1].r) <= tol) labels[5] = 1;
-	return labels;
-}
 
 // Face windings, hex-local, normals pointing OUT of the block -- what a
 // blockMeshDict patch entry wants.
@@ -66,21 +38,20 @@ std::array<int, 4> edgeFaceLabels(Edge e) {
 	return { 0, 4, 7, 3 };
 }
 
-// Resolve a hex-local face to global labels for block `base`. Returns false when
-// the collapse left fewer than 3 distinct corners -- that is the face lying ON
-// the axis, which has zero area and must never be emitted. A face that merely
-// touches the axis keeps 3 and goes out as a triangle.
+// Resolve a hex-local face through a block's welded labels. Returns false when
+// fewer than 3 distinct corners survive -- that is the face lying ON the axis,
+// which has zero area and must never be emitted. A face that merely touches the
+// axis keeps 3 and goes out as a triangle.
 bool globalFace(const std::array<int, 4>& local, const std::array<int, 8>& labels,
-                int base, std::array<int, 4>& out) {
+                std::array<int, 4>& out) {
 
 	int distinct = 0;
 	for (int k = 0; k < 4; k++) {
-		const int v = labels[local[k]];
-		out[k] = base + v;
+		out[k] = labels[local[k]];
 
 		bool seen = false;
 		for (int m = 0; m < k; m++)
-			if (labels[local[m]] == v) { seen = true; break; }
+			if (out[m] == out[k]) { seen = true; break; }
 		if (!seen) distinct++;
 	}
 	return distinct >= 3;
@@ -312,11 +283,85 @@ std::vector<Vec3> verticesFromBlock(const Block& block, double wedgeAngleDeg) {
 	return vertices;
 }
 
-Hex hexFromBlock(const Block& block) {
+VertexWeld weldVertices(const MultiBlockMesh& mesh, double wedgeAngleDeg) {
+
+	VertexWeld weld;
+	weld.labels.reserve(mesh.blocks.size());
+
+	// Far below one cell in any mesh AxiSim can build, and far above the ulp-scale
+	// drift between two blocks' spellings of the same band corner. The max against
+	// a degenerate extent only keeps the division below well defined.
+	const double extent = multiblockExtent(mesh);
+	const double tol = 1e-9 * (extent > 0.0 ? extent : 1.0);
+
+	// Bucket on a grid one tolerance wide so the search stays linear in the corner
+	// count. The 26 neighbouring buckets are probed as well -- two points within tol
+	// of each other can still fall on opposite sides of a bucket boundary.
+	std::map<std::array<long long, 3>, std::vector<int>> grid;
+
+	auto bucketOf = [&](const Vec3& v) {
+		return std::array<long long, 3>{
+			std::llround(v.x / tol), std::llround(v.y / tol), std::llround(v.z / tol)
+		};
+	};
+
+	for (const Block& block : mesh.blocks) {
+
+		const std::vector<Vec3> corners = verticesFromBlock(block, wedgeAngleDeg);
+
+		// Leaving the row out rather than padding it: a short row would weld to
+		// label 0 and hand blockMesh a hex quietly pointing at the wrong corner,
+		// whereas a missing one trips the size check every caller runs.
+		if (corners.size() != 8) {
+			std::cerr << "weldVertices: block " << block.id << " gave "
+				<< corners.size() << " corners, expected 8\n";
+			continue;
+		}
+
+		std::array<int, 8> labels = { 0,0,0,0,0,0,0,0 };
+
+		for (int k = 0; k < 8; k++) {
+
+			const Vec3& v = corners[k];
+			const std::array<long long, 3> home = bucketOf(v);
+
+			int match = -1;
+			for (long long dx = -1; dx <= 1 && match < 0; dx++)
+			for (long long dy = -1; dy <= 1 && match < 0; dy++)
+			for (long long dz = -1; dz <= 1 && match < 0; dz++) {
+
+				const auto bucket =
+					grid.find({ home[0] + dx, home[1] + dy, home[2] + dz });
+				if (bucket == grid.end()) continue;
+
+				for (int candidate : bucket->second) {
+					const Vec3& q = weld.points[candidate];
+					if (std::fabs(q.x - v.x) <= tol &&
+					    std::fabs(q.y - v.y) <= tol &&
+					    std::fabs(q.z - v.z) <= tol) { match = candidate; break; }
+				}
+			}
+
+			if (match < 0) {
+				match = (int)weld.points.size();
+				weld.points.push_back(v);
+				grid[home].push_back(match);
+			}
+
+			labels[k] = match;
+		}
+
+		weld.labels.push_back(labels);
+	}
+
+	return weld;
+}
+
+Hex hexFromBlock(const Block& block, const std::array<int, 8>& labels) {
 
 	Hex hex;
 
-	hex.indices = hexLabels(block);
+	hex.indices = labels;
 	hex.size = { block.nz, block.nr, 1 };
 
 	hex.grading = {
@@ -332,10 +377,20 @@ std::unordered_map<std::string, BoundaryFOAM> boundaryFromMultiblock(
 	const MultiBlockMesh& mesh,
 	const std::vector<BoundarySegmentGroup>& groups,
 	const std::vector<BoundaryEdge>& boundaryEdges,
-	const std::vector<BoundaryVertex>& boundaryVertices
+	const std::vector<BoundaryVertex>& boundaryVertices,
+	const VertexWeld& weld
 ) {
 
 	std::unordered_map<std::string, BoundaryFOAM> boundary;
+
+	// Every face below is written against weld.labels[bi]. A weld built from a
+	// different mesh would silently name corners of the wrong block.
+	if (weld.labels.size() != mesh.blocks.size()) {
+		std::cerr << "boundaryFromMultiblock: weld covers " << weld.labels.size()
+			<< " blocks but the mesh has " << mesh.blocks.size()
+			<< " -- no patches written\n";
+		return boundary;
+	}
 
 	// Both wedge planes exist on every block, so seed them first. That also lets
 	// them win the name-collision loop below against a user group whose name
@@ -346,9 +401,10 @@ std::unordered_map<std::string, BoundaryFOAM> boundaryFromMultiblock(
 	back.type  = BoundaryFOAMType::WEDGE;
 	front.type = BoundaryFOAMType::WEDGE;
 
-	// Interface edges become interior faces once blockMesh fuses the coincident
-	// vertices (`mergeType points;` in the dict), so they must NOT be emitted as
-	// patch faces -- doing so would wall off the seam and disconnect the blocks.
+	// Interface edges are interior faces: weldVertices gave both blocks the same
+	// four corner labels there, so blockMesh reads them as one face. They must NOT
+	// be emitted as patch faces -- doing so would wall off the seam and leave the
+	// blocks touching but unconnected.
 	std::set<long long> claimed;
 	for (const Interface& itf : mesh.interfaces) {
 		claimed.insert(mbEdgeKey(itf.blockA, itf.edgeA));
@@ -397,16 +453,15 @@ std::unordered_map<std::string, BoundaryFOAM> boundaryFromMultiblock(
 	for (int bi = 0; bi < (int)mesh.blocks.size(); bi++) {
 
 		const Block& b = mesh.blocks[bi];
-		const std::array<int, 8> labels = hexLabels(b);
-		const int base = bi * 8;
+		const std::array<int, 8>& labels = weld.labels[bi];
 
 		std::array<int, 4> face;
-		if (globalFace(kBackFace,  labels, base, face)) back.faces.push_back(face);
-		if (globalFace(kFrontFace, labels, base, face)) front.faces.push_back(face);
+		if (globalFace(kBackFace,  labels, face)) back.faces.push_back(face);
+		if (globalFace(kFrontFace, labels, face)) front.faces.push_back(face);
 
 		for (Edge e : allEdges) {
 			if (claimed.count(mbEdgeKey(bi, e))) continue;              // interior
-			if (!globalFace(edgeFaceLabels(e), labels, base, face))     // on the axis:
+			if (!globalFace(edgeFaceLabels(e), labels, face))           // on the axis:
 				continue;                                              // zero area
 
 			Vec2 first, second;
@@ -458,34 +513,84 @@ BlockMeshDict blockMeshDictFromMultiblock(
 
 	BlockMeshDict blockMeshDict;
 
+	const VertexWeld weld = weldVertices(mesh);
+
+	// weldVertices drops a block it could not label, and everything below indexes
+	// weld.labels by block. An empty dict is the honest outcome -- blockMesh rejects
+	// it immediately, which beats exporting a mesh missing a block.
+	if (weld.labels.size() != mesh.blocks.size()) {
+		std::cerr << "blockMeshDictFromMultiblock: welded " << weld.labels.size()
+			<< " of " << mesh.blocks.size() << " blocks -- no dict written\n";
+		return blockMeshDict;
+	}
+
+	blockMeshDict.vertices = weld.points;
 	for (int i = 0; i < (int)mesh.blocks.size(); i++) {
-		blockMeshDict.vertices.push_back(verticesFromBlock(mesh.blocks[i]));
-		blockMeshDict.hexes.push_back(hexFromBlock(mesh.blocks[i]));
+		blockMeshDict.hexes.push_back(hexFromBlock(mesh.blocks[i], weld.labels[i]));
 	}
 
 	blockMeshDict.boundary =
-		boundaryFromMultiblock(mesh, groups, boundaryEdges, boundaryVertices);
+		boundaryFromMultiblock(mesh, groups, boundaryEdges, boundaryVertices, weld);
+
+	// Every interface edge is deliberately left OUT of the patches above, on the
+	// promise that the weld left both blocks naming the same four corners there. If
+	// it did not, those faces fall through to blockMesh's default patch instead --
+	// type `empty`, which costs the case its axial and radial solution directions --
+	// and the mesh comes back as one disconnected region per block. checkMesh calls
+	// that mesh OK and the run dies much later inside GAMG, so say it here.
+	for (const Interface& itf : mesh.interfaces) {
+
+		if (itf.blockA < 0 || itf.blockA >= (int)mesh.blocks.size() ||
+			itf.blockB < 0 || itf.blockB >= (int)mesh.blocks.size()) continue;
+
+		std::array<int, 4> a, b;
+		const bool live =
+			globalFace(edgeFaceLabels(itf.edgeA), weld.labels[itf.blockA], a) &&
+			globalFace(edgeFaceLabels(itf.edgeB), weld.labels[itf.blockB], b);
+
+		std::sort(a.begin(), a.end());
+		std::sort(b.begin(), b.end());
+
+		if (!live || a != b) {
+			std::cerr << "blockMeshDictFromMultiblock: the "
+				<< edgeName(itf.edgeA) << "/" << edgeName(itf.edgeB)
+				<< " interface between blocks " << mesh.blocks[itf.blockA].id
+				<< " and " << mesh.blocks[itf.blockB].id
+				<< " did not weld to shared corners -- blockMesh will hand back a"
+				" disconnected mesh\n";
+		}
+	}
 
 	return blockMeshDict;
 }
 
 bool writeBlockMeshDict(const std::filesystem::path& path, const BlockMeshDict& dict) {
 
-	if (dict.hexes.size() != dict.vertices.size()) {
-		std::cerr << "writeBlockMeshDict: " << dict.hexes.size() << " hexes for "
-			<< dict.vertices.size() << " vertex blocks\n";
-		return false;
+	// Every hex and every patch face below indexes dict.vertices directly. An
+	// out-of-range label is a weld that did not cover the mesh it was written
+	// against; blockMesh reports it, if at all, as a negative-volume cell somewhere
+	// unrelated, so it is worth catching before anything reaches disk.
+	const int nPoints = (int)dict.vertices.size();
+
+	for (std::size_t i = 0; i < dict.hexes.size(); i++) {
+		for (int label : dict.hexes[i].indices) {
+			if (label < 0 || label >= nPoints) {
+				std::cerr << "writeBlockMeshDict: hex " << i << " names vertex "
+					<< label << " of " << nPoints << '\n';
+				return false;
+			}
+		}
 	}
 
-	// globalFace resolved every patch face against base = b*8, so a block that does
-	// not contribute exactly 8 vertices slides the two numbering spaces apart and the
-	// patches silently name corners of the wrong block. Catch it here rather than let
-	// blockMesh report a negative-volume cell somewhere unrelated.
-	for (std::size_t i = 0; i < dict.vertices.size(); i++) {
-		if (dict.vertices[i].size() != 8) {
-			std::cerr << "writeBlockMeshDict: block " << i << " has "
-				<< dict.vertices[i].size() << " vertices, expected 8\n";
-			return false;
+	for (const auto& entry : dict.boundary) {
+		for (const std::array<int, 4>& face : entry.second.faces) {
+			for (int label : face) {
+				if (label < 0 || label >= nPoints) {
+					std::cerr << "writeBlockMeshDict: patch " << entry.first
+						<< " names vertex " << label << " of " << nPoints << '\n';
+					return false;
+				}
+			}
 		}
 	}
 
@@ -509,25 +614,19 @@ bool writeBlockMeshDict(const std::filesystem::path& path, const BlockMeshDict& 
 
 	out << "scale   " << dict.scale << ";\n\n";
 
-	// Flattened in block order, because that order IS the global labelling every hex
-	// and every patch face below is written against.
+	// Already welded and already global: position in this list IS the label.
 	out << "vertices\n(\n";
-	for (const std::vector<Vec3>& block : dict.vertices) {
-		for (const Vec3& v : block) {
-			out << "    (" << v.x << " " << v.y << " " << v.z << ")\n";
-		}
+	for (const Vec3& v : dict.vertices) {
+		out << "    (" << v.x << " " << v.y << " " << v.z << ")\n";
 	}
 	out << ");\n\n";
 
 	out << "blocks\n(\n";
-	for (std::size_t i = 0; i < dict.hexes.size(); i++) {
-
-		const Hex& hex = dict.hexes[i];
-		const int base = (int)i * 8;
+	for (const Hex& hex : dict.hexes) {
 
 		out << "    hex (";
 		for (int k = 0; k < 8; k++) {
-			out << (k ? " " : "") << base + hex.indices[k];
+			out << (k ? " " : "") << hex.indices[k];
 		}
 
 		out << ") (" << hex.size[0] << " " << hex.size[1] << " " << hex.size[2] << ")"
@@ -572,11 +671,18 @@ bool writeBlockMeshDict(const std::filesystem::path& path, const BlockMeshDict& 
 	}
 	out << ");\n\n";
 
-	// Not a preference. verticesFromBlock gives every block its own 8 labels with no
-	// cross-block dedup, and the default topological merge connects blocks only where
-	// they SHARE a label -- it would find nothing and hand back one disconnected mesh
-	// per block. The geometric merge is what makes the seams interior.
-	out << "mergeType points;\n\n";
+	// `points` rather than OpenFOAM's default `topology`, and NOT for the block
+	// seams: weldVertices already gave those shared labels, which is what the
+	// topological merge looks for and all it looks for. It is the AXIS that needs
+	// the geometric merge. A block touching r = 0 has its two wedge planes meet
+	// there, and blockMesh lays that edge's points down once per plane whatever the
+	// hex says; only the geometric pass fuses the pair and collapses those cells to
+	// prisms. Under `topology` they stay zero-thickness hexes whose degenerate faces
+	// land on the default `empty` patch -- 224 of them on the pipe-with-obstacle
+	// case, and an empty patch is exactly what a wedge case cannot afford.
+	out << "mergeType "
+		<< (dict.mergeType == MergeType::MERGE_TOPOLOGY ? "topology" : "points")
+		<< ";\n\n";
 
 	out << "// ************************************************************************* //\n";
 

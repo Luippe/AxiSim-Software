@@ -45,6 +45,10 @@ struct BoundaryFOAM {
 
 struct Hex {
 
+	// 8 GLOBAL vertex labels, in OpenFOAM's canonical hex order. A corner shared
+	// with a neighbouring block carries that neighbour's label too -- that sharing
+	// is the only thing that makes the seam between them an interior face. A block
+	// on the axis repeats a label, collapsing the cell to a prism.
 	std::array<int, 8> indices;
 	std::array<int, 3> size;
 	std::array<double, 3> grading;
@@ -54,7 +58,12 @@ struct Hex {
 struct BlockMeshDict {
 
 	double scale = 1.0;
-	std::vector<std::vector<Vec3>> vertices;
+
+	// The dict's whole `vertices` list, already welded: one entry per distinct
+	// corner in the mesh, not 8 per block. Hex::indices and BoundaryFOAM::faces
+	// index straight into it.
+	std::vector<Vec3> vertices;
+
 	std::vector<Hex> hexes;
 	std::unordered_map<std::string, BoundaryFOAM> boundary;
 	MergeType mergeType = MergeType::MERGE_POINTS;
