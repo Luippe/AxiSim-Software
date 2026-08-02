@@ -1198,17 +1198,37 @@ FoamCaseSetup foamCaseSetupFromSolver(const Solver& solver) {
 	setup.dt   = solver.configSolver.dt;
 	setup.tEnd = solver.configSolver.tEnd;
 
+	// Raised to AxiSim's cap, never lowered to it -- see FoamCaseSetup. `setup` is
+	// still default-initialized here, so the right-hand side is the struct's floor.
+	setup.steadyIterations =
+		std::max(solver.configSimple.maxIter, setup.steadyIterations);
+
 	switch (solver.convectionScheme) {
 		case CONV_CENTRAL:             setup.convection = FoamConvection::Linear;       break;
 		case CONV_SECOND_ORDER_UPWIND: setup.convection = FoamConvection::LinearUpwind; break;
-		case CONV_QUICK:               setup.convection = FoamConvection::Quick;        break;
+
+		// LinearUpwind, not Quick: AxiSim has no QUICK. Selecting it runs second-order
+		// upwind (the console line says so), so exporting `Gauss QUICK` would give
+		// OpenFOAM a scheme AxiSim never ran. FoamConvection::Quick is kept for the
+		// day the kernel gains a real QUICK -- this line is the only one to change
+		// back. Unreachable today: the GUI combo offers three schemes and
+		// sanitizeSolverConfig clamps anything past CONV_SECOND_ORDER_UPWIND.
+		case CONV_QUICK:               setup.convection = FoamConvection::LinearUpwind; break;
+
 		case CONV_UPWIND:              setup.convection = FoamConvection::Upwind;       break;
 	}
 
 	setup.leastSquaresGradient = solver.gradientScheme == GRAD_LSQ;
 
+	setup.addConvection    = solver.configSolver.addConvectionTerm;
+	setup.nonOrthCorrector = solver.configSimple.useNonOrthCorrector;
+
 	setup.momentumRelaxation = solver.simple.momentumRelaxation;
 	setup.pressureRelaxation = solver.simple.pressureRelaxation;
+
+	// Matches the literal 1.0 the concentration equation's underRelaxEquation call
+	// passes. Not momentumRelaxation, which is what temperature gets.
+	setup.concentrationRelaxation = 1.0;
 
 	return setup;
 }

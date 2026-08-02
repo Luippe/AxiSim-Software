@@ -56,7 +56,11 @@ enum ConvectionScheme {
 	CONV_QUICK
 };
 
-// Cell gradient scheme used for the pressure / pressure-correction gradients.
+// Cell gradient scheme, used for EVERY computeGradient call -- u, v, p, the
+// pressure correction, temperature and concentration alike. The GUI labels it
+// "Pressure Gradient" because that is where it is felt most, but it is not scoped
+// to pressure, and the OpenFOAM export relies on that: it maps straight onto
+// `gradSchemes default`, which is likewise global.
 enum GradientScheme {
 	GRAD_GREEN_GAUSS = 0,
 	GRAD_LSQ = 1

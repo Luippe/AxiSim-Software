@@ -82,9 +82,14 @@ bool writeBlockMeshDict(const std::filesystem::path& path, const BlockMeshDict& 
 // returns false and says why on stderr if its file cannot be written.
 //
 // system/controlDict picks pimpleFoam or simpleFoam off setup.transient, carries
-// the run length from the Solver tab, and appends a scalarTransport function
-// object per solved scalar -- stock OpenFOAM flow solvers transport no scalars, so
-// that is what lets one run produce U, T and C together.
+// the run length, and appends a scalarTransport function object per solved scalar
+// -- stock OpenFOAM flow solvers transport no scalars, so that is what lets one
+// run produce U, T and C together.
+//
+// "Run length" is endTime/deltaT from the Solver tab for a transient run, but for
+// a steady one it is setup.steadyIterations, which is AxiSim's outer-iteration cap
+// only when that exceeds the 2000 floor. See FoamCaseSetup for why it never goes
+// below.
 //
 // It is also needed by blockMesh, not only by a solver: blockMesh constructs a
 // Time object before reading the mesh dict, and Time reads controlDict as
@@ -95,10 +100,21 @@ bool writeControlDict(const std::filesystem::path& path, const FoamCaseSetup& se
 // leastSquaresGradient, div follows the Solver tab's convection scheme. `default
 // none` for divSchemes means every div the solver forms has to be named, so the
 // scalar entries are written only for the scalars actually being solved.
+//
+// setup.addConvection is the exception that cannot be honoured: a stock flow
+// solver always assembles div(phi,U). With it off the entry is still written, but
+// annotated in the dict and warned about on stderr, since the exported case then
+// solves a different equation set than AxiSim did.
 bool writeFvSchemes(const std::filesystem::path& path, const FoamCaseSetup& setup);
 
 // system/fvSolution: linear solvers, the SIMPLE/PIMPLE block, and the project's
-// relaxation factors.
+// relaxation factors. nNonOrthogonalCorrectors follows setup.nonOrthCorrector, and
+// T and Conc get separate relaxation entries because AxiSim relaxes temperature
+// with the momentum factor and leaves concentration unrelaxed.
+//
+// The linear solvers themselves (GAMG for p, smoothSolver for the rest) are
+// OpenFOAM's own and deliberately NOT AxiSim's: an inner solve is iterated to a
+// tolerance either way, so the choice moves the cost and not the converged answer.
 //
 // residualControl is deliberately NOT the Solver tab's convergence tolerance. The
 // two are not comparable -- AxiSim's is its own scaled residual, OpenFOAM's is the

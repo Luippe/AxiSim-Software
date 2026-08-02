@@ -93,13 +93,35 @@ struct FoamCaseSetup {
 
 	// Iteration cap for a steady run. Only a cap: residualControl is what actually
 	// stops SIMPLE, and it normally trips long before this.
+	//
+	// This value is a FLOOR, not the Solver tab's "Maximum Outer Iterations"
+	// verbatim -- foamCaseSetupFromSolver raises it to AxiSim's cap when AxiSim
+	// asks for more and never lowers it. A short AxiSim run is a deliberate choice
+	// about AxiSim; copying it across would stop the reference short of converged
+	// and turn the comparison into a measurement of the reference's own error.
 	int steadyIterations = 2000;
 
 	FoamConvection convection = FoamConvection::Upwind;
 	bool leastSquaresGradient = true;
 
+	// Solver tab -> Add Convection Term. simpleFoam and pimpleFoam always assemble
+	// div(phi,U), so this cannot be honoured -- it exists so writeFvSchemes can say
+	// so in the dict instead of exporting a case that quietly solves a different
+	// equation set than the one AxiSim ran.
+	bool addConvection = true;
+
+	// ConfigSimple::useNonOrthCorrector -> nNonOrthogonalCorrectors. AxiSim's flag
+	// is one extra deferred corrector pass, so it maps to 1 rather than a count.
+	bool nonOrthCorrector = false;
+
 	double momentumRelaxation = 0.7;
 	double pressureRelaxation = 0.3;
+
+	// AxiSim under-relaxes temperature with momentumRelaxation but leaves
+	// concentration at 1.0 (solver.cpp, the two underRelaxEquation calls). Both are
+	// written out separately rather than sharing one "(T|Conc)" entry so the dict
+	// says what AxiSim actually did.
+	double concentrationRelaxation = 1.0;
 
 	// OpenFOAM's incompressible solvers are written in kinematic terms: rho is
 	// divided out of the whole equation set and never appears in a dictionary.

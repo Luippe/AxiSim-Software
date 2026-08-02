@@ -633,8 +633,11 @@ bool writeControlDict(const std::filesystem::path& path, const FoamCaseSetup& se
 	// before it opens the mesh dict, and Time reads this as MUST_READ. Without it the
 	// case fails on a missing file that says nothing about the mesh.
 	out << "// Written from the project's solver settings. pimpleFoam/simpleFoam follows\n"
-	       "// the Transient checkbox; endTime, deltaT and the relaxation factors all come\n"
-	       "// from the Solver tab.\n\n";
+	       "// the Transient checkbox, and the relaxation factors come from the Solver\n"
+	       "// tab. On a transient run so do endTime and deltaT. On a steady run endTime\n"
+	       "// is an ITERATION CAP and is not the Solver tab's value: it is the larger of\n"
+	       "// that and 2000, because residualControl is what should stop this run and a\n"
+	       "// reference cut short is worse than one that iterates longer than AxiSim did.\n\n";
 
 	out << "application     " << (setup.transient ? "pimpleFoam" : "simpleFoam") << ";\n\n";
 
@@ -760,6 +763,27 @@ bool writeFvSchemes(const std::filesystem::path& path, const FoamCaseSetup& setu
 	out << "divSchemes\n"
 	       "{\n"
 	       "    default         none;\n";
+
+	// The one AxiSim setting that CANNOT be carried across. simpleFoam and
+	// pimpleFoam assemble div(phi,U) unconditionally, and no scheme entry can
+	// remove a term the solver has already put in the matrix -- dropping the entry
+	// only makes the run fail on `default none`. So the case is exported with
+	// convection ON and says so in both places anyone would look. Silently
+	// exporting it would leave two codes solving different equations with the
+	// difference charged to discretisation error.
+	if (!setup.addConvection) {
+		std::cerr << "writeFvSchemes: AxiSim has the convection term disabled, but "
+		             "simpleFoam/pimpleFoam always solve it -- the exported case is "
+		             "NOT the equation set AxiSim ran\n";
+
+		out << "\n    // AxiSim ran this case with convection DISABLED (Solver tab ->\n"
+		       "    // Add Convection Term). A stock OpenFOAM flow solver always\n"
+		       "    // assembles div(phi,U), so the entry below IS solved and the two\n"
+		       "    // codes are not solving the same equations. Convection is\n"
+		       "    // negligible at low Re, which is the only case where comparing\n"
+		       "    // them still means something.\n";
+	}
+
 	divEntry("U");
 	if (setup.solveEnergy)        divEntry("T");
 	if (setup.solveConcentration) divEntry(kConcentrationField);
@@ -825,12 +849,18 @@ bool writeFvSolution(const std::filesystem::path& path, const FoamCaseSetup& set
 	       "    }\n"
 	       "}\n\n";
 
+	// AxiSim's useNonOrthCorrector is a bool -- one deferred corrector pass or none
+	// -- so it maps to 1, not to a pass count. The GUI forces it off on a structured
+	// mesh, where the cross term is identically zero, so this is only ever 1 on a
+	// multiblock or unstructured case.
+	const int nNonOrth = setup.nonOrthCorrector ? 1 : 0;
+
 	if (setup.transient) {
 		out << "PIMPLE\n"
 		       "{\n"
 		       "    nOuterCorrectors 1;\n"
 		       "    nCorrectors     2;\n"
-		       "    nNonOrthogonalCorrectors 0;\n"
+		    << "    nNonOrthogonalCorrectors " << nNonOrth << ";\n"
 		       "}\n\n";
 	}
 	else {
@@ -842,7 +872,7 @@ bool writeFvSolution(const std::filesystem::path& path, const FoamCaseSetup& set
 		// against an analytic 0.0200. 1e-6 lands within 0.03% of a 1e-8 run.
 		out << "SIMPLE\n"
 		       "{\n"
-		       "    nNonOrthogonalCorrectors 0;\n"
+		    << "    nNonOrthogonalCorrectors " << nNonOrth << ";\n"
 		       "    consistent      no;\n\n"
 		       "    residualControl\n"
 		       "    {\n"
@@ -852,6 +882,11 @@ bool writeFvSolution(const std::filesystem::path& path, const FoamCaseSetup& set
 		       "    }\n"
 		       "}\n\n";
 
+		// T and Conc get separate entries rather than one "(T|Conc)" regex because
+		// AxiSim does not relax them the same way: temperature shares the momentum
+		// factor, concentration is solved unrelaxed. Under-relaxation cannot move
+		// the converged answer, only the path to it, so this is about the dict
+		// telling the truth about AxiSim rather than about the result.
 		out << "relaxationFactors\n"
 		       "{\n"
 		       "    fields\n"
@@ -861,7 +896,10 @@ bool writeFvSolution(const std::filesystem::path& path, const FoamCaseSetup& set
 		       "    equations\n"
 		       "    {\n"
 		    << "        U               " << foamNumber(setup.momentumRelaxation) << ";\n"
-		    << "        \"(T|Conc)\"      " << foamNumber(setup.momentumRelaxation) << ";\n"
+		    << "        T               " << foamNumber(setup.momentumRelaxation) << ";\n"
+		    << "        " << kConcentrationField << "            "
+		    << foamNumber(setup.concentrationRelaxation)
+		    << ";   // AxiSim solves concentration unrelaxed\n"
 		       "    }\n"
 		       "}\n\n";
 	}

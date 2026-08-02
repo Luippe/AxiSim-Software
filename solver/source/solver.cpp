@@ -1297,10 +1297,10 @@ void Solver::runSimple(const Mesh& mesh) {
                 }
                 addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, applyNonOrtho, thermDiffusivity);
                 if (addConvectionTerm) {
-                    // NOTE: temperature has the same rho issue. With thermDiffusivity
-                    // = k/(rho*cp), the energy equation should also convect volumetrically
-                    // (1/rho). Left at 1.0 to preserve current behavior; change to
-                    // (1.0 / f.rho) to make temperature consistent too.
+                    // Volumetric flux (1/rho), the same as concentration below: with
+                    // thermDiffusivity = k/(rho*cp) the energy equation has already
+                    // been divided through by rho*cp, so a mass flux here would leave
+                    // one rho on the convection term and none on the diffusion term.
                     addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, tempCoeff, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, convectionScheme, 1.0 / f.rho);
                 }
                 // capacity 1.0, not rho: this equation convects volumetrically
