@@ -423,6 +423,38 @@ namespace {
 		}
 	}
 
+	// Rewrite a leading \\wsl$\ to \\wsl.localhost\.
+	//
+	// Both name the same WSL share, but they are separate mounts with separate
+	// caches in the P9 redirector, and the \\wsl$ one poisons individual paths: once
+	// a create there fails, that exact path keeps answering ERROR_ACCESS_DENIED --
+	// surviving the parent being deleted and recreated, and surviving the directory
+	// then being made from inside Linux. An OpenFOAM export that lost a race on
+	// <case>\0 could therefore never write its 0/ directory again, under that name,
+	// ever, while a case one character away exported fine.
+	//
+	// \\wsl$ is only the deprecated alias for \\wsl.localhost anyway, so preferring
+	// the current name costs nothing. The shell hands back whichever one the user's
+	// shortcut or typed path used; they should not have to know the difference.
+	std::wstring preferWslLocalhost(std::wstring path) {
+
+		const std::wstring legacy = L"\\\\wsl$\\";
+
+		if (path.size() < legacy.size()) {
+			return path;
+		}
+
+		// UNC host names are not case-sensitive, and every character being matched
+		// is either already lower case or unaffected by towlower.
+		for (std::size_t i = 0; i < legacy.size(); i++) {
+			if ((wchar_t)std::towlower(path[i]) != legacy[i]) {
+				return path;
+			}
+		}
+
+		return path.replace(0, legacy.size(), L"\\\\wsl.localhost\\");
+	}
+
 	std::wstring dialogPathToWide(nfdu8char_t* outPath, const char* defaultExtension) {
 		if (!outPath) {
 			return L"";
@@ -435,7 +467,9 @@ namespace {
 			path.replace_extension(std::string(".") + defaultExtension);
 		}
 
-		return path.wstring();
+		// Every save and open in the app comes through here, so this is the one place
+		// the substitution has to happen.
+		return preferWslLocalhost(path.wstring());
 	}
 
 	void reportDialogError() {
