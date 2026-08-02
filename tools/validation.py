@@ -1,8 +1,9 @@
-import numpy as np, json, pathlib
+import numpy as np, json, pathlib, re
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 from matplotlib.collections import PolyCollection
+from scipy.spatial import cKDTree
 from enum import Enum
 
 
@@ -15,6 +16,18 @@ INLET_PEAK = 0.0844e-3
 
 class CompareType(Enum):
     POISEUILLE = 1
+    OPENFOAM = 2
+
+# AxiSim's name for each field the OpenFOAM export writes. U is one vector file
+# carrying two of them; its third component is the wedge direction and means
+# nothing here. The concentration is "Conc" and not "C" because OpenFOAM reserves
+# C for the cell-centre field -- writeCellCentres overwrites anything called C.
+FOAM_FIELDS = {
+    "U":    ("Axial Velocity", "Radial Velocity"),
+    "p":    "Pressure",
+    "T":    "Temperature",
+    "Conc": "Concentration",
+}
 
 @dataclass
 class Solution:
@@ -209,19 +222,218 @@ def field_validation(s, c, compareType, p=None, ax=None):
 
     return ax
 
+@dataclass
+class Foam:
+    z: np.ndarray                   # cell centres, in AxiSim's (z, r) convention
+    r: np.ndarray
+    fields: dict[str, np.ndarray]   # keyed by AxiSim field name
+    time: str                       # name of the time directory read
+
+
+def read_foam_internal(path: pathlib.Path):
+    """internalField of one ASCII OpenFOAM field file, as (N,) or (N,3).
+
+    Internal field only. Boundary values live on faces rather than cells and have
+    no AxiSim cell to pair with.
+    """
+    text = path.read_text()
+
+    m = re.search(r"internalField\s+nonuniform\s+List<(scalar|vector)>\s*(\d+)?\s*\(", text)
+
+    if m is None:
+        # A field that never varied is written as one value rather than a list:
+        # `uniform 0` for an untouched scalar, `uniform (0 0 0)` for U.
+        u = re.search(r"internalField\s+uniform\s+([^;]+);", text)
+        if u is None:
+            raise ValueError(f"{path.name}: no internalField found")
+
+        val = np.array([float(x) for x in u.group(1).strip().strip("()").split()])
+        return val if val.size > 1 else float(val[0])
+
+    body = text[m.end():]
+
+    if m.group(1) == "scalar":
+        return np.fromstring(body[:body.index(")")], sep=" ")
+
+    # Each vector sits in its own parens on its own line, so the list's closing
+    # paren is the first one that starts a line.
+    rows = re.findall(r"\(([^()]*)\)", body[:body.index("\n)")])
+    return np.array([[float(x) for x in row.split()] for row in rows])
+
+
+def load_foam(case_dir, time=None, rho=1.0) -> Foam:
+    """Read an exported OpenFOAM case back in, mapped onto AxiSim's names.
+
+    `rho` converts OpenFOAM's kinematic p back to Pa. It divides out of the whole
+    incompressible equation set, so the case itself does not know it -- pass the
+    project's, i.e. s.meta["fluid"]["rho"].
+    """
+    d = pathlib.Path(case_dir).expanduser()
+
+    def numeric(p):
+        try:
+            float(p.name)
+            return True
+        except ValueError:
+            return False
+
+    if time is None:
+        times = sorted((p for p in d.iterdir() if p.is_dir() and numeric(p)),
+                       key=lambda p: float(p.name))
+        if not times:
+            raise FileNotFoundError(f"{d}: no time directories -- has the solver run?")
+
+        # The last one. 0/ is the initial condition, not a result, and is only
+        # what is left if the run wrote nothing.
+        t = times[-1]
+        if t.name == "0":
+            print(f"warning: {d} has only 0/ -- comparing against initial conditions")
+    else:
+        t = d / str(time)
+
+    missing = [n for n in ("Cx", "Cy", "Cz") if not (t / n).exists()]
+    if missing:
+        raise FileNotFoundError(
+            f"{t}: no cell centres ({', '.join(missing)}). Run:\n"
+            f"    postProcess -case {d} -func writeCellCentres -latestTime")
+
+    cy, cz = read_foam_internal(t / "Cy"), read_foam_internal(t / "Cz")
+
+    # The wedge straddles the r-z plane, so a cell centre is at z_foam ~ 0 and r
+    # is just its distance from the axis. The hypotenuse rather than
+    # y/cos(halfAngle) keeps this independent of the wedge angle.
+    z, r = read_foam_internal(t / "Cx"), np.hypot(cy, cz)
+
+    fields = {}
+    for foam_name, axi in FOAM_FIELDS.items():
+
+        if not (t / foam_name).exists():
+            continue
+
+        val = read_foam_internal(t / foam_name)
+
+        if isinstance(axi, tuple):
+            fields[axi[0]], fields[axi[1]] = val[:, 0], val[:, 1]
+        elif foam_name == "p":
+            fields[axi] = val * rho
+        else:
+            fields[axi] = val
+
+    return Foam(z, r, fields, t.name)
+
+
+def match_to_foam(s: Solution, f: Foam):
+    """Pair every live AxiSim cell with its nearest OpenFOAM cell on (z, r).
+
+    Never pair by index. The two codes number the same mesh differently -- AxiSim
+    in block/cellGlobal order, blockMesh in its own -- so a positional diff
+    quietly compares unrelated cells and looks plausible doing it.
+
+    The pairing is unambiguous, but the two values in a pair are not sampled at
+    quite the same place: OpenFOAM uses the volume-weighted centroid, which on a
+    wedge pulls outward in r, while AxiSim uses the r-z midpoint. On the axis cell
+    of the reference pipe that is 1.67e-4 against 1.25e-4. Cells are far enough
+    apart that nothing mismatches, but near the axis that gap is the same order as
+    the error being measured, so read the maps for WHERE the codes disagree rather
+    than as a certified error bar.
+    """
+    live = s.live
+    tree = cKDTree(np.column_stack([f.z, f.r]))
+    dist, idx = tree.query(np.column_stack([s.c("z")[live], s.c("r")[live]]))
+    return live, idx, dist
+
+
+def foam_residual(s: Solution, f: Foam, live, idx, field):
+    """AxiSim minus OpenFOAM for one field, over the live cells, and its scale."""
+    a = s.c(field)[live]
+    b = f.fields[field][idx]
+
+    if field == "Pressure":
+        # Both are defined only up to a constant -- OpenFOAM pins p = 0 at the
+        # outlet, AxiSim carries its own datum -- so without removing the offset
+        # this measures the choice of datum and nothing else.
+        a, b = a - a.mean(), b - b.mean()
+
+    scale = np.abs(a).max()
+    return a - b, (scale if scale > 0 else 1.0)
+
+
+def foam_report(s: Solution, f: Foam, live, idx, dist):
+    """Per-field agreement between the two codes."""
+    print(f"OpenFOAM time     = {f.time}")
+    print(f"cells             = {len(f.z)} OpenFOAM, {live.sum()} live AxiSim")
+    print(f"pairing distance  = {dist.max():.3g} m max, {dist.mean():.3g} m mean")
+
+    if len(f.z) != live.sum():
+        print(f"warning: cell counts differ -- the two meshes are not the same mesh")
+
+    print()
+
+    shared = [n for n in f.fields if n in s.col]
+    if not shared:
+        print("no shared fields -- was the case exported from this project?")
+        return
+
+    for name in shared:
+        res, scale = foam_residual(s, f, live, idx, name)
+        print(f"{name:<18s} L2 {100.0 * np.sqrt((res ** 2).mean()) / scale:8.4f} %"
+              f"   Linf {100.0 * np.abs(res).max() / scale:8.4f} %"
+              f"   [of max |{name}| = {scale:.4g}]")
+
+
+def foam_validation(s, c, f, live, idx, field="Axial Velocity", ax=None):
+    """Map where AxiSim and OpenFOAM disagree, as a percentage of the field."""
+    if ax is None:
+        _, ax = plt.subplots(figsize=(10, 3.2))
+
+    res, scale = foam_residual(s, f, live, idx, field)
+
+    # Painted on AxiSim's cells, since those are the polygons we have. Symmetric
+    # limits on a diverging map so the sign of the disagreement is readable.
+    full = np.zeros(len(s.sol))
+    full[live] = 100.0 * res / scale
+    lim = np.abs(full[live]).max()
+
+    pc = PolyCollection(c.verts[live], array=full[live],
+                        cmap="RdBu_r", edgecolors="none")
+    pc.set_clim(-lim, lim)
+
+    ax.add_collection(pc)
+    ax.set_xlim(c.pts[:, 0].min(), c.pts[:, 0].max())
+    ax.set_ylim(c.pts[:, 1].min(), c.pts[:, 1].max())
+    ax.figure.colorbar(pc, ax=ax, label=f"{field}: AxiSim - OpenFOAM [% of max]")
+
+    return ax
+
+
 def main():
 
+    compare = CompareType.OPENFOAM
+
     folder_name = "poiseuille_solution"
+
+    # The exported case. Keep it on the WSL filesystem, not /mnt/c -- OpenFOAM's
+    # tiny-file I/O crawls across the 9p mount.
+    foam_case = r"\\wsl$\Ubuntu\home\luits\run\test_case"
+
     s = load_solution(folder_name)
     c = load_cells(folder_name)
 
-    p = poiseuille_flow(s, c, Umax=INLET_PEAK)
+    if compare == CompareType.POISEUILLE:
+        p = poiseuille_flow(s, c, Umax=INLET_PEAK)
+        poiseuille_report(s, p)
+        field_validation(s, c, CompareType.POISEUILLE, p)
 
-    poiseuille_report(s, p)
+    else:
+        f = load_foam(foam_case, rho=s.meta["fluid"]["rho"])
+        live, idx, dist = match_to_foam(s, f)
+        foam_report(s, f, live, idx, dist)
+
+        for name in f.fields:
+            if name in s.col:
+                foam_validation(s, c, f, live, idx, name)
 
     field_map(s, c, "Axial Velocity")
-
-    field_validation(s, c, CompareType.POISEUILLE, p)
 
     plt.show()
 
