@@ -1003,16 +1003,58 @@ FieldPatch scalarPatch(const BoundaryCondition& bc) {
 		patch.note += "; swap in a codedMixed to match it";
 		break;
 
-	// FULLY_DEVELOPED is a zero streamwise gradient, which is what zeroGradient
-	// already is on a face whose normal points downstream. NONE has nothing to say.
-	// Both keep the default.
+	// FULLY_DEVELOPED is NOT a gradient condition -- it is a Dirichlet whose value
+	// varies along the boundary (prescribedBoundaryFaceValue in solver_util.cuh).
+	// getAllowedBCType only ever offers it for UVelocity/VVelocity at a
+	// VELOCITY_INLET, so velocityPatch is where it is actually handled and no scalar
+	// the writer knows about can reach here. A legacy save still could, and letting
+	// that fall through to zeroGradient would be a silently different problem.
 	case FULLY_DEVELOPED:
+		patch.note = "AxiSim had a fully-developed (parabolic) profile on this scalar,"
+			" which zeroGradient is NOT -- see the U file for the codedFixedValue form";
+		break;
+
+	// NONE has nothing to say, and keeps the default.
 	case NONE:
 	default:
 		break;
 	}
 
 	return patch;
+}
+
+// One velocity component's face values, as an OpenFOAM expression over the patch.
+//
+// A FULLY_DEVELOPED component is AxiSim's parabola, spelled exactly as
+// prescribedBoundaryFaceValue (solver_util.cuh) computes it: value * (1 - (x/L)^2),
+// with L the group's total path length and x the face centre's position along the
+// boundary -- measured from the AXIS on a vertical boundary and from z = 0 on a
+// horizontal one. That is the same split getFaceCenterAlongOrientation makes off
+// the face normal, and getAllowedBCType only offers FULLY_DEVELOPED on the
+// component whose boundary runs that way, so `coord` follows from the component.
+//
+// Anything else is the uniform value the writer was already exporting, including
+// the 0 a free component gets -- fixedValue takes the whole vector either way.
+std::string velocityComponentExpr(const BoundaryCondition& bc, double uniform,
+                                  const BoundarySegmentGroup& group, const char* coord) {
+
+	auto uniformField = [](double value) {
+		return "scalarField(Cf.size(), scalar(" + foamNumber(value) + "))";
+	};
+
+	if (bc.type() != FULLY_DEVELOPED) return uniformField(uniform);
+
+	// totalLength is a float and stays 0 for a group with no segments.
+	// prescribedBoundaryFaceValue returns the uniform value there rather than
+	// dividing by zero, so this has to degenerate the same way -- otherwise the two
+	// codes are solving different problems on exactly the case that is already odd.
+	// The float is widened, not rounded: lengthByGroup widens the same field.
+	const double length = group.totalLength;
+
+	if (!(length > 0.0)) return uniformField(bc.value());
+
+	return "scalar(" + foamNumber(bc.value()) + ")*(1.0 - sqr("
+		+ coord + "/scalar(" + foamNumber(length) + ")))";
 }
 
 // U cannot go through scalarPatch: it is one vector field built from two scalar
@@ -1031,6 +1073,80 @@ FieldPatch velocityPatch(const BoundarySegmentGroup& group) {
 	};
 
 	FieldPatch patch;
+
+	// A fully-developed inlet is a Dirichlet that VARIES along the patch, so it is
+	// neither of the two cases below and used to fall straight through them into the
+	// default zeroGradient -- silently, with no note. That exports a velocity inlet
+	// carrying no velocity: nothing drives the case, simpleFoam converges on U = 0,
+	// and the cross-validation compares AxiSim's Poiseuille profile against zeros.
+	//
+	// It has to go out as CODE rather than a list of face values. The profile is
+	// per-face, blockMesh decides the face order within a patch, and AxiSim has no
+	// way to predict that order -- so a `nonuniform List<vector>` would be the right
+	// numbers against the wrong faces. codedFixedValue evaluates against
+	// patch().Cf() on the solver's own faces and sidesteps the ordering entirely.
+	if (axial.type() == FULLY_DEVELOPED || radial.type() == FULLY_DEVELOPED) {
+
+		const std::string u = velocityComponentExpr(
+			axial, isFixed(axial) ? axial.value() : 0.0, group, "r");
+		const std::string v = velocityComponentExpr(
+			radial, isFixed(radial) ? radial.value() : 0.0, group, "z");
+
+		// Only the radial parabola is keyed on the axial coordinate, and an unused
+		// local is a warning in code the user never asked to read.
+		const bool needsZ = (radial.type() == FULLY_DEVELOPED);
+
+		// Named per GROUP id, not per patch name: the compiled library is cached
+		// under this name, so two patches sharing it would get the first one's
+		// profile. foamPatchName can collide (boundaryFromMultiblock de-collides
+		// afterwards, which velocityPatch cannot see); group ids cannot.
+		patch.type = "codedFixedValue";
+		patch.entry =
+			"value           uniform (0 0 0);\n"
+			"        name            axiInlet" + std::to_string(group.id) + ";\n"
+			"        code\n"
+			"        #{\n"
+			"            const vectorField& Cf = patch().Cf();\n"
+			"            const scalarField r(sqrt(sqr(Cf.component(1)) + sqr(Cf.component(2))));\n"
+			+ (needsZ ? "            const scalarField z(Cf.component(0));\n" : "") +
+			"\n"
+			"            const scalarField u(" + u + ");\n"
+			"            const scalarField v(" + v + ");\n"
+			"\n"
+			"            // r is a DIRECTION on the wedge, not an axis, so the radial\n"
+			"            // component is projected onto the local radial unit vector.\n"
+			"            // The max() only guards a face on the axis, where the\n"
+			"            // components it scales are zero anyway.\n"
+			"            const scalarField rHat(max(r, scalar(SMALL)));\n"
+			"\n"
+			"            vectorField out(Cf.size(), Zero);\n"
+			"            out.replace(0, u);\n"
+			"            out.replace(1, v*Cf.component(1)/rHat);\n"
+			"            out.replace(2, v*Cf.component(2)/rHat);\n"
+			"\n"
+			"            operator==(out);\n"
+			"        #};";
+
+		// Coded conditions are compiled on first read, which some builds refuse
+		// until told to. v2606 ships allowSystemOperations 1 in etc/controlDict, but
+		// the openfoam.org builds default it to 0, and the error names the switch
+		// without saying the profile is what is being lost.
+		patch.note = "fully-developed profile, matching AxiSim's"
+			" value*(1-(x/L)^2). Needs allowSystemOperations 1 in etc/controlDict";
+
+		// The other component is written whatever it is, so an unpinned one goes out
+		// as 0 -- same compromise the fixedValue branch makes below, and the same
+		// reason: the condition covers the whole vector. getAllowedBCType pins it at
+		// a VELOCITY_INLET, so this only fires on a group that got here some other way.
+		const bool developedIsAxial = (axial.type() == FULLY_DEVELOPED);
+
+		if (!isFixed(developedIsAxial ? radial : axial)) {
+			patch.note += "; the other velocity component was free in AxiSim"
+				" and is pinned to 0 here";
+		}
+
+		return patch;
+	}
 
 	// Neither component pinned: the default zeroGradient is the whole answer.
 	if (!isFixed(axial) && !isFixed(radial)) return patch;
