@@ -1108,16 +1108,25 @@ void loadFromPathGeometry(std::ifstream& in, Geometry& geometry) {
 // ====================================================
 // -------------------MESH-----------------------------
 // ====================================================
-bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh,
-                       const FoamCaseSetup& setup) {
+bool saveFoamCase(const std::filesystem::path& dir, const Mesh& mesh,
+                  const FoamCaseSetup& setup) {
 
-	// The trellis decomposition is what carries the blocks, their interfaces and the
-	// per-edge boundary groups. A single-block or unstructured mesh has none of it,
-	// and blockMeshDictFromMultiblock would hand back an empty dict that blockMesh
-	// rejects with something far less informative than this.
-	if (!mesh.isMultiBlock || mesh.multiBlock.blocks.empty()) {
-		std::cerr << "saveBlockMeshCase: no multi-block mesh to export -- "
-			"generate a multi-block mesh first\n";
+	// Which of the two mesh formats this project can be exported as. They are not
+	// interchangeable: a blockMeshDict is a list of HEXES, so only a mesh that
+	// decomposes into structured blocks has one, and a triangulated mesh has to go
+	// out as a polyMesh instead.
+	const bool multiBlock = mesh.isMultiBlock && !mesh.multiBlock.blocks.empty();
+
+	const bool unstructured = !multiBlock &&
+		mesh.currentMeshType == MeshType::Unstructured &&
+		!mesh.unstructuredTriangles.empty();
+
+	// What is left is a single-block structured grid, whose FVMesh carries no vertex
+	// ids (createStructuredFVFaces leaves FVFace::v0/v1 at -1), so neither writer can
+	// spell it. Both of the others reject an empty mesh far less informatively.
+	if (!multiBlock && !unstructured) {
+		std::cerr << "saveFoamCase: nothing to export -- generate a multi-block or"
+			" unstructured mesh first\n";
 		return false;
 	}
 
@@ -1136,21 +1145,50 @@ bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh,
 	for (const std::filesystem::path& sub : { systemDir, constantDir, zeroDir }) {
 		std::filesystem::create_directories(sub, ec);
 		if (ec) {
-			std::cerr << "saveBlockMeshCase: cannot create " << sub.string()
+			std::cerr << "saveFoamCase: cannot create " << sub.string()
 				<< " -- " << ec.message() << '\n';
 			return false;
 		}
 	}
 
-	// boundaryEdges + boundaryVertices are the sketch boundary, and they are what
-	// carries the inlet/outlet/wall tags. Block::edgeGroup does not: the trellis
-	// decomposition never writes it, so classifying from the blocks alone put every
-	// external edge in one untagged patch and the case had no BCs at all.
-	const BlockMeshDict dict = blockMeshDictFromMultiblock(
-		mesh.multiBlock, mesh.boundaryGroups, mesh.boundaryEdges, mesh.boundaryVertices);
+	// The patch list is what 0/ is written against, and it comes out of whichever
+	// mesh writer ran -- the sanitize + de-collide pass that produced the patch names
+	// is not reversible, so the fields have to be built from its result rather than
+	// from the boundary groups again.
+	std::vector<FoamField> fields;
 
-	if (!writeBlockMeshDict(systemDir / "blockMeshDict", dict)) {
-		return false;
+	if (multiBlock) {
+
+		// boundaryEdges + boundaryVertices are the sketch boundary, and they are what
+		// carries the inlet/outlet/wall tags. Block::edgeGroup does not: the trellis
+		// decomposition never writes it, so classifying from the blocks alone put every
+		// external edge in one untagged patch and the case had no BCs at all.
+		const BlockMeshDict dict = blockMeshDictFromMultiblock(
+			mesh.multiBlock, mesh.boundaryGroups, mesh.boundaryEdges, mesh.boundaryVertices);
+
+		if (!writeBlockMeshDict(systemDir / "blockMeshDict", dict)) {
+			return false;
+		}
+
+		fields = initialFieldsFromDict(dict, mesh.boundaryGroups, setup);
+	}
+	else {
+
+		// The SAME FVMesh the solver runs on -- createFVMesh is what solver.cpp calls
+		// too, with the same arguments. That is the whole point: the exported patches
+		// then cut the boundary exactly where AxiSim's BC groups do, so a difference
+		// between the two solutions is physics and not a face on the wrong patch.
+		const FVMesh fvMesh = mesh.createFVMesh({});
+
+		const PolyMesh polyMesh = polyMeshFromUnstructured(
+			mesh.unstructuredPoints, mesh.unstructuredTriangles,
+			fvMesh, mesh.boundaryGroups);
+
+		if (!writePolyMesh(constantDir / "polyMesh", polyMesh)) {
+			return false;
+		}
+
+		fields = initialFieldsFromPolyMesh(polyMesh, mesh.boundaryGroups, setup);
 	}
 
 	// blockMesh reads system/controlDict before it ever opens the mesh dict, so this
@@ -1163,14 +1201,14 @@ bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh,
 		return false;
 	}
 
-	// From the dict, not the mesh: the patch names in 0/ must be the ones the dict
-	// settled on after sanitizing and de-colliding them.
-	if (!writeInitialFields(zeroDir, initialFieldsFromDict(dict, mesh.boundaryGroups, setup))) {
+	if (!writeInitialFields(zeroDir, fields)) {
 		return false;
 	}
 
-	std::cout << "Exported OpenFOAM case to " << dir.string()
-		<< " -- run: blockMesh -case \"" << dir.string() << "\" && "
+	// A polyMesh case has no meshing step: the mesh is already on disk, so running
+	// blockMesh on it would fail on a dict that is not there.
+	std::cout << "Exported OpenFOAM case to " << dir.string() << " -- run: "
+		<< (multiBlock ? "blockMesh -case \"" + dir.string() + "\" && " : "")
 		<< (setup.transient ? "pimpleFoam" : "simpleFoam")
 		<< " -case \"" << dir.string() << "\"\n";
 	return true;
@@ -1253,7 +1291,7 @@ void saveFromExplorerMesh(Mesh& mesh, const Solver& solver) {
 		[](wchar_t c) { return (wchar_t)std::towlower(c); });
 
 	if (extension == L".foam") {
-		saveBlockMeshCase(
+		saveFoamCase(
 			target.parent_path() / (target.stem().wstring() + L"_case"),
 			mesh,
 			foamCaseSetupFromSolver(solver)
@@ -2069,22 +2107,26 @@ bool saveSolutionNpy(const std::filesystem::path& dir, const Project& project) {
 		return false;
 	}
 
-	// Cell outlines, multiblock only. Centers alone leave a Python reader nothing
-	// but a scatter: triangulating them puts vertices at cell CENTERS (half a cell
-	// off the real ones), turns each quad into two triangles on an arbitrary
-	// diagonal, and convex-hulls away every obstacle and concavity. points.npy +
-	// cells.npy carry the actual quads, so a reader can draw and integrate on the
-	// mesh that was solved on.
+	// Cell outlines. Centers alone leave a Python reader nothing but a scatter:
+	// triangulating them puts vertices at cell CENTERS (half a cell off the real
+	// ones), turns each quad into two triangles on an arbitrary diagonal, and
+	// convex-hulls away every obstacle and concavity. points.npy + cells.npy carry
+	// the actual polygons, so a reader can draw and integrate on the mesh that was
+	// solved on.
 	//
-	// Only the multiblock path has corners to give -- createMultiBlockFVMesh fills
-	// faces from the packer, which carries no vertex IDs, so FVFace::v0/v1 stay -1
-	// there. The meta keys below are omitted rather than zeroed when the pair is
-	// absent, so a reader that assumes them raises KeyError instead of silently
-	// reshaping nothing -- the same rule nr/nz follow.
+	// Both mesh paths have corners; they just have a different NUMBER of them, which
+	// is why meta carries cellCorners rather than the reader assuming 4. The plain
+	// single-block structured path is the one that has none -- createStructuredFVFaces
+	// leaves FVFace::v0/v1 at -1, and the packed multiblock faces carry no vertex ids
+	// either, so the corners come from the block quads instead. The meta keys below
+	// are omitted rather than zeroed when the pair is absent, so a reader that assumes
+	// them raises KeyError instead of silently reshaping nothing -- the same rule
+	// nr/nz follow.
 	std::size_t nPoints = 0;
-	bool wroteCorners = false;
+	std::size_t cellCorners = 0;
 
 	std::vector<std::array<Vec2, 4>> quads;
+
 	if (mesh.multiBlockCellCorners(quads) && quads.size() == nCells) {
 
 		std::vector<double> pointXY;
@@ -2092,13 +2134,44 @@ bool saveSolutionNpy(const std::filesystem::path& dir, const Project& project) {
 		weldCellCorners(quads, pointXY, cellIdx);
 
 		nPoints = pointXY.size() / 2;
+		cellCorners = 4;
 
 		if (!writeNpy(dir / "points.npy", pointXY, nPoints, 2) ||
 			!writeNpyInt32(dir / "cells.npy", cellIdx, nCells, 4)) {
 			return false;
 		}
+	}
+	else if (mesh.currentMeshType == MeshType::Unstructured &&
+		mesh.unstructuredTriangles.size() == nCells &&
+		!mesh.unstructuredPoints.empty()) {
 
-		wroteCorners = true;
+		// No weld here: gmsh already hands back indexed geometry, and
+		// createUnstructuredMesh makes triangle c into cell c, so the triangles ARE
+		// the cell polygons in the order the solution rows are in.
+		std::vector<double> pointXY;
+		pointXY.reserve(mesh.unstructuredPoints.size() * 2);
+
+		for (const Vec2& p : mesh.unstructuredPoints) {
+			pointXY.push_back(p.z);
+			pointXY.push_back(p.r);
+		}
+
+		std::vector<std::int32_t> cellIdx;
+		cellIdx.reserve(nCells * 3);
+
+		for (const Triangle& tri : mesh.unstructuredTriangles) {
+			cellIdx.push_back((std::int32_t)tri.v0);
+			cellIdx.push_back((std::int32_t)tri.v1);
+			cellIdx.push_back((std::int32_t)tri.v2);
+		}
+
+		nPoints = mesh.unstructuredPoints.size();
+		cellCorners = 3;
+
+		if (!writeNpy(dir / "points.npy", pointXY, nPoints, 2) ||
+			!writeNpyInt32(dir / "cells.npy", cellIdx, nCells, 3)) {
+			return false;
+		}
 	}
 
 	// Transient frames: field columns only. Geometry is in solution.npy and does
@@ -2157,9 +2230,9 @@ bool saveSolutionNpy(const std::filesystem::path& dir, const Project& project) {
 		meta << "  \"nz\": " << fvMesh.nz << ",\n";
 	}
 
-	if (wroteCorners) {
+	if (cellCorners > 0) {
 		meta << "  \"points\": " << nPoints << ",\n";
-		meta << "  \"cellCorners\": 4,\n";
+		meta << "  \"cellCorners\": " << cellCorners << ",\n";
 	}
 
 	meta << "  \"fluid\": {"
@@ -2205,8 +2278,9 @@ bool saveSolutionNpy(const std::filesystem::path& dir, const Project& project) {
 
 	std::cout << "saveSolutionNpy: wrote " << nCells << " cells x " << nCols
 		<< " columns";
-	if (wroteCorners) {
-		std::cout << " + " << nPoints << " corner points";
+	if (cellCorners > 0) {
+		std::cout << " + " << nPoints << " corner points ("
+			<< cellCorners << " per cell)";
 	}
 	if (!frameIndex.empty()) {
 		std::cout << " + " << frameIndex.size() << " frames";

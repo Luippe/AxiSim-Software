@@ -70,6 +70,71 @@ struct BlockMeshDict {
 
 };
 
+// One patch of a PolyMesh, as constant/polyMesh/boundary spells it: a CONTIGUOUS
+// run of the face list rather than a list of faces. That is the whole reason
+// PolyMesh::faces is ordered the way it is.
+struct FoamPolyPatch {
+
+	std::string name;
+	BoundaryFOAMType type = BoundaryFOAMType::PATCH;
+
+	// The BoundarySegmentGroup this patch was named and typed from, or -1 for the
+	// two wedge planes and the "unassigned" fallback -- the same role, and for the
+	// same reason, as BoundaryFOAM::groupID.
+	int groupID = -1;
+
+	int startFace = 0;
+	int nFaces = 0;
+
+};
+
+// A mesh written straight into constant/polyMesh, skipping blockMesh entirely.
+//
+// This is the export path for a mesh blockMeshDict cannot spell. A dict is a list
+// of HEXES: it can only describe a mesh that decomposes into structured blocks, so
+// AxiSim's unstructured (gmsh-triangulated) meshes have no dict at all. polyMesh is
+// OpenFOAM's own on-disk format and is face-based like AxiSim's own FVMesh, so the
+// triangles go out as the arbitrary polyhedra they revolve into with nothing lost.
+//
+// The layout is not free-form -- OpenFOAM reads these files as written and checks
+// the invariants rather than repairing them:
+//
+//   - every face is wound so its normal points OUT of faceOwner, i.e. from owner
+//     towards neighbour;
+//   - INTERNAL faces come first, each with owner < neighbour, sorted by owner and
+//     then by neighbour ("upper-triangular order");
+//   - BOUNDARY faces follow, grouped into the contiguous runs the patches name.
+//
+// Face point counts vary: the wedge revolve turns a triangle edge into a quad, or
+// into a triangle when one of its endpoints sits on the axis. An edge lying ON the
+// axis sweeps nothing and is left out entirely, which is exactly what blockMesh
+// does to a block face on the axis.
+struct PolyMesh {
+
+	std::vector<Vec3> points;
+
+	// Point labels per face, in the order described above.
+	std::vector<std::vector<int>> faces;
+
+	// Parallel to `faces`.
+	std::vector<int> faceOwner;
+
+	// INTERNAL faces only -- boundary faces have no neighbour, and OpenFOAM sizes
+	// the file itself to tell the two apart. So this doubles as the internal count.
+	std::vector<int> faceNeighbour;
+
+	// In startFace order, covering every face from nInternalFaces() to faces.size()
+	// with no gap: a boundary face in no patch is a hole the solver aborts on.
+	std::vector<FoamPolyPatch> patches;
+
+	int nCells = 0;
+
+	int nInternalFaces() const {
+		return (int)faceNeighbour.size();
+	}
+
+};
+
 // Convection scheme for the exported divSchemes, mirroring the solver's own
 // ConvectionScheme. Mirrored rather than reused because solver_struct.h reaches
 // into setting.cuh and gpu_utils.h, and none of the case writers want that.

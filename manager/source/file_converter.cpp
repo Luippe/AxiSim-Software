@@ -564,6 +564,331 @@ BlockMeshDict blockMeshDictFromMultiblock(
 	return blockMeshDict;
 }
 
+namespace {
+
+// Drop repeated labels CYCLICALLY, so a face the wedge revolve degenerated comes
+// out as the polygon it actually is.
+//
+// A triangle edge sweeps a quad, but an endpoint ON the axis carries one label for
+// both wedge planes instead of two, so that quad names it twice and is really a
+// triangle. The repeat sits at positions 1,2 when the second endpoint is the one on
+// the axis and wraps round to 3,0 when it is the first -- which is why this is
+// cyclic rather than plain std::unique. Dropping a repeat preserves the winding, so
+// the collapsed face still points out of its owner.
+//
+// Fewer than 3 labels survive exactly when BOTH endpoints are on the axis. That
+// face sweeps nothing and has zero area; callers treat a short result as "skip this
+// face", which is what blockMesh does to a block face on the axis too.
+std::vector<int> collapseFace(int a, int b, int c, int d) {
+
+	std::vector<int> out;
+	out.reserve(4);
+
+	for (int label : { a, b, c, d }) {
+		if (out.empty() || out.back() != label) out.push_back(label);
+	}
+
+	if (out.size() > 1 && out.front() == out.back()) out.pop_back();
+
+	return out;
+}
+
+// A face on its way into PolyMesh, before the ordering pass decides where it lands.
+// `neighbour` is -1 on a boundary face, exactly as in the finished mesh.
+struct StagedFace {
+	std::vector<int> labels;
+	int owner = -1;
+	int neighbour = -1;
+};
+
+// Faces collected under one patch name, before they become a contiguous run.
+struct StagedPatch {
+	BoundaryFOAMType type = BoundaryFOAMType::PATCH;
+	int groupID = -1;
+	std::vector<StagedFace> faces;
+};
+
+}
+
+PolyMesh polyMeshFromUnstructured(
+	const std::vector<Vec2>& points,
+	const std::vector<Triangle>& triangles,
+	const FVMesh& fvMesh,
+	const std::vector<BoundarySegmentGroup>& groups,
+	double wedgeAngleDeg
+) {
+
+	PolyMesh poly;
+
+	const int nCells = (int)triangles.size();
+	const int nPoints2D = (int)points.size();
+
+	// The triangles carry the corners and fvMesh carries the connectivity and the
+	// boundary groups, and cell c has to mean the same cell in both. An FVMesh built
+	// from a different mesh would export something that looks valid and whose patches
+	// belong to another geometry.
+	if (nCells == 0 || (int)fvMesh.cells.size() != nCells) {
+		std::cerr << "polyMeshFromUnstructured: " << nCells << " triangles against "
+			<< fvMesh.cells.size() << " FV cells -- no mesh written\n";
+		return poly;
+	}
+
+	for (const Triangle& tri : triangles) {
+		if (tri.v0 < 0 || tri.v1 < 0 || tri.v2 < 0 ||
+			tri.v0 >= nPoints2D || tri.v1 >= nPoints2D || tri.v2 >= nPoints2D) {
+			std::cerr << "polyMeshFromUnstructured: a triangle names a point outside the "
+				<< nPoints2D << "-point mesh -- no mesh written\n";
+			return PolyMesh{};
+		}
+	}
+
+	double extent = 0.0;
+	for (const Vec2& p : points)
+		extent = std::max(extent, std::max(std::fabs(p.z), std::fabs(p.r)));
+
+	// A point on the axis gets ONE label for both wedge planes. This is the same
+	// collapse blockMesh's geometric merge performs on a block touching r = 0, and it
+	// is what turns the cells there into prisms instead of leaving zero-thickness
+	// slivers behind. The tolerance matches weldVertices': orders of magnitude below
+	// one cell, so only a point meant to BE on the axis can reach it.
+	const double axisTol = 1e-9 * (extent > 0.0 ? extent : 1.0);
+
+	const double halfAngle = 0.5 * wedgeAngleDeg * (MB_PI / 180.0);
+	const double cosHalf = std::cos(halfAngle);
+	const double sinHalf = std::sin(halfAngle);
+
+	// Label of each 2D point on the -angle/2 and +angle/2 planes. Equal on the axis.
+	std::vector<int> backOf(nPoints2D, -1);
+	std::vector<int> frontOf(nPoints2D, -1);
+
+	for (int i = 0; i < nPoints2D; i++) {
+
+		const Vec2& p = points[i];
+
+		if (p.r <= axisTol) {
+			backOf[i] = frontOf[i] = (int)poly.points.size();
+			poly.points.push_back({ p.z, 0.0, 0.0 });
+			continue;
+		}
+
+		// x axial, y radial, z the wedge direction -- the frame verticesFromBlock
+		// lays the dict's vertices out in, so both exports of the same project land
+		// in the same coordinates and one reader serves both.
+		backOf[i] = (int)poly.points.size();
+		poly.points.push_back({ p.z, p.r * cosHalf, -p.r * sinHalf });
+
+		frontOf[i] = (int)poly.points.size();
+		poly.points.push_back({ p.z, p.r * cosHalf, p.r * sinHalf });
+	}
+
+	// Ordered, so two exports of the same mesh come out byte-identical -- the same
+	// reason writeBlockMeshDict sorts its patches on the way out.
+	std::map<std::string, StagedPatch> patches;
+
+	// Both wedge planes exist on every cell, so seed them first. That also lets them
+	// win the name-collision loop below against a user group whose name sanitizes to
+	// "front" or "back". References into a std::map survive later inserts.
+	StagedPatch& backPlane = patches["back"];
+	StagedPatch& frontPlane = patches["front"];
+	backPlane.type = BoundaryFOAMType::WEDGE;
+	frontPlane.type = BoundaryFOAMType::WEDGE;
+
+	// Resolved patch name per boundary group id, so the sanitize + collision work
+	// runs once per group rather than once per face.
+	std::unordered_map<int, std::string> nameOfGroup;
+
+	auto patchFor = [&](int groupID) -> StagedPatch& {
+
+		const auto known = nameOfGroup.find(groupID);
+		if (known != nameOfGroup.end()) return patches[known->second];
+
+		const BoundarySegmentGroup* group =
+			BoundaryGet::getBoundaryGroupByID(groups, groupID);
+
+		// Dropping an unmatched face would hand the solver a mesh with a hole in it
+		// and no clue where, so it gets a patch instead. The caller warns about the
+		// count once the pass is done.
+		const std::string stem = group ? foamPatchName(*group) : "unassigned";
+
+		// Two groups can sanitize to the same word, and the map is keyed by name, so
+		// a collision would quietly merge two physically distinct patches.
+		std::string name = stem;
+		for (int n = 2; patches.count(name); n++)
+			name = stem + "_" + std::to_string(n);
+
+		nameOfGroup[groupID] = name;
+		StagedPatch& patch = patches[name];
+		patch.type = group ? foamType(group->type) : BoundaryFOAMType::PATCH;
+		patch.groupID = group ? group->id : -1;
+		return patch;
+	};
+
+	std::vector<StagedFace> interior;
+	interior.reserve(fvMesh.faces.size());
+
+	int axisFaces = 0;
+	int unassignedFaces = 0;
+
+	// ---- the sides: one revolved triangle edge per FV face ----
+	for (const FVFace& face : fvMesh.faces) {
+
+		// createUnstructuredMesh fills these from the triangle edge the face was
+		// built out of. They stay -1 on the multiblock path, whose faces come from
+		// the packer and carry no vertex ids -- an FVMesh from there cannot be
+		// revolved, and silently exporting part of one would be worse than stopping.
+		if (face.v0 < 0 || face.v1 < 0 || face.v0 >= nPoints2D || face.v1 >= nPoints2D) {
+			std::cerr << "polyMeshFromUnstructured: a face carries no triangle edge --"
+				" this FVMesh is not an unstructured one. No mesh written\n";
+			return PolyMesh{};
+		}
+
+		if (face.owner < 0 || face.owner >= nCells || face.neighbor >= nCells) {
+			std::cerr << "polyMeshFromUnstructured: face owner/neighbour " << face.owner
+				<< '/' << face.neighbor << " outside the " << nCells
+				<< "-cell mesh -- no mesh written\n";
+			return PolyMesh{};
+		}
+
+		int a = face.v0;
+		int b = face.v1;
+
+		// Wind the swept face so its normal points out of the owner. The r-z normal
+		// of the segment a->b is (dr, -dz) and the revolve carries that straight
+		// through, so testing it against FVFace::normal -- which createUnstructuredMesh
+		// has already flipped to face away from the owner's centre -- settles the
+		// direction without redoing that test and without trusting gmsh's winding.
+		const double dz = points[b].z - points[a].z;
+		const double dr = points[b].r - points[a].r;
+
+		if (dr * face.normal.z - dz * face.normal.r < 0.0) std::swap(a, b);
+
+		std::vector<int> labels =
+			collapseFace(backOf[a], backOf[b], frontOf[b], frontOf[a]);
+
+		// The edge lies ON the axis and sweeps zero area.
+		if (labels.size() < 3) {
+			axisFaces++;
+			continue;
+		}
+
+		if (face.neighbor >= 0) {
+
+			int owner = face.owner;
+			int neighbour = face.neighbor;
+
+			// polyMesh insists on owner < neighbour, and reversing the winding is what
+			// keeps the normal pointing from the new owner towards the new neighbour.
+			// createUnstructuredMesh numbers them the right way round already -- this
+			// is here so the invariant does not depend on that.
+			if (owner > neighbour) {
+				std::swap(owner, neighbour);
+				std::reverse(labels.begin(), labels.end());
+			}
+
+			interior.push_back({ std::move(labels), owner, neighbour });
+			continue;
+		}
+
+		if (face.boundaryGroupID < 0) unassignedFaces++;
+
+		patchFor(face.boundaryGroupID).faces.push_back(
+			{ std::move(labels), face.owner, -1 });
+	}
+
+	// ---- the two wedge planes: one triangle each per cell ----
+	int flatCells = 0;
+
+	for (int c = 0; c < nCells; c++) {
+
+		int v0 = triangles[c].v0;
+		int v1 = triangles[c].v1;
+		int v2 = triangles[c].v2;
+
+		const Vec2& a = points[v0];
+		const Vec2& b = points[v1];
+		const Vec2& d = points[v2];
+
+		// Counter-clockwise in (z, r) -- which is counter-clockwise in OpenFOAM's
+		// (x, y) -- makes the front plane's winding give a normal along +z, out of the
+		// cell. gmsh promises no orientation and triangleArea2D takes the absolute
+		// value, so it is measured here rather than assumed: an inside-out cell is a
+		// negative volume the solver refuses to start on.
+		const double twiceArea =
+			(b.z - a.z) * (d.r - a.r) - (b.r - a.r) * (d.z - a.z);
+
+		if (twiceArea < 0.0) std::swap(v1, v2);
+		if (twiceArea == 0.0) flatCells++;
+
+		frontPlane.faces.push_back({ { frontOf[v0], frontOf[v1], frontOf[v2] }, c, -1 });
+		backPlane.faces.push_back({ { backOf[v0], backOf[v2], backOf[v1] }, c, -1 });
+	}
+
+	// ---- lay the faces out the way polyMesh reads them ----
+	// Upper-triangular order: by owner, then by neighbour. OpenFOAM checks this on
+	// read rather than repairing it. The keys are unique, so no tie to break.
+	std::sort(interior.begin(), interior.end(),
+		[](const StagedFace& x, const StagedFace& y) {
+			return x.owner != y.owner ? x.owner < y.owner : x.neighbour < y.neighbour;
+		});
+
+	poly.nCells = nCells;
+	poly.faces.reserve(interior.size());
+	poly.faceOwner.reserve(interior.size());
+	poly.faceNeighbour.reserve(interior.size());
+
+	for (StagedFace& face : interior) {
+		poly.faces.push_back(std::move(face.labels));
+		poly.faceOwner.push_back(face.owner);
+		poly.faceNeighbour.push_back(face.neighbour);
+	}
+
+	for (auto& entry : patches) {
+
+		StagedPatch& patch = entry.second;
+
+		// Every face of this group collapsed on the axis, so there is nothing left to
+		// put in the patch. Emitting it empty would also need a 0/ entry for a patch
+		// with no faces to apply it to; blockMesh's own wedge output leaves the axis
+		// out the same way.
+		if (patch.faces.empty()) continue;
+
+		std::stable_sort(patch.faces.begin(), patch.faces.end(),
+			[](const StagedFace& x, const StagedFace& y) { return x.owner < y.owner; });
+
+		FoamPolyPatch out;
+		out.name = entry.first;
+		out.type = patch.type;
+		out.groupID = patch.groupID;
+		out.startFace = (int)poly.faces.size();
+		out.nFaces = (int)patch.faces.size();
+
+		for (StagedFace& face : patch.faces) {
+			poly.faces.push_back(std::move(face.labels));
+			poly.faceOwner.push_back(face.owner);
+		}
+
+		poly.patches.push_back(out);
+	}
+
+	if (unassignedFaces > 0) {
+		std::cerr << "polyMeshFromUnstructured: " << unassignedFaces << " boundary face(s)"
+			" matched no boundary group -- exported as \"unassigned\", which carries no"
+			" boundary condition. Tag the sketch edges behind them.\n";
+	}
+
+	if (flatCells > 0) {
+		std::cerr << "polyMeshFromUnstructured: " << flatCells << " triangle(s) have zero"
+			" area -- their cells have no volume and checkMesh will reject the mesh\n";
+	}
+
+	std::cout << "polyMesh: " << poly.nCells << " cells, " << poly.points.size()
+		<< " points, " << poly.faces.size() << " faces (" << poly.nInternalFaces()
+		<< " internal), " << poly.patches.size() << " patches; " << axisFaces
+		<< " face(s) on the axis collapsed to zero area and were dropped\n";
+
+	return poly;
+}
+
 bool writeBlockMeshDict(const std::filesystem::path& path, const BlockMeshDict& dict) {
 
 	// Every hex and every patch face below indexes dict.vertices directly. An
@@ -692,6 +1017,224 @@ bool writeBlockMeshDict(const std::filesystem::path& path, const BlockMeshDict& 
 	if (!out) {
 		std::cerr << "writeBlockMeshDict: write failed for " << path.string() << '\n';
 		return false;
+	}
+
+	return true;
+}
+
+bool writePolyMesh(const std::filesystem::path& dir, const PolyMesh& mesh) {
+
+	const int nPoints = (int)mesh.points.size();
+	const int nFaces = (int)mesh.faces.size();
+	const int nInternal = mesh.nInternalFaces();
+
+	if (nPoints == 0 || nFaces == 0 || mesh.nCells <= 0) {
+		std::cerr << "writePolyMesh: nothing to write -- " << nPoints << " points, "
+			<< nFaces << " faces, " << mesh.nCells << " cells\n";
+		return false;
+	}
+
+	if ((int)mesh.faceOwner.size() != nFaces || nInternal > nFaces) {
+		std::cerr << "writePolyMesh: " << nFaces << " faces against "
+			<< mesh.faceOwner.size() << " owners and " << nInternal
+			<< " neighbours\n";
+		return false;
+	}
+
+	// OpenFOAM reads these files as written -- it validates almost none of this on
+	// the way in, so a label out of range or a face wound the wrong way surfaces much
+	// later as a wrong answer or a crash somewhere unrelated. Catch it here.
+	for (int f = 0; f < nFaces; f++) {
+
+		if (mesh.faces[f].size() < 3) {
+			std::cerr << "writePolyMesh: face " << f << " has only "
+				<< mesh.faces[f].size() << " points\n";
+			return false;
+		}
+
+		for (int label : mesh.faces[f]) {
+			if (label < 0 || label >= nPoints) {
+				std::cerr << "writePolyMesh: face " << f << " names point " << label
+					<< " of " << nPoints << '\n';
+				return false;
+			}
+		}
+
+		if (mesh.faceOwner[f] < 0 || mesh.faceOwner[f] >= mesh.nCells) {
+			std::cerr << "writePolyMesh: face " << f << " is owned by cell "
+				<< mesh.faceOwner[f] << " of " << mesh.nCells << '\n';
+			return false;
+		}
+
+		// Upper-triangular order, which is a requirement and not a convention.
+		if (f < nInternal) {
+
+			if (mesh.faceNeighbour[f] < 0 || mesh.faceNeighbour[f] >= mesh.nCells) {
+				std::cerr << "writePolyMesh: internal face " << f << " has neighbour "
+					<< mesh.faceNeighbour[f] << " of " << mesh.nCells << '\n';
+				return false;
+			}
+
+			if (mesh.faceOwner[f] >= mesh.faceNeighbour[f]) {
+				std::cerr << "writePolyMesh: internal face " << f << " has owner "
+					<< mesh.faceOwner[f] << " >= neighbour " << mesh.faceNeighbour[f]
+					<< " -- polyMesh needs owner < neighbour\n";
+				return false;
+			}
+
+			if (f > 0 &&
+				(mesh.faceOwner[f] < mesh.faceOwner[f - 1] ||
+				 (mesh.faceOwner[f] == mesh.faceOwner[f - 1] &&
+				  mesh.faceNeighbour[f] < mesh.faceNeighbour[f - 1]))) {
+				std::cerr << "writePolyMesh: internal face " << f
+					<< " breaks upper-triangular order\n";
+				return false;
+			}
+		}
+	}
+
+	// The patches have to TILE the boundary block. A face left out of every patch is
+	// one the solver has no condition for, and it aborts on it while constructing the
+	// first field -- naming the field, not the hole in the mesh.
+	int expected = nInternal;
+	for (const FoamPolyPatch& patch : mesh.patches) {
+
+		if (patch.startFace != expected || patch.nFaces <= 0) {
+			std::cerr << "writePolyMesh: patch " << patch.name << " starts at "
+				<< patch.startFace << " with " << patch.nFaces << " faces, expected "
+				<< expected << '\n';
+			return false;
+		}
+
+		expected += patch.nFaces;
+	}
+
+	if (expected != nFaces) {
+		std::cerr << "writePolyMesh: the patches cover faces " << nInternal << ".."
+			<< expected << " but the mesh has " << nFaces << '\n';
+		return false;
+	}
+
+	std::error_code ec;
+	std::filesystem::create_directories(dir, ec);
+	if (ec) {
+		std::cerr << "writePolyMesh: cannot create " << dir.string()
+			<< " -- " << ec.message() << '\n';
+		return false;
+	}
+
+	// Binary for the same reason the dict is: written on Windows, read by OpenFOAM
+	// under WSL, and both sides should see the same bytes. 17 digits round-trips a
+	// double exactly, which matters more here than in the dict -- these points ARE
+	// the mesh, with no blockMesh in between to regenerate them.
+	auto openFile = [&](std::ofstream& out, const char* object, const char* className) {
+
+		out.open(dir / object, std::ios::binary | std::ios::trunc);
+		if (!out) {
+			std::cerr << "writePolyMesh: cannot open " << (dir / object).string() << '\n';
+			return false;
+		}
+
+		out << std::setprecision(17);
+		writeFoamHeader(out, className, object, "constant/polyMesh");
+		return true;
+	};
+
+	auto closeFile = [](std::ofstream& out, const char* object) {
+
+		out << "\n// ************************************************************************* //\n";
+
+		// Everything above is buffered, so the stream state is worth one last look
+		// before the file is called written.
+		out.flush();
+		if (!out) {
+			std::cerr << "writePolyMesh: write failed for " << object << '\n';
+			return false;
+		}
+		return true;
+	};
+
+	{
+		std::ofstream out;
+		if (!openFile(out, "points", "vectorField")) return false;
+
+		out << nPoints << "\n(\n";
+		for (const Vec3& p : mesh.points) {
+			out << "(" << p.x << " " << p.y << " " << p.z << ")\n";
+		}
+		out << ")\n";
+
+		if (!closeFile(out, "points")) return false;
+	}
+
+	{
+		std::ofstream out;
+		if (!openFile(out, "faces", "faceList")) return false;
+
+		// `n(a b c ...)`: the point count is part of the entry, which is what lets one
+		// list hold the quads, the collapsed triangles and the wedge planes together.
+		out << nFaces << "\n(\n";
+		for (const std::vector<int>& face : mesh.faces) {
+
+			out << face.size() << "(";
+			for (std::size_t k = 0; k < face.size(); k++) {
+				out << (k ? " " : "") << face[k];
+			}
+			out << ")\n";
+		}
+		out << ")\n";
+
+		if (!closeFile(out, "faces")) return false;
+	}
+
+	{
+		std::ofstream out;
+		if (!openFile(out, "owner", "labelList")) return false;
+
+		out << nFaces << "\n(\n";
+		for (int owner : mesh.faceOwner) out << owner << "\n";
+		out << ")\n";
+
+		if (!closeFile(out, "owner")) return false;
+	}
+
+	{
+		std::ofstream out;
+		if (!openFile(out, "neighbour", "labelList")) return false;
+
+		// Internal faces only -- its LENGTH is how OpenFOAM tells the internal faces
+		// from the boundary ones, so this is not just the owner list trimmed.
+		out << nInternal << "\n(\n";
+		for (int neighbour : mesh.faceNeighbour) out << neighbour << "\n";
+		out << ")\n";
+
+		if (!closeFile(out, "neighbour")) return false;
+	}
+
+	{
+		std::ofstream out;
+		if (!openFile(out, "boundary", "polyBoundaryMesh")) return false;
+
+		out << mesh.patches.size() << "\n(\n";
+		for (const FoamPolyPatch& patch : mesh.patches) {
+
+			out << "    " << patch.name << "\n"
+			       "    {\n"
+			    << "        type            " << foamPatchTypeName(patch.type) << ";\n";
+
+			// What blockMesh writes for a wall, and what the wall-aware function
+			// objects (wallShearStress, yPlus) select on.
+			if (patch.type == BoundaryFOAMType::WALL) {
+				out << "        inGroups        1(wall);\n";
+			}
+
+			out << "        nFaces          " << patch.nFaces << ";\n"
+			    << "        startFace       " << patch.startFace << ";\n"
+			       "    }\n";
+		}
+		out << ")\n";
+
+		if (!closeFile(out, "boundary")) return false;
 	}
 
 	return true;
@@ -1339,10 +1882,18 @@ const char* constraintPatchType(BoundaryFOAMType type) {
 	return nullptr;
 }
 
-}
+// Everything the 0/ writer needs to know about one patch: whether it is a
+// constraint type, and which boundary group its conditions come from. A
+// blockMeshDict patch and a polyMesh patch differ only in how their FACES are
+// spelled, and there are no faces in 0/ -- so both mesh paths reduce to this and
+// share every line below it.
+struct PatchRef {
+	BoundaryFOAMType type = BoundaryFOAMType::PATCH;
+	int groupID = -1;
+};
 
-std::vector<FoamField> initialFieldsFromDict(
-	const BlockMeshDict& dict,
+std::vector<FoamField> initialFields(
+	const std::map<std::string, PatchRef>& patches,
 	const std::vector<BoundarySegmentGroup>& groups,
 	const FoamCaseSetup& setup
 ) {
@@ -1408,10 +1959,10 @@ std::vector<FoamField> initialFieldsFromDict(
 	// One pass over the mesh's patches filling every field, rather than one pass per
 	// field: a patch can then never end up present in one file and missing from
 	// another, which the solver treats as fatal rather than defaulting.
-	for (const auto& entry : dict.boundary) {
+	for (const auto& entry : patches) {
 
 		const std::string& patchName = entry.first;
-		const BoundaryFOAM& patch = entry.second;
+		const PatchRef& patch = entry.second;
 
 		// Both of these depend on the patch alone, so they are resolved once here
 		// rather than per field.
@@ -1427,8 +1978,8 @@ std::vector<FoamField> initialFieldsFromDict(
 				fieldPatch.type = constraint;
 			}
 			else if (!group) {
-				// boundaryFromMultiblock's "unassigned" fallback, or a group that
-				// vanished between the two calls. Either way there is nothing to
+				// The "unassigned" fallback both mesh paths fall back on, or a group
+				// that vanished between the two calls. Either way there is nothing to
 				// derive an entry from, so say so instead of guessing silently.
 				fieldPatch.note = "no boundary group behind this patch. zeroGradient is a guess";
 			}
@@ -1445,6 +1996,36 @@ std::vector<FoamField> initialFieldsFromDict(
 	}
 
 	return fields;
+}
+
+}
+
+std::vector<FoamField> initialFieldsFromDict(
+	const BlockMeshDict& dict,
+	const std::vector<BoundarySegmentGroup>& groups,
+	const FoamCaseSetup& setup
+) {
+
+	std::map<std::string, PatchRef> patches;
+	for (const auto& entry : dict.boundary) {
+		patches[entry.first] = { entry.second.type, entry.second.groupID };
+	}
+
+	return initialFields(patches, groups, setup);
+}
+
+std::vector<FoamField> initialFieldsFromPolyMesh(
+	const PolyMesh& mesh,
+	const std::vector<BoundarySegmentGroup>& groups,
+	const FoamCaseSetup& setup
+) {
+
+	std::map<std::string, PatchRef> patches;
+	for (const FoamPolyPatch& patch : mesh.patches) {
+		patches[patch.name] = { patch.type, patch.groupID };
+	}
+
+	return initialFields(patches, groups, setup);
 }
 
 bool writeInitialFields(const std::filesystem::path& dir, const std::vector<FoamField>& fields) {

@@ -105,24 +105,36 @@ void loadFromPathGeometry(std::ifstream& in, Geometry& geometry);
 // ======================================================================
 // Ask for a name, then write the mesh. The Save-as-type dropdown chooses between the
 // native .aximesh/.bin save and an OpenFOAM export; picking "OpenFOAM Case" routes to
-// saveBlockMeshCase below and produces a folder, not the file the dialog named.
+// saveFoamCase below and produces a folder, not the file the dialog named.
 void saveFromExplorerMesh(Mesh& mesh, const Solver& solver);
 
 // Export the project as a complete, runnable OpenFOAM case:
 //
-//   system/    blockMeshDict, controlDict, fvSchemes, fvSolution
-//   constant/  transportProperties, turbulenceProperties
+//   system/    controlDict, fvSchemes, fvSolution (+ blockMeshDict, see below)
+//   constant/  transportProperties, turbulenceProperties (+ polyMesh, see below)
 //   0/         U, p, and T/C for whichever scalars are being solved
 //
-// so `blockMesh -case <dir> && simpleFoam -case <dir>` runs it end to end. The mesh
-// supplies the geometry and the boundary conditions; `setup` supplies the fluid and
-// the numerics, and decides between simpleFoam and pimpleFoam.
+// The mesh supplies the geometry and the boundary conditions; `setup` supplies the
+// fluid and the numerics, and decides between simpleFoam and pimpleFoam.
 //
-// Requires a multi-block mesh -- the blocks, their interfaces and the per-edge
-// boundary groups all come from the trellis decomposition. Returns false and logs
-// if there is none, if a folder cannot be created, or if a write fails.
-bool saveBlockMeshCase(const std::filesystem::path& dir, const Mesh& mesh,
-                       const FoamCaseSetup& setup);
+// How the MESH goes out depends on what kind it is, and the two are not
+// interchangeable -- a blockMeshDict is a list of hexes, which a triangulated mesh
+// has none of:
+//
+//   - multi-block: system/blockMeshDict, so the case needs a `blockMesh` run first.
+//     The blocks, their interfaces and the per-edge boundary groups all come from
+//     the trellis decomposition.
+//   - unstructured: constant/polyMesh written straight out, revolved into a wedge
+//     from the same FVMesh the solver runs on. There is no meshing step -- running
+//     blockMesh on it would only fail on a dict that is not there.
+//
+// The console line at the end says which, and quotes the exact commands to run.
+//
+// Returns false and logs if the mesh is neither (a plain single-block structured
+// grid has no vertex ids to revolve), if a folder cannot be created, or if a write
+// fails.
+bool saveFoamCase(const std::filesystem::path& dir, const Mesh& mesh,
+                  const FoamCaseSetup& setup);
 
 // Flatten Solver into the FoamCaseSetup the case writers want: fluid properties,
 // the two field checkboxes, transient/dt/tEnd, the convection and gradient schemes,

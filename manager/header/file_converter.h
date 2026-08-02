@@ -100,6 +100,43 @@ BlockMeshDict blockMeshDictFromMultiblock(
 	const std::vector<BoundaryEdge>& boundaryEdges,
 	const std::vector<BoundaryVertex>& boundaryVertices);
 
+// Revolve AxiSim's triangulated mesh into the wedge OpenFOAM will solve on.
+//
+// `points` / `triangles` are Mesh::unstructuredPoints and ::unstructuredTriangles;
+// `fvMesh` must be the FVMesh built from those same two (Mesh::createFVMesh on an
+// unstructured mesh), because it is what supplies the connectivity AND the boundary
+// classification. Taking the classification from there rather than redoing it is
+// the point: the exported patches then cut the boundary exactly where the solver's
+// BC groups do, and any disagreement between the two codes is physics rather than
+// a face landing on the wrong patch.
+//
+// Cell c is triangle c is fvMesh.cells[c], all the way through, so a field indexed
+// by AxiSim cell can be read against the OpenFOAM one positionally.
+//
+// Faces come back in the order polyMesh demands -- see PolyMesh. The two wedge
+// planes are always present, as patches "back" and "front"; a user group whose name
+// sanitizes to either of those is de-collided, not merged into it.
+//
+// An empty mesh comes back for anything this cannot honestly export (a triangle
+// naming a point that does not exist, an FVMesh built from a different mesh, a face
+// with no vertices behind it), with the reason on stderr.
+PolyMesh polyMeshFromUnstructured(
+	const std::vector<Vec2>& points, const std::vector<Triangle>& triangles,
+	const FVMesh& fvMesh, const std::vector<BoundarySegmentGroup>& groups,
+	double wedgeAngleDeg = 5.0);
+
+// Write `mesh` as the five files of an OpenFOAM polyMesh -- points, faces, owner,
+// neighbour, boundary -- into `dir`, which should be <case>/constant/polyMesh and
+// is created if it does not exist.
+//
+// The invariants PolyMesh documents are CHECKED here before anything reaches disk,
+// because OpenFOAM does not check most of them on read: a label out of range, an
+// internal face with owner > neighbour, or a boundary face left out of every patch
+// surfaces much later as a wrong answer, a segfault inside the solver, or a mesh
+// that silently loses a patch. Returns false, and says which invariant broke, in
+// preference to writing a mesh like that.
+bool writePolyMesh(const std::filesystem::path& dir, const PolyMesh& mesh);
+
 // Write `dict` out as an OpenFOAM blockMeshDict, ready for `blockMesh` to read.
 // Returns false (and says why on stderr) if the file cannot be opened or written;
 // a partial file is left on disk either way, so a caller that needs atomicity has
@@ -177,6 +214,13 @@ bool writeTurbulenceProperties(const std::filesystem::path& path);
 // note on the entry saying what was lost. Nothing is dropped silently.
 std::vector<FoamField> initialFieldsFromDict(
 	const BlockMeshDict& dict, const std::vector<BoundarySegmentGroup>& groups,
+	const FoamCaseSetup& setup);
+
+// The same, for a case whose mesh went out as a polyMesh instead of a dict. 0/ has
+// no faces in it, so the two paths differ only in where the list of patch
+// name/type/group triples is read from -- everything below that is shared.
+std::vector<FoamField> initialFieldsFromPolyMesh(
+	const PolyMesh& mesh, const std::vector<BoundarySegmentGroup>& groups,
 	const FoamCaseSetup& setup);
 
 // Write one file per field into `dir`, which must already exist and should be the
