@@ -241,6 +241,16 @@ void writeFoamHeader(std::ofstream& out, std::string_view className, std::string
 
 }
 
+// NOT "C". OpenFOAM reserves that name for the cell-centre field -- mesh.C() -- and
+// `postProcess -func writeCellCentres` writes it as a volVectorField straight into
+// the time directory. A concentration exported as C is silently overwritten by its
+// own cell centres the first time anyone asks where the cells are, which is exactly
+// what a comparison against AxiSim needs to do. Verified against v2606.
+//
+// Temperature keeps "T": that is OpenFOAM's own name for it and collides with
+// nothing. The other reserved geometry name is "V" (cell volumes).
+const char* const kConcentrationField = "Conc";
+
 const char* foamPatchTypeName(BoundaryFOAMType type) {
 	switch (type) {
 		case BoundaryFOAMType::WALL:           return "wall";
@@ -675,7 +685,7 @@ bool writeControlDict(const std::filesystem::path& path, const FoamCaseSetup& se
 		}
 		if (setup.solveEnergy && setup.solveConcentration) out << '\n';
 		if (setup.solveConcentration) {
-			writeScalarTransport(out, "C", setup.D);
+			writeScalarTransport(out, kConcentrationField, setup.D);
 		}
 
 		out << "}\n\n";
@@ -737,10 +747,11 @@ bool writeFvSchemes(const std::filesystem::path& path, const FoamCaseSetup& setu
 	// the gradient OF THE FIELD being convected -- so these cannot share one entry.
 	const bool needsGrad = (setup.convection == FoamConvection::LinearUpwind);
 
-	// Six spaces lines the value up with `default         none;` above it -- every
-	// field name here is one character, so the padding is fixed.
-	auto divEntry = [&](const char* field) {
-		out << "    div(phi," << field << ")      "
+	// Pad out to the column `default         none;` sets, whatever the name's length.
+	auto divEntry = [&](const std::string& field) {
+		const std::string key = "div(phi," + field + ")";
+		out << "    " << key
+		    << std::string(key.size() < 16 ? 16 - key.size() : 1, ' ')
 		    << boundedPrefix << "Gauss " << interp;
 		if (needsGrad) out << " grad(" << field << ")";
 		out << ";\n";
@@ -751,7 +762,7 @@ bool writeFvSchemes(const std::filesystem::path& path, const FoamCaseSetup& setu
 	       "    default         none;\n";
 	divEntry("U");
 	if (setup.solveEnergy)        divEntry("T");
-	if (setup.solveConcentration) divEntry("C");
+	if (setup.solveConcentration) divEntry(kConcentrationField);
 
 	// The viscous stress term simpleFoam/pimpleFoam always assembles. Not optional:
 	// `default none` means every div the solver forms has to be named here.
@@ -805,7 +816,7 @@ bool writeFvSolution(const std::filesystem::path& path, const FoamCaseSetup& set
 	       "        tolerance       1e-08;\n"
 	       "        relTol          0.01;\n"
 	       "    }\n\n"
-	       "    \"(U|T|C).*\"\n"
+	       "    \"(U|T|Conc).*\"\n"
 	       "    {\n"
 	       "        solver          smoothSolver;\n"
 	       "        smoother        symGaussSeidel;\n"
@@ -837,7 +848,7 @@ bool writeFvSolution(const std::filesystem::path& path, const FoamCaseSetup& set
 		       "    {\n"
 		       "        p               1e-06;\n"
 		       "        U               1e-06;\n"
-		       "        \"(T|C)\"         1e-06;\n"
+		       "        \"(T|Conc)\"      1e-06;\n"
 		       "    }\n"
 		       "}\n\n";
 
@@ -850,7 +861,7 @@ bool writeFvSolution(const std::filesystem::path& path, const FoamCaseSetup& set
 		       "    equations\n"
 		       "    {\n"
 		    << "        U               " << foamNumber(setup.momentumRelaxation) << ";\n"
-		    << "        \"(T|C)\"         " << foamNumber(setup.momentumRelaxation) << ";\n"
+		    << "        \"(T|Conc)\"      " << foamNumber(setup.momentumRelaxation) << ";\n"
 		       "    }\n"
 		       "}\n\n";
 	}
@@ -1125,7 +1136,7 @@ std::vector<FoamField> initialFieldsFromDict(
 
 	if (setup.solveConcentration) {
 		fields.push_back({
-			.name = "C",
+			.name = kConcentrationField,
 			.variable = BoundaryVariable::Concentration,
 			.dimensions = "[0 -3 0 0 1 0 0]",
 			.internalField = "uniform " + foamNumber(
