@@ -8,6 +8,7 @@
 
 #include "file_manager.h"
 #include "keyboard_manager.h"
+#include "stream_capture.h"
 #include "unit_manager.h"
 
 using namespace Shortcuts;
@@ -177,8 +178,22 @@ void Menu::drawExport() {
 
 		if (menuItem("Mesh")) {
 
+			// The mesh writers report on stderr, which in a windowed session goes to
+			// a console window behind the app. Without this the OpenFOAM export could
+			// fail -- leaving a case directory with no controlDict in it -- and the
+			// GUI would say nothing, so the first sign of trouble was blockMesh
+			// refusing the case minutes later. Tee what the export says into the
+			// panel the user is actually looking at.
+			//
+			// This also carries the boundary-group warnings, which do not fail the
+			// export but decide whether the patches mean anything.
+			StreamCapture captured;
+
 			saveFromExplorerMesh(project.mesh, project.solver);
 
+			for (const std::string& line : captured.lines()) {
+				gui.console.addLine(line);
+			}
 		}
 		// Gated on frames actually existing rather than on the Transient checkbox,
 		// which can be turned on (or off) without a run behind it -- the same
