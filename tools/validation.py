@@ -17,6 +17,7 @@ INLET_PEAK = 0.0844e-3
 class CompareType(Enum):
     POISEUILLE = 1
     OPENFOAM = 2
+    EXPERIMENT = 3
 
 # AxiSim's name for each field the OpenFOAM export writes. U is one vector file
 # carrying two of them; its third component is the wedge direction and means
@@ -451,7 +452,467 @@ def foam_compare_maps(s, c, f, live, idx, field):
     foam_map(f, c, live, idx, field, axes[1], clim, values=b)
     foam_validation(s, c, f, live, idx, field, ax=axes[2])
 
-    axes[0].set_title(f"{field}:  AxiSim  /  OpenFOAM t={f.time}  /  difference")
+    axes[0].set_title(f"{field}:  AxiSim (top)   OpenFOAM t={f.time}  (middle)   difference (bottom)")
+    fig.tight_layout()
+
+    return fig
+
+
+# ======================================================================
+# -------------------FDA NOZZLE PIV EXPERIMENT--------------------------
+# ======================================================================
+# Interlaboratory PIV for the FDA benchmark nozzle, sudden-expansion orientation.
+# Unzip SE_exp_0500.zip from
+#   https://github.com/OSEL-DAM/CFD-and-Blood-Damage-Benchmarks  (Nozzle/Data)
+# and PIV_DIR is the `experiment/` folder that falls out of it. The old
+# nciphub.org home of this dataset is dead -- the domain no longer resolves.
+#
+# Unlike the OpenFOAM comparison this is not a code-to-code check: these are
+# measurements, with a real uncertainty, and the five files are five independent
+# lab datasets rather than five repeats. So nothing here reduces them to one
+# curve -- the spread between them IS the tolerance the solver has to land in.
+PIV_DIR = ROOT / "experiment"
+
+# Profile block name (the part between "plot-profile-" and "-at-z") -> the AxiSim
+# field it should be compared against. Reynolds stress is deliberately absent: at
+# Re = 500 the flow is laminar and the block is ~0 everywhere, present only so the
+# file layout matches the higher-Re cases.
+PIV_FIELDS = {
+    "axial-velocity":  "Axial Velocity",
+    "radial-velocity": "Radial Velocity",
+    "shear-stress":    "Shear Stress",
+}
+
+# Odd in r: these flip sign when the profile is folded about the axis. The files
+# store a full diameter, so the r < 0 branch of a radial velocity is the negative
+# of the same physical value. Axial velocity is even, and the shear-stress block
+# is a magnitude (verified: no negative entries anywhere in it), so neither flips.
+PIV_ODD_IN_R = {"radial-velocity"}
+
+
+@dataclass
+class PivLab:
+    code: str                       # the trailing number in the filename
+    header: dict[str, str]
+    profiles: dict                  # (quantity, z) -> (n, 2) array of (r, value)
+    axial: dict                     # block name  -> (n, 2) array of (z, value)
+
+    @property
+    def rho(self):  return float(self.header["fluid-density"])
+    @property
+    def mu(self):   return float(self.header["fluid-viscosity"])
+    @property
+    def flow(self): return float(self.header["fluid-volumetric-flow-rate"])
+
+
+@dataclass
+class Piv:
+    labs: list[PivLab]
+    stations: list[float]           # every z any lab has an axial-velocity profile at
+
+
+@dataclass
+class PivBand:
+    r: np.ndarray                   # common radius grid, folded so r >= 0
+    lo: np.ndarray                  # envelope over every lab and both branches
+    hi: np.ndarray
+    mean: np.ndarray
+    codes: list[str]                # labs that contributed
+    ncurves: int
+
+
+def read_piv_file(path: pathlib.Path) -> PivLab:
+    """One lab's PIV file: `key value` header lines, then self-describing blocks.
+
+    A block is a name line, a count line, then that many 2-column rows. The count
+    is authoritative and must be read -- the files do NOT agree on it. Codes 243,
+    468 and 763 use 100 points per profile, 297 uses 38-121 and 999 uses 37-111.
+    """
+    header, profiles, axial = {}, {}, {}
+    lines = path.read_text().splitlines()
+
+    i = 0
+    while i < len(lines):
+        parts = lines[i].split()
+        i += 1
+
+        if not parts:
+            continue
+
+        name = parts[0]
+
+        if not name.startswith("plot-"):
+            header[name] = " ".join(parts[1:]).strip('"')
+            continue
+
+        n = int(lines[i])
+        i += 1
+
+        rows = np.array([[float(x) for x in lines[i + k].split()] for k in range(n)])
+        i += n
+
+        # "plot-profile-<quantity>-at-z <z> 0" -- radial profile at a station.
+        # Everything else is a distribution along z and keeps its full name.
+        if name.startswith("plot-profile-") and name.endswith("-at-z"):
+            quantity = name[len("plot-profile-"):-len("-at-z")]
+            profiles[(quantity, round(float(parts[1]), 6))] = rows
+        else:
+            axial[name] = rows
+
+    return PivLab(path.stem.split("_")[-1], header, profiles, axial)
+
+
+def load_piv(folder=PIV_DIR) -> Piv:
+    """Every lab file in one folder, plus the union of their stations.
+
+    Union, not intersection: code 468 is missing z = +0.016, +0.024 and +0.080
+    (42 blocks against the others' 54), and dropping three stations everywhere to
+    accommodate it would throw away data the other four labs did measure.
+    """
+    d = pathlib.Path(folder)
+
+    paths = sorted(d.glob("*.txt"))
+    if not paths:
+        raise FileNotFoundError(
+            f"{d}: no PIV .txt files -- unzip SE_exp_0500.zip here")
+
+    labs = [read_piv_file(p) for p in paths]
+
+    stations = sorted({z for lab in labs for (q, z) in lab.profiles
+                       if q == "axial-velocity"})
+
+    return Piv(labs, stations)
+
+
+def trim_edge_zeros(r, v):
+    """Drop the leading and trailing runs of exact zeros.
+
+    The PIV window is wider than the tube, so every profile is padded out to the
+    window with exact 0.0 where there is no fluid. Those are not measurements, and
+    an error metric taken over them is dominated by invented wall data -- they are
+    also, usefully, what marks where the wall is.
+
+    Only the runs at each END go. An interior exact zero is kept: u genuinely
+    passes through zero inside the recirculation zone behind the step.
+    """
+    nz = np.flatnonzero(v != 0.0)
+
+    if nz.size == 0:
+        return r[:0], v[:0]
+
+    return r[nz[0]:nz[-1] + 1], v[nz[0]:nz[-1] + 1]
+
+
+def piv_curves(lab: PivLab, quantity: str, z: float, recenter=False):
+    """One lab's profile at z, as up to two (|r|, value) curves sorted by |r|.
+
+    The branches are returned separately rather than averaged. The two sides of
+    the same measurement disagree by more than the fit error in places, and that
+    asymmetry is part of the experimental uncertainty -- merging it here would
+    make the band look tighter than the experiment was.
+
+    `recenter` shifts r so the wetted span is symmetric about the axis. It is off
+    by default because the misalignment is small and silently moving measured data
+    is worse than reporting it: across all five files and twelve stations the
+    wetted midpoint sits within 0.1 mm of r = 0, under 2% of the inlet radius.
+    Code 999 is already exactly symmetric.
+    """
+    rows = lab.profiles.get((quantity, round(z, 6)))
+
+    if rows is None:
+        return []
+
+    r, v = rows[:, 0], rows[:, 1]
+
+    # Code 297 stores r descending; everything below assumes ascending.
+    if r[0] > r[-1]:
+        r, v = r[::-1], v[::-1]
+
+    r, v = trim_edge_zeros(r, v)
+
+    if r.size == 0:
+        return []
+
+    if recenter:
+        r = r - 0.5 * (r[0] + r[-1])
+
+    curves = []
+
+    for side in (-1.0, +1.0):
+        m = (side * r) > 0
+
+        # A branch needs two points to interpolate on. Inside the throat, where a
+        # station spans only +/-2 mm, one side can fall below that.
+        if m.sum() < 2:
+            continue
+
+        rr, vv = np.abs(r[m]), v[m]
+
+        if side < 0 and quantity in PIV_ODD_IN_R:
+            vv = -vv
+
+        o = np.argsort(rr)
+        curves.append((rr[o], vv[o]))
+
+    return curves
+
+
+def piv_band(piv: Piv, quantity: str, z: float, n=80, recenter=False):
+    """Envelope of every lab and both branches at one station, on a common grid.
+
+    The labs sample r on different grids (spacing 0.107-0.189 mm) and disagree on
+    where the wall is by about 0.2 mm, so the grid spans only the radii EVERY
+    curve covers. That trims to the innermost wall rather than extrapolating a lab
+    past its own last sample -- extrapolated ends would widen the band exactly
+    where it is being read most closely.
+    """
+    curves, codes = [], []
+
+    for lab in piv.labs:
+        cs = piv_curves(lab, quantity, z, recenter)
+        curves += cs
+
+        if cs:
+            codes.append(lab.code)
+
+    if not curves:
+        return None
+
+    r = np.linspace(max(c[0][0] for c in curves),
+                    min(c[0][-1] for c in curves), n)
+
+    vals = np.array([np.interp(r, cr, cv) for cr, cv in curves])
+
+    return PivBand(r, vals.min(0), vals.max(0), vals.mean(0), codes, len(curves))
+
+
+def axisim_field(s: Solution, name: str):
+    """One AxiSim field by name, including the ones it does not store directly.
+
+    The PIV files report a viscous shear-stress magnitude, which has no solution
+    column -- but the velocity gradients do, so tau_rz is reconstructed here
+    rather than left uncomparable. Magnitude, to match the sign convention of the
+    measured block.
+    """
+    if name in s.col:
+        return s.c(name)
+
+    if name == "Shear Stress":
+        return np.abs(s.meta["fluid"]["mu"] * (s.c("dU/dr") + s.c("dV/dz")))
+
+    raise KeyError(f"{name}: not a solution column and not derived here")
+
+
+def profile_sampler(s: Solution):
+    """Build the triangulation once, hand back a (field, z, r) -> values sampler.
+
+    Linear interpolation, not nearest-neighbour: nearest would quantise the
+    profile to the cell size, which near the wall is the same order as the
+    difference being measured.
+
+    The Delaunay triangulation spans the concave corner upstream of the step --
+    it knows nothing about the solid there -- so a query inside the solid would be
+    silently interpolated across it. Every caller takes its radii from a PIV
+    profile, which trim_edge_zeros has already masked to the fluid, so the query
+    points stay inside. Anything sampled from elsewhere must respect that.
+    """
+    live = s.live
+    tri = mtri.Triangulation(s.c("z")[live], s.c("r")[live])
+    cache = {}
+
+    def sample(field, z, r):
+        if field not in cache:
+            cache[field] = mtri.LinearTriInterpolator(tri, axisim_field(s, field)[live])
+
+        # Outside the hull comes back masked; NaN keeps it out of the metrics
+        # instead of quietly reading as zero.
+        return np.ma.filled(cache[field](np.full_like(r, z), r), np.nan)
+
+    return sample
+
+
+def axisim_flow_rate(s: Solution, z=None, sample=None, n=400):
+    """Volumetric flow rate through one cross-section, by integrating 2*pi*r*u dr.
+
+    NOT the volume-weighted mean poiseuille_flow uses. That route goes through the
+    identity Umean = Q/(pi R^2), which holds only on a constant-radius pipe; this
+    geometry has a throat one third of the inlet diameter, and the whole-domain
+    volume-weighted mean there is a blend of throat and pipe that is not the flow
+    rate anywhere. Integrating a single station is exact on any radius.
+
+    Defaults to the inlet plane, which is what makes this a check on the BC.
+    Slightly under-reads: the outermost sample is a cell centre, half a cell
+    inside the wall, so a thin annulus is missed -- u is near zero there, so the
+    truncation is second order (~0.1% on a 44-cell radius).
+    """
+    live = s.live
+    zc, rc = s.c("z")[live], s.c("r")[live]
+
+    if z is None:
+        z = zc.min()
+
+    slab = np.abs(zc - z) <= (zc.max() - zc.min()) / 200.0
+
+    if not slab.any():
+        raise ValueError(f"no live cells near z = {z}")
+
+    r = np.linspace(0.0, rc[slab].max(), n)
+
+    if sample is None:
+        sample = profile_sampler(s)
+
+    u = sample("Axial Velocity", z, r)
+    ok = np.isfinite(u)
+
+    return 2.0 * np.pi * np.trapezoid(u[ok] * r[ok], r[ok])
+
+
+def piv_case_check(s: Solution, piv: Piv, sample=None):
+    """Compare the solved case against the conditions written in the PIV header.
+
+    The header carries the density, viscosity and flow rate the experiment was run
+    at, so a mis-set fluid or a mis-scaled inlet shows up here rather than as a
+    mysterious velocity error twelve panels later.
+    """
+    lab = piv.labs[0]
+
+    rho, mu = s.meta["fluid"]["rho"], s.meta["fluid"]["mu"]
+
+    print(f"labs              = {', '.join(l.code for l in piv.labs)}"
+          f"  ({len(piv.stations)} stations)")
+    print(f"rho               = {rho:.6g} AxiSim vs {lab.rho:.6g} experiment"
+          f"   [{100.0 * (rho / lab.rho - 1.0):+.3f}%]")
+    print(f"mu                = {mu:.6g} AxiSim vs {lab.mu:.6g} experiment"
+          f"   [{100.0 * (mu / lab.mu - 1.0):+.3f}%]")
+
+    Q = axisim_flow_rate(s, sample=sample)
+
+    print(f"flow rate         = {Q:.6g} AxiSim vs {lab.flow:.6g} experiment"
+          f"   [{100.0 * (Q / lab.flow - 1.0):+.3f}%]   (inlet plane)")
+
+    # Re on the throat diameter, the benchmark's own definition -- 500 is the
+    # laminar case and the only one AxiSim can claim, having no turbulence model.
+    dThroat = 0.004
+    print(f"Re (throat)       = {4.0 * rho * Q / (np.pi * dThroat * mu):.1f}"
+          f"   [benchmark: 500]")
+
+    if any(l.rho != lab.rho or l.mu != lab.mu for l in piv.labs):
+        print("warning: the lab files do not agree on the fluid properties")
+
+
+def piv_report(s: Solution, piv: Piv, quantity="axial-velocity", recenter=False,
+               sample=None):
+    """Per-station agreement with the measurements.
+
+    Two numbers per station, deliberately. The L2 is against the mean of the labs
+    and says how far off the solver is; "in band" is the fraction of the profile
+    that lands inside the interlaboratory envelope and says whether that distance
+    is even resolvable by this experiment. A 4% L2 that is 100% in band is a pass;
+    the same 4% entirely outside the band is not.
+    """
+    field = PIV_FIELDS[quantity]
+
+    if sample is None:
+        sample = profile_sampler(s)
+
+    print()
+    print(f"{quantity}  ->  AxiSim '{field}'")
+    print(f"{'z (mm)':>8s} {'curves':>7s} {'scale':>11s} "
+          f"{'L2':>9s} {'Linf':>9s} {'in band':>9s}")
+
+    tot_res, tot_scale2, tot_in, tot_n = [], [], 0, 0
+
+    for z in piv.stations:
+        band = piv_band(piv, quantity, z, recenter=recenter)
+
+        if band is None:
+            continue
+
+        a = sample(field, z, band.r)
+        ok = np.isfinite(a)
+
+        if not ok.any():
+            print(f"{z * 1e3:8.1f} {band.ncurves:7d} "
+                  f"{'--':>11s} {'--':>9s} {'--':>9s} {'--':>9s}"
+                  "   (station outside the mesh)")
+            continue
+
+        res = a[ok] - band.mean[ok]
+
+        # Per-station scale, so a station in the slow recirculation zone is not
+        # judged against the jet's magnitude.
+        scale = np.abs(band.mean[ok]).max()
+        scale = scale if scale > 0 else 1.0
+
+        inb = ((a[ok] >= band.lo[ok]) & (a[ok] <= band.hi[ok])).sum()
+
+        print(f"{z * 1e3:8.1f} {band.ncurves:7d} {scale:11.4g} "
+              f"{100.0 * np.sqrt((res ** 2).mean()) / scale:8.3f}% "
+              f"{100.0 * np.abs(res).max() / scale:8.3f}% "
+              f"{100.0 * inb / ok.sum():8.1f}%")
+
+        tot_res.append(res)
+        tot_scale2.append(np.full(res.shape, scale))
+        tot_in += inb
+        tot_n += ok.sum()
+
+    if not tot_res:
+        print("no station could be sampled -- is this the right solution folder?")
+        return
+
+    # Pooled over stations, each normalised by its own scale first so the jet does
+    # not drown out the recirculation zone.
+    rel = np.concatenate(tot_res) / np.concatenate(tot_scale2)
+
+    print(f"{'all':>8s} {'':>7s} {'':>11s} "
+          f"{100.0 * np.sqrt((rel ** 2).mean()):8.3f}% "
+          f"{100.0 * np.abs(rel).max():8.3f}% "
+          f"{100.0 * tot_in / tot_n:8.1f}%")
+
+
+def piv_validation(s: Solution, piv: Piv, quantity="axial-velocity",
+                   recenter=False, ncol=4, sample=None):
+    """One panel per station: interlab envelope, its mean, and AxiSim over it."""
+    field = PIV_FIELDS[quantity]
+
+    if sample is None:
+        sample = profile_sampler(s)
+
+    stations = [z for z in piv.stations
+                if piv_band(piv, quantity, z, recenter=recenter) is not None]
+
+    nrow = int(np.ceil(len(stations) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(3.4 * ncol, 2.8 * nrow),
+                             squeeze=False)
+
+    for ax, z in zip(axes.flat, stations):
+        band = piv_band(piv, quantity, z, recenter=recenter)
+        a = sample(field, z, band.r)
+
+        # fill_betweenx, not fill_between: the profile is plotted with the value
+        # on x and r up the y axis, so the band spans x at fixed y.
+        ax.fill_betweenx(band.r * 1e3, band.lo, band.hi,
+                         color="0.75", label="labs (envelope)")
+        ax.plot(band.mean, band.r * 1e3, color="0.35", lw=1.0, ls="--",
+                label="lab mean")
+        ax.plot(a, band.r * 1e3, color="tab:red", lw=1.4, label="AxiSim")
+
+        ax.set_title(f"z = {z * 1e3:+.0f} mm  ({band.ncurves} curves)", fontsize=9)
+        ax.tick_params(labelsize=8)
+        ax.grid(alpha=0.25)
+
+    for ax in axes.flat[len(stations):]:
+        ax.set_visible(False)
+
+    for ax in axes[-1]:
+        if ax.get_visible():
+            ax.set_xlabel(field, fontsize=8)
+
+    for row in axes:
+        row[0].set_ylabel("r (mm)", fontsize=8)
+
+    axes[0][0].legend(fontsize=7, loc="best")
+    fig.suptitle(f"FDA nozzle, sudden expansion, Re_throat = 500 -- {field}")
     fig.tight_layout()
 
     return fig
@@ -459,13 +920,13 @@ def foam_compare_maps(s, c, f, live, idx, field):
 
 def main():
 
-    compare = CompareType.OPENFOAM
+    compare = CompareType.EXPERIMENT
 
-    folder_name = "poiseuille_solution"
+    folder_name = "SE_sim_0500_solution"
 
     # The exported case. Keep it on the WSL filesystem, not /mnt/c -- OpenFOAM's
     # tiny-file I/O crawls across the 9p mount.
-    foam_case = r"\\wsl$\Ubuntu\home\luits\run\pipe-wedge3_case"
+    foam_case = r"\\wsl$\Ubuntu\home\luits\run\project_case"
 
     s = load_solution(folder_name)
     c = load_cells(folder_name)
@@ -474,6 +935,23 @@ def main():
         p = poiseuille_flow(s, c, Umax=INLET_PEAK)
         poiseuille_report(s, p)
         field_validation(s, c, CompareType.POISEUILLE, p)
+
+    elif compare == CompareType.EXPERIMENT:
+        piv = load_piv()
+
+        # One triangulation for all seven passes below -- rebuilding it per call
+        # is a Delaunay over every live cell each time.
+        sample = profile_sampler(s)
+
+        piv_case_check(s, piv, sample)
+
+        # Axial velocity first: it is the quantity the labs agree on best, so a
+        # disagreement there is the solver's. Shear stress is a derivative of the
+        # measured field on one side and of the solution on the other, and is the
+        # loosest of the three -- read it last.
+        for quantity in ("axial-velocity", "radial-velocity", "shear-stress"):
+            piv_report(s, piv, quantity, sample=sample)
+            piv_validation(s, piv, quantity, sample=sample)
 
     else:
         f = load_foam(foam_case, rho=s.meta["fluid"]["rho"])
