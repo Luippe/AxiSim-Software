@@ -156,7 +156,13 @@ void Solver::reset() {
     initConfigResiduals(cfg);
 }
 
-void Solver::run(const Mesh& mesh) {
+void Solver::run(Mesh& mesh) {
+
+    // Bring the cached FVMesh up to date before anything reads it -- boundary
+    // groups can be created after generate(), and their IDs are baked into
+    // FVFace::boundaryGroupID. Everything below (runCheck's continuation state and
+    // runSimple on the worker thread) then reads that one instance.
+    mesh.refreshFVMesh();
 
     if (!runCheck(mesh)) return;
 
@@ -448,41 +454,6 @@ namespace {
     }
 }
 
-std::vector<uint8_t> Solver::buildStructuredActiveCells(
-    const Mesh& mesh,
-    std::string* reason
-) const {
-    const int nr = mesh.g.nr;
-    const int nz = mesh.g.nz;
-
-    if (nr <= 0 || nz <= 0) {
-        setContinuationReason(reason, "Structured mesh has invalid grid dimensions.");
-        return {};
-    }
-
-    const int N = nr * nz;
-
-    if ((int)mesh.g.r.size() != nr ||
-        (int)mesh.g.z.size() != nz ||
-        (int)mesh.g.rFace.size() != nr + 1 ||
-        (int)mesh.g.zFace.size() != nz + 1) {
-        setContinuationReason(reason, "Structured mesh spacing has not been generated.");
-        return {};
-    }
-
-    std::vector<uint8_t> activeCell(static_cast<size_t>(N), 1);
-
-    for (int n : mesh.g.obstacleIndices) {
-        if (n < 0 || n >= N) {
-            setContinuationReason(reason, "Structured mesh obstacle data no longer matches the grid.");
-            return {};
-        }
-        activeCell[n] = 0;
-    }
-
-    return activeCell;
-}
-
 bool Solver::buildContinuationState(
     const Mesh& mesh,
     ContinuationState& state,
@@ -495,24 +466,9 @@ bool Solver::buildContinuationState(
         return false;
     }
 
-    const bool isStructuredMesh = mesh.currentMeshType == MeshType::Structured;
-    // A multiblock structured mesh is a collection of conformal blocks with general
-    // face connectivity (no single nr x nz grid), so it rides the face-based path
-    // like an unstructured mesh -- not the index-based structured path.
-    const bool isMultiBlock = mesh.isMultiBlock;
-    std::vector<uint8_t> activeCell;
-    std::vector<uint8_t> emptyActiveCell;
-
-    if (isStructuredMesh && !isMultiBlock) {
-        activeCell = buildStructuredActiveCells(mesh, reason);
-        if (activeCell.empty()) {
-            return false;
-        }
-    }
-
-    FVMesh candidate = isMultiBlock
-        ? mesh.createMultiBlockFVMesh()
-        : mesh.createFVMesh(isStructuredMesh ? activeCell : emptyActiveCell);
+    // The cached mesh, refreshed by Solver::run before it got here. This used to
+    // build an entire FVMesh just to read the counts below.
+    const FVMesh& candidate = mesh.getFVMesh();
 
     if (candidate.numCells() <= 0 || candidate.numFaces() <= 0) {
         setContinuationReason(reason, "Generate a valid mesh first.");
@@ -528,9 +484,6 @@ bool Solver::buildContinuationState(
     state.cells = candidate.numCells();
     state.faces = candidate.numFaces();
     state.faceRefs = faceRefs;
-    state.nr = candidate.nr;
-    state.nz = candidate.nz;
-    state.useFaceCoefficients = !isStructuredMesh || isMultiBlock;
     state.solveEnergy = fieldOption.solveEnergy;
     state.solveConcentration = fieldOption.solveConcentration;
 
@@ -580,11 +533,6 @@ bool Solver::canContinue(const Mesh& mesh, std::string* reason) const {
         return false;
     }
 
-    if (current.useFaceCoefficients != continuationState.useFaceCoefficients) {
-        setContinuationReason(reason, "Mesh type changed.");
-        return false;
-    }
-
     if (current.cells != continuationState.cells) {
         setContinuationReason(reason, "Mesh cell count changed.");
         return false;
@@ -597,12 +545,6 @@ bool Solver::canContinue(const Mesh& mesh, std::string* reason) const {
 
     if (current.faceRefs != continuationState.faceRefs) {
         setContinuationReason(reason, "Mesh connectivity changed.");
-        return false;
-    }
-
-    if (!current.useFaceCoefficients &&
-        (current.nr != continuationState.nr || current.nz != continuationState.nz)) {
-        setContinuationReason(reason, "Structured grid dimensions changed.");
         return false;
     }
 
@@ -873,21 +815,11 @@ void Solver::runSimple(const Mesh& mesh) {
     // create configs for solver and residual
     Config config{ f, g, varUnits };
 
-    const bool isStructuredMesh = mesh.currentMeshType == MeshType::Structured;
-    // Multiblock is structured-typed but has general face connectivity (no single
-    // nr x nz grid), so it uses the face-based coefficient path like unstructured.
-    const bool isMultiBlock = mesh.isMultiBlock;
-    const bool useFaceCoefficients = !isStructuredMesh || isMultiBlock;
-
-    std::vector<uint8_t> emptyActiveCell;
-
-    if (isStructuredMesh && !isMultiBlock) {
-        allocateGridConfig(config.g, config.f);
-    }
-
-    fvMesh = isMultiBlock
-        ? mesh.createMultiBlockFVMesh()
-        : mesh.createFVMesh(isStructuredMesh ? config.g.activeCell : emptyActiveCell);
+    // Copy the mesh's cache into our own snapshot rather than rebuilding it. Still a
+    // copy, deliberately: this runs on the solver thread, and owning the mesh for the
+    // duration of the run keeps a GUI-side rebuild from pulling it out from under us.
+    // Solver::run refreshed the cache on the GUI thread just before spawning.
+    fvMesh = mesh.getFVMesh();
     int N = fvMesh.numCells();
     int Nface = fvMesh.numFaces();
     config.g.N = N;
@@ -927,13 +859,11 @@ void Solver::runSimple(const Mesh& mesh) {
         continuationState.cells != N ||
         continuationState.faces != Nface ||
         continuationState.faceRefs != expectedFaceRefs ||
-        continuationState.useFaceCoefficients != useFaceCoefficients ||
         continuationState.solveEnergy != fieldOption.solveEnergy ||
         continuationState.solveConcentration != fieldOption.solveConcentration ||
         uCoeff.N != N ||
-        uCoeff.useFaceCoeffs != (useFaceCoefficients ? 1 : 0) ||
-        (useFaceCoefficients && uCoeff.nFaceRefs != expectedFaceRefs) ||
-        (!useFaceCoefficients && (uCoeff.nr != config.g.nr || uCoeff.nz != config.g.nz));
+        uCoeff.useFaceCoeffs != 1 ||
+        uCoeff.nFaceRefs != expectedFaceRefs;
 
     if (needsAllocation) {
 
@@ -953,33 +883,19 @@ void Solver::runSimple(const Mesh& mesh) {
         }
         simple.free();
 
-        if (useFaceCoefficients) {
-            allocateCoefficients(uCoeff, fvMesh);
-            allocateCoefficients(vCoeff, fvMesh);
-            allocateCoefficients(ppCoeff, fvMesh);
-            allocateCoefficients(massFluxCoeff, fvMesh);
-            allocateCoefficients(tempCoeff, fvMesh);
-            allocateCoefficients(concCoeff, fvMesh);
-        }
-        else {
-            int nr = config.g.nr;
-            int nz = config.g.nz;
+        allocateCoefficients(uCoeff, fvMesh);
+        allocateCoefficients(vCoeff, fvMesh);
+        allocateCoefficients(ppCoeff, fvMesh);
+        allocateCoefficients(massFluxCoeff, fvMesh);
+        allocateCoefficients(tempCoeff, fvMesh);
+        allocateCoefficients(concCoeff, fvMesh);
 
-            allocateCoefficients(uCoeff, nr, nz);
-            allocateCoefficients(vCoeff, nr, nz);
-            allocateCoefficients(ppCoeff, nr, nz);
-            allocateCoefficients(massFluxCoeff, nr, nz);
-            allocateCoefficients(tempCoeff, nr, nz);
-            allocateCoefficients(concCoeff, nr, nz);
-        }
-
-        // Gauss-Seidel ordering, face path only -- the structured path gets its
-        // checkerboard from (i+j)%2 in the kernel and needs no ordering. Nothing
-        // else reads it, so building it under any other solver type is a wasted
-        // O(N * degree) graph walk plus an N-int upload.
+        // Gauss-Seidel ordering. Nothing else reads it, so building it under any
+        // other solver type is a wasted O(N * degree) graph walk plus an N-int
+        // upload.
         coloring.free();
 
-        if (useFaceCoefficients && configSolver.type == LINEAR_GS_RB) {
+        if (configSolver.type == LINEAR_GS_RB) {
             buildMeshColoring(coloring, fvMesh);
 
             if (console) {
@@ -999,9 +915,6 @@ void Solver::runSimple(const Mesh& mesh) {
         continuationState.cells = N;
         continuationState.faces = Nface;
         continuationState.faceRefs = expectedFaceRefs;
-        continuationState.nr = config.g.nr;
-        continuationState.nz = config.g.nz;
-        continuationState.useFaceCoefficients = useFaceCoefficients;
         continuationState.solveEnergy = fieldOption.solveEnergy;
         continuationState.solveConcentration = fieldOption.solveConcentration;
 
@@ -1076,17 +989,11 @@ void Solver::runSimple(const Mesh& mesh) {
     double rho = f.rho;
     double thermDiffusivity = k / (rho * cp);
 
-    // Multigrid now coarsens the cell/face GRAPH rather than a logical nr x nz
-    // grid, so it runs on any face-based mesh -- which since every structured mesh
-    // is built as multiblock, means every mesh the Generate path produces. The old
-    // gate here was `isStructuredMesh && !isMultiBlock`, a combination that path
-    // never produces, so the solver could never actually construct one.
-    //
-    // Still gated on the face path: level 0's Coefficients are allocated by the
-    // face-path allocator (AC/b/AF, no AE/AW/AN/AS), so a structured-index source
-    // operator would have nothing to copy into.
+    // Multigrid coarsens the cell/face GRAPH rather than a logical nr x nz grid, so
+    // it runs on any face-based mesh -- which, since every structured mesh is built
+    // as multiblock, means every mesh the Generate path produces.
     std::optional<MultigridSolver> multigrid;
-    if (useMultigrid && useFaceCoefficients) {
+    if (useMultigrid) {
         GridLevel grid = makeFinestGridLevel(fvMesh);
         multigrid.emplace(configMultigrid, mem, grid);
         multigrid->prepare(ppCoeff, stream, simple.pp);

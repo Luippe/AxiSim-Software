@@ -65,10 +65,9 @@ void Inspector::rebuildMultiBlockCells() {
 		return;
 	}
 
-	// buildMultiBlockInspectMesh fills quads in block/cellGlobal order -- the same
-	// order solutions[].field is stored in -- so quad c and field[c] are the same cell.
-	FVMesh scratch;
-	mesh.buildMultiBlockInspectMesh(scratch, blockQuads);
+	// multiBlockCellCorners fills quads in block/cellGlobal order -- the same order
+	// solutions[].field is stored in -- so quad c and field[c] are the same cell.
+	mesh.multiBlockCellCorners(blockQuads);
 
 	if (blockQuads.empty()) {
 		return;

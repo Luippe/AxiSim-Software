@@ -229,8 +229,17 @@ struct CDTConstraintEdge {
 	std::size_t v1;
 };
 
+enum class CellShape : uint8_t {
+
+	QUAD,
+	TRIANGLE
+
+};
+
 struct FVCell {
 	Vec2 center;
+
+	CellShape shape = CellShape::QUAD;
 
 	double area2D = 0.0;
 	double volume = 0.0;

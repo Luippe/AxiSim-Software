@@ -555,6 +555,7 @@ int Mesh::createObstacleBoundaryGroup(const std::string& name) {
 	);
 
 	boundaryGroups.push_back(obstacle);
+	markFVMeshDirty();
 
 	return obstacle.id;
 }
@@ -570,6 +571,8 @@ void Mesh::clearUnstructuredGeometry() {
 
 	selectedBoundaryIDs.clear();
 	highlightedBoundarySegmentIDs.clear();
+
+	markFVMeshDirty();
 
 	vertices.clear();
 	indices.clear();
@@ -1095,6 +1098,7 @@ bool Mesh::convertSketchToUnstructuredMesh(const SketchModel& sketch) {
 			orientationFromFlags(hasHorizontal, hasVertical, hasOther);
 
 		boundaryGroups.push_back(std::move(group));
+		markFVMeshDirty();
 	}
 
 	if (!domainIt->orderedPoints.empty()) {
@@ -1139,6 +1143,59 @@ bool Mesh::convertSketchToUnstructuredMesh(const SketchModel& sketch) {
 	}
 
 	return true;
+}
+
+// Per-cell aspect ratio, written into aspectRatios (resized to the cell count).
+//
+// Measured from the perpendicular distances between a cell's centroid and its own
+// face planes, which is the only cell-shape data BOTH mesh paths carry. Face
+// vertices are not: createUnstructuredMesh fills FVFace::v0/v1 with point indices,
+// but createMultiBlockFVMesh builds its faces from toPackedMesh, which has no
+// vertex IDs at all and leaves them at -1 -- so any node-based formula reads
+// points[-1] on every structured mesh.
+//
+//     d_f = |(faceCenter - cellCenter) . n_f|   (n_f is unit in all three builders)
+//     AR  = max(d_f) / min(d_f)
+//
+// That is the usual meaning of aspect ratio for both cell shapes. For an
+// axis-aligned quad it is dz/dr, since the two half-widths share the factor of 2;
+// for a triangle it is Lmax/Lmin, since the centroid sits at 2A/(3L) from each
+// edge, so d is proportional to 1/L. An ideal cell -- square or equilateral --
+// scores exactly 1, which the old centroid-to-node terms did not give (they made a
+// perfect square 1.41 and an equilateral triangle 2, being circumradius/inradius).
+//
+// A cell with no faces, or whose centroid lies on one of its own face planes, has
+// no measurable ratio and is reported as 0 -- below the 1.0 floor of a real value,
+// so the caller can tell "degenerate" from "excellent".
+void calculateAspectRatio(
+	const FVMesh& fvMesh,
+	std::vector<double>& aspectRatios
+) {
+
+	int nCells = fvMesh.numCells();
+
+	aspectRatios.assign(nCells, 0.0);
+
+	for (int c = 0; c < nCells; ++c) {
+		const FVCell& cell = fvMesh.cells[c];
+
+		double dMin = std::numeric_limits<double>::max();
+		double dMax = 0.0;
+
+		for (int faceID : cell.faceIDs) {
+			const FVFace& face = fvMesh.faces[faceID];
+
+			// centroid -> face centroid, projected on the face normal
+			double fz = face.center.z - cell.center.z;
+			double fr = face.center.r - cell.center.r;
+			double d = std::abs(fz * face.normal.z + fr * face.normal.r);
+
+			dMin = std::min(dMin, d);
+			dMax = std::max(dMax, d);
+		}
+
+		aspectRatios[c] = (dMin > 1e-30) ? dMax / dMin : 0.0;
+	}
 }
 
 bool Mesh::convertSketchToStructuredMesh(const SketchModel& sketch) {
@@ -1203,6 +1260,7 @@ bool Mesh::convertSketchToStructuredMesh(const SketchModel& sketch) {
 
 	return true;
 }
+
 
 void Mesh::rebuildSelectableObstacleEdges() {
 	selectableOuterEdges.clear();
@@ -1892,18 +1950,24 @@ int getBoundaryGroupID(
 void Mesh::generate() {
 	Clock::time_point startTime = startTimer();
 
+	// The geometry below replaces whatever the cache was built from. Each branch
+	// refreshes it once the state buildFVMesh reads (grid / triangulation /
+	// multiblock) is final, so everything downstream -- solver, results, OpenFOAM
+	// export, both inspectors, the quality metrics -- reads that one instance.
+	markFVMeshDirty();
+
 	if (currentMeshType == MeshType::Structured) {
 		createGrid();
 		createGridVertices();
 
-		// multiBlock is assembled from geometry in buildStructuredMultiBlock (called
-		// from the Generate path). Draw its edges when present, else the plain grid.
-		if (isMultiBlock && !multiBlock.blocks.empty())
-			createMultiBlockLineVertices(multiBlock);
-		else
-			createGridLineVertices();
+		// multiBlock is assembled from geometry by buildStructuredMultiBlock, which
+		// the Generate path always runs before this -- a structured mesh is always
+		// multiblock, so its block edges are always what gets drawn.
+		createMultiBlockLineVertices(multiBlock);
 
 		createCylinderVertices();
+
+		refreshFVMesh();
 	}
 	else {
 		isMultiBlock = false;
@@ -1912,12 +1976,9 @@ void Mesh::generate() {
 
 		runGmshTriangulation();
 
-		FVMesh fvMesh = createUnstructuredMesh(
-			unstructuredPoints,
-			unstructuredTriangles,
-			boundaryVertices,
-			boundaryEdges
-		);
+		// Refreshed before the render buffers because the line vertices need the
+		// same FVMesh -- this used to build a second, identical throwaway copy.
+		const FVMesh& fv = refreshFVMesh();
 
 		createUnstructuredVertices(
 			unstructuredPoints,
@@ -1926,9 +1987,12 @@ void Mesh::generate() {
 
 		createUnstructuredLineVertices(
 			unstructuredPoints,
-			fvMesh
+			fv
 		);
 	}
+
+	// The quality metrics come with the cache both branches just refreshed
+	// (refreshFVMesh measures it), so there is nothing per-mesh-type to do here.
 
 	console->addCompletionMessage("Completed generating buffers");
 
@@ -1980,6 +2044,8 @@ FVMesh Mesh::createUnstructuredMesh(
 		Vec2 d = points[tri.v2];
 
 		FVCell& cell = mesh.cells[c];
+
+		cell.shape = CellShape::TRIANGLE;
 
 		cell.center = triangleCentroid(a, b, d);
 		cell.area2D = triangleArea2D(a, b, d);
@@ -2244,7 +2310,7 @@ std::vector<FVCell> createStructuredFVCells(
 
 			FVCell& cell = cells[n];
 
-
+			cell.shape = CellShape::QUAD;
 			cell.center = Vec2(z[j], r[i]);
 
 			double r0 = rFace[i];
@@ -2334,6 +2400,13 @@ void Mesh::updateAfterLoadingFile() {
 		createUnstructuredLineVertices(unstructuredPoints, fvMesh);
 	}
 
+	// A load restores the source-of-truth data but never runs generate(), so the
+	// cache has to be rebuilt -- and a reused Mesh may still hold the previous
+	// project's. Only marked dirty here, not built: file_manager calls this BEFORE
+	// rebuildMultiBlockAfterLoad, so isMultiBlock is not settled yet and building
+	// now would cache the wrong topology. The first refreshFVMesh() builds it.
+	markFVMeshDirty();
+
 	isReady = true;
 	//console->addLine("Successfully loaded mesh");	// console does not exist at this point (i think), so uncommenting will crash
 
@@ -2363,6 +2436,10 @@ void Mesh::reset() {
 
 	multiBlock = MultiBlockMesh{};
 	isMultiBlock = false;
+
+	fvMesh = FVMesh{};
+	aspectRatios.clear();
+	markFVMeshDirty();
 
 	initializeUnstructuredDomain(2, 2);
 }
@@ -2501,6 +2578,39 @@ FVMesh Mesh::createFVMesh(const std::vector<uint8_t>& activeCell) const {
 		boundaryVertices,
 		boundaryEdges
 	);
+}
+
+FVMesh Mesh::buildFVMesh() const {
+
+	// The mesh type IS the dispatch: a structured mesh is always built as multiblock
+	// (buildStructuredMultiBlock runs on every Generate and every load), so it always
+	// carries general face connectivity rather than a single nr x nz grid.
+	if (currentMeshType == MeshType::Structured) {
+		return createMultiBlockFVMesh();
+	}
+
+	return createUnstructuredMesh(
+		unstructuredPoints,
+		unstructuredTriangles,
+		boundaryVertices,
+		boundaryEdges
+	);
+}
+
+const FVMesh& Mesh::refreshFVMesh() {
+
+	if (fvMeshDirty) {
+		fvMesh = buildFVMesh();
+		fvMeshDirty = false;
+
+		// Measured here rather than in generate(): this is the one place the FVMesh
+		// the metric describes is (re)built, so the two cannot drift. A loaded
+		// project never runs generate(), and would otherwise carry no metrics at all
+		// until the mesh was regenerated by hand.
+		calculateAspectRatio(fvMesh, aspectRatios);
+	}
+
+	return fvMesh;
 }
 
 void Mesh::createGridVertices() {
@@ -2794,13 +2904,6 @@ std::vector<int> Mesh::buildMultiBlockRasterMap() const {
 	return rasterToCell;
 }
 
-void Mesh::buildMultiBlockInspectMesh(FVMesh& out,
-	std::vector<std::array<Vec2, 4>>& quads) const {
-
-	out = createMultiBlockFVMesh();
-	multiBlockCellCorners(quads);
-}
-
 bool Mesh::multiBlockCellCorners(std::vector<std::array<Vec2, 4>>& quads) const {
 
 	quads.clear();
@@ -2815,7 +2918,10 @@ bool Mesh::multiBlockCellCorners(std::vector<std::array<Vec2, 4>>& quads) const 
 		for (int i = 0; i < b.nr; i++) {
 			for (int j = 0; j < b.nz; j++) {
 				const int gc = b.cellGlobal(i, j);
-				auto V = [&](int I, int J) { const MBNode& n = b.node(I, J); return Vec2{ n.z, n.r }; };
+				auto V = [&](int I, int J) { 
+					const MBNode& n = b.node(I, J); 
+					return Vec2{ n.z, n.r };
+				};
 				quads[gc] = { V(i, j), V(i, j + 1), V(i + 1, j + 1), V(i + 1, j) };
 			}
 		}
@@ -3043,6 +3149,9 @@ void Mesh::buildStructuredMultiBlock(const SketchModel& sketch) {
 	m.assignGlobalNumbering();
 	multiBlock = std::move(m);
 	isMultiBlock = true;
+
+	// New blocks mean new cells and faces.
+	markFVMeshDirty();
 }
 
 void Mesh::rebuildMultiBlockAfterLoad(const SketchModel& sketch) {
@@ -3059,4 +3168,12 @@ void Mesh::rebuildMultiBlockAfterLoad(const SketchModel& sketch) {
 		isMultiBlock = false;
 		multiBlock = MultiBlockMesh{};
 	}
+
+	// This is the last step of a load that can change mesh topology, so it is the
+	// first point at which the cache can be built correctly (updateAfterLoadingFile
+	// runs before it and only marks dirty). Results::rebuildAfterLoad reads the
+	// cache immediately after this returns.
+	markFVMeshDirty();
+	refreshFVMesh();
 }
+

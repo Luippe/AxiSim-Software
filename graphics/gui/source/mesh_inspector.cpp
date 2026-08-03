@@ -218,6 +218,19 @@ namespace {
 
 		return ring;
 	}
+
+	// Quality ramp for the aspect-ratio overlay: green (well shaped) -> yellow ->
+	// red (badly stretched), the conventional reading in every mesher. Kept local
+	// rather than taken from Colormap, whose LUTs are picked by the user for
+	// solution fields -- a quality legend has to mean the same thing every time.
+	ImU32 inspectorQualityColor(double t, int alpha) {
+		t = std::clamp(t, 0.0, 1.0);
+
+		int red = (int)(std::min(1.0, 2.0 * t) * 255.0);
+		int green = (int)(std::min(1.0, 2.0 * (1.0 - t)) * 255.0);
+
+		return IM_COL32(red, green, 55, alpha);
+	}
 }
 
 MeshInspector::MeshInspector(Project& project, AppConfig& appConfig) :
@@ -836,32 +849,25 @@ int meshInspectorCellIndexAt(const std::vector<double>& faces, double x) {
 // ======================================================================
 // -----------------------CELL INSPECTION--------------------------------
 // ======================================================================
+const FVMesh& MeshInspector::inspectMesh() const {
+	return mesh.getFVMesh();
+}
+
 void MeshInspector::buildInspectMesh() {
-	if (mesh.isMultiBlock && !mesh.multiBlock.blocks.empty()) {
-		mesh.buildMultiBlockInspectMesh(inspectFVMesh, inspectCellQuads);
-		inspectMeshDirty = false;
-		return;
-	}
+	// The FV mesh itself is Mesh's, not ours -- this only makes sure it is current
+	// (the mesh type / activeCell dispatch that used to live here moved into
+	// Mesh::buildFVMesh, where every consumer gets the same answer).
+	mesh.refreshFVMesh();
 
-	inspectCellQuads.clear();
-
+	// The corner quads stay inspector-side: Mesh caches the FVMesh but not the cell
+	// outlines, and on the multiblock path FVFace::v0/v1 are left at -1, so these
+	// are the only place the real outline exists for picking and highlighting.
+	// multiBlockCellCorners clears the quads itself when there are no blocks.
 	if (mesh.currentMeshType == MeshType::Structured) {
-		int nCells = std::max(g.nr * g.nz, 0);
-
-		// createStructuredMesh indexes activeCell[n] directly, so make sure it
-		// is sized. Fall back to an all-fluid grid if the sketch hasn't been
-		// rasterized yet.
-		if ((int)g.activeCell.size() == nCells && nCells > 0) {
-			inspectFVMesh = mesh.createFVMesh(g.activeCell);
-		}
-		else {
-			std::vector<uint8_t> allFluid(nCells, 1);
-			inspectFVMesh = mesh.createFVMesh(allFluid);
-		}
+		mesh.multiBlockCellCorners(inspectCellQuads);
 	}
 	else {
-		// unstructured ignores the activeCell argument
-		inspectFVMesh = mesh.createFVMesh({});
+		inspectCellQuads.clear();
 	}
 
 	inspectMeshDirty = false;
@@ -891,7 +897,7 @@ int MeshInspector::pickCell(const Vec2& world) const {
 
 		int n = i * g.nz + j;
 
-		if (n < 0 || n >= (int)inspectFVMesh.cells.size()) {
+		if (n < 0 || n >= (int)inspectMesh().cells.size()) {
 			return -1;
 		}
 
@@ -936,11 +942,13 @@ double MeshInspector::cellNonOrthogonality(
 	avgDeg = 0.0;
 	interiorFaces = 0;
 
-	if (cellID < 0 || cellID >= (int)inspectFVMesh.cells.size()) {
+	const FVMesh& fv = inspectMesh();
+
+	if (cellID < 0 || cellID >= (int)fv.cells.size()) {
 		return -1.0;
 	}
 
-	const FVCell& cell = inspectFVMesh.cells[cellID];
+	const FVCell& cell = fv.cells[cellID];
 
 	double maxDeg = 0.0;
 	double sumDeg = 0.0;
@@ -948,23 +956,23 @@ double MeshInspector::cellNonOrthogonality(
 	constexpr double radToDeg = 57.29577951308232;
 
 	for (int fid : cell.faceIDs) {
-		if (fid < 0 || fid >= (int)inspectFVMesh.faces.size()) {
+		if (fid < 0 || fid >= (int)fv.faces.size()) {
 			continue;
 		}
 
-		const FVFace& f = inspectFVMesh.faces[fid];
+		const FVFace& f = fv.faces[fid];
 
 		if (f.neighbor < 0) {
 			continue; // boundary face: no neighbour centroid to measure against
 		}
 
-		if (f.owner < 0 || f.owner >= (int)inspectFVMesh.cells.size() ||
-			f.neighbor >= (int)inspectFVMesh.cells.size()) {
+		if (f.owner < 0 || f.owner >= (int)fv.cells.size() ||
+			f.neighbor >= (int)fv.cells.size()) {
 			continue;
 		}
 
-		const FVCell& P = inspectFVMesh.cells[f.owner];
-		const FVCell& N = inspectFVMesh.cells[f.neighbor];
+		const FVCell& P = fv.cells[f.owner];
+		const FVCell& N = fv.cells[f.neighbor];
 
 		// d: centroid-to-centroid vector;  S (f.normal): face normal
 		double dz = N.center.z - P.center.z;
@@ -1516,6 +1524,7 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
 	drawHighlightedCells2D(drawList);
+	drawAspectRatio(drawList);	// under the mesh lines, so the cells stay readable
 	drawMeshLines(drawList);
 	drawRegionsOfInfluence(drawList);
 	drawPendingObjects(drawList);
@@ -1543,34 +1552,9 @@ void MeshInspector::drawMeshLines(ImDrawList* drawList) {
 
 	const ImU32 lineColor = IM_COL32(190, 205, 225, 155);
 
-	if (mesh.currentMeshType == MeshType::Structured &&
-		!mesh.isMultiBlock &&
-		!g.zFace.empty() &&
-		!g.rFace.empty()) {
-		double rMin = g.rFace.front();
-		double rMax = g.rFace.back();
-		double zMin = g.zFace.front();
-		double zMax = g.zFace.back();
-
-		for (double z : g.zFace) {
-			drawList->AddLine(
-				camera.worldToScreen(Vec2{ z, rMin }),
-				camera.worldToScreen(Vec2{ z, rMax }),
-				lineColor,
-				1.0f
-			);
-		}
-
-		for (double r : g.rFace) {
-			drawList->AddLine(
-				camera.worldToScreen(Vec2{ zMin, r }),
-				camera.worldToScreen(Vec2{ zMax, r }),
-				lineColor,
-				1.0f
-			);
-		}
-	}
-	else if (mesh.isMultiBlock) {
+	// A structured mesh is always multiblock, so the uniform raster grid (g.zFace /
+	// g.rFace) is never what gets drawn -- the block nodes are.
+	if (mesh.currentMeshType == MeshType::Structured) {
 		// Draw straight from the block node coordinates (real world r-z) through the
 		// same camera transform the geometry outline uses, so mesh and geometry line
 		// up exactly -- no displayZ/g.L normalize-and-recover round-trip.
@@ -1721,7 +1705,7 @@ void MeshInspector::drawBoundarySegments(
 			thickness = hoverLineThickness;
 		}
 
-		// GUI-driven boundary-group highlight — a distinct state from hover/select,
+		// GUI-driven boundary-group highlight â€” a distinct state from hover/select,
 		// so it keeps its own color
 		if (highlighted) {
 			color = IM_COL32(255, 80, 80, 255);
@@ -1798,6 +1782,10 @@ void MeshInspector::drawToolBar() {
 	}
 	ImGui::SameLine();
 	addImageButtonToggle("ToggleMesh", "Mesh", "Toggle mesh", assets.icon("mesh"), toggleMesh);
+	ImGui::SameLine();
+	if (addImageButtonToggle("AspectRatio", "Quality", "Shade cells by aspect ratio", assets.icon("grid"), toggleAspectRatio)) {
+		inspectMeshDirty = true;	// the overlay needs the corner quads too
+	}
 	endSection("View");
 
 	endToolbar();
@@ -1886,6 +1874,11 @@ void MeshInspector::drawPopup() {
 
 			if (!pendingBoundaryGroup->segmentIDs.empty()) {
 				mesh.boundaryGroups.push_back(std::move(*pendingBoundaryGroup));
+
+				// FVFace::boundaryGroupID is stamped when the cached FV mesh is
+				// built, so a new group means the cache no longer matches.
+				mesh.markFVMeshDirty();
+				inspectMeshDirty = true;
 			}
 
 			pendingBoundaryGroup.reset();
@@ -2191,11 +2184,13 @@ void MeshInspector::drawRegionsOfInfluence(ImDrawList* drawList) {
 }
 
 std::string MeshInspector::buildCellInfoText(int cellID) const {
-	if (cellID < 0 || cellID >= (int)inspectFVMesh.cells.size()) {
+	const FVMesh& fv = inspectMesh();
+
+	if (cellID < 0 || cellID >= (int)fv.cells.size()) {
 		return {};
 	}
 
-	const FVCell& cell = inspectFVMesh.cells[cellID];
+	const FVCell& cell = fv.cells[cellID];
 	std::string info;
 	char line[160];
 
@@ -2227,6 +2222,18 @@ std::string MeshInspector::buildCellInfoText(int cellID) const {
 	double maxDeg = cellNonOrthogonality(cellID, avgDeg, interiorFaces);
 
 	info += "\n----------------";
+
+	// --- aspect ratio (Mesh measures it alongside the FV mesh) ---
+	if (cellID < (int)mesh.aspectRatios.size() &&
+		mesh.aspectRatios[cellID] >= 1.0) {
+		std::snprintf(line, sizeof(line), "\naspect ratio: %.3f",
+			mesh.aspectRatios[cellID]);
+		info += line;
+	}
+	else {
+		info += "\naspect ratio: n/a";
+	}
+
 	if (maxDeg < 0.0) {
 		info += "\nnon-orthogonality: n/a (no interior faces)";
 	}
@@ -2243,11 +2250,11 @@ std::string MeshInspector::buildCellInfoText(int cellID) const {
 		constexpr double radToDeg = 57.29577951308232;
 
 		for (int fid : cell.faceIDs) {
-			if (fid < 0 || fid >= (int)inspectFVMesh.faces.size()) {
+			if (fid < 0 || fid >= (int)fv.faces.size()) {
 				continue;
 			}
 
-			const FVFace& f = inspectFVMesh.faces[fid];
+			const FVFace& f = fv.faces[fid];
 
 			if (f.neighbor < 0) {
 				std::snprintf(line, sizeof(line), "\n  f%-5d bdry   %.4g", fid, f.length2D);
@@ -2257,8 +2264,8 @@ std::string MeshInspector::buildCellInfoText(int cellID) const {
 
 			int nb = (f.owner == cellID) ? f.neighbor : f.owner;
 
-			const FVCell& P = inspectFVMesh.cells[f.owner];
-			const FVCell& N = inspectFVMesh.cells[f.neighbor];
+			const FVCell& P = fv.cells[f.owner];
+			const FVCell& N = fv.cells[f.neighbor];
 
 			double dz = N.center.z - P.center.z;
 			double dr = N.center.r - P.center.r;
@@ -2301,7 +2308,7 @@ void MeshInspector::drawCellInfo(ImDrawList* drawList) {
 		return;
 	}
 
-	if (selectedCell >= (int)inspectFVMesh.cells.size()) {
+	if (selectedCell >= (int)inspectMesh().cells.size()) {
 		selectedCell = -1; // stale selection (mesh changed underneath us)
 		return;
 	}
@@ -2359,6 +2366,207 @@ void MeshInspector::drawCellInfo(ImDrawList* drawList) {
 	drawList->PopClipRect();
 }
 
+
+void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
+	if (!toggleAspectRatio) {
+		return;
+	}
+
+	const FVMesh& fv = inspectMesh();
+	const std::vector<double>& ratios = mesh.aspectRatios;
+
+	// Mesh::refreshFVMesh measures the ratios as it builds the cells, so a length
+	// mismatch means we are looking at a mesh nobody has measured yet (a project
+	// mid-load, or one whose geometry moved). Shading it would color cells by
+	// another mesh's numbers, so draw nothing instead.
+	if (ratios.size() != fv.cells.size() || ratios.empty()) {
+		return;
+	}
+
+	// Scale to what this mesh actually contains: 1.0 (a perfect cell) is always the
+	// green end, and the worst cell present is always the red end. The floor keeps
+	// an already-good mesh from being stretched over a meaningless range and
+	// painted red -- with hi = 2 a uniform grid stays green, as it should.
+	double hi = 1.0;
+	for (int c = 0; c < (int)ratios.size(); c++) {
+		if (fv.cells[c].active && !fv.cells[c].solid) {
+			hi = std::max(hi, ratios[c]);
+		}
+	}
+
+	const double lo = 1.0;
+	hi = std::max(hi, 2.0);
+
+	const double span = hi - lo;
+	const int alpha = toggleMesh ? 150 : 200;	// keep the mesh lines legible on top
+
+	auto colorOf = [&](int c) {
+		return inspectorQualityColor((ratios[c] - lo) / span, alpha);
+	};
+
+	// A cell with no measurable ratio is reported as 0 by calculateAspectRatio,
+	// which is below the 1.0 floor of a real value -- skip it rather than paint it
+	// the "excellent" green a clamp would give.
+	auto measured = [&](int c) {
+		return ratios[c] >= lo && fv.cells[c].active && !fv.cells[c].solid;
+	};
+
+	bool painted = false;
+
+	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
+
+	// Same three cell-outline paths drawCellInfo uses: the multiblock corner quads,
+	// the raster grid, then the triangulation. Both structured paths are picked by
+	// the cell count they would index rather than by mesh.isMultiBlock -- a cell ID
+	// means something different in each, so painting one set of cells through the
+	// other's indexing draws the whole field in the wrong places.
+	if (mesh.currentMeshType == MeshType::Structured &&
+		inspectCellQuads.size() == ratios.size()) {
+
+		for (int c = 0; c < (int)ratios.size(); c++) {
+			if (!measured(c)) {
+				continue;
+			}
+
+			const std::array<Vec2, 4>& q = inspectCellQuads[c];
+
+			ImVec2 pts[4];
+			for (int k = 0; k < 4; k++) {
+				pts[k] = camera.worldToScreen(q[k]);
+			}
+
+			drawList->AddConvexPolyFilled(pts, 4, colorOf(c));
+			painted = true;
+		}
+	}
+	else if (mesh.currentMeshType == MeshType::Structured &&
+		(int)ratios.size() == g.nr * g.nz &&
+		g.zFace.size() >= 2 && g.rFace.size() >= 2) {
+
+		int nz = std::max(g.nz, 1);
+
+		for (int c = 0; c < (int)ratios.size(); c++) {
+			if (!measured(c)) {
+				continue;
+			}
+
+			int i = c / nz;
+			int j = c % nz;
+
+			if (i + 1 >= (int)g.rFace.size() || j + 1 >= (int)g.zFace.size()) {
+				continue;
+			}
+
+			ImVec2 p0 = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[i] });
+			ImVec2 p1 = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i + 1] });
+
+			drawList->AddRectFilled(
+				ImVec2(std::min(p0.x, p1.x), std::min(p0.y, p1.y)),
+				ImVec2(std::max(p0.x, p1.x), std::max(p0.y, p1.y)),
+				colorOf(c)
+			);
+			painted = true;
+		}
+	}
+	else if (mesh.currentMeshType != MeshType::Structured) {
+		// unstructured: FV cells map 1:1 to triangles, same as pickCell relies on
+		const std::vector<Vec2>& pts = mesh.unstructuredPoints;
+		const std::vector<Triangle>& tris = mesh.unstructuredTriangles;
+
+		int n = std::min((int)ratios.size(), (int)tris.size());
+
+		for (int c = 0; c < n; c++) {
+			if (!measured(c)) {
+				continue;
+			}
+
+			const Triangle& t = tris[c];
+
+			if (t.v0 < 0 || t.v1 < 0 || t.v2 < 0) continue;
+			if (t.v0 >= (int)pts.size() ||
+				t.v1 >= (int)pts.size() ||
+				t.v2 >= (int)pts.size()) {
+				continue;
+			}
+
+			drawList->AddTriangleFilled(
+				camera.worldToScreen(pts[t.v0]),
+				camera.worldToScreen(pts[t.v1]),
+				camera.worldToScreen(pts[t.v2]),
+				colorOf(c)
+			);
+			painted = true;
+		}
+	}
+
+	drawList->PopClipRect();
+
+	// A legend over an unshaded canvas would be claiming a scale nothing was drawn
+	// against, so it only goes up once at least one cell carries a color.
+	if (painted) {
+		drawAspectRatioLegend(drawList, lo, hi);
+	}
+}
+
+void MeshInspector::drawAspectRatioLegend(
+	ImDrawList* drawList,
+	double lo,
+	double hi
+) {
+	// The overlay auto-scales to the mesh, so the same green can mean 1.2 on one
+	// mesh and 1.02 on another -- without the end labels the colors say nothing.
+	const float pad = 10.0f;
+	const float barWidth = 16.0f;
+	const float barHeight = 110.0f;
+	const float lineHeight = ImGui::GetTextLineHeight();
+
+	ImVec2 barMin(
+		canvasRect.max.x - pad - barWidth,
+		canvasRect.min.y + pad + lineHeight
+	);
+	ImVec2 barMax(barMin.x + barWidth, barMin.y + barHeight);
+
+	// worst at the top, best at the bottom -- the way a colorbar is read
+	const int steps = 32;
+	for (int s = 0; s < steps; s++) {
+		float y0 = barMin.y + barHeight * (float)s / steps;
+		float y1 = barMin.y + barHeight * (float)(s + 1) / steps;
+
+		double t = 1.0 - ((double)s + 0.5) / steps;
+
+		drawList->AddRectFilled(
+			ImVec2(barMin.x, y0),
+			ImVec2(barMax.x, y1),
+			inspectorQualityColor(t, 255)
+		);
+	}
+
+	const ImU32 textColor = IM_COL32(230, 235, 245, 255);
+	const ImU32 frameColor = IM_COL32(90, 100, 120, 255);
+
+	drawList->AddRect(barMin, barMax, frameColor);
+
+	// right-aligned against the bar, so the numbers stay put as they change width
+	auto addLabel = [&](const char* text, float y) {
+		float width = ImGui::CalcTextSize(text).x;
+		drawList->AddText(ImVec2(barMin.x - 6.0f - width, y), textColor, text);
+	};
+
+	char label[32];
+
+	std::snprintf(label, sizeof(label), "%.3g", hi);
+	addLabel(label, barMin.y - 2.0f);
+
+	std::snprintf(label, sizeof(label), "%.3g", lo);
+	addLabel(label, barMax.y - lineHeight + 2.0f);
+
+	addLabel("aspect", canvasRect.min.y + pad);
+}
+
+void MeshInspector::drawNonOrthogonality(ImDrawList* drawList) {
+
+}
+
 void MeshInspector::render() {
 	setBaseNrNz();
 
@@ -2389,21 +2597,20 @@ void MeshInspector::render() {
 	// recenter/re-zoom to the loaded project's units if a reset was requested
 	applyPendingResetView();
 
-	// Build current segments before hover/mouse logic.
-	// Multiblock is excluded: buildSegments() rebuilds the outline from the uniform
-	// raster grid (g.rFace/g.zFace), which does NOT coincide with the trellis block
-	// nodes drawMeshLines() draws from -- so the outline would snap to a staircase
-	// offset from the mesh lines. For multiblock we keep the exact sketch-derived
-	// boundary from convertSketchToStructuredMesh, which shares the trellis coords.
-	if (mesh.currentMeshType == MeshType::Structured && !mesh.isMultiBlock) {
-		buildSegments();
-	}
+	// buildSegments() is never called for a structured mesh any more: it rebuilds the
+	// outline from the uniform raster grid (g.rFace/g.zFace), which does NOT coincide
+	// with the trellis block nodes drawMeshLines() draws from, so the outline would
+	// snap to a staircase offset from the mesh lines. Every structured mesh is
+	// multiblock, so all of them keep the exact sketch-derived boundary from
+	// convertSketchToStructuredMesh, which shares the trellis coords.
 
 	// update current global mouse pos
 	updateCurrentMousePos();
 
-	// keep the inspection snapshot in sync while inspect mode is active
-	if (toggleInspectCell && inspectMeshDirty) {
+	// keep the inspection snapshot in sync while anything that reads it is active.
+	// The aspect-ratio overlay needs it for the same reason picking does: on the
+	// multiblock path the corner quads are the only cell outlines that exist.
+	if ((toggleInspectCell || toggleAspectRatio) && inspectMeshDirty) {
 		buildInspectMesh();
 	}
 
@@ -2425,6 +2632,7 @@ void MeshInspector::render() {
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
 	drawHighlightedCells2D(drawList);
+	drawAspectRatio(drawList);	// under the mesh lines, so the cells stay readable
 	drawMeshLines(drawList);
 	drawRegionsOfInfluence(drawList);
 	drawPendingObjects(drawList);

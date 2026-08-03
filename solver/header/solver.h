@@ -61,7 +61,10 @@ public:
 	bool useMultigrid = true;
 
 	// run solver
-	void run(const Mesh& mesh);
+	// Non-const because it refreshes the mesh's cached FVMesh before spawning the
+	// solver thread. That rebuild must happen here, on the GUI thread: runSimple
+	// only reads the cache, and rebuilding it from the worker would race the GUI.
+	void run(Mesh& mesh);
 	void runSimple(const Mesh& mesh);
 
 	// ask a running solve to finish early. no-op if nothing is running.
@@ -148,14 +151,15 @@ public:
 
 private:
 
+	// Every mesh the Generate path produces rides the face-based path (structured
+	// meshes are always built as multiblock), so there is no mesh-type field here
+	// any more: useFaceCoefficients was always true, and nr/nz only mattered to the
+	// index-based structured path that could never be constructed.
 	struct ContinuationState {
 		bool valid = false;
 		int cells = 0;
 		int faces = 0;
 		int faceRefs = 0;
-		int nr = 0;
-		int nz = 0;
-		bool useFaceCoefficients = false;
 		bool solveEnergy = false;
 		bool solveConcentration = false;
 	};
@@ -171,11 +175,6 @@ private:
 	bool buildContinuationState(
 		const Mesh& mesh,
 		ContinuationState& state,
-		std::string* reason = nullptr
-	) const;
-
-	std::vector<uint8_t> buildStructuredActiveCells(
-		const Mesh& mesh,
 		std::string* reason = nullptr
 	) const;
 

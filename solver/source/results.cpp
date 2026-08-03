@@ -114,11 +114,10 @@ void Results::rebuildAfterLoad(const Mesh& mesh, Solver& solver) {
 
 	// A load restores the solved values but never ran a solve, so the solver holds no
 	// fvMesh. buildField needs one on the non-multiblock path (Field::generate reads
-	// its cells/faces); rebuild it from the loaded mesh, which is deterministic.
+	// its cells/faces); take the mesh's cache, which rebuildMultiBlockAfterLoad has
+	// already filled by the time a load reaches here.
 	if (solver.fvMesh.numCells() == 0) {
-		solver.fvMesh = mesh.isMultiBlock
-			? mesh.createMultiBlockFVMesh()
-			: mesh.createFVMesh(mesh.g.activeCell);
+		solver.fvMesh = mesh.getFVMesh();
 	}
 
 	// The grid is NOT restored from the file -- it is re-taken from the live mesh,

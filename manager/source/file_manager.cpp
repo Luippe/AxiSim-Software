@@ -1114,16 +1114,18 @@ bool saveFoamCase(const std::filesystem::path& dir, const Mesh& mesh,
 	// Which of the two mesh formats this project can be exported as. They are not
 	// interchangeable: a blockMeshDict is a list of HEXES, so only a mesh that
 	// decomposes into structured blocks has one, and a triangulated mesh has to go
-	// out as a polyMesh instead.
-	const bool multiBlock = mesh.isMultiBlock && !mesh.multiBlock.blocks.empty();
+	// out as a polyMesh instead. Every structured mesh is multiblock, so the mesh
+	// type picks the writer -- the blocks are only checked for emptiness.
+	const bool multiBlock = mesh.currentMeshType == MeshType::Structured &&
+		!mesh.multiBlock.blocks.empty();
 
 	const bool unstructured = !multiBlock &&
 		mesh.currentMeshType == MeshType::Unstructured &&
 		!mesh.unstructuredTriangles.empty();
 
-	// What is left is a single-block structured grid, whose FVMesh carries no vertex
-	// ids (createStructuredFVFaces leaves FVFace::v0/v1 at -1), so neither writer can
-	// spell it. Both of the others reject an empty mesh far less informatively.
+	// What is left has nothing to spell: a structured project whose blocks were never
+	// built, or an unstructured one with no triangles. Both writers reject an empty
+	// mesh far less informatively.
 	if (!multiBlock && !unstructured) {
 		std::cerr << "saveFoamCase: nothing to export -- generate a multi-block or"
 			" unstructured mesh first\n";
@@ -1174,11 +1176,11 @@ bool saveFoamCase(const std::filesystem::path& dir, const Mesh& mesh,
 	}
 	else {
 
-		// The SAME FVMesh the solver runs on -- createFVMesh is what solver.cpp calls
-		// too, with the same arguments. That is the whole point: the exported patches
-		// then cut the boundary exactly where AxiSim's BC groups do, so a difference
-		// between the two solutions is physics and not a face on the wrong patch.
-		const FVMesh fvMesh = mesh.createFVMesh({});
+		// The SAME FVMesh the solver runs on -- literally the same instance now, not
+		// an identically-built copy. That is the whole point: the exported patches cut
+		// the boundary exactly where AxiSim's BC groups do, so a difference between the
+		// two solutions is physics and not a face on the wrong patch.
+		const FVMesh& fvMesh = mesh.getFVMesh();
 
 		const PolyMesh polyMesh = polyMeshFromUnstructured(
 			mesh.unstructuredPoints, mesh.unstructuredTriangles,
@@ -1291,6 +1293,12 @@ void saveFromExplorerMesh(Mesh& mesh, const Solver& solver) {
 		[](wchar_t c) { return (wchar_t)std::towlower(c); });
 
 	if (extension == L".foam") {
+		// Bring the mesh's cached FVMesh up to date first: the exported patches have to
+		// cut the boundary exactly where AxiSim's BC groups do, and those group IDs are
+		// baked into FVFace::boundaryGroupID when the cache is built. A group created
+		// after generate() would otherwise export onto the wrong patch.
+		mesh.refreshFVMesh();
+
 		saveFoamCase(
 			target.parent_path() / (target.stem().wstring() + L"_case"),
 			mesh,

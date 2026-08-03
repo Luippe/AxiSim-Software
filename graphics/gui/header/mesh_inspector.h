@@ -112,9 +112,15 @@ private:
 	// -------------cell inspection--------------
 	bool toggleInspectCell = false;	// toolbar mode: pick cells to read mesh data
 	bool toggleMesh = true;
+	bool toggleAspectRatio = false;	// overlay: shade every cell by its aspect ratio
 	int selectedCell = -1;			// FV cell pinned by a left click (-1 = none)
-	FVMesh inspectFVMesh;			// snapshot rebuilt when inspect mode turns on
 	bool inspectMeshDirty = true;	// rebuild the snapshot on the next render
+
+	// The FV mesh the inspector reads. Mesh owns and caches it (built at generate
+	// time), so this is the same instance the solver runs on -- the inspector used
+	// to keep its own copy built by a separate createFVMesh call. Defined in the
+	// .cpp: Mesh is only forward-declared here.
+	const FVMesh& inspectMesh() const;
 
 	// multiblock only: 4 corner vertices per inspect cell (index-aligned with
 	// inspectFVMesh.cells) for point-in-cell picking and highlight drawing
@@ -168,6 +174,12 @@ private:
 	void drawUnstructuredSolidBodies(ImDrawList* drawList);
 	void drawBoundarySegments(ImDrawList* drawList);
 	void drawRegionsOfInfluence(ImDrawList* drawList);
+	void drawAspectRatio(ImDrawList* drawList);
+
+	// colorbar for drawAspectRatio, labelled with the range it scaled itself to
+	void drawAspectRatioLegend(ImDrawList* drawList, double lo, double hi);
+
+	void drawNonOrthogonality(ImDrawList* drawList);
 
 	// -------------cell inspection--------------
 	// rebuild the FV mesh snapshot used for picking/reading cell data

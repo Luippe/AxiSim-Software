@@ -20,7 +20,7 @@ public:
 
 	const char* sizingType[3] = { "Edge Count", "Target Spacing", "None"};
 	const char* meshType[2] = { "Structured", "Unstructured" };
-
+	
 	BoundarySizing getSizingForSegment(const BoundarySegment& seg) const;
 	void rebuildBoundaryDiscretization();
 
@@ -108,6 +108,11 @@ public:
 	std::vector<BoundarySegment> boundarySegments;
 	std::vector<MeshRegionOfInfluence> regionsOfInfluence;
 
+	// cell vertices
+	std::vector<Vec2> meshPoints;
+	std::vector<double> aspectRatios;
+
+
 	// Monotonic allocator for boundary group IDs. Must never be rewound while a
 	// project is open: a group ID outlives the vector it was created in (both
 	// MeshGUI and SolverGUI hold their own selectedBoundaryGroupID, and
@@ -140,12 +145,6 @@ public:
 	// unstructured createFVMesh uses -- since toPackedMesh leaves them at the block
 	// edgeGroup (-1 for trellis blocks). Consumed through the face-based solver path.
 	FVMesh createMultiBlockFVMesh() const;
-
-	// Build an inspectable host FVMesh from the multiblock (via createMultiBlockFVMesh)
-	// plus the 4 corner vertices of each cell (same global order), so the Mesh
-	// Inspector can pick/highlight/report multiblock cells.
-	void buildMultiBlockInspectMesh(FVMesh& out,
-		std::vector<std::array<Vec2, 4>>& quads) const;
 
 	// The 4 corner vertices of every multiblock cell, indexed by the same global
 	// cell number toPackedMesh assigns -- so quads[c] bounds fvMesh.cells[c]. The
@@ -222,6 +221,27 @@ public:
 		const FVMesh& mesh
 	);
 
+	// ---- cached solver-ready FV mesh ----
+	// The FVMesh for the current geometry, built once per mesh change instead of
+	// once per consumer. The solver, results, the OpenFOAM exporter and both
+	// inspectors each used to call createFVMesh themselves and agreed only by
+	// convention; buildContinuationState built an entire mesh just to count cells.
+	//
+	// THREADING: Solver::runSimple reads this from the solver worker thread, so
+	// getFVMesh() is a plain const read that never rebuilds. Every rebuild goes
+	// through refreshFVMesh(), which is GUI-thread only (generate / load / the
+	// inspector) and must not be called while a solve is running.
+	const FVMesh& getFVMesh() const { return fvMesh; }
+
+	// Rebuild the cache if it is dirty and return it. GUI thread only.
+	const FVMesh& refreshFVMesh();
+
+	// Invalidate the cache. Anything that changes cell geometry, activeCell, or
+	// boundary-group membership must call this: the group IDs are baked into
+	// FVFace::boundaryGroupID at build time, so a group created after generate()
+	// is invisible to the solver until the mesh is rebuilt.
+	void markFVMeshDirty() { fvMeshDirty = true; }
+
 	FVMesh createFVMesh(const std::vector<uint8_t>& activeCell) const;
 
 	FVMesh createUnstructuredMesh(
@@ -248,9 +268,21 @@ public:
 	// create boundary group using the selected boundary segments
 	std::optional<BoundarySegmentGroup> createBoundaryGroupFromSelection();
 
+
+
 private:
 
 	int nextLoopID = 0;
+
+	// See getFVMesh(). Dirty by default so a Mesh that is loaded or hand-built
+	// rather than generated still gets one built on first refresh.
+	FVMesh fvMesh;
+	bool fvMeshDirty = true;
+
+	// Pick the right construction path for the current mesh type and build it.
+	// This is the single place the activeCell argument is chosen -- it used to be
+	// decided independently at every call site.
+	FVMesh buildFVMesh() const;
 
 	void createCylinderVertices();
 
