@@ -130,7 +130,6 @@ void Solver::reset() {
     stopRequested = false;
     continueSolver = false;
     isReady = false;
-    useMultigrid = true;
 
     // solved data and derived fields
     solutions.clear();
@@ -138,7 +137,6 @@ void Solver::reset() {
     fieldType.clear();
     mDotHost.clear();
     fvMesh = FVMesh{};
-    configSolver = ConfigSolver{};
     continuationState = ContinuationState{};
     currentIteration = 0;
 
@@ -147,10 +145,6 @@ void Solver::reset() {
     configSolver = ConfigSolver{};
     configSimple = ConfigSimple{};
     configMultigrid = ConfigMultigrid{};
-    convectionScheme = CONV_UPWIND;
-    gradientScheme = GRAD_GREEN_GAUSS;
-    currentVelocitySolver = SOLVER_SIMPLE;
-    saveKeyFrameIter = 2;
 
     // default per-residual display settings (rebinds cfg the same way the ctor does)
     initConfigResiduals(cfg);
@@ -561,8 +555,8 @@ bool Solver::runCheck(const Mesh& mesh) {
         configSimple.checkConv = 1;
     }
 
-    if (configSolver.maxIter < 1) {
-        configSolver.maxIter = 20;
+    if (configSolver.linearMaxIter < 1) {
+        configSolver.linearMaxIter = 20;
     }
 
     // A structured mesh is orthogonal by construction, so the cross term is
@@ -570,11 +564,11 @@ bool Solver::runCheck(const Mesh& mesh) {
     // kernels. The GUI greys the option out for the same reason; this keeps a
     // project loaded with the flag already set from paying for it.
     if (mesh.currentMeshType == MeshType::Structured) {
-        configSimple.useNonOrthCorrector = false;
+        configSolver.useNonOrthCorrector = false;
     }
 
-    if (saveKeyFrameIter < 1) {
-        saveKeyFrameIter = 1;
+    if (configSolver.saveKeyFrameIter < 1) {
+        configSolver.saveKeyFrameIter = 1;
     }
 
     // A non-positive dt divides by zero in the unsteady term, and tEnd <= 0 gives
@@ -720,10 +714,10 @@ static void printBoundaryDiagnostics(
 
     auto bcTypeName = [](BCType t) -> const char* {
         switch (t) {
-        case DIRICHLET:       return "Dirichlet";
-        case NEUMANN:         return "Neumann";
-        case FULLY_DEVELOPED: return "FullyDeveloped";
-        case PULSATILE:       return "Pulsatile";
+        case BCType::DIRICHLET:       return "Dirichlet";
+        case BCType::NEUMANN:         return "Neumann";
+        case BCType::FULLY_DEVELOPED: return "FullyDeveloped";
+        case BCType::PULSATILE:       return "Pulsatile";
         default:              return "None";
         }
     };
@@ -885,7 +879,7 @@ void Solver::runSimple(const Mesh& mesh) {
         // upload.
         coloring.free();
 
-        if (configSolver.type == LINEAR_GS_RB) {
+        if (configSolver.type == LinearSolverType::LINEAR_GS_RB) {
             buildMeshColoring(coloring, fvMesh);
 
             if (console) {
@@ -925,14 +919,20 @@ void Solver::runSimple(const Mesh& mesh) {
         transient && configSolver.timeScheme == TimeScheme::TIME_SECOND_ORDER;
     bool addConvectionTerm = configSolver.addConvectionTerm;
 
+    // Both are handed to kernels on every SIMPLE iteration, so they are read out of
+    // the config once here rather than through configSolver at each launch site.
+    const ConvectionScheme convectionScheme = configSolver.convectionScheme;
+    const GradientScheme gradientScheme = configSolver.gradientScheme;
+
     // Second-order upwind extrapolates from the upwind cell's gradient, so those
     // gradients must exist even when the non-orthogonal corrector is off.
     const bool convectionNeedsGradient =
         addConvectionTerm &&
-        (convectionScheme == CONV_SECOND_ORDER_UPWIND || convectionScheme == CONV_QUICK);
+        (convectionScheme == ConvectionScheme::CONV_SECOND_ORDER_UPWIND ||
+         convectionScheme == ConvectionScheme::CONV_QUICK);
     bool solveEnergy = fieldOption.solveEnergy;
     bool solveConcentration = fieldOption.solveConcentration;
-    const int applyNonOrtho = configSimple.useNonOrthCorrector ? 1 : 0;
+    const int applyNonOrtho = configSolver.useNonOrthCorrector ? 1 : 0;
 
     // Transient snapshots are kept in memory rather than exported to
     // flow_motion.bin: the binary export wrote a single nr x nz raster block, which
@@ -954,9 +954,9 @@ void Solver::runSimple(const Mesh& mesh) {
 
     if (addConvectionTerm && console) {
         const char* schemeName =
-            convectionScheme == CONV_CENTRAL ? "central difference" :
-            convectionScheme == CONV_SECOND_ORDER_UPWIND ? "second order upwind" :
-            convectionScheme == CONV_QUICK ? "QUICK (falls back to second order upwind)" :
+            convectionScheme == ConvectionScheme::CONV_CENTRAL ? "central difference" :
+            convectionScheme == ConvectionScheme::CONV_SECOND_ORDER_UPWIND ? "second order upwind" :
+            convectionScheme == ConvectionScheme::CONV_QUICK ? "QUICK (falls back to second order upwind)" :
             "first order upwind";
 
         std::ostringstream schemeMsg;
@@ -981,7 +981,7 @@ void Solver::runSimple(const Mesh& mesh) {
     // it runs on any face-based mesh -- which, since every structured mesh is built
     // as multiblock, means every mesh the Generate path produces.
     std::optional<MultigridSolver> multigrid;
-    if (useMultigrid) {
+    if (configSolver.useMultigrid) {
         GridLevel grid = makeFinestGridLevel(fvMesh);
         multigrid.emplace(configMultigrid, mem, grid);
         multigrid->prepare(ppCoeff, stream, simple.pp);
@@ -1153,7 +1153,7 @@ void Solver::runSimple(const Mesh& mesh) {
             // do not launch a gradient kernel just to write zeros. Each later
             // corrector computes grad(p') from the preceding solve and adds the
             // lagged non-orthogonal term to the RHS.
-            const int nNonOrth = configSimple.useNonOrthCorrector ? 1 : 0;
+            const int nNonOrth = configSolver.useNonOrthCorrector ? 1 : 0;
 
             cudaMemsetAsync(simple.pp, 0, N * sizeof(double), stream);
             cudaMemsetAsync(simple.ppTemp, 0, N * sizeof(double), stream);
@@ -1299,7 +1299,7 @@ void Solver::runSimple(const Mesh& mesh) {
         // dropping the interval the user actually watched.
         const bool lastStep = (tCount == numSteps - 1) || stopRequested;
 
-        if (transient && (tCount % saveKeyFrameIter == 0 || lastStep)) {
+        if (transient && (tCount % configSolver.saveKeyFrameIter == 0 || lastStep)) {
             CUDA_CHECK(cudaStreamSynchronize(stream));
             captureTimeFrame(timeOffset + (double)(tCount + 1) * configSolver.dt, N);
         }

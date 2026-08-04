@@ -63,7 +63,7 @@ void MeshGUI::drawBoundaryGroupGUI() {
 
 		BoundarySizing& sizing = selectedGroup->sizing;
 
-		if (createSimpleCombo("##SizingType", mesh.sizingType, (int&)sizing.mode, IM_ARRAYSIZE(mesh.sizingType))) {
+		if (createSimpleCombo("##SizingType", mesh.sizingType, sizing.mode, IM_ARRAYSIZE(mesh.sizingType))) {
 			if (!(sizing.mode == BoundarySizingMode::None)) {
 				sizing.enabled = true;
 			}
@@ -336,12 +336,12 @@ void MeshGUI::drawPropertiesPanel() {
 			}
 
 			labelRow("Mesh Type");
-			if (createSimpleCombo("##MeshType", mesh.meshType, (int&)mesh.currentMeshType, IM_ARRAYSIZE(mesh.meshType))) {
+			if (createSimpleCombo("##MeshType", mesh.meshType, mesh.currentMeshType, IM_ARRAYSIZE(mesh.meshType))) {
 				// Red-Black Gauss-Seidel is structured-only; drop it when switching
 				// to unstructured so a stale selection can't reach the solve.
 				if (mesh.currentMeshType == MeshType::Unstructured &&
-					project.solver.configSolver.type == LINEAR_GS_RB) {
-					project.solver.configSolver.type = LINEAR_JACOBI;
+					project.solver.configSolver.type == LinearSolverType::LINEAR_GS_RB) {
+					project.solver.configSolver.type = LinearSolverType::LINEAR_JACOBI;
 				}
 			}
 			drawTableProperty("Number of Cells", numCells.c_str());

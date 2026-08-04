@@ -26,7 +26,6 @@ MultigridSolver::MultigridSolver(ConfigMultigrid& cfg, MemoryConfig& mem, GridLe
 	// init once
 	buildLevels(std::move(grid));
 	CUDA_CHECK(cudaGetLastError());
-	print(cfg.linearPostSweep, cfg.linearSweep, cfg.linearPreSweep);
 
 }
 

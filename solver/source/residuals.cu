@@ -124,18 +124,18 @@ void residualAllHost(std::unordered_map<std::string, ConfigResidual>& cfgs, int 
 			// reduce the per-cell residual vector (cfg.res) to a single value
 			switch (cfg.normType) {
 
-			case RESIDUAL_L1:   residualL1Host(cfg, N);   break;
-			case RESIDUAL_L2:   residualL2Host(cfg, N);   break;
-			case RESIDUAL_LINF: residualLInfHost(cfg, N); break;
+			case ResidualNormType::RESIDUAL_L1:   residualL1Host(cfg, N);   break;
+			case ResidualNormType::RESIDUAL_L2:   residualL2Host(cfg, N);   break;
+			case ResidualNormType::RESIDUAL_LINF: residualLInfHost(cfg, N); break;
 			}
 
 			// scale the residual
 			switch (cfg.scaleType) {
 
-			case RESIDUAL_SCALING_NONE:     cfg.scaleVal = 1.0;							break;
-			case RESIDUAL_SCALING_N:        cfg.scaleVal = N;							break;
-			case RESIDUAL_SCALING_SQRT_N:   cfg.scaleVal = sqrt((double)N);				break;
-			case RESIDUAL_SCALING_DIAGONAL:	cfg.scaleVal = residualScaleSum(cfg, N);    break;
+			case ResidualScalingType::RESIDUAL_SCALING_NONE:     cfg.scaleVal = 1.0;						break;
+			case ResidualScalingType::RESIDUAL_SCALING_N:        cfg.scaleVal = N;						break;
+			case ResidualScalingType::RESIDUAL_SCALING_SQRT_N:   cfg.scaleVal = sqrt((double)N);			break;
+			case ResidualScalingType::RESIDUAL_SCALING_DIAGONAL: cfg.scaleVal = residualScaleSum(cfg, N);break;
 			}
 
 			if (cfg.scaleVal == 0.0) continue;

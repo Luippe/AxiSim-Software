@@ -11,19 +11,24 @@ struct SolverFieldOption {
 	bool solveConcentration = false;
 };
 
-enum ResidualType {
+// Every enum below is a scoped, uint8_t-backed enum: they are stored in config
+// structs that go to disk, so a byte each keeps those structs small, and scoping
+// keeps names like NONE out of the global namespace. They are NOT interchangeable
+// with int -- write (int)x / (Enum)i explicitly, and never reinterpret one as an
+// int& (the GUI combos have an enum overload for exactly that reason).
+enum class ResidualType : uint8_t {
 	RESIDUAL_SCALED = 0,
 	RESIDUAL_RAW = 1,
 	RESIDUAL_RMS = 2
 };
 
-enum ResidualNormType {
+enum class ResidualNormType : uint8_t {
 	RESIDUAL_L1 = 0,
 	RESIDUAL_L2 = 1,
 	RESIDUAL_LINF = 2
 };
 
-enum ResidualScalingType {
+enum class ResidualScalingType : uint8_t {
 	RESIDUAL_SCALING_NONE = 0,
 	RESIDUAL_SCALING_N = 1,
 	RESIDUAL_SCALING_SQRT_N = 2,
@@ -31,25 +36,25 @@ enum ResidualScalingType {
 	RESIDUAL_SCALING_CONTINUITY = 4
 };
 
-enum LinearSolverType {
+enum class LinearSolverType : uint8_t {
     LINEAR_JACOBI         = 0,
 	LINEAR_GS_RB		  = 1,
     LINEAR_BICGSTAB       = 2,
     LINEAR_GMRES          = 3
 };
 
-enum VelocitySolverType {
+enum class VelocitySolverType : uint8_t {
     SOLVER_SIMPLE         = 0,
     SOLVER_SIMPLER        = 1
 };
 
-enum class CellStoreType {
+enum class CellStoreType : uint8_t {
 	CENTER,
 	AXIAL,
 	RADIAL
 };
 
-enum ConvectionScheme {
+enum class ConvectionScheme : uint8_t {
 	CONV_UPWIND,
 	CONV_CENTRAL,
 	CONV_SECOND_ORDER_UPWIND,
@@ -61,7 +66,7 @@ enum ConvectionScheme {
 // "Pressure Gradient" because that is where it is felt most, but it is not scoped
 // to pressure, and the OpenFOAM export relies on that: it maps straight onto
 // `gradSchemes default`, which is likewise global.
-enum GradientScheme {
+enum class GradientScheme : uint8_t {
 	GRAD_GREEN_GAUSS = 0,
 	GRAD_LSQ = 1
 };
@@ -161,26 +166,16 @@ struct MeshColoring {
 	}
 };
 
+// Convergence control for the SIMPLE outer loop. Which numerics it runs is
+// ConfigSolver's business -- useNonOrthCorrector lives there now.
 struct ConfigSimple {
 	int maxIter = 50;
 	int checkConv = 1;
 	double momTol = 1e-8;
 	double ppTol = 1e-5;
-
-	// Deferred non-orthogonal corrector for the pressure correction. Off =
-	// orthogonal only (stable default); on = one extra corrector pass. The
-	// deferred cross term can destabilize on skewed/axis cells, so it is opt-in,
-	// and it is meaningless on a structured mesh (orthogonal by construction).
-	//
-	// Was `int nNonOrthCorrectors` (a pass count). A bool lands at the same
-	// offset and the struct's tail padding absorbs the 3 lost bytes, so
-	// sizeof(ConfigSimple) is unchanged and old .bin saves still read: a saved
-	// count of 0 loads as false, any count >= 1 loads as a nonzero byte that
-	// sanitizeSolverConfig normalizes to true.
-	bool useNonOrthCorrector = false;
 };
 
-static_assert(sizeof(ConfigSimple) == 32, "ConfigSimple size changed -- see file_manager solverFileVersion");
+static_assert(sizeof(ConfigSimple) == 24, "ConfigSimple size changed -- see file_manager solverFileVersion");
 
 struct ConfigMultigrid {
 
@@ -208,45 +203,59 @@ struct ConfigMultigrid {
 };
 
 // Time discretization for a transient run.
-//
-// Backed by uint8_t on purpose: it drops into ConfigSolver's existing padding so
-// sizeof(ConfigSolver) does not change. file_manager serializes ConfigSolver as a
-// raw byte blob, so a size change would silently misread every .bin saved before
-// this field existed. See the static_assert below.
 enum class TimeScheme : uint8_t {
 	TIME_FIRST_ORDER  = 0,		// backward Euler
 	TIME_SECOND_ORDER = 1		// BDF2
 };
 
+// The whole run configuration: which algorithms to use, and the transient
+// settings. This is the one struct the solver, the Solver tab and the .axislv
+// payload all read -- Solver used to carry its own copies of the velocity solver,
+// the two schemes, the multigrid flag and saveKeyFrameIter, which meant the GUI
+// and the save file could disagree about which one the solve had actually used.
 struct ConfigSolver {
 
-	LinearSolverType type = LINEAR_JACOBI;
-	int maxIter = 20;
+	VelocitySolverType velocitySolver = VelocitySolverType::SOLVER_SIMPLE;
+	ConvectionScheme convectionScheme = ConvectionScheme::CONV_UPWIND;
+	GradientScheme gradientScheme = GradientScheme::GRAD_LSQ;
+	LinearSolverType type = LinearSolverType::LINEAR_JACOBI;
+	TimeScheme timeScheme = TimeScheme::TIME_FIRST_ORDER;
+
+
+	int linearMaxIter = 20;
+	bool useMultigrid = true;
 
 	bool addConvectionTerm = true;
 	bool transient = false;
 
-	// Placed here, inside the padding that already followed the two bools, rather
-	// than after tEnd where it would grow the struct.
-	TimeScheme timeScheme = TimeScheme::TIME_FIRST_ORDER;
+	// Deferred non-orthogonal corrector for the pressure correction. Off =
+	// orthogonal only (stable default); on = one extra corrector pass. The
+	// deferred cross term can destabilize on skewed/axis cells, so it is opt-in,
+	// and it is meaningless on a structured mesh (orthogonal by construction).
+	//
+	// Sits with the other three bools deliberately: it lands in the padding that
+	// already followed `transient`, so moving it here out of ConfigSimple left
+	// sizeof(ConfigSolver) unchanged.
+	bool useNonOrthCorrector = false;
 
 	double dt = 0.1;
 	double tEnd = 2.0;
+	int saveKeyFrameIter = 2;
 };
 
-// Old projects are loaded by reading sizeof(ConfigSolver) bytes straight over this
-// struct, so its size is part of the .bin format. If a field is added that pushes
-// this past 32, either shrink it back into the padding or bump solverFileVersion in
-// file_manager.cpp (which makes older saves fall back to defaults instead of
-// misreading). Do not just update the number here.
-static_assert(sizeof(ConfigSolver) == 32, "ConfigSolver size changed -- see file_manager solverFileVersion");
+// Solver files store this struct as a raw byte blob, so its size and layout are
+// part of the .axislv / .axi format. Changing either -- adding a field, or
+// widening one of the enums above -- means bumping solverFileVersion in
+// file_manager.cpp and teaching readSolverPayload to map the old bytes across
+// (see LegacyConfigSolverV4 there). Do not just update the number here.
+static_assert(sizeof(ConfigSolver) == 40, "ConfigSolver layout changed -- see file_manager solverFileVersion");
 
 struct ConfigResidual {
 
-	ResidualType type				= RESIDUAL_SCALED;
+	ResidualType type				= ResidualType::RESIDUAL_SCALED;
 
-	ResidualNormType normType		= RESIDUAL_L1;
-	ResidualScalingType scaleType	= RESIDUAL_SCALING_DIAGONAL;
+	ResidualNormType normType		= ResidualNormType::RESIDUAL_L1;
+	ResidualScalingType scaleType	= ResidualScalingType::RESIDUAL_SCALING_DIAGONAL;
 
 	bool enabled = false;
 

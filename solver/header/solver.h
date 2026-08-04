@@ -36,11 +36,12 @@ public:
 
 	std::vector<std::string> fieldType;
 
-	VelocitySolverType currentVelocitySolver = SOLVER_SIMPLE;
-	ConvectionScheme convectionScheme = CONV_UPWIND;
-	GradientScheme gradientScheme = GRAD_LSQ;
+	// The velocity solver, the two discretization schemes, the multigrid flag and
+	// saveKeyFrameIter all live in configSolver -- they used to be duplicated here
+	// as well, which let the GUI edit one copy while the save file carried the other.
 
-	int saveKeyFrameIter = 2;
+	bool continueSolver = false;
+	bool isReady = false;
 
 	std::thread solverThread;
 	cudaStream_t stream = nullptr;
@@ -55,10 +56,6 @@ public:
 	// fields solved so far are still copied back and remain a valid partial
 	// result -- and Continue Solver can pick up from that iteration.
 	std::atomic<bool> stopRequested{ false };
-
-	bool continueSolver = false;
-	bool isReady = false;
-	bool useMultigrid = true;
 
 	// run solver
 	// Non-const because it refreshes the mesh's cached FVMesh before spawning the

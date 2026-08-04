@@ -41,15 +41,57 @@ namespace {
 	// v3: residual display settings (type/norm/scaling/enabled) are stored per-residual.
 	// v4: adds gradientScheme, which v3 never wrote -- the Pressure Gradient combo
 	//     silently reverted to the default on every load.
-	// v3 is still readable (see readSolverPayload): dropping it would throw away the
-	// rest of the solver setup in every project saved before this.
+	// v5: the velocity solver, the two schemes, saveKeyFrameIter and (out of
+	//     ConfigSimple) useNonOrthCorrector all moved INTO ConfigSolver, and every
+	//     solver enum became uint8_t-backed. That reshapes both config blobs -- one
+	//     grew fields, the other lost its trailing bool and shrank 32 -> 24 -- so v5
+	//     is a new format rather than an appended field.
+	// v3 and v4 are still readable (see readSolverPayloadLegacy): dropping them would
+	// throw away the rest of the solver setup in every project saved before this.
 	// Legacy (v1/v2/pre-magic) loaders were removed.
-	constexpr std::uint32_t solverFileVersion = 4u;
+	constexpr std::uint32_t solverFileVersion = 5u;
+	constexpr std::uint32_t solverFileVersionSplitConfig = 4u;
 	constexpr std::uint32_t solverFileVersionNoGradientScheme = 3u;
 	constexpr std::uint32_t meshRegionFileMagic = 0x494F5241u; // "AROI" little-endian
 	constexpr std::uint32_t meshRegionFileVersion = 1u;
 	constexpr std::uint32_t sceneViewFileMagic = 0x57565641u;  // "AVVW" little-endian
 	constexpr std::uint32_t sceneViewFileVersion = 1u;
+
+	// The 32-byte ConfigSolver a v3/v4 solver file carries, in that layout. The live
+	// struct has grown five fields and narrowed its enums to a byte each, so it can no
+	// longer be read over those bytes -- this stands in, and readSolverPayloadLegacy
+	// maps it across along with the loose fields that followed it.
+	struct LegacyConfigSolverV4 {
+		std::int32_t  type = 0;                 // LinearSolverType, int-width back then
+		std::int32_t  maxIter = 20;             // now ConfigSolver::linearMaxIter
+		bool          addConvectionTerm = true;
+		bool          transient = false;
+		std::uint8_t  timeScheme = 0;
+		std::uint8_t  pad0 = 0;
+		std::uint32_t pad1 = 0;
+		double        dt = 0.1;
+		double        tEnd = 2.0;
+	};
+	static_assert(sizeof(LegacyConfigSolverV4) == 32,
+		"LegacyConfigSolverV4 must match the v3/v4 on-disk ConfigSolver exactly");
+
+	// Likewise for ConfigSimple, which carried the non-orthogonal corrector until v5
+	// and so was 32 bytes rather than the 24 it is now.
+	//
+	// That trailing byte is read as a uint8_t, not a bool, on purpose: it started life
+	// as `int nNonOrthCorrectors`, a pass count, so a v3/v4 file can legitimately hold
+	// 2 or 3 there. Loading such a byte straight into a bool is UB, hence the explicit
+	// `!= 0` in readSolverPayloadLegacy -- any nonzero count means "corrector on".
+	struct LegacyConfigSimpleV4 {
+		std::int32_t  maxIter = 50;
+		std::int32_t  checkConv = 1;
+		double        momTol = 1e-8;
+		double        ppTol = 1e-5;
+		std::uint8_t  useNonOrthCorrector = 0;
+		std::uint8_t  pad0[7] = {};
+	};
+	static_assert(sizeof(LegacyConfigSimpleV4) == 32,
+		"LegacyConfigSimpleV4 must match the v3/v4 on-disk ConfigSimple exactly");
 
 	// Region vectors were originally raw-copied, including this struct's padding.
 	// Keep the old layout available so existing project files can be upgraded to
@@ -131,15 +173,24 @@ namespace {
 		"U", "V", "Continuity", "Temperature", "Concentration"
 	};
 
+	// True when `value` is one of the enumerators of E, given that E starts at 0 and
+	// runs contiguously up to `last`. Every enum these loaders touch is declared that
+	// way, and all of them are uint8_t-backed now, so a stored byte only has to be
+	// checked against the top -- it cannot come back negative.
+	template <typename E>
+	bool enumInRange(E value, E last) {
+		return (int)value >= 0 && (int)value <= (int)last;
+	}
+
 	void clampResidualSettings(ResidualType& type, ResidualNormType& norm, ResidualScalingType& scale) {
-		if ((int)type < (int)RESIDUAL_SCALED || (int)type > (int)RESIDUAL_RMS) {
-			type = RESIDUAL_RAW;
+		if (!enumInRange(type, ResidualType::RESIDUAL_RMS)) {
+			type = ResidualType::RESIDUAL_RAW;
 		}
-		if ((int)norm < (int)RESIDUAL_L1 || (int)norm > (int)RESIDUAL_LINF) {
-			norm = RESIDUAL_LINF;
+		if (!enumInRange(norm, ResidualNormType::RESIDUAL_LINF)) {
+			norm = ResidualNormType::RESIDUAL_LINF;
 		}
-		if ((int)scale < (int)RESIDUAL_SCALING_NONE || (int)scale > (int)RESIDUAL_SCALING_DIAGONAL) {
-			scale = RESIDUAL_SCALING_NONE;
+		if (!enumInRange(scale, ResidualScalingType::RESIDUAL_SCALING_DIAGONAL)) {
+			scale = ResidualScalingType::RESIDUAL_SCALING_NONE;
 		}
 	}
 
@@ -163,12 +214,14 @@ namespace {
 		it->second.tol = tol;
 	}
 
-	// v3 residual block: type / norm / scaling / enabled / tolerance for each residual, in kResidualOrder.
+	// Residual block: type / norm / scaling / enabled / tolerance for each residual, in
+	// kResidualOrder. The three enums are one byte each as of v5 (they were four in
+	// v3/v4 -- see readResidualConfigsLegacy).
 	void writeResidualConfigs(std::ofstream& out, const Solver& solver) {
 		for (const char* name : kResidualOrder) {
-			ResidualType        type    = RESIDUAL_RAW;
-			ResidualNormType    norm    = RESIDUAL_LINF;
-			ResidualScalingType scale   = RESIDUAL_SCALING_NONE;
+			ResidualType        type    = ResidualType::RESIDUAL_RAW;
+			ResidualNormType    norm    = ResidualNormType::RESIDUAL_LINF;
+			ResidualScalingType scale   = ResidualScalingType::RESIDUAL_SCALING_NONE;
 			bool                enabled = false;
 			double              tol     = 0.001;
 
@@ -187,9 +240,9 @@ namespace {
 
 	bool readResidualConfigs(std::ifstream& in, Solver& solver) {
 		for (const char* name : kResidualOrder) {
-			ResidualType        type    = RESIDUAL_SCALED;
-			ResidualNormType    norm    = RESIDUAL_LINF;
-			ResidualScalingType scale   = RESIDUAL_SCALING_DIAGONAL;
+			ResidualType        type    = ResidualType::RESIDUAL_SCALED;
+			ResidualNormType    norm    = ResidualNormType::RESIDUAL_LINF;
+			ResidualScalingType scale   = ResidualScalingType::RESIDUAL_SCALING_DIAGONAL;
 			bool                enabled = false;
 			double              tol     = 0.001;
 
@@ -203,9 +256,40 @@ namespace {
 		return true;
 	}
 
+	// Same block as above, but with the int-width enums a v3/v4 file wrote. Reading it
+	// with the v5 layout would take 3 bytes per record too few and desync the rest.
+	// applyResidualSettings clamps whatever the narrowing produces.
+	bool readResidualConfigsLegacy(std::ifstream& in, Solver& solver) {
+		for (const char* name : kResidualOrder) {
+			std::int32_t type    = 0;
+			std::int32_t norm    = 0;
+			std::int32_t scale   = 0;
+			bool         enabled = false;
+			double       tol     = 0.001;
+
+			if (!readAll(in, type, norm, scale, enabled, tol)) {
+				return false;
+			}
+
+			applyResidualSettings(
+				solver, name,
+				(ResidualType)type,
+				(ResidualNormType)norm,
+				(ResidualScalingType)scale,
+				enabled, tol
+			);
+		}
+
+		return true;
+	}
+
 	void sanitizeSolverConfig(Solver& solver) {
-		if (solver.configSolver.maxIter < 1) {
-			solver.configSolver.maxIter = 20;
+		if (solver.configSolver.linearMaxIter < 1) {
+			solver.configSolver.linearMaxIter = 20;
+		}
+
+		if (solver.configSolver.saveKeyFrameIter < 1) {
+			solver.configSolver.saveKeyFrameIter = 2;
 		}
 
 		if (solver.configSimple.maxIter < 1) {
@@ -216,16 +300,10 @@ namespace {
 			solver.configSimple.checkConv = 1;
 		}
 
-		// useNonOrthCorrector used to be `int nNonOrthCorrectors` at this same
-		// offset, so an old save can leave a byte other than 0/1 here (a saved
-		// pass count of 2 lands as 0x02). Reading such a bool directly is UB, so
-		// normalize it through a byte copy: any nonzero count means "corrector on".
-		{
-			unsigned char raw = 0;
-			std::memcpy(&raw, &solver.configSimple.useNonOrthCorrector, 1);
-			const bool on = raw != 0;
-			std::memcpy(&solver.configSimple.useNonOrthCorrector, &on, 1);
-		}
+		// The corrector flag needs no normalizing here any more: v5 writes it as a
+		// real bool out of ConfigSolver, and the pass-count byte a v3/v4 file can put
+		// there is folded to 0/1 by readSolverPayloadLegacy before it ever lands in
+		// the struct.
 
 		if (!std::isfinite(solver.configSimple.momTol) ||
 			solver.configSimple.momTol <= 0.0) {
@@ -237,19 +315,20 @@ namespace {
 			solver.configSimple.ppTol = 1e-5;
 		}
 
-		if ((int)solver.configSolver.type < 0 ||
-			(int)solver.configSolver.type > (int)LINEAR_GS_RB) {
-			solver.configSolver.type = LINEAR_JACOBI;
+		// Every clamp below is against what the GUI can actually OFFER, not against
+		// the enum's last enumerator: LINEAR_BICGSTAB / GMRES / SOLVER_SIMPLER /
+		// CONV_QUICK exist in the enums but have no implementation behind them, so a
+		// file naming one has to come back as something the solver can run.
+		if (!enumInRange(solver.configSolver.type, LinearSolverType::LINEAR_GS_RB)) {
+			solver.configSolver.type = LinearSolverType::LINEAR_JACOBI;
 		}
 
-		if ((int)solver.currentVelocitySolver < 0 ||
-			(int)solver.currentVelocitySolver > (int)SOLVER_SIMPLE) {
-			solver.currentVelocitySolver = SOLVER_SIMPLE;
+		if (!enumInRange(solver.configSolver.velocitySolver, VelocitySolverType::SOLVER_SIMPLE)) {
+			solver.configSolver.velocitySolver = VelocitySolverType::SOLVER_SIMPLE;
 		}
 
-		if ((int)solver.gradientScheme < 0 ||
-			(int)solver.gradientScheme > (int)GRAD_LSQ) {
-			solver.gradientScheme = GRAD_LSQ;
+		if (!enumInRange(solver.configSolver.gradientScheme, GradientScheme::GRAD_LSQ)) {
+			solver.configSolver.gradientScheme = GradientScheme::GRAD_LSQ;
 		}
 
 		// residual display settings are now per-residual; clamp each entry in place
@@ -258,17 +337,15 @@ namespace {
 			clampResidualSettings(cfg.type, cfg.normType, cfg.scaleType);
 		}
 
-		if ((int)solver.convectionScheme < (int)CONV_UPWIND ||
-			(int)solver.convectionScheme > (int)CONV_SECOND_ORDER_UPWIND) {
-			solver.convectionScheme = CONV_UPWIND;
+		if (!enumInRange(solver.configSolver.convectionScheme, ConvectionScheme::CONV_SECOND_ORDER_UPWIND)) {
+			solver.configSolver.convectionScheme = ConvectionScheme::CONV_UPWIND;
 		}
 
-		// timeScheme occupies a byte that was plain struct padding before it existed,
+		// timeScheme occupied a byte that was plain struct padding before it existed,
 		// so a project saved by an older build supplies whatever the writer's padding
 		// held. Anything outside the enum falls back to first order, which is exactly
 		// the behavior those projects were saved with.
-		if ((int)solver.configSolver.timeScheme < (int)TimeScheme::TIME_FIRST_ORDER ||
-			(int)solver.configSolver.timeScheme > (int)TimeScheme::TIME_SECOND_ORDER) {
+		if (!enumInRange(solver.configSolver.timeScheme, TimeScheme::TIME_SECOND_ORDER)) {
 			solver.configSolver.timeScheme = TimeScheme::TIME_FIRST_ORDER;
 		}
 
@@ -287,19 +364,12 @@ namespace {
 
 	// Per-residual display settings follow the common block (see writeResidualConfigs).
 	// The v2 EnabledResiduals block is gone — plot-enable rides along per residual.
-	//
-	// `hasGradientScheme` distinguishes v4 from v3. The payload is positional, so a
-	// v3 file has nothing where gradientScheme sits and reading one would desync
-	// every field after it; v3 keeps the constructor default instead.
-	bool readSolverPayload(std::ifstream& in, Solver& solver, bool hasGradientScheme) {
+	bool readSolverPayload(std::ifstream& in, Solver& solver) {
 		bool ok = readAll(
 			in,
 			solver.varUnits,
 			solver.fieldOption,
 			solver.configSolver,
-			solver.currentVelocitySolver,
-			solver.convectionScheme,
-			solver.saveKeyFrameIter,
 			solver.f,
 			solver.configSimple
 		);
@@ -308,11 +378,76 @@ namespace {
 			return false;
 		}
 
-		if (hasGradientScheme && !readVar(in, solver.gradientScheme)) {
+		return readResidualConfigs(in, solver);
+	}
+
+	// v3/v4 payload. ConfigSolver was 32 bytes of int-width enums back then, and the
+	// four settings it has since absorbed were written as loose ints on either side of
+	// the fluid/SIMPLE blocks -- so this reads the old shape and assembles the current
+	// struct from the pieces rather than trying to overlay them.
+	//
+	// `hasGradientScheme` distinguishes v4 from v3. The payload is positional, so a v3
+	// file has nothing where gradientScheme sits and reading one would desync every
+	// field after it; v3 keeps the default instead.
+	bool readSolverPayloadLegacy(std::ifstream& in, Solver& solver, bool hasGradientScheme) {
+
+		LegacyConfigSolverV4 legacy;
+		LegacyConfigSimpleV4 legacySimple;
+		std::int32_t velocitySolver  = 0;
+		std::int32_t convectionScheme = 0;
+		std::int32_t saveKeyFrameIter = 2;
+
+		bool ok = readAll(
+			in,
+			solver.varUnits,
+			solver.fieldOption,
+			legacy,
+			velocitySolver,
+			convectionScheme,
+			saveKeyFrameIter,
+			solver.f,
+			legacySimple
+		);
+
+		if (!ok) {
 			return false;
 		}
 
-		return readResidualConfigs(in, solver);
+		std::int32_t gradientScheme = (std::int32_t)GradientScheme::GRAD_LSQ;
+
+		if (hasGradientScheme && !readVar(in, gradientScheme)) {
+			return false;
+		}
+
+		// Anything out of range here is caught by sanitizeSolverConfig, which the two
+		// callers of this function run afterwards.
+		solver.configSolver = ConfigSolver{};
+		solver.configSolver.velocitySolver   = (VelocitySolverType)velocitySolver;
+		solver.configSolver.convectionScheme = (ConvectionScheme)convectionScheme;
+		solver.configSolver.gradientScheme   = (GradientScheme)gradientScheme;
+		solver.configSolver.type             = (LinearSolverType)legacy.type;
+		solver.configSolver.timeScheme       = (TimeScheme)legacy.timeScheme;
+		solver.configSolver.linearMaxIter    = legacy.maxIter;
+		solver.configSolver.addConvectionTerm = legacy.addConvectionTerm;
+		solver.configSolver.transient        = legacy.transient;
+		solver.configSolver.dt               = legacy.dt;
+		solver.configSolver.tEnd             = legacy.tEnd;
+		solver.configSolver.saveKeyFrameIter = saveKeyFrameIter;
+
+		// Crosses structs: the corrector was ConfigSimple's until v5. Nonzero rather
+		// than == 1, since the byte may be an old pass count (see LegacyConfigSimpleV4).
+		solver.configSolver.useNonOrthCorrector = legacySimple.useNonOrthCorrector != 0;
+
+		solver.configSimple = ConfigSimple{};
+		solver.configSimple.maxIter   = legacySimple.maxIter;
+		solver.configSimple.checkConv = legacySimple.checkConv;
+		solver.configSimple.momTol    = legacySimple.momTol;
+		solver.configSimple.ppTol     = legacySimple.ppTol;
+
+		// useMultigrid is new in v5 and keeps the ConfigSolver default: these files
+		// predate the flag, and the runs that made them all went through multigrid.
+
+		return readResidualConfigsLegacy(in, solver);
 	}
 }
 
@@ -1243,9 +1378,9 @@ FoamCaseSetup foamCaseSetupFromSolver(const Solver& solver) {
 	setup.steadyIterations =
 		std::max(solver.configSimple.maxIter, setup.steadyIterations);
 
-	switch (solver.convectionScheme) {
-		case CONV_CENTRAL:             setup.convection = FoamConvection::Linear;       break;
-		case CONV_SECOND_ORDER_UPWIND: setup.convection = FoamConvection::LinearUpwind; break;
+	switch (solver.configSolver.convectionScheme) {
+		case ConvectionScheme::CONV_CENTRAL:             setup.convection = FoamConvection::Linear;       break;
+		case ConvectionScheme::CONV_SECOND_ORDER_UPWIND: setup.convection = FoamConvection::LinearUpwind; break;
 
 		// LinearUpwind, not Quick: AxiSim has no QUICK. Selecting it runs second-order
 		// upwind (the console line says so), so exporting `Gauss QUICK` would give
@@ -1253,15 +1388,16 @@ FoamCaseSetup foamCaseSetupFromSolver(const Solver& solver) {
 		// day the kernel gains a real QUICK -- this line is the only one to change
 		// back. Unreachable today: the GUI combo offers three schemes and
 		// sanitizeSolverConfig clamps anything past CONV_SECOND_ORDER_UPWIND.
-		case CONV_QUICK:               setup.convection = FoamConvection::LinearUpwind; break;
+		case ConvectionScheme::CONV_QUICK:               setup.convection = FoamConvection::LinearUpwind; break;
 
-		case CONV_UPWIND:              setup.convection = FoamConvection::Upwind;       break;
+		case ConvectionScheme::CONV_UPWIND:              setup.convection = FoamConvection::Upwind;       break;
 	}
 
-	setup.leastSquaresGradient = solver.gradientScheme == GRAD_LSQ;
+	setup.leastSquaresGradient =
+		solver.configSolver.gradientScheme == GradientScheme::GRAD_LSQ;
 
 	setup.addConvection    = solver.configSolver.addConvectionTerm;
-	setup.nonOrthCorrector = solver.configSimple.useNonOrthCorrector;
+	setup.nonOrthCorrector = solver.configSolver.useNonOrthCorrector;
 
 	setup.momentumRelaxation = solver.simple.momentumRelaxation;
 	setup.pressureRelaxation = solver.simple.pressureRelaxation;
@@ -1445,13 +1581,9 @@ void saveFromPathSolver(std::ofstream& out, Solver& solver) {
 		out,
 		solver.varUnits,
 		solver.fieldOption,
-		solver.configSolver,
-		solver.currentVelocitySolver,
-		solver.convectionScheme,
-		solver.saveKeyFrameIter,
+		solver.configSolver,	// v5: carries the schemes and saveKeyFrameIter too
 		solver.f,
-		solver.configSimple,
-		solver.gradientScheme	// v4; readSolverPayload skips this for a v3 file
+		solver.configSimple
 	);
 
 	// per-residual display settings: type / norm / scaling / enabled for each
@@ -1492,13 +1624,16 @@ void loadFromPathSolver(std::ifstream& in, Solver& solver) {
 		std::uint32_t version = 0;
 		if (readVar(in, version)) {
 			if (version == solverFileVersion) {
-				ok = readSolverPayload(in, solver, true);
+				ok = readSolverPayload(in, solver);
+			}
+			else if (version == solverFileVersionSplitConfig) {
+				ok = readSolverPayloadLegacy(in, solver, true);
 			}
 			else if (version == solverFileVersionNoGradientScheme) {
 				// Pre-gradientScheme save: everything else still reads, and the
 				// scheme keeps its default rather than costing the user the whole
 				// solver setup.
-				ok = readSolverPayload(in, solver, false);
+				ok = readSolverPayloadLegacy(in, solver, false);
 			}
 		}
 	}
@@ -1596,7 +1731,7 @@ void saveFromPathResults(std::ofstream& out, const Results& results) {
 
 	// display state. The enums are plain enum class over int and the flags are bool,
 	// so the generic trivially-copyable writeVar handles them directly -- same as
-	// mesh.currentMeshType and solver.currentVelocitySolver elsewhere in this file.
+	// mesh.currentMeshType elsewhere in this file.
 	writeAll(
 		out,
 		results.currentItem,

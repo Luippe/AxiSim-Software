@@ -53,17 +53,17 @@ SolverGUI::SolverGUI(Project& project, AppConfig& appConfig) :
 // set default values for residual settings based on the current residual type
 void setResidualDefault(ConfigResidual& configRes) {
 	switch (configRes.type) {
-	case RESIDUAL_SCALED:
-		configRes.normType = RESIDUAL_L1;
-		configRes.scaleType = RESIDUAL_SCALING_DIAGONAL;
+	case ResidualType::RESIDUAL_SCALED:
+		configRes.normType = ResidualNormType::RESIDUAL_L1;
+		configRes.scaleType = ResidualScalingType::RESIDUAL_SCALING_DIAGONAL;
 		break;
-	case RESIDUAL_RAW:
-		configRes.normType = RESIDUAL_LINF;
-		configRes.scaleType = RESIDUAL_SCALING_NONE;
+	case ResidualType::RESIDUAL_RAW:
+		configRes.normType = ResidualNormType::RESIDUAL_LINF;
+		configRes.scaleType = ResidualScalingType::RESIDUAL_SCALING_NONE;
 		break;
-	case RESIDUAL_RMS:
-		configRes.normType = RESIDUAL_L2;
-		configRes.scaleType = RESIDUAL_SCALING_SQRT_N;
+	case ResidualType::RESIDUAL_RMS:
+		configRes.normType = ResidualNormType::RESIDUAL_L2;
+		configRes.scaleType = ResidualScalingType::RESIDUAL_SCALING_SQRT_N;
 		break;
 	}
 }
@@ -143,7 +143,7 @@ void SolverGUI::drawResidualSettings() {
 			// carries a tolerance.
 			if (std::strcmp(name, "Continuity") != 0) {
 				ImGui::TableSetColumnIndex(2);
-				if (createSimpleCombo("##ResidualType", solver.residualType, (int&)configResidual.type, IM_ARRAYSIZE(solver.residualType))) {
+				if (createSimpleCombo("##ResidualType", solver.residualType, configResidual.type, IM_ARRAYSIZE(solver.residualType))) {
 					setResidualDefault(configResidual);
 				}
 			}
@@ -158,46 +158,9 @@ void SolverGUI::drawResidualSettings() {
 	}
 	ImGui::PopStyleVar();
 
-	// Norm and scaling are advanced knobs; keep them out of the main table and only
-	// expose them when the user opens this section.
-	if (ImGui::CollapsingHeader("Advanced Options")) {
-		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(8.0f, 5.0f));
-		if (ImGui::BeginTable("Residual Advanced", 3, UIFlags::TableSimpleFlags | ImGuiTableFlags_NoSavedSettings)) {
-			setupTableColumns(
-				autoColumn("Residual"),
-				column("Norm", 130.0f, ImGuiTableColumnFlags_WidthStretch),
-				column("Scaling", 130.0f, ImGuiTableColumnFlags_WidthStretch)
-			);
-			ImGui::TableHeadersRow();
-
-			for (const char*& name : solver.residualPlotType) {
-				// Continuity has no norm/scaling; skip hidden fields too.
-				if (!rowVisible(name) || std::strcmp(name, "Continuity") == 0) {
-					continue;
-				}
-
-				ConfigResidual& configResidual = solver.cfg.at(name);
-
-				ImGui::TableNextRow();
-				ImGui::PushID(name);
-
-				ImGui::TableSetColumnIndex(0);
-				ImGui::AlignTextToFramePadding();
-				ImGui::TextUnformatted(name);
-
-				ImGui::TableSetColumnIndex(1);
-				createSimpleCombo("##ResidualNorm", solver.residualNormType, (int&)configResidual.normType, IM_ARRAYSIZE(solver.residualNormType));
-
-				ImGui::TableSetColumnIndex(2);
-				createSimpleCombo("##ResidualScaling", solver.residualScalingType, (int&)configResidual.scaleType, IM_ARRAYSIZE(solver.residualScalingType));
-
-				ImGui::PopID();
-			}
-
-			ImGui::EndTable();
-		}
-		ImGui::PopStyleVar();
-	}
+	// Per-residual norm and scaling used to sit under an "Advanced Options" header
+	// here. They now live in Option -> Advanced -> Solver -> Residuals, with the
+	// rest of the set-once solver knobs (Menu::drawAdvancedSolverTab).
 }
 
 
@@ -516,7 +479,7 @@ void SolverGUI::drawLinearSolverCombo() {
 	// (i+j)%2, which needs a real nr x nz grid. The face path (multiblock /
 	// unstructured) now supplies an equivalent ordering by graph coloring, so every
 	// mesh type can run it and there is nothing left to grey out.
-	int& type = (int&)solver.configSolver.type;
+	int type = (int)solver.configSolver.type;
 
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	ImGui::AlignTextToFramePadding();
@@ -527,7 +490,7 @@ void SolverGUI::drawLinearSolverCombo() {
 
 			const bool selected = (type == i);
 			if (ImGui::Selectable(solver.linearSolverType[i], selected)) {
-				type = i;
+				solver.configSolver.type = (LinearSolverType)i;
 			}
 			if (selected) {
 				ImGui::SetItemDefaultFocus();
@@ -554,7 +517,7 @@ void SolverGUI::drawPropertiesPanel() {
 		sectionHeader("Solver");
 		if (beginPropertyTable("SolverGeneral")) {
 			labelRow("Solver");
-			createSimpleCombo("##Solver", solver.velocitySolverType, (int&)solver.currentVelocitySolver, IM_ARRAYSIZE(solver.velocitySolverType));
+			createSimpleCombo("##Solver", solver.velocitySolverType, solver.configSolver.velocitySolver, IM_ARRAYSIZE(solver.velocitySolverType));
 
 			labelRow("Linear Solver");
 			drawLinearSolverCombo();
@@ -565,12 +528,6 @@ void SolverGUI::drawPropertiesPanel() {
 		sectionHeader("Options");
 		if (beginPropertyTable("SolverOptions")) {
 
-			// Multigrid accelerates the pressure-correction solve specifically, so
-			// it belongs next to the linear solver it replaces there -- not in the
-			// General tab's field checkboxes, which pick which EQUATIONS are solved.
-			labelRow("Multigrid");
-			checkBox("##Multigrid", &solver.useMultigrid);
-
 			labelRow("Add Convection Term");
 			checkBox("##ConvectionTerm", &solver.configSolver.addConvectionTerm);
 
@@ -580,12 +537,12 @@ void SolverGUI::drawPropertiesPanel() {
 			// would show a checked box that the solve ignores.
 			const bool orthogonalMesh = mesh.currentMeshType == MeshType::Structured;
 			if (orthogonalMesh) {
-				project.solver.configSimple.useNonOrthCorrector = false;
+				project.solver.configSolver.useNonOrthCorrector = false;
 			}
 
 			labelRow("Non-Orthogonal Corrector");
 			ImGui::BeginDisabled(orthogonalMesh);
-			checkBox("##NonOrthCorrector", &project.solver.configSimple.useNonOrthCorrector);
+			checkBox("##NonOrthCorrector", &project.solver.configSolver.useNonOrthCorrector);
 			ImGui::EndDisabled();
 			disabledHint(orthogonalMesh, "A structured mesh is orthogonal, so there is no cross term to correct.");
 
@@ -595,7 +552,7 @@ void SolverGUI::drawPropertiesPanel() {
 
 			labelRow("Convection Discretization");
 			ImGui::BeginDisabled(convectionOff);
-			createSimpleCombo("##ConvectionScheme", solver.convectionDiscretizationType, (int&)(solver.convectionScheme), IM_ARRAYSIZE(solver.convectionDiscretizationType));
+			createSimpleCombo("##ConvectionScheme", solver.convectionDiscretizationType, solver.configSolver.convectionScheme, IM_ARRAYSIZE(solver.convectionDiscretizationType));
 			ImGui::EndDisabled();
 			disabledHint(convectionOff, "Enable Add Convection Term to choose a discretization.");
 
@@ -603,7 +560,7 @@ void SolverGUI::drawPropertiesPanel() {
 			createSimpleCombo(
 				"##GradientScheme",
 				project.solver.gradientSchemeType,
-				(int&)project.solver.gradientScheme,
+				project.solver.configSolver.gradientScheme,
 				IM_ARRAYSIZE(project.solver.gradientSchemeType)
 			);
 
@@ -647,7 +604,7 @@ void SolverGUI::drawPropertiesPanel() {
 			);
 
 			labelRow("Type");
-			createSimpleCombo("##BoundaryType", solver.boundaryType, (int&)group->type, IM_ARRAYSIZE(solver.boundaryType));
+			createSimpleCombo("##BoundaryType", solver.boundaryType, group->type, IM_ARRAYSIZE(solver.boundaryType));
 			
 			ImGui::EndTable();
 		}
@@ -750,7 +707,7 @@ void SolverGUI::drawPropertiesPanel() {
 		sectionHeader("Tolerance");
 
 		if (ImGui::BeginTable("Iteration Settings", 2, UIFlags::TableSimpleFlags)) {
-			if (solver.currentVelocitySolver == SOLVER_SIMPLE) {
+			if (solver.configSolver.velocitySolver == VelocitySolverType::SOLVER_SIMPLE) {
 
 				setupTableColumns(
 					autoColumn("Label"),
@@ -770,40 +727,12 @@ void SolverGUI::drawPropertiesPanel() {
 				}
 
 				labelRow("Maximum Linear Solver Iteration");
-				inputInt("##LinearSolverIteration", &project.solver.configSolver.maxIter);
-				if (project.solver.configSolver.maxIter < 1) {
-					project.solver.configSolver.maxIter = 1;
+				inputInt("##LinearSolverIteration", &project.solver.configSolver.linearMaxIter);
+				if (project.solver.configSolver.linearMaxIter < 1) {
+					project.solver.configSolver.linearMaxIter = 1;
 				}
 
-				// Multigrid replaces the linear solver above for the pressure
-				// correction only, so it carries its own cycle count.
-				if (solver.useMultigrid) {
 
-					const bool graphPrepared = solver.solverRunning;
-
-					labelRow("Maximum Multigrid Cycles");
-					ImGui::BeginDisabled(graphPrepared);
-					inputInt("##MultigridMaxIter", &project.solver.configMultigrid.maxIter);
-					ImGui::EndDisabled();
-					disabledHint(graphPrepared, "The multigrid graph is already prepared for this solve.");
-
-					if (!graphPrepared && project.solver.configMultigrid.maxIter < 1) {
-						project.solver.configMultigrid.maxIter = 1;
-					}
-
-					// Coarsest-level sweep count. Same capture caveat as the cycle
-					// count: it decides how many smoother nodes get recorded into the
-					// run graph, so it cannot move once that graph is prepared.
-					labelRow("Coarsest Level Sweeps");
-					ImGui::BeginDisabled(graphPrepared);
-					inputInt("##MultigridLinearSweep", &project.solver.configMultigrid.linearSweep);
-					ImGui::EndDisabled();
-					disabledHint(graphPrepared, "The multigrid graph is already prepared for this solve.");
-
-					if (!graphPrepared && project.solver.configMultigrid.linearSweep < 0) {
-						project.solver.configMultigrid.linearSweep = 0;
-					}
-				}
 			}
 			ImGui::EndTable();
 		}
@@ -886,20 +815,13 @@ void SolverGUI::drawPropertiesPanel() {
 			// but make it clear that they only take effect once Enabled is checked.
 			ImGui::BeginDisabled(!solver.configSolver.transient);
 
-			// Round-tripped through a local int rather than the (int&) cast the other
-			// combos use: TimeScheme is uint8_t-backed (so it fits ConfigSolver's
-			// padding and keeps old .bin saves loadable), and reinterpreting it as
-			// int& would write 4 bytes over a 1-byte field.
 			labelRow("Time Discretization");
-			int timeScheme = (int)project.solver.configSolver.timeScheme;
-			if (createSimpleCombo(
+			createSimpleCombo(
 				"##TimeScheme",
 				project.solver.timeSchemeType,
-				timeScheme,
+				project.solver.configSolver.timeScheme,
 				IM_ARRAYSIZE(project.solver.timeSchemeType)
-			)) {
-				project.solver.configSolver.timeScheme = (TimeScheme)timeScheme;
-			}
+			);
 
 			labelRow("Time Step dt (s)");
 			ImGui::InputDouble("##timeStep", &project.solver.configSolver.dt, 0.0, 0.0, "%.5f");
@@ -908,7 +830,7 @@ void SolverGUI::drawPropertiesPanel() {
 			ImGui::InputDouble("##endTime", &project.solver.configSolver.tEnd, 0.0, 0.0, "%.5f");
 
 			labelRow("Save Keyframe Every # Time Steps");
-			ImGui::InputInt("##saveKeyFrameIter", &project.solver.saveKeyFrameIter, 0.0, 0.0);
+			ImGui::InputInt("##saveKeyFrameIter", &project.solver.configSolver.saveKeyFrameIter, 0.0, 0.0);
 
 			ImGui::EndDisabled();
 			ImGui::EndTable();

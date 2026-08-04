@@ -36,6 +36,10 @@ namespace UIFlagsDocking {
 		ImGuiWindowFlags_NoDocking |
 		ImGuiWindowFlags_NoSavedSettings;
 
+	inline constexpr ImGuiWindowFlags ModalPopupFlags =
+		ImGuiWindowFlags_AlwaysAutoResize |
+		ImGuiWindowFlags_NoMove;
+
 }
 
 namespace UITabBarFlags {

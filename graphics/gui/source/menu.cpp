@@ -1,18 +1,23 @@
 #include "menu.h"
 
+#include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <string>
 
+#include "base_gui.h"
 #include "gui.h"
 #include "imgui_internal.h"
 
 #include "file_manager.h"
+#include "flag_manager.h"
 #include "keyboard_manager.h"
 #include "stream_capture.h"
 #include "unit_manager.h"
 
 using namespace Shortcuts;
 using namespace Snapping;
+using namespace UIFlagsDocking;
 
 Menu::Menu(Project& project, GUI& gui) :
 	project(project),
@@ -403,7 +408,7 @@ void Menu::drawSnappingModal() {
 	if (ImGui::BeginPopupModal(
 		"Snapping",
 		nullptr,
-		ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove
+		ModalPopupFlags
 	)) {
 		bool justOpened = ImGui::IsWindowAppearing();
 
@@ -482,7 +487,7 @@ void Menu::drawShortcutModal() {
 	if (ImGui::BeginPopupModal(
 		"Keyboard Shortcuts",
 		nullptr,
-		ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove
+		ModalPopupFlags
 	)) {
 		bool justOpened = ImGui::IsWindowAppearing();
 		static ImGuiKeyChord* editingShortcut = nullptr;
@@ -584,7 +589,7 @@ void Menu::drawUnitsModal() {
 	if (ImGui::BeginPopupModal(
 		"Units",
 		nullptr,
-		ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove
+		ModalPopupFlags
 	)) {
 		bool justOpened = ImGui::IsWindowAppearing();
 
@@ -709,6 +714,237 @@ void Menu::drawUnitsModal() {
 	}
 }
 
+void Menu::beginAdvancedTabBody() {
+	ImGui::BeginChild(
+		"##TabBody",
+		ImVec2(advancedBodyWidth, advancedBodyHeight),
+		ImGuiChildFlags_Borders
+	);
+}
+
+void Menu::endAdvancedTabBody() {
+	ImGui::EndChild();
+}
+
+bool Menu::beginAdvancedSection(const char* label, int col) {
+	if (!ImGui::CollapsingHeader(label)) {
+		return false;
+	}
+
+	// The table ID comes off the ID stack, so pushing the section label is what
+	// keeps two sections from sharing (and fighting over) one table.
+	ImGui::PushID(label);
+	advancedTableIndex = -1;
+
+	if (col >= 2) {
+		advancedTable(col);
+	}
+	return true;
+}
+
+void Menu::advancedTable(int col) {
+	if (col < 2) {
+		return;
+	}
+
+	if (advancedTableIndex >= 0) {
+		ImGui::EndTable();
+	}
+	advancedTableIndex++;
+
+	// Sections hold more than one table, so the index is what separates them --
+	// same string ID twice under one section would be one table with two halves.
+	std::string tableID = "##Settings" + std::to_string(advancedTableIndex);
+	if (!ImGui::BeginTable(tableID.c_str(), col, UIFlags::TableSimpleFlags | ImGuiTableFlags_NoSavedSettings)) {
+		advancedTableIndex--;
+		return;
+	}
+
+	// Same column setup as BaseGUI::beginPropertyTable: width 0 + WidthFixed
+	// auto-fits the label column to its widest label so nothing is ever clipped,
+	// and the value columns share whatever is left.
+	ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 0.0f);
+	for (int i = 1; i < col; ++i) {
+		ImGui::TableSetupColumn(nullptr, ImGuiTableColumnFlags_WidthStretch, 1.0f);
+	}
+}
+
+void Menu::endAdvancedSection() {
+	if (advancedTableIndex >= 0) {
+		ImGui::EndTable();
+		advancedTableIndex = -1;
+	}
+	ImGui::PopID();
+	ImGui::Spacing();
+}
+
+void Menu::advancedRow(const char* label) {
+	ImGui::TableNextRow();
+	ImGui::TableSetColumnIndex(0);
+	ImGui::AlignTextToFramePadding();
+	ImGui::TextUnformatted(label);
+
+	advancedCell();
+}
+
+void Menu::advancedCell() {
+	ImGui::TableNextColumn();
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	ImGui::AlignTextToFramePadding();
+}
+
+void Menu::advancedEmptyTab(const char* what) {
+	ImGui::TextDisabled("No advanced %s options yet.", what);
+}
+
+void Menu::drawAdvancedGeometryTab() {
+
+	//if (beginAdvancedSection("Sketch")) {
+	//	advancedRow("Some setting");
+	//	ImGui::InputInt("##someSetting", &value, 0, 0);
+	//
+	//	// a second table under the same header, this one 3 columns wide
+	//	advancedTable(3);
+	//	advancedRow("Some pair");
+	//	ImGui::InputInt("##someMin", &min, 0, 0);
+	//	advancedCell();
+	//	ImGui::InputInt("##someMax", &max, 0, 0);
+	//
+	//	endAdvancedSection();
+	//}
+	advancedEmptyTab("geometry");
+}
+
+void Menu::drawAdvancedMeshTab() {
+
+	Mesh& mesh = project.mesh;
+
+
+	advancedEmptyTab("mesh");
+}
+
+void Menu::drawAdvancedSolverTab() {
+
+	Solver& solver = project.solver;
+
+	if (beginAdvancedSection("Relaxation Factors")) {
+		advancedRow("Momentum");
+		ImGui::InputDouble("##MomentumRelaxation", &solver.simple.momentumRelaxation, 0, 0, "%.1f");
+		advancedRow("Pressure");
+		ImGui::InputDouble("##PressureRelaxation", &solver.simple.pressureRelaxation, 0, 0, "%.1f");
+		advancedRow("Pressure Correction");
+		ImGui::InputDouble("##CorrectionRelaxation", &solver.simple.correctionRelaxation, 0, 0, "%.1f");
+		endAdvancedSection();
+	}
+
+	if (beginAdvancedSection("Multigrid")) {
+
+		const bool graphPrepared = solver.solverRunning;
+
+		ImGui::BeginDisabled(graphPrepared);
+		advancedRow("Multigrid");
+		ImGui::Checkbox("##Multigrid", &solver.configSolver.useMultigrid);
+		advancedRow("Max Multigrid Iteration");
+		ImGui::InputInt("##MaxIteration", &solver.configMultigrid.maxIter);
+		advancedRow("Max Linear Solver Iteration");
+		ImGui::InputInt("##MaxLinearSolverIteration", &solver.configMultigrid.linearSweep);
+		advancedRow("Pre Restriction Linear Solver Iteration");
+		ImGui::InputInt("##PreSweep", &solver.configMultigrid.linearPreSweep);
+		advancedRow("Post Prolongation Linear Solver Iteration");
+		ImGui::InputInt("##PostSweep", &solver.configMultigrid.linearPostSweep);
+		ImGui::EndDisabled();
+
+		if (!graphPrepared && project.solver.configMultigrid.maxIter < 1) {
+			project.solver.configMultigrid.maxIter = 1;
+		}
+
+		if (!graphPrepared && project.solver.configMultigrid.linearSweep < 0) {
+			project.solver.configMultigrid.linearSweep = 0;
+		}
+
+		endAdvancedSection();
+	}
+
+	// Norm and scaling per residual, moved out of the Solver tab: that table keeps
+	// the per-run knobs (plot, type, tolerance), these two are set once. Headers
+	// carry the meaning of the columns here, so the table is built directly rather
+	// than through advancedTable().
+	if (beginAdvancedSection("Residuals", 0)) {
+
+		// Same visibility rule as the Solver tab's table -- a residual only shows
+		// when its field is being solved. Continuity has no norm/scaling at all.
+		auto rowVisible = [&](const char* name) -> bool {
+			if (std::strcmp(name, "Continuity") == 0)    return false;
+			if (std::strcmp(name, "Temperature") == 0)   return solver.fieldOption.solveEnergy;
+			if (std::strcmp(name, "Concentration") == 0) return solver.fieldOption.solveConcentration;
+			return true;
+		};
+
+		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(8.0f, 5.0f));
+		if (ImGui::BeginTable("Residual Advanced", 3, UIFlags::TableSimpleFlags | ImGuiTableFlags_NoSavedSettings)) {
+
+			ImGui::TableSetupColumn("Residual", ImGuiTableColumnFlags_WidthFixed, 0.0f);
+			ImGui::TableSetupColumn("Norm (Numerator)", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+			ImGui::TableSetupColumn("Scaling (Denominator)", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+			ImGui::TableHeadersRow();
+
+			for (const char*& name : solver.residualPlotType) {
+				if (!rowVisible(name)) {
+					continue;
+				}
+
+				ConfigResidual& configResidual = solver.cfg.at(name);
+
+				ImGui::TableNextRow();
+				ImGui::PushID(name);
+
+				ImGui::TableSetColumnIndex(0);
+				ImGui::AlignTextToFramePadding();
+				ImGui::TextUnformatted(name);
+
+				ImGui::TableSetColumnIndex(1);
+				BaseGUI::createSimpleCombo(
+					"##ResidualNorm",
+					solver.residualNormType,
+					configResidual.normType,
+					IM_ARRAYSIZE(solver.residualNormType)
+				);
+
+				ImGui::TableSetColumnIndex(2);
+				BaseGUI::createSimpleCombo(
+					"##ResidualScaling",
+					solver.residualScalingType,
+					configResidual.scaleType,
+					IM_ARRAYSIZE(solver.residualScalingType)
+				);
+
+				ImGui::PopID();
+			}
+
+			ImGui::EndTable();
+		}
+		ImGui::PopStyleVar();
+
+		endAdvancedSection();
+	}
+}
+
+void Menu::drawAdvancedResultsTab() {
+	if (beginAdvancedSection("Animation")) {
+		advancedRow("Max stored frames");
+		if (ImGui::InputInt("##MaxTimeFrames", &project.solver.maxTimeFrames, 0, 0)) {
+			project.solver.maxTimeFrames = std::max(1, project.solver.maxTimeFrames);
+		}
+		ImGui::SetItemTooltip(
+			"Hard cap on transient frames kept in memory. Each frame costs "
+			"(fields x cells) doubles on the host; hitting the cap stops capture, "
+			"not the solve."
+		);
+
+		endAdvancedSection();
+	}
+}
+
 void Menu::drawAdvancedOptionModal() {
 	if (openAdvancedOptionsModal) {
 		ImGui::OpenPopup("Advanced Options");
@@ -718,13 +954,59 @@ void Menu::drawAdvancedOptionModal() {
 	if (ImGui::BeginPopupModal(
 		"Advanced Options",
 		nullptr,
-		ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove
+		ModalPopupFlags
 	)) {
 		bool justOpened = ImGui::IsWindowAppearing();
+
+		if (ImGui::BeginTabBar("##AdvancedTabs")) {
+			if (ImGui::BeginTabItem("Geometry")) {
+				beginAdvancedTabBody();
+				drawAdvancedGeometryTab();
+				endAdvancedTabBody();
+				ImGui::EndTabItem();
+			}
+
+			if (ImGui::BeginTabItem("Mesh")) {
+				beginAdvancedTabBody();
+				drawAdvancedMeshTab();
+				endAdvancedTabBody();
+				ImGui::EndTabItem();
+			}
+
+			if (ImGui::BeginTabItem("Solver")) {
+				beginAdvancedTabBody();
+				drawAdvancedSolverTab();
+				endAdvancedTabBody();
+				ImGui::EndTabItem();
+			}
+
+			if (ImGui::BeginTabItem("Results")) {
+				beginAdvancedTabBody();
+				drawAdvancedResultsTab();
+				endAdvancedTabBody();
+				ImGui::EndTabItem();
+			}
+
+			ImGui::EndTabBar();
+		}
+
+		ImGui::Separator();
+
+		if (ImGui::Button("Close")) {
+			ImGui::CloseCurrentPopup();
+		}
+
+		// A combo (or any nested popup) opened from a settings row is its own root
+		// window, so a click inside it reads as "outside" to the test below and
+		// would close the whole modal. Anything stacked above this popup suppresses
+		// the test -- drawUnitsModal hits the same trap with a per-row flag.
+		const ImGuiContext& g = *ImGui::GetCurrentContext();
+		bool stackedPopupOpen = g.OpenPopupStack.Size > g.BeginPopupStack.Size;
 
 		bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
 		bool clickedOutside =
 			!justOpened &&
+			!stackedPopupOpen &&
 			!ImGui::IsAnyItemActive() &&
 			!ImGui::IsAnyItemHovered() &&
 			!hovered &&
@@ -764,4 +1046,5 @@ void Menu::render() {
 	drawShortcutModal();
 	drawSnappingModal();
 	drawUnitsModal();
+	drawAdvancedOptionModal();
 }

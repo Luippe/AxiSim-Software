@@ -251,8 +251,13 @@ void phiGradientGreenGauss(
 	double& gradZ,
 	double& gradR
 ) {
-	gradZ = 0.0;
-	gradR = 0.0;
+	// Accumulate in locals, not through gradZ/gradR. Those are references to global memory
+	// (computeGradient binds them to gradZ[n]/gradR[n]), and since phi and the gradient
+	// arrays are unqualified double* the compiler must assume they alias -- so it cannot
+	// hold the running sum in a register and every += below compiles to a global
+	// load-modify-store, per face. Locals stay in registers and commit once at the end.
+	double gz = 0.0;
+	double gr = 0.0;
 
 	// The stored face areas and cell volumes are the *revolved* (axisymmetric)
 	// metrics: area = 2*pi*rf*L2D and volume = 2*pi*rc*A2D. Green-Gauss for the
@@ -263,9 +268,13 @@ void phiGradientGreenGauss(
 	// the revolved ones: L2D = area/(2*pi*rf), A2D = volume/(2*pi*rc).
 	double volume = mesh.cells.volume[cellID];
 	double rc = mesh.cells.centerR[cellID];
-	if (volume <= 1.0e-30 || rc <= 1.0e-30) return;
+	if (volume <= 1.0e-30 || rc <= 1.0e-30) {
+		gradZ = 0.0;
+		gradR = 0.0;
+		return;
+	}
 
-	const double twoPi = 6.28318530717958647692;
+	constexpr double twoPi = 6.28318530717958647692;
 
 	int start = mesh.cells.faceStart[cellID];
 	int end = mesh.cells.faceStart[cellID + 1];
@@ -301,8 +310,8 @@ void phiGradientGreenGauss(
 		if (rf > 1.0e-30) {
 			double length2D = mesh.faces.area[faceID] / (twoPi * rf);
 
-			gradZ += phiF * normalZ * length2D;
-			gradR += phiF * normalR * length2D;
+			gz += phiF * normalZ * length2D;
+			gr += phiF * normalR * length2D;
 
 			closureZ += normalZ * length2D;
 			closureR += normalR * length2D;
@@ -316,14 +325,14 @@ void phiGradientGreenGauss(
 
 	if (hasAxisFace) {
 		// n_axis * L2D_axis = -(sum over the other faces)
-		gradZ += axisPhiF * (-closureZ);
-		gradR += axisPhiF * (-closureR);
+		gz += axisPhiF * (-closureZ);
+		gr += axisPhiF * (-closureR);
 	}
 
 	// divide by the planar cell area A2D = volume / (2*pi*rc)
 	double invA2D = twoPi * rc / volume;
-	gradZ *= invA2D;
-	gradR *= invA2D;
+	gradZ = gz * invA2D;
+	gradR = gr * invA2D;
 }
 
 __device__
@@ -814,7 +823,7 @@ double higherOrderFaceValue(
 	double F,
 	double phiUD
 ) {
-	if (scheme == CONV_CENTRAL) {
+	if (scheme == ConvectionScheme::CONV_CENTRAL) {
 		// Linear interpolation between the two cell centers. Always a convex
 		// combination of phiP/phiN, so it needs no limiting -- but see the
 		// boundedness note at the call site: central is second order and
@@ -897,7 +906,7 @@ void addConvectionContribution(
 		//
 		// The difference goes to the RHS, lagged one outer iteration. At
 		// convergence phi satisfies the full higher-order scheme.
-		if (scheme != CONV_UPWIND && phi) {
+		if (scheme != ConvectionScheme::CONV_UPWIND && phi) {
 
 			double phiUD = (F > 0.0) ? phi[n] : phi[nb];
 

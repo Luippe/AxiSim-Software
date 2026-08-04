@@ -79,7 +79,12 @@ struct PendingRect {
 // -----------------------BOUNDARY CONDITIONS----------------------------
 // ======================================================================
 // make sure to update bcTypeToString, getDefaultBCType, etc if adding more to this
-enum BCType {	
+//
+// Scoped and uint8_t-backed: the device side already ships it as a byte per group
+// (BoundaryFieldDevice::typeByGroup), and unscoped NONE / HILL in the global
+// namespace is a collision waiting to happen. Order is load-bearing -- the byte
+// arrays the kernels read are cast straight from this.
+enum class BCType : uint8_t {
 	DIRICHLET,
 	NEUMANN,
 	FULLY_DEVELOPED,
@@ -95,22 +100,22 @@ enum BCType {
 // BC type; each alternative carries exactly the scalars that type needs. Every
 // alternative keeps `value` as its primary scalar so value()/valueRef() stay
 // total, while multi-parameter kinetics add their own fields (km, n).
-struct DirichletParams       { static constexpr BCType bcType = DIRICHLET;        double value = 0.0; };
-struct NeumannParams         { static constexpr BCType bcType = NEUMANN;          double value = 0.0; };
-struct FullyDevelopedParams  { static constexpr BCType bcType = FULLY_DEVELOPED;  double value = 0.0; };
+struct DirichletParams       { static constexpr BCType bcType = BCType::DIRICHLET;        double value = 0.0; };
+struct NeumannParams         { static constexpr BCType bcType = BCType::NEUMANN;          double value = 0.0; };
+struct FullyDevelopedParams  { static constexpr BCType bcType = BCType::FULLY_DEVELOPED;  double value = 0.0; };
 // Kinetics types carry an optional substrate-inhibition factor
 // (1 - V2*c^m / (K2^m + c^m)). It is only active when `inhibition` is set, in
 // which case the user supplies the inhibition exponent m, half-inhibition
 // constant K2, and maximum inhibition fraction V2.
-struct MichaelisMentenParams { static constexpr BCType bcType = MICHAELIS_MENTEN; double Vmax = 0.0; double Km = 0.0; bool inhibition = false; double m = 1.0; double K2 = 0.0; double V2 = 0.0; };
-struct HillParams			 { static constexpr BCType bcType = HILL;             double Vmax = 0.0; double Km = 0.0; double n = 1.0; bool inhibition = false; double m = 1.0; double K2 = 0.0; double V2 = 0.0; };
-struct NoneParams            { static constexpr BCType bcType = NONE;             double value = 0.0; };
+struct MichaelisMentenParams { static constexpr BCType bcType = BCType::MICHAELIS_MENTEN; double Vmax = 0.0; double Km = 0.0; bool inhibition = false; double m = 1.0; double K2 = 0.0; double V2 = 0.0; };
+struct HillParams			 { static constexpr BCType bcType = BCType::HILL;             double Vmax = 0.0; double Km = 0.0; double n = 1.0; bool inhibition = false; double m = 1.0; double K2 = 0.0; double V2 = 0.0; };
+struct NoneParams            { static constexpr BCType bcType = BCType::NONE;             double value = 0.0; };
 // Time-dependent inlet value:
 //   value(t) = value * (1 + amplitude * sin(2*pi*frequency*t))
 // `value` is the mean velocity U0 (or V0 for a radial inlet), amplitude is
 // dimensionless, and frequency is stored in Hz. Appended to BCParams so the
 // existing alternatives retain their on-disk std::variant indices.
-struct PulsatileParams       { static constexpr BCType bcType = PULSATILE;        double value = 0.0; double amplitude = 0.1; double frequency = 1.0; };
+struct PulsatileParams       { static constexpr BCType bcType = BCType::PULSATILE;        double value = 0.0; double amplitude = 0.1; double frequency = 1.0; };
 
 using BCParams = std::variant<
 	DirichletParams, NeumannParams, FullyDevelopedParams,
@@ -141,13 +146,13 @@ struct BoundaryCondition {
 		if (type() == t) return;
 		double v = value();
 		switch (t) {
-		case DIRICHLET:        params = DirichletParams{};       break;
-		case NEUMANN:          params = NeumannParams{};         break;
-		case FULLY_DEVELOPED:  params = FullyDevelopedParams{};  break;
-		case MICHAELIS_MENTEN: params = MichaelisMentenParams{}; break;
-		case HILL:             params = HillParams{};            break;
-		case NONE:             params = NoneParams{};            break;
-		case PULSATILE:        params = PulsatileParams{};       break;
+		case BCType::DIRICHLET:        params = DirichletParams{};       break;
+		case BCType::NEUMANN:          params = NeumannParams{};         break;
+		case BCType::FULLY_DEVELOPED:  params = FullyDevelopedParams{};  break;
+		case BCType::MICHAELIS_MENTEN: params = MichaelisMentenParams{}; break;
+		case BCType::HILL:             params = HillParams{};            break;
+		case BCType::NONE:             params = NoneParams{};            break;
+		case BCType::PULSATILE:        params = PulsatileParams{};       break;
 		}
 		valueRef() = v;
 	}
@@ -349,6 +354,13 @@ struct PointKeyHash {
 
 
 
+// MeshType, BoundaryType, BoundarySource, BoundarySizingMode and MeshRegionShape
+// stay int-width on purpose, unlike BCType above and the solver_struct.h enums.
+// Each one is raw-copied into the mesh payload -- MeshType and BoundaryType
+// directly, the other three inside BoundarySizing / BoundaryEdge /
+// MeshRegionOfInfluence -- so narrowing them changes the .aximesh / .axi byte
+// layout and needs a format migration first (see LegacyMeshRegionOfInfluence and
+// meshRegionFileVersion in file_manager.cpp).
 enum class MeshType {
 	Structured,
 	Unstructured

@@ -207,27 +207,27 @@ void addNeighborCoeff(
 // boolean helper functions
 __device__ __forceinline__
 bool isDirichletType(uint8_t type) {
-	return type == (uint8_t)(DIRICHLET);
+	return type == (uint8_t)(BCType::DIRICHLET);
 }
 
 __device__ __forceinline__
 bool isNeumannType(uint8_t type) {
-	return type == (uint8_t)(NEUMANN);
+	return type == (uint8_t)(BCType::NEUMANN);
 }
 
 __device__ __forceinline__
 bool isFullyDevelopedType(uint8_t type) {
-	return type == (uint8_t)(FULLY_DEVELOPED);
+	return type == (uint8_t)(BCType::FULLY_DEVELOPED);
 }
 
 __device__ __forceinline__
 bool isMichaelisMentenType(uint8_t type) {
-	return type == (uint8_t)(MICHAELIS_MENTEN);
+	return type == (uint8_t)(BCType::MICHAELIS_MENTEN);
 }
 
 __device__ __forceinline__
 bool isHillType(uint8_t type) {
-	return type == (uint8_t)(HILL);
+	return type == (uint8_t)(BCType::HILL);
 }
 
 // Position of a face centre along the boundary it sits on, measured from the

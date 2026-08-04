@@ -282,11 +282,11 @@ double Field::sampleBoundary(
 			return unProcessedData[c];
 		}
 
-		if (bc.type() == DIRICHLET) {
+		if (bc.type() == BCType::DIRICHLET) {
 			return bc.value();
 		}
 
-		if (bc.type() == NEUMANN || bc.type() == FULLY_DEVELOPED) {
+		if (bc.type() == BCType::NEUMANN || bc.type() == BCType::FULLY_DEVELOPED) {
 			double phiP = unProcessedData[c];
 
 			double dz = face.center.z - cell.center.z;

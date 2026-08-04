@@ -183,23 +183,23 @@ void solveLinearSystem(
 	// path. Anything else (BiCGStab / GMRES, or GS without a usable coloring) falls
 	// back to Jacobi rather than dropping through the switch and silently running
 	// zero iterations.
-	if (coeff.useFaceCoeffs && !(type == LINEAR_GS_RB && faceColored)) {
-		type = LINEAR_JACOBI;
+	if (coeff.useFaceCoeffs && !(type == LinearSolverType::LINEAR_GS_RB && faceColored)) {
+		type = LinearSolverType::LINEAR_JACOBI;
 	}
 
 	switch (type) {
-	case LINEAR_JACOBI:
-		for (int k = 0; k < config.maxIter; k++) {
+	case LinearSolverType::LINEAR_JACOBI:
+		for (int k = 0; k < config.linearMaxIter; k++) {
 			jacobi << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, xTemp);
 			std::swap(x, xTemp);
 		}
 		break;
 
-	case LINEAR_GS_RB:
+	case LinearSolverType::LINEAR_GS_RB:
 
 		if (faceColored) {
 
-			for (int k = 0; k < config.maxIter; k++) {
+			for (int k = 0; k < config.linearMaxIter; k++) {
 				for (int c = 0; c < coloring.nColors; c++) {
 
 					const int begin = coloring.colorStart[c];
@@ -217,7 +217,7 @@ void solveLinearSystem(
 			break;
 		}
 
-		for (int k = 0; k < config.maxIter; k++) {
+		for (int k = 0; k < config.linearMaxIter; k++) {
 			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff,  x, 0);
 			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff,  x, 1);
 		}

@@ -184,7 +184,7 @@ struct FoamCaseSetup {
 	// equation set than the one AxiSim ran.
 	bool addConvection = true;
 
-	// ConfigSimple::useNonOrthCorrector -> nNonOrthogonalCorrectors. AxiSim's flag
+	// ConfigSolver::useNonOrthCorrector -> nNonOrthogonalCorrectors. AxiSim's flag
 	// is one extra deferred corrector pass, so it maps to 1 rather than a count.
 	bool nonOrthCorrector = false;
 

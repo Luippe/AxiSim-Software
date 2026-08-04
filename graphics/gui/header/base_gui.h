@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <type_traits>
 #include <vector>
 #include "imgui.h"
 #include "unit_manager.h"
@@ -46,8 +47,29 @@ public:
 	void labelRow(const char* text);
 
 	// create a simple combo box with label and items, current item is updated by reference
-	// returns true if the combo box value was changed
-	bool createSimpleCombo(const char* label, const char* items[], int& currentItem, int itemCount);
+	// returns true if the combo box value was changed.
+	// static because it touches no member state: Menu is not a BaseGUI but needs the
+	// enum overload below for the residual combos in the Advanced Options modal.
+	static bool createSimpleCombo(const char* label, const char* items[], int& currentItem, int itemCount);
+
+	// Same combo, driven straight by an enum. Call sites used to reach the int&
+	// overload through a `(int&)` cast, which is a reinterpret: on the uint8_t-backed
+	// enums in solver_struct.h / boundary_struct.h that reads and WRITES four bytes
+	// over a one-byte field, corrupting whatever follows it in the struct. Round-trip
+	// through a local int instead -- the item index is the enumerator value, exactly
+	// as the cast assumed, so the `items` arrays are unaffected.
+	template <typename E, typename = std::enable_if_t<std::is_enum_v<E>>>
+	static bool createSimpleCombo(const char* label, const char* items[], E& currentItem, int itemCount) {
+
+		int index = (int)currentItem;
+
+		if (!createSimpleCombo(label, items, index, itemCount)) {
+			return false;
+		}
+
+		currentItem = (E)index;
+		return true;
+	}
 
 	// create a combo using std::vector as input
 	bool createCombo(const char* label, const std::vector<std::string>& vec, int& currentItem);

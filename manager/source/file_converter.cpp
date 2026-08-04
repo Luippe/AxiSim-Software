@@ -1639,12 +1639,12 @@ FieldPatch scalarPatch(const BoundaryCondition& bc) {
 
 	switch (bc.type()) {
 
-	case DIRICHLET:
+	case BCType::DIRICHLET:
 		patch.type = "fixedValue";
 		patch.entry = "value           uniform " + foamNumber(bc.value()) + ";";
 		break;
 
-	case NEUMANN:
+	case BCType::NEUMANN:
 		// A zero fixedGradient IS zeroGradient -- the default -- and zeroGradient is
 		// how every OpenFOAM case spells it. Writing the long form for the
 		// overwhelmingly common case would only make this harder to diff against a
@@ -1655,7 +1655,7 @@ FieldPatch scalarPatch(const BoundaryCondition& bc) {
 		}
 		break;
 
-	case PULSATILE:
+	case BCType::PULSATILE:
 		// The mean is the most a time-independent 0/ file can carry. It is a real
 		// difference from what AxiSim solves, so it is flagged rather than left for
 		// the user to find by comparing two transient results.
@@ -1670,8 +1670,8 @@ FieldPatch scalarPatch(const BoundaryCondition& bc) {
 		}
 		break;
 
-	case MICHAELIS_MENTEN:
-	case HILL:
+	case BCType::MICHAELIS_MENTEN:
+	case BCType::HILL:
 		// A saturating consumption flux at the wall. OpenFOAM has no built-in for
 		// it, and the default -- no flux at all -- is a DIFFERENT problem, so the
 		// note has to be loud: a run made against this file is not a
@@ -1696,13 +1696,13 @@ FieldPatch scalarPatch(const BoundaryCondition& bc) {
 	// VELOCITY_INLET, so velocityPatch is where it is actually handled and no scalar
 	// the writer knows about can reach here. A legacy save still could, and letting
 	// that fall through to zeroGradient would be a silently different problem.
-	case FULLY_DEVELOPED:
+	case BCType::FULLY_DEVELOPED:
 		patch.note = "AxiSim had a fully-developed (parabolic) profile on this scalar,"
 			" which zeroGradient is NOT -- see the U file for the codedFixedValue form";
 		break;
 
 	// NONE has nothing to say, and keeps the default.
-	case NONE:
+	case BCType::NONE:
 	default:
 		break;
 	}
@@ -1729,7 +1729,7 @@ std::string velocityComponentExpr(const BoundaryCondition& bc, double uniform,
 		return "scalarField(Cf.size(), scalar(" + foamNumber(value) + "))";
 	};
 
-	if (bc.type() != FULLY_DEVELOPED) return uniformField(uniform);
+	if (bc.type() != BCType::FULLY_DEVELOPED) return uniformField(uniform);
 
 	// totalLength is a float and stays 0 for a group with no segments.
 	// prescribedBoundaryFaceValue returns the uniform value there rather than
@@ -1756,7 +1756,7 @@ FieldPatch velocityPatch(const BoundarySegmentGroup& group) {
 
 	// PULSATILE counts as fixed -- its mean is what a steady export can carry.
 	auto isFixed = [](const BoundaryCondition& bc) {
-		return bc.type() == DIRICHLET || bc.type() == PULSATILE;
+		return bc.type() == BCType::DIRICHLET || bc.type() == BCType::PULSATILE;
 	};
 
 	FieldPatch patch;
@@ -1772,7 +1772,7 @@ FieldPatch velocityPatch(const BoundarySegmentGroup& group) {
 	// way to predict that order -- so a `nonuniform List<vector>` would be the right
 	// numbers against the wrong faces. codedFixedValue evaluates against
 	// patch().Cf() on the solver's own faces and sidesteps the ordering entirely.
-	if (axial.type() == FULLY_DEVELOPED || radial.type() == FULLY_DEVELOPED) {
+	if (axial.type() == BCType::FULLY_DEVELOPED || radial.type() == BCType::FULLY_DEVELOPED) {
 
 		const std::string u = velocityComponentExpr(
 			axial, isFixed(axial) ? axial.value() : 0.0, group, "r");
@@ -1781,7 +1781,7 @@ FieldPatch velocityPatch(const BoundarySegmentGroup& group) {
 
 		// Only the radial parabola is keyed on the axial coordinate, and an unused
 		// local is a warning in code the user never asked to read.
-		const bool needsZ = (radial.type() == FULLY_DEVELOPED);
+		const bool needsZ = (radial.type() == BCType::FULLY_DEVELOPED);
 
 		// Named per GROUP id, not per patch name: the compiled library is cached
 		// under this name, so two patches sharing it would get the first one's
@@ -1825,7 +1825,7 @@ FieldPatch velocityPatch(const BoundarySegmentGroup& group) {
 		// as 0 -- same compromise the fixedValue branch makes below, and the same
 		// reason: the condition covers the whole vector. getAllowedBCType pins it at
 		// a VELOCITY_INLET, so this only fires on a group that got here some other way.
-		const bool developedIsAxial = (axial.type() == FULLY_DEVELOPED);
+		const bool developedIsAxial = (axial.type() == BCType::FULLY_DEVELOPED);
 
 		if (!isFixed(developedIsAxial ? radial : axial)) {
 			patch.note += "; the other velocity component was free in AxiSim"
@@ -1855,7 +1855,7 @@ FieldPatch velocityPatch(const BoundarySegmentGroup& group) {
 		patch.note = "one velocity component was free in AxiSim; pinned to 0 here, "
 			"because fixedValue takes the whole vector";
 	}
-	else if (axial.type() == PULSATILE || radial.type() == PULSATILE) {
+	else if (axial.type() == BCType::PULSATILE || radial.type() == BCType::PULSATILE) {
 		patch.note = "steady mean of a pulsatile inlet"
 			" -- reproduce with uniformFixedValue + a sine Function1";
 	}
@@ -1907,7 +1907,7 @@ std::vector<FoamField> initialFields(
 			if (group.type != BoundaryType::VELOCITY_INLET) continue;
 
 			const auto found = group.bcs.find(variable);
-			if (found != group.bcs.end() && found->second.type() == DIRICHLET)
+			if (found != group.bcs.end() && found->second.type() == BCType::DIRICHLET)
 				return found->second.value();
 		}
 		return 0.0;

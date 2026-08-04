@@ -9,7 +9,7 @@ struct ResidualPairs {
 	const double* x = nullptr;
 	double* res = nullptr;   // per-cell residual output (owned by ConfigResidual)
 	double* scale = nullptr;
-	ResidualScalingType scaleType = RESIDUAL_SCALING_NONE;
+	ResidualScalingType scaleType = ResidualScalingType::RESIDUAL_SCALING_NONE;
 };
 
 
@@ -26,7 +26,7 @@ void residualRaw(bool sign, const ResidualPairs& pairs, int n) {
 	double Ax = coeff.AC[n] * x[n];
 
 
-	if (pairs.scaleType == RESIDUAL_SCALING_DIAGONAL) {
+	if (pairs.scaleType == ResidualScalingType::RESIDUAL_SCALING_DIAGONAL) {
 		scale[n] = Ax;
 	}
 
