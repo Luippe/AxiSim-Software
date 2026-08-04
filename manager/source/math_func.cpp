@@ -182,3 +182,17 @@ bool pointInQuad(const Vec2& p, const std::array<Vec2, 4>& q) {
 	}
 	return !(hasNeg && hasPos);
 }
+
+bool pointInPolygon(const Vec2& p, const Vec2* pts, int n) {
+	if (!pts || n < 3) {
+		return false;
+	}
+
+	bool hasNeg = false, hasPos = false;
+	for (int k = 0; k < n; k++) {
+		double d = pickSign(p, pts[k], pts[(k + 1) % n]);
+		if (d < 0.0) hasNeg = true;
+		if (d > 0.0) hasPos = true;
+	}
+	return !(hasNeg && hasPos);
+}

@@ -52,3 +52,8 @@ double pickSign(const Vec2& p, const Vec2& a, const Vec2& b);
 // Point inside a convex quad, corners given in ring order. Inside when p is on the
 // same side of all 4 edges. Shared by the mesh and results 2D cell pickers.
 bool pointInQuad(const Vec2& p, const std::array<Vec2, 4>& q);
+
+// Same test for a polygon of any size, corners in ring order (either winding).
+// Used for cell picking, where a cell may be a triangle or a quad depending on the
+// mesh path; pointInQuad stays for the fixed-size block quads.
+bool pointInPolygon(const Vec2& p, const Vec2* pts, int n);

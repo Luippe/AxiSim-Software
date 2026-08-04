@@ -122,9 +122,19 @@ private:
 	// .cpp: Mesh is only forward-declared here.
 	const FVMesh& inspectMesh() const;
 
-	// multiblock only: 4 corner vertices per inspect cell (index-aligned with
-	// inspectFVMesh.cells) for point-in-cell picking and highlight drawing
-	std::vector<std::array<Vec2, 4>> inspectCellQuads;
+	// Cell outlines come from Mesh's per-cell corner store (meshPoints +
+	// cellCornerStart / cellCornerIDs), which refreshFVMesh rebuilds in the same call
+	// as the FVMesh -- so they are index-aligned with inspectMesh().cells on every
+	// mesh path. The inspector used to keep its own multiblock-only copy of the
+	// corner quads, and picking, highlighting and the overlay each had to dispatch
+	// three ways to find an outline.
+	static constexpr int maxCellCorners = 8;
+
+	// World-space corners of one FV cell, in CCW ring order. Returns the count
+	// written, or 0 when the cell has no usable outline -- including a polygon with
+	// more than maxCellCorners corners, which is dropped rather than truncated into
+	// a wrong shape.
+	int cellCorners(int cellID, Vec2* out, int maxOut) const;
 
 	int cellIndex(int i, int j) const;
 	bool isInsideCellGrid(int i, int j) const;
@@ -175,11 +185,11 @@ private:
 	void drawBoundarySegments(ImDrawList* drawList);
 	void drawRegionsOfInfluence(ImDrawList* drawList);
 	void drawAspectRatio(ImDrawList* drawList);
+	void drawOrthogonality(ImDrawList* drawList);
 
 	// colorbar for drawAspectRatio, labelled with the range it scaled itself to
 	void drawAspectRatioLegend(ImDrawList* drawList, double lo, double hi);
 
-	void drawNonOrthogonality(ImDrawList* drawList);
 
 	// -------------cell inspection--------------
 	// rebuild the FV mesh snapshot used for picking/reading cell data

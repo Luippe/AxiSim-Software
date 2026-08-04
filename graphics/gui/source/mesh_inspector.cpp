@@ -831,21 +831,6 @@ static bool segmentIntersectsRect(ImVec2 a, ImVec2 b, ImVec2 mn, ImVec2 mx) {
 		segmentsCross(a, b, bl, tl);
 }
 
-int meshInspectorCellIndexAt(const std::vector<double>& faces, double x) {
-	if (faces.size() < 2) {
-		return -1;
-	}
-
-	if (x < faces.front() || x > faces.back()) {
-		return -1;
-	}
-
-	auto it = std::upper_bound(faces.begin(), faces.end(), x);
-	int index = static_cast<int>(it - faces.begin()) - 1;
-
-	return std::clamp(index, 0, static_cast<int>(faces.size()) - 2);
-}
-
 // ======================================================================
 // -----------------------CELL INSPECTION--------------------------------
 // ======================================================================
@@ -859,74 +844,61 @@ void MeshInspector::buildInspectMesh() {
 	// Mesh::buildFVMesh, where every consumer gets the same answer).
 	mesh.refreshFVMesh();
 
-	// The corner quads stay inspector-side: Mesh caches the FVMesh but not the cell
-	// outlines, and on the multiblock path FVFace::v0/v1 are left at -1, so these
-	// are the only place the real outline exists for picking and highlighting.
-	// multiBlockCellCorners clears the quads itself when there are no blocks.
-	if (mesh.currentMeshType == MeshType::Structured) {
-		mesh.multiBlockCellCorners(inspectCellQuads);
-	}
-	else {
-		inspectCellQuads.clear();
-	}
-
+	// Cell outlines come with it: refreshFVMesh rebuilds Mesh's per-cell corner store
+	// in the same call, so anything reading an outline this frame is looking at the
+	// mesh that was just built. The inspector used to assemble its own corner quads
+	// here, for the multiblock path only.
 	inspectMeshDirty = false;
 }
 
+int MeshInspector::cellCorners(int cellID, Vec2* out, int maxOut) const {
+	const std::vector<int>& start = mesh.cellCornerStart;
+
+	if (!out || cellID < 0 || cellID + 1 >= (int)start.size()) {
+		return 0;
+	}
+
+	const int begin = start[cellID];
+	const int end = start[cellID + 1];
+
+	const int n = end - begin;
+
+	// Cells whose corners could not be recovered carry an empty range, and a polygon
+	// too big for the caller's buffer is dropped rather than cut short.
+	if (n < 3 || n > maxOut) {
+		return 0;
+	}
+
+	for (int k = 0; k < n; k++) {
+		const int pointID = mesh.cellCornerIDs[begin + k];
+
+		if (pointID < 0 || pointID >= (int)mesh.meshPoints.size()) {
+			return 0;
+		}
+
+		out[k] = mesh.meshPoints[pointID];
+	}
+
+	return n;
+}
+
 int MeshInspector::pickCell(const Vec2& world) const {
-	if (mesh.isMultiBlock && !inspectCellQuads.empty()) {
-		for (int c = 0; c < (int)inspectCellQuads.size(); c++) {
-			if (pointInQuad(world, inspectCellQuads[c])) {
-				return c;
-			}
-		}
-		return -1;
-	}
+	// One polygon test for every mesh path. The corner store is index-aligned with
+	// the FVMesh, so the hit IS the cell ID -- no per-path indexing to reconcile.
+	//
+	// The raster branch this replaced could never return a live cell anyway:
+	// Mesh::buildFVMesh routes every structured mesh through createMultiBlockFVMesh,
+	// which returns an empty mesh when there are no blocks, so a structured FVMesh
+	// with cells in it is always a multiblock one -- and a multiblock cell ID is not
+	// a raster i*nz+j.
+	const int nCells = (int)inspectMesh().cells.size();
 
-	if (mesh.currentMeshType == MeshType::Structured) {
-		if (g.zFace.size() < 2 || g.rFace.size() < 2) {
-			return -1;
-		}
+	Vec2 corners[maxCellCorners];
 
-		int j = meshInspectorCellIndexAt(g.zFace, world.z);
-		int i = meshInspectorCellIndexAt(g.rFace, world.r);
+	for (int c = 0; c < nCells; c++) {
+		const int n = cellCorners(c, corners, maxCellCorners);
 
-		if (i < 0 || j < 0) {
-			return -1;
-		}
-
-		int n = i * g.nz + j;
-
-		if (n < 0 || n >= (int)inspectMesh().cells.size()) {
-			return -1;
-		}
-
-		return n;
-	}
-
-	// unstructured: FV cells map 1:1 to triangles, so a point-in-triangle test
-	// gives the cell index directly.
-	const std::vector<Vec2>& pts = mesh.unstructuredPoints;
-	const std::vector<Triangle>& tris = mesh.unstructuredTriangles;
-
-	for (int c = 0; c < (int)tris.size(); c++) {
-		const Triangle& t = tris[c];
-
-		if (t.v0 < 0 || t.v1 < 0 || t.v2 < 0) continue;
-		if (t.v0 >= (int)pts.size() ||
-			t.v1 >= (int)pts.size() ||
-			t.v2 >= (int)pts.size()) {
-			continue;
-		}
-
-		double d1 = pickSign(world, pts[t.v0], pts[t.v1]);
-		double d2 = pickSign(world, pts[t.v1], pts[t.v2]);
-		double d3 = pickSign(world, pts[t.v2], pts[t.v0]);
-
-		bool hasNeg = (d1 < 0.0) || (d2 < 0.0) || (d3 < 0.0);
-		bool hasPos = (d1 > 0.0) || (d2 > 0.0) || (d3 > 0.0);
-
-		if (!(hasNeg && hasPos)) {
+		if (n >= 3 && pointInPolygon(world, corners, n)) {
 			return c;
 		}
 	}
@@ -1755,8 +1727,8 @@ void MeshInspector::drawToolBar() {
 	ImGui::SameLine();
 	addImageButtonToggle("ToggleMesh", "Mesh", "Toggle mesh", assets.icon("mesh"), toggleMesh);
 	ImGui::SameLine();
-	if (addImageButtonToggle("AspectRatio", "Quality", "Shade cells by aspect ratio", assets.icon("grid"), toggleAspectRatio)) {
-		inspectMeshDirty = true;	// the overlay needs the corner quads too
+	if (addImageButtonToggle("AspectRatio", "Quality", "Shade cells by aspect ratio", assets.icon("quality"), toggleAspectRatio)) {
+		inspectMeshDirty = true;	// the overlay needs the cell outlines too
 	}
 	endSection("View");
 
@@ -2186,10 +2158,10 @@ std::string MeshInspector::buildCellInfoText(int cellID) const {
 	info += "\n----------------";
 
 	// --- aspect ratio (Mesh measures it alongside the FV mesh) ---
-	if (cellID < (int)mesh.aspectRatios.size() &&
-		mesh.aspectRatios[cellID] >= 1.0) {
+	if (cellID < (int)mesh.quality.aspectRatios.size() &&
+		mesh.quality.aspectRatios[cellID] >= 1.0) {
 		std::snprintf(line, sizeof(line), "\naspect ratio: %.3f",
-			mesh.aspectRatios[cellID]);
+			mesh.quality.aspectRatios[cellID]);
 		info += line;
 	}
 	else {
@@ -2283,51 +2255,22 @@ void MeshInspector::drawCellInfo(ImDrawList* drawList) {
 
 	drawList->PushClipRect(canvasMin, canvasMax, true);
 
-	if (mesh.isMultiBlock && selectedCell < (int)inspectCellQuads.size()) {
-		const std::array<Vec2, 4>& q = inspectCellQuads[selectedCell];
-		ImVec2 pts[4];
-		for (int k = 0; k < 4; k++) {
-			pts[k] = camera.worldToScreen(q[k]);
-		}
-		drawList->AddConvexPolyFilled(pts, 4, fillCol);
-		drawList->AddPolyline(pts, 4, lineCol, ImDrawFlags_Closed, 2.0f);
+	Vec2 corners[maxCellCorners];
+	ImVec2 pts[maxCellCorners];
+
+	const int n = cellCorners(selectedCell, corners, maxCellCorners);
+
+	for (int k = 0; k < n; k++) {
+		pts[k] = camera.worldToScreen(corners[k]);
 	}
-	else if (mesh.currentMeshType == MeshType::Structured) {
-		int i = selectedCell / std::max(g.nz, 1);
-		int j = selectedCell % std::max(g.nz, 1);
 
-		if (i >= 0 && i + 1 < (int)g.rFace.size() &&
-			j >= 0 && j + 1 < (int)g.zFace.size()) {
-			ImVec2 p0 = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[i] });
-			ImVec2 p1 = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i + 1] });
-
-			ImVec2 rmin(std::min(p0.x, p1.x), std::min(p0.y, p1.y));
-			ImVec2 rmax(std::max(p0.x, p1.x), std::max(p0.y, p1.y));
-
-			drawList->AddRectFilled(rmin, rmax, fillCol);
-			drawList->AddRect(rmin, rmax, lineCol, 0.0f, 0, 2.0f);
-		}
-	}
-	else if (selectedCell < (int)mesh.unstructuredTriangles.size()) {
-		const std::vector<Vec2>& pts = mesh.unstructuredPoints;
-		const Triangle& t = mesh.unstructuredTriangles[selectedCell];
-
-		if (t.v0 >= 0 && t.v1 >= 0 && t.v2 >= 0 &&
-			t.v0 < (int)pts.size() &&
-			t.v1 < (int)pts.size() &&
-			t.v2 < (int)pts.size()) {
-			ImVec2 a = camera.worldToScreen(pts[t.v0]);
-			ImVec2 b = camera.worldToScreen(pts[t.v1]);
-			ImVec2 d = camera.worldToScreen(pts[t.v2]);
-
-			drawList->AddTriangleFilled(a, b, d, fillCol);
-			drawList->AddTriangle(a, b, d, lineCol, 2.0f);
-		}
+	if (n >= 3) {
+		drawList->AddConvexPolyFilled(pts, n, fillCol);
+		drawList->AddPolyline(pts, n, lineCol, ImDrawFlags_Closed, 2.0f);
 	}
 
 	drawList->PopClipRect();
 }
-
 
 void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
 	if (!toggleAspectRatio) {
@@ -2335,7 +2278,7 @@ void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
 	}
 
 	const FVMesh& fv = inspectMesh();
-	const std::vector<double>& ratios = mesh.aspectRatios;
+	const std::vector<double>& ratios = mesh.quality.aspectRatios;
 
 	// Mesh::refreshFVMesh measures the ratios as it builds the cells, so a length
 	// mismatch means we are looking at a mesh nobody has measured yet (a project
@@ -2372,88 +2315,32 @@ void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 
-	// Same three cell-outline paths drawCellInfo uses: the multiblock corner quads,
-	// the raster grid, then the triangulation. Both structured paths are picked by
-	// the cell count they would index rather than by mesh.isMultiBlock -- a cell ID
-	// means something different in each, so painting one set of cells through the
-	// other's indexing draws the whole field in the wrong places.
-	if (mesh.currentMeshType == MeshType::Structured &&
-		inspectCellQuads.size() == ratios.size()) {
+	// One outline path for every mesh type. The corner store is rebuilt by the same
+	// refreshFVMesh call that measures the ratios, so cell c means the same thing in
+	// both -- which is what the old three-way dispatch (multiblock quads, raster
+	// grid, triangulation) had to establish by matching cell counts, since a cell ID
+	// meant something different in each and painting through the wrong one drew the
+	// whole field in the wrong places.
+	Vec2 corners[maxCellCorners];
+	ImVec2 pts[maxCellCorners];
 
-		for (int c = 0; c < (int)ratios.size(); c++) {
-			if (!measured(c)) {
-				continue;
-			}
-
-			const std::array<Vec2, 4>& q = inspectCellQuads[c];
-
-			ImVec2 pts[4];
-			for (int k = 0; k < 4; k++) {
-				pts[k] = camera.worldToScreen(q[k]);
-			}
-
-			drawList->AddConvexPolyFilled(pts, 4, colorOf(c));
-			painted = true;
+	for (int c = 0; c < (int)ratios.size(); c++) {
+		if (!measured(c)) {
+			continue;
 		}
-	}
-	else if (mesh.currentMeshType == MeshType::Structured &&
-		(int)ratios.size() == g.nr * g.nz &&
-		g.zFace.size() >= 2 && g.rFace.size() >= 2) {
 
-		int nz = std::max(g.nz, 1);
+		const int n = cellCorners(c, corners, maxCellCorners);
 
-		for (int c = 0; c < (int)ratios.size(); c++) {
-			if (!measured(c)) {
-				continue;
-			}
-
-			int i = c / nz;
-			int j = c % nz;
-
-			if (i + 1 >= (int)g.rFace.size() || j + 1 >= (int)g.zFace.size()) {
-				continue;
-			}
-
-			ImVec2 p0 = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[i] });
-			ImVec2 p1 = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i + 1] });
-
-			drawList->AddRectFilled(
-				ImVec2(std::min(p0.x, p1.x), std::min(p0.y, p1.y)),
-				ImVec2(std::max(p0.x, p1.x), std::max(p0.y, p1.y)),
-				colorOf(c)
-			);
-			painted = true;
+		if (n < 3) {
+			continue;
 		}
-	}
-	else if (mesh.currentMeshType != MeshType::Structured) {
-		// unstructured: FV cells map 1:1 to triangles, same as pickCell relies on
-		const std::vector<Vec2>& pts = mesh.unstructuredPoints;
-		const std::vector<Triangle>& tris = mesh.unstructuredTriangles;
 
-		int n = std::min((int)ratios.size(), (int)tris.size());
-
-		for (int c = 0; c < n; c++) {
-			if (!measured(c)) {
-				continue;
-			}
-
-			const Triangle& t = tris[c];
-
-			if (t.v0 < 0 || t.v1 < 0 || t.v2 < 0) continue;
-			if (t.v0 >= (int)pts.size() ||
-				t.v1 >= (int)pts.size() ||
-				t.v2 >= (int)pts.size()) {
-				continue;
-			}
-
-			drawList->AddTriangleFilled(
-				camera.worldToScreen(pts[t.v0]),
-				camera.worldToScreen(pts[t.v1]),
-				camera.worldToScreen(pts[t.v2]),
-				colorOf(c)
-			);
-			painted = true;
+		for (int k = 0; k < n; k++) {
+			pts[k] = camera.worldToScreen(corners[k]);
 		}
+
+		drawList->AddConvexPolyFilled(pts, n, colorOf(c));
+		painted = true;
 	}
 
 	drawList->PopClipRect();
@@ -2520,7 +2407,7 @@ void MeshInspector::drawAspectRatioLegend(
 	addLabel("aspect", canvasRect.min.y + pad);
 }
 
-void MeshInspector::drawNonOrthogonality(ImDrawList* drawList) {
+void MeshInspector::drawOrthogonality(ImDrawList* drawList) {
 
 }
 
@@ -2565,8 +2452,8 @@ void MeshInspector::render() {
 	updateCurrentMousePos();
 
 	// keep the inspection snapshot in sync while anything that reads it is active.
-	// The aspect-ratio overlay needs it for the same reason picking does: on the
-	// multiblock path the corner quads are the only cell outlines that exist.
+	// The aspect-ratio overlay needs it for the same reason picking does: both read
+	// the per-cell corner store, which is only rebuilt when the FVMesh is.
 	if ((toggleInspectCell || toggleAspectRatio) && inspectMeshDirty) {
 		buildInspectMesh();
 	}
