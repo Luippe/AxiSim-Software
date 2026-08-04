@@ -375,6 +375,11 @@ void Menu::drawEditShortcut() {
 	if (menuItem("Units", assets.icon("units"))) {
 		openUnitsModal = true;
 	}
+
+	if (beginMenu("Advanced Options")) {
+		openAdvancedOptionsModal = true;
+		ImGui::EndMenu();
+	}
 }
 
 bool shortcutExists(ImGuiKeyChord shortcut, ImGuiKeyChord* currentShortcut) {
@@ -570,6 +575,7 @@ void Menu::drawShortcutModal() {
 }
 
 
+
 void Menu::drawUnitsModal() {
 	if (openUnitsModal) {
 		ImGui::OpenPopup("Units");
@@ -704,7 +710,34 @@ void Menu::drawUnitsModal() {
 	}
 }
 
+void Menu::drawAdvancedOptionModal() {
+	if (openAdvancedOptionsModal) {
+		ImGui::OpenPopup("Advanced Options");
+		openAdvancedOptionsModal = false;
+	}
 
+	if (ImGui::BeginPopupModal(
+		"Advanced Options",
+		nullptr,
+		ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove
+	)) {
+		bool justOpened = ImGui::IsWindowAppearing();
+
+		bool hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+		bool clickedOutside =
+			!justOpened &&
+			!ImGui::IsAnyItemActive() &&
+			!ImGui::IsAnyItemHovered() &&
+			!hovered &&
+			ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+
+		if (clickedOutside) {
+			ImGui::CloseCurrentPopup();
+		}
+
+		ImGui::EndPopup();
+	}
+}
 
 void Menu::render() {
 	if (ImGui::BeginMainMenuBar()) {

@@ -7,9 +7,6 @@ struct FluidPropertyConfig;
 struct MultigridLevel;
 struct MultiBlockMesh;
 
-// initialize and allocate GridConfig variables
-void allocateGridConfig(GridConfig& g, FluidPropertyConfig& f);
-
 // Flatten the mesh's cell/face connectivity into the CSR layout every face-path
 // consumer expects:
 //
@@ -65,8 +62,6 @@ void allocateMultigridLevel(MultigridLevel& level);
 
 // free the device memory owned by a multigrid level (mirror of allocateMultigridLevel)
 void freeMultigridLevel(MultigridLevel& level);
-
-void free_GridConfig(GridConfig& g);
 
 FVMeshDevice createFVMeshDevice(const FVMesh& fvMesh);
 

@@ -1313,6 +1313,12 @@ void saveFromExplorerMesh(Mesh& mesh, const Solver& solver) {
 
 void saveFromPathMesh(std::ofstream& out, Mesh& mesh) {
 
+	// GridConfig no longer carries obstacleIndices, but this block is positional --
+	// no magic, no version -- so the set's slot has to stay on disk. Dropping it
+	// would shift every field behind it, and a build that still reads the field
+	// would take mesh.g.R out of the obstacle count. Always written empty now.
+	const std::unordered_set<int> obstacleIndicesSlot;
+
 	// save user specific input
 	writeAll(
 		out,
@@ -1322,7 +1328,7 @@ void saveFromPathMesh(std::ofstream& out, Mesh& mesh) {
 		mesh.gridLineVertices,
 		mesh.selectableOuterEdges,
 		mesh.nextGroupID,
-		mesh.g.obstacleIndices,
+		obstacleIndicesSlot,
 		mesh.g.R,
 		mesh.g.L,
 		mesh.g.nr,
@@ -1365,6 +1371,11 @@ void loadFromExplorerMesh(Mesh& mesh) {
 
 void loadFromPathMesh(std::ifstream& in, Mesh& mesh) {
 
+	// Dead slot (see saveFromPathMesh): every save still carries the obstacle set
+	// here, so its bytes must be consumed to keep the rest of the block aligned.
+	// Read and thrown away -- the mesh raster no longer has a solid-cell mask.
+	std::unordered_set<int> obstacleIndicesSlot;
+
 	// load dimensions
 	readAll(in,
 		mesh.nseg,
@@ -1373,7 +1384,7 @@ void loadFromPathMesh(std::ifstream& in, Mesh& mesh) {
 		mesh.gridLineVertices,
 		mesh.selectableOuterEdges,
 		mesh.nextGroupID,
-		mesh.g.obstacleIndices,
+		obstacleIndicesSlot,
 		mesh.g.R,
 		mesh.g.L,
 		mesh.g.nr,

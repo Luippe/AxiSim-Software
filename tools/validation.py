@@ -7,7 +7,8 @@ from scipy.spatial import cKDTree
 from enum import Enum
 
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+HERE = pathlib.Path(__file__).resolve().parent          # tools/
+ROOT = HERE.parent                                      # repo root
 
 # Peak typed into the AxiSim fully-developed inlet BC, converted to base SI.
 # solution.npy is base SI (see meta.json) while the GUI shows mm/s, so this is
@@ -63,12 +64,24 @@ class Poiseuille:
     u: np.ndarray       # analytic profile at every cell centre (full length)
 
 
-def cell_map(c, live, values, ax=None, cmap="turbo", label="", clim=None):
+def cell_map(c, live, values, ax=None, cmap="turbo", label="", clim=None,
+             aspect=None):
     """Paint one value per live cell onto that cell's polygon.
 
     The polygons are AxiSim's -- they are the only ones either loader builds --
     so everything drawn here is drawn on AxiSim's mesh, whichever code the
     values came from.
+
+    `aspect` controls the r:z scaling:
+      None      matplotlib's "auto" -- the data is stretched to fill the axes
+                box, so the radial exaggeration is whatever figsize happens to
+                be (14.9x on the FDA nozzle) and it changes on a window resize.
+      "equal"   true scale, 1 m of r drawn as 1 m of z. Honest, but the nozzle
+                is 280 x 6 mm, so the whole domain is a 47:1 hairline -- pair it
+                with an xlim around the region of interest.
+      a number  explicit exaggeration: 1 is "equal", 5 draws r 5x tall. Fixed at
+                any window size, which is the point -- the distortion becomes a
+                number in the code rather than an accident of the figure shape.
     """
     if ax is None:
         _, ax = plt.subplots(figsize=(10,3.2))
@@ -85,13 +98,22 @@ def cell_map(c, live, values, ax=None, cmap="turbo", label="", clim=None):
     ax.set_xlim(c.pts[:,0].min(), c.pts[:,0].max())
     ax.set_ylim(c.pts[:,1].min(), c.pts[:,1].max())
 
+    # After the limits, and left alone when None so the existing multi-panel
+    # figures keep filling their boxes. adjustable stays at the default "box":
+    # the axes shrink to satisfy the ratio. The other option, "datalim", holds
+    # the box and widens the limits instead, which here just pads the domain
+    # with empty space rather than showing more of it.
+    if aspect is not None:
+        ax.set_aspect(aspect)
+
     ax.figure.colorbar(pc, ax=ax, label=label)
 
     return ax
 
-def field_map(s, c, field, mirror=True, ax=None, clim=None):
+def field_map(s, c, field, mirror=True, ax=None, clim=None, aspect=None):
 
-    return cell_map(c, s.live, s.c(field)[s.live], ax, "turbo", field, clim)
+    return cell_map(c, s.live, s.c(field)[s.live], ax, "turbo", field, clim,
+                    aspect)
 
 # load solution
 def load_solution(folder_name: str) -> Solution:
@@ -464,14 +486,26 @@ def foam_compare_maps(s, c, f, live, idx, field):
 # Interlaboratory PIV for the FDA benchmark nozzle, sudden-expansion orientation.
 # Unzip SE_exp_0500.zip from
 #   https://github.com/OSEL-DAM/CFD-and-Blood-Damage-Benchmarks  (Nozzle/Data)
-# and PIV_DIR is the `experiment/` folder that falls out of it. The old
-# nciphub.org home of this dataset is dead -- the domain no longer resolves.
+# into `experiment/` NEXT TO THIS SCRIPT -- it sits under tools/, not at the repo
+# root, because tools/ is gitignored and the measurements are not ours to vendor.
+# The old nciphub.org home of this dataset is dead -- the domain no longer resolves.
 #
 # Unlike the OpenFOAM comparison this is not a code-to-code check: these are
 # measurements, with a real uncertainty, and the five files are five independent
 # lab datasets rather than five repeats. So nothing here reduces them to one
 # curve -- the spread between them IS the tolerance the solver has to land in.
-PIV_DIR = ROOT / "experiment"
+PIV_DIR = HERE / "experiment"
+
+# The nozzle is run in both directions, and both orientations unzip into the same
+# folder as the same five lab codes measured on a different geometry. So the
+# folder does not say which case is being compared and an unfiltered read merges
+# two geometries into one band -- silently, since it fails no check: the codes
+# look like ten labs and the stations like a union.
+#
+# Filtered on the header rather than the filename because the two datasets do not
+# share a naming convention ("PIV_Sudden_Expansion_500_243" against
+# "PIV_conical_diffuser_500_243"). Set to None to read whatever is there.
+PIV_ORIENTATION = "Sudden Expansion"
 
 # Profile block name (the part between "plot-profile-" and "-at-z") -> the AxiSim
 # field it should be compared against. Reynolds stress is deliberately absent: at
@@ -503,6 +537,8 @@ class PivLab:
     def mu(self):   return float(self.header["fluid-viscosity"])
     @property
     def flow(self): return float(self.header["fluid-volumetric-flow-rate"])
+    @property
+    def orientation(self): return self.header.get("dataset-orientation", "")
 
 
 @dataclass
@@ -562,12 +598,16 @@ def read_piv_file(path: pathlib.Path) -> PivLab:
     return PivLab(path.stem.split("_")[-1], header, profiles, axial)
 
 
-def load_piv(folder=PIV_DIR) -> Piv:
-    """Every lab file in one folder, plus the union of their stations.
+def load_piv(folder=PIV_DIR, orientation=PIV_ORIENTATION) -> Piv:
+    """Every lab file of one orientation, plus the union of their stations.
 
     Union, not intersection: code 468 is missing z = +0.016, +0.024 and +0.080
     (42 blocks against the others' 54), and dropping three stations everywhere to
     accommodate it would throw away data the other four labs did measure.
+
+    Union across ORIENTATIONS is the one thing that would not be data -- see
+    PIV_ORIENTATION. Every file is read before filtering; they are ~150 kB each
+    and the header is the only thing that identifies them.
     """
     d = pathlib.Path(folder)
 
@@ -577,6 +617,17 @@ def load_piv(folder=PIV_DIR) -> Piv:
             f"{d}: no PIV .txt files -- unzip SE_exp_0500.zip here")
 
     labs = [read_piv_file(p) for p in paths]
+
+    if orientation is not None:
+        keep = [lab for lab in labs if lab.orientation == orientation]
+
+        if not keep:
+            found = sorted({lab.orientation for lab in labs})
+            raise FileNotFoundError(
+                f"{d}: no {orientation!r} files among {len(labs)} read"
+                f" -- found {found}")
+
+        labs = keep
 
     stations = sorted({z for lab in labs for (q, z) in lab.profiles
                        if q == "axial-velocity"})
@@ -748,10 +799,18 @@ def axisim_flow_rate(s: Solution, z=None, sample=None, n=400):
     live = s.live
     zc, rc = s.c("z")[live], s.c("r")[live]
 
-    if z is None:
-        z = zc.min()
+    half = (zc.max() - zc.min()) / 200.0
 
-    slab = np.abs(zc - z) <= (zc.max() - zc.min()) / 200.0
+    if z is None:
+        # One slab in, NOT on the first cell centres themselves. Those centres
+        # are the upstream edge of the triangulation, so a query sitting exactly
+        # on them lands on the hull and every sample comes back masked -- and an
+        # integral over nothing is 0.0 rather than an error, so this reported a
+        # flow rate of zero, and piv_case_check a Reynolds number of zero, on a
+        # perfectly good solution.
+        z = zc.min() + half
+
+    slab = np.abs(zc - z) <= half
 
     if not slab.any():
         raise ValueError(f"no live cells near z = {z}")
@@ -763,6 +822,16 @@ def axisim_flow_rate(s: Solution, z=None, sample=None, n=400):
 
     u = sample("Axial Velocity", z, r)
     ok = np.isfinite(u)
+
+    # Partial coverage under-reads by whatever fraction of the radius fell
+    # outside the hull, which looks exactly like a mis-scaled inlet -- the one
+    # thing this function exists to detect. Refusing beats a plausible wrong
+    # number. The default plane clears this easily (397 of 400 on the FDA case);
+    # what it catches is a z on or past either end of the mesh.
+    if ok.sum() < 0.9 * n:
+        raise ValueError(
+            f"only {ok.sum()} of {n} samples at z = {z:.6g} are inside the mesh"
+            f" -- the integral would under-read; pass an interior z")
 
     return 2.0 * np.pi * np.trapezoid(u[ok] * r[ok], r[ok])
 
@@ -921,12 +990,13 @@ def piv_validation(s: Solution, piv: Piv, quantity="axial-velocity",
 def main():
 
     compare = CompareType.EXPERIMENT
+    # compare = CompareType.OPENFOAM
 
     folder_name = "SE_sim_0500_solution"
 
     # The exported case. Keep it on the WSL filesystem, not /mnt/c -- OpenFOAM's
     # tiny-file I/O crawls across the 9p mount.
-    foam_case = r"\\wsl$\Ubuntu\home\luits\run\project_case"
+    foam_case = r"\\wsl$\Ubuntu\home\luits\run\SE_sim_0500_case"
 
     s = load_solution(folder_name)
     c = load_cells(folder_name)
@@ -962,7 +1032,7 @@ def main():
             if name in s.col:
                 foam_compare_maps(s, c, f, live, idx, name)
 
-    field_map(s, c, "Axial Velocity")
+    field_map(s, c, "Axial Velocity", aspect=5)
 
     plt.show()
 

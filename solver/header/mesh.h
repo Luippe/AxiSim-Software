@@ -242,16 +242,12 @@ public:
 	// is invisible to the solver until the mesh is rebuilt.
 	void markFVMeshDirty() { fvMeshDirty = true; }
 
-	FVMesh createFVMesh(const std::vector<uint8_t>& activeCell) const;
-
 	FVMesh createUnstructuredMesh(
 		const std::vector<Vec2>& points,
 		const std::vector<Triangle>& triangles,
 		const std::vector<BoundaryVertex>& boundaryVertices,
 		const std::vector<BoundaryEdge>& boundaryEdges
 	) const;
-
-	FVMesh createStructuredMesh(const std::vector<uint8_t>& activeCell) const;
 
 	// search for segment with specific ID
 	BoundarySegment* getBoundarySegmentByID(int id);

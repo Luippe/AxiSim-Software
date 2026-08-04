@@ -266,17 +266,17 @@ bool Inspector::hasStructuredGrid() const {
 
 bool Inspector::isStructuredCellActive(int cellID) const {
 
-	if (cellID < 0) {
-		return false;
-	}
+	//if (cellID < 0) {
+	//	return false;
+	//}
 
-	// Structured results are presented on the raster grid, so cellID is a raster
-	// index (i*nz+j) and g.activeCell is its fluid/solid mask. The solver's fvMesh is
-	// in multiblock cell order (fvMesh.nr/nz == 0), so it must NOT be indexed by a
-	// raster id here -- doing so mismatched every cell for a multiblock mesh.
-	if (cellID < (int)g.activeCell.size()) {
-		return g.activeCell[cellID] != 0;
-	}
+	//// Structured results are presented on the raster grid, so cellID is a raster
+	//// index (i*nz+j) and g.activeCell is its fluid/solid mask. The solver's fvMesh is
+	//// in multiblock cell order (fvMesh.nr/nz == 0), so it must NOT be indexed by a
+	//// raster id here -- doing so mismatched every cell for a multiblock mesh.
+	//if (cellID < (int)g.activeCell.size()) {
+	//	return g.activeCell[cellID] != 0;
+	//}
 
 	return true;
 }

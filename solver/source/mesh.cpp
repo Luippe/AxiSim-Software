@@ -1227,23 +1227,6 @@ bool Mesh::convertSketchToStructuredMesh(const SketchModel& sketch) {
 	const int nr = g.nr;
 	const int nz = g.nz;
 
-	// Rasterize: every cell whose center is outside the sketched domain (or
-	// inside an obstacle) becomes solid. The solver consumes this through
-	// obstacleIndices -> createActiveCell -> activeCell.
-	g.obstacleIndices.clear();
-	g.activeCell.assign(static_cast<size_t>(nr) * nz, 1);
-
-	for (int i = 0; i < nr; i++) {
-		for (int j = 0; j < nz; j++) {
-			Vec2 center{ g.z[j], g.r[i] };
-
-			if (!pointInsideDomain(center)) {
-				int n = i * nz + j;
-				g.activeCell[n] = 0;
-				g.obstacleIndices.insert(n);
-			}
-		}
-	}
 
 	// The Mesh Inspector reconstructs the selectable wall boundary from these
 	// fluid/solid interface faces. Without this the rasterized walls (any wall not
@@ -1268,37 +1251,22 @@ void Mesh::rebuildSelectableObstacleEdges() {
 	const int nr = g.nr;
 	const int nz = g.nz;
 
-	if (static_cast<int>(g.activeCell.size()) != nr * nz) {
-		return;
-	}
-
-	auto isFluid = [&](int i, int j) {
-		if (i < 0 || i >= nr || j < 0 || j >= nz) {
-			return false;
-		}
-		return g.activeCell[i * nz + j] != 0;
-	};
-
 	// Interior axial faces (constant z) between cells (i, jFace - 1) and (i, jFace).
 	// MeshEdge convention matches makeAxialEdge()/buildDomainBoundaryEdges().
 	for (int i = 0; i < nr; i++) {
 		for (int jFace = 1; jFace < nz; jFace++) {
-			if (isFluid(i, jFace - 1) != isFluid(i, jFace)) {
-				selectableOuterEdges.insert(
-					MeshEdge{ EdgeOrient::Vertical, i, jFace }
-				);
-			}
+			selectableOuterEdges.insert(
+				MeshEdge{ EdgeOrient::Vertical, i, jFace }
+			);
 		}
 	}
 
 	// Interior radial faces (constant r) between cells (iFace - 1, j) and (iFace, j).
 	for (int iFace = 1; iFace < nr; iFace++) {
 		for (int j = 0; j < nz; j++) {
-			if (isFluid(iFace - 1, j) != isFluid(iFace, j)) {
-				selectableOuterEdges.insert(
-					MeshEdge{ EdgeOrient::Horizontal, iFace, j }
-				);
-			}
+			selectableOuterEdges.insert(
+				MeshEdge{ EdgeOrient::Horizontal, iFace, j }
+			);
 		}
 	}
 }
@@ -2177,209 +2145,6 @@ FVMesh Mesh::createUnstructuredMesh(
 	return mesh;
 }
 
-std::vector<FVFace> createStructuredFVFaces(
-	int nr,
-	int nz,
-	const std::vector<uint8_t>& activeCell,
-	const std::vector<double>& rFace,
-	const std::vector<double>& zFace,
-	const std::vector<double>& r,
-	const std::vector<double>& z,
-	const std::vector<BoundarySegmentGroup>& boundaryGroups
-) {
-	std::vector<FVFace> faces;
-	auto boundaryLookup = createBoundaryEdgeLookup(boundaryGroups);
-
-	for (int i = 0; i < nr; i++) {
-		for (int jFace = 0; jFace < nz + 1; jFace++) {
-
-			int jLeft = jFace - 1;
-			int jRight = jFace;
-
-			bool leftFluid = isFluidCell(i, jLeft, nr, nz, activeCell);
-			bool rightFluid = isFluidCell(i, jRight, nr, nz, activeCell);
-
-			if (!leftFluid && !rightFluid) {
-				continue; // skip faces between two solid cells
-			}
-
-			FVFace face;
-
-			face.center = Vec2(zFace[jFace], r[i]);
-			
-			double r0 = rFace[i];
-			double r1 = rFace[i + 1];
-
-			face.area = PI * (r1 * r1 - r0 * r0);
-
-			MeshEdge edge = makeAxialEdge(i, jFace);
-
-			if (leftFluid && rightFluid) {			// interior fluid
-				face.owner = cellID(i, jLeft, nz);
-				face.neighbor = cellID(i, jRight, nz);
-				face.normal = Vec2(1.0, 0.0); // normal points from left to right
-
-				face.boundaryGroupID = -1; // not a boundary face
-
-			}
-			else if (leftFluid && !rightFluid) {
-				face.owner = cellID(i, jLeft, nz);	// boundary on right side
-				face.neighbor = -1; // boundary face
-				face.normal = Vec2(1.0, 0.0); // normal points outward from fluid cell
-
-				face.boundaryGroupID = getBoundaryGroupID(boundaryLookup, edge);
-
-			}
-			else if (!leftFluid && rightFluid) { // boundary on left side
-				face.owner = cellID(i, jRight, nz);
-				face.neighbor = -1; // boundary face
-				face.normal = Vec2(-1.0, 0.0); // normal points outward from fluid cell
-
-				face.boundaryGroupID = getBoundaryGroupID(boundaryLookup, edge);
-
-			}
-
-			faces.push_back(face);
-		}
-	}
-
-	for (int iFace = 0; iFace <= nr; iFace++) {
-		for (int j = 0; j < nz; j++) {
-			int iLower = iFace - 1;
-			int iUpper = iFace;
-
-			bool lowerFluid = isFluidCell(iLower, j, nr, nz, activeCell);
-			bool upperFluid = isFluidCell(iUpper, j, nr, nz, activeCell);
-
-			if (!lowerFluid && !upperFluid) {
-				continue; // skip faces between two solid cells
-			}
-
-			FVFace face;
-
-			face.center = Vec2(z[j], rFace[iFace]);
-			face.area = 2.0 * PI * rFace[iFace] * (zFace[j + 1] - zFace[j]);
-
-			MeshEdge edge = makeRadialEdge(iFace, j);
-
-			if (lowerFluid && upperFluid) {
-				face.owner = cellID(iLower, j, nz);
-				face.neighbor = cellID(iUpper, j, nz);
-				face.normal = Vec2(0.0, 1.0);
-				face.boundaryGroupID = -1;
-
-			}
-			else if (lowerFluid && !upperFluid) {
-				face.owner = cellID(iLower, j, nz);
-				face.neighbor = -1;
-				face.normal = Vec2(0.0, 1.0);
-
-				face.boundaryGroupID = getBoundaryGroupID(boundaryLookup, edge);
-			}
-			else if (!lowerFluid && upperFluid) {
-				face.owner = cellID(iUpper, j, nz);
-				face.neighbor = -1;
-				face.normal = Vec2(0.0, -1.0);
-
-				face.boundaryGroupID = getBoundaryGroupID(boundaryLookup, edge);
-			}
-
-			faces.push_back(face);
-		}
-	}
-	return faces;
-}
-
-std::vector<FVCell> createStructuredFVCells(
-	int nr,
-	int nz,
-	const std::vector<uint8_t>& activeCell,
-	const std::vector<double>& rFace,
-	const std::vector<double>& zFace,
-	const std::vector<double>& r,
-	const std::vector<double>& z,
-	const std::vector<FVFace>& faces) {
-
-	std::vector<FVCell> cells;
-	cells.resize(nr * nz);
-
-	for (int i = 0; i < nr; i++) {
-		for (int j = 0; j < nz; j++) {
-
-			int n = cellID(i, j, nz);
-
-			FVCell& cell = cells[n];
-
-			cell.shape = CellShape::QUAD;
-			cell.center = Vec2(z[j], r[i]);
-
-			double r0 = rFace[i];
-			double r1 = rFace[i + 1];
-			double dz = zFace[j + 1] - zFace[j];
-
-			cell.area2D = (r1 - r0) * dz;
-			cell.volume = PI * (r1 * r1 - r0 * r0) * dz;
-
-			cell.active = activeCell[n] != 0;
-			cell.solid = activeCell[n] == 0;
-
-			cell.faceIDs.clear();
-		}
-	}
-
-	// iterate through each face, which has an owner and neighbor cell indices
-	// if the owner or neighbor is a valid cell index, push the face index to the corresponding cell's faceIDs vector
-	for (int f = 0; f < (int)faces.size(); f++) {
-
-		const FVFace& face = faces[f];
-
-		if (face.owner >= 0) {
-			cells[face.owner].faceIDs.push_back(f);	// push back face indices
-		}
-
-		if (face.neighbor >= 0) {
-			cells[face.neighbor].faceIDs.push_back(f); // push back face indices
-		}
-	}
-
-	return cells;
-}
-
-
-FVMesh Mesh::createStructuredMesh(const std::vector<uint8_t>& activeCell) const {
-
-	FVMesh fvMesh;
-
-	std::vector<FVFace> faces = createStructuredFVFaces (
-		g.nr,
-		g.nz,
-		activeCell,
-		g.rFace,
-		g.zFace,
-		g.r,
-		g.z,
-		boundaryGroups
-	);
-
-	std::vector<FVCell> cells = createStructuredFVCells(
-		g.nr,
-		g.nz,
-		activeCell,
-		g.rFace,
-		g.zFace,
-		g.r,
-		g.z,
-		faces
-	);	
-
-	fvMesh.nr = g.nr;
-	fvMesh.nz = g.nz;
-	fvMesh.faces = std::move(faces);
-	fvMesh.cells = std::move(cells);
-
-
-	return fvMesh;
-}
 
 void Mesh::updateAfterLoadingFile() {
 
@@ -2567,18 +2332,18 @@ void Mesh::createGrid() {
 	}
 }
 
-FVMesh Mesh::createFVMesh(const std::vector<uint8_t>& activeCell) const {
-	if (currentMeshType == MeshType::Structured) {
-		return createStructuredMesh(activeCell);
-	}
-
-	return createUnstructuredMesh(
-		unstructuredPoints,
-		unstructuredTriangles,
-		boundaryVertices,
-		boundaryEdges
-	);
-}
+//FVMesh Mesh::createFVMesh(const std::vector<uint8_t>& activeCell) const {
+//	if (currentMeshType == MeshType::Structured) {
+//		return createStructuredMesh(activeCell);
+//	}
+//
+//	return createUnstructuredMesh(
+//		unstructuredPoints,
+//		unstructuredTriangles,
+//		boundaryVertices,
+//		boundaryEdges
+//	);
+//}
 
 FVMesh Mesh::buildFVMesh() const {
 

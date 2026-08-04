@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <tuple>
 
 #include "solver_struct.h"
 #include "boundary_struct.h"
@@ -80,9 +81,11 @@ struct MultigridLevel {
 	// buffer -- with one array a thread could read a neighbour another thread had
 	// already advanced this sweep, which is chaotic relaxation, not Jacobi.
 	//
-	// smoothen() swaps these two members after every sweep, so `x` always names
-	// the live vector once it returns and every other consumer (prolongation, the
-	// memset in vCycle, run()'s copy in/out) needs no parity awareness.
+	// smoothen() returns with `x` naming the live vector whichever path it took --
+	// smoothenRegular swaps these two members after every sweep, smoothenSingleBlock
+	// ping-pongs in shared memory and never touches xNew. So every other consumer
+	// (prolongation, the memset in vCycle, run()'s copy in/out) needs no parity
+	// awareness.
 	double* xNew = nullptr;
 
 	// per-level residual vector. Previously read off Coefficients::res, which was
@@ -130,8 +133,6 @@ public:
 	MultigridSolver(const MultigridSolver&) = delete;
 	MultigridSolver& operator=(const MultigridSolver&) = delete;
 
-	std::vector<MultigridLevel> levels;
-
 	// Capture, instantiate and upload the complete solve before the SIMPLE loop.
 	void prepare(Coefficients& coeff, cudaStream_t& stream, double* x);
 
@@ -153,10 +154,23 @@ public:
 	// construction to sanity-check that agglomeration actually did something.
 	std::string describeHierarchy() const;
 
+private:
+
+	// Every device pointer the instantiated cudaGraphExec_t has baked in lives in
+	// `levels`, and RunGraphKey keys on none of it -- reseating levels[0].x or
+	// resizing the vector from outside would corrupt a live graph with no
+	// invalidation path. Private because nothing outside the class needs them: the
+	// caller uses only the constructor, prepare(), run() and describeHierarchy().
+	std::vector<MultigridLevel> levels;
+
 	ConfigMultigrid& cfg;
 	MemoryConfig& mem;
 
-private:
+	// Launch geometry for a level of `n` cells. Only threadsPerBlock is meaningful
+	// per level: MemoryConfig's other fields (blocks, faceBlocks, shmem) are filled
+	// by mem.init() from the FINE mesh, so mem.blocks would under-cover every coarse
+	// launch and silently leave tail cells un-updated.
+	int blocksFor(int n) const { return (n + mem.threadsPerBlock - 1) / mem.threadsPerBlock; }
 
 	// One executable graph owns a complete run(): copy the current fine system
 	// into level 0, rebuild all coarse operators, perform every configured
@@ -181,17 +195,43 @@ private:
 		// snapshotted into each of them. Editing any of the three has no effect until
 		// the graph is recaptured, so all three have to key it.
 		int linearSweep = 0;
-		int linearPrePostSweep = 0;
+		int linearPreSweep = 0;
+		int linearPostSweep = 0;
 		double weight = 0.0;
 
-		double* externalX = nullptr;
+		const double* externalX = nullptr;
 		double* AC = nullptr;
 		double* b = nullptr;
 		double* AF = nullptr;
 		cudaStream_t stream = nullptr;
+
+		// This TU is C++17 (CMAKE_CUDA_STANDARD), so no defaulted operator==. Tying
+		// the members once and comparing the tuples keeps the field list in ONE
+		// place: it used to be spelled out in full twice, in runGraphMatches and
+		// again in captureRunGraph, and a field added to one but not the other
+		// replays the graph with a stale argument baked in -- wrong numbers, no
+		// crash, no diagnostic. Do NOT compare these by memcmp: the struct has
+		// padding, and NSDMI aggregate init does not zero it.
+		auto tie() const {
+			return std::tie(N, nFaceRefs, nCycles, threadsPerBlock, useFaceCoeffs,
+			                linearSweep, linearPreSweep, linearPostSweep, weight,
+			                externalX, AC, b, AF, stream);
+		}
+
+		bool operator==(const RunGraphKey& other) const { return tie() == other.tie(); }
 	};
 
 	RunGraphKey runGraphKey;
+
+	// The key describing the solve `coeff` / `x` / `stream` currently ask for. Both
+	// the match test and the post-capture assignment go through this, so the fields
+	// are populated in exactly one place.
+	RunGraphKey currentKey(const Coefficients& coeff, const double* x, cudaStream_t stream) const;
+
+	// V-cycles per solve. Floored at 1 so a bad config can never turn the pp solve
+	// into a no-op. Shared by enqueueRun and the graph key so the two cannot
+	// disagree about how many cycle nodes were recorded.
+	int cycleCount() const { return cfg.maxIter > 1 ? cfg.maxIter : 1; }
 
 	// Submit the complete multigrid solve to a stream. Called once while the
 	// stream is being captured; graph replays do not execute this host code.

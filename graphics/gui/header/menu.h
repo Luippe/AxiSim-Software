@@ -20,6 +20,8 @@ private:
 	bool openShortcutModal = false;
 	bool openUnitsModal = false;
 	bool openSnappingModal = false;
+	bool openAdvancedOptionsModal = false;
+
 
 	static constexpr float menuIconScale = 1.0f;
 	static constexpr const char* menuIconPlaceholder = "    ";
@@ -56,6 +58,9 @@ private:
 
 	// open popup to edit display units
 	void drawUnitsModal();
+
+	// open popup to edit advanced options
+	void drawAdvancedOptionModal();
 
 	bool beginMenu(const char* label, TextureBuffer& icon, bool enabled = true);
 

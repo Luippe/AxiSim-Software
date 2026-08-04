@@ -1652,34 +1652,6 @@ void MeshInspector::drawHighlightedCells2D(ImDrawList* drawList) {
 	int nr = (int)g.rFace.size() - 1;
 
 
-
-	for (int n : g.obstacleIndices) {
-		int i = n / nz;
-		int j = n % nz;
-
-		if (j < 0 || j >= nz || i < 0 || i >= nr) {
-			continue;
-		}
-
-		ImVec2 p0 = camera.worldToScreen(Vec2{ g.zFace[j], g.rFace[i] });
-		ImVec2 p1 = camera.worldToScreen(Vec2{ g.zFace[j + 1], g.rFace[i + 1] });
-
-		ImVec2 rectMin(
-			std::min(p0.x, p1.x),
-			std::min(p0.y, p1.y)
-		);
-
-		ImVec2 rectMax(
-			std::max(p0.x, p1.x),
-			std::max(p0.y, p1.y)
-		);
-
-		drawList->AddRectFilled(
-			rectMin,
-			rectMax,
-			IM_COL32(151, 151, 151, 255)
-		);
-	}
 }
 
 void MeshInspector::drawBoundarySegments(
@@ -1891,7 +1863,7 @@ void MeshInspector::drawPopup() {
 // ======================================================================
 void MeshInspector::buildSegments() {
 	std::unordered_set<MeshEdge, MeshEdgeHash> combinedEdges =
-		buildCombinedBoundaryEdges(mesh.selectableOuterEdges, g.obstacleIndices);
+		buildCombinedBoundaryEdges(mesh.selectableOuterEdges);
 
 	mesh.boundaryVertices.clear();
 	mesh.boundaryEdges.clear();
@@ -1968,8 +1940,7 @@ void MeshInspector::syncStructuredBoundaryGroups() {
 
 std::unordered_set<MeshEdge, MeshEdgeHash>
 MeshInspector::buildCombinedBoundaryEdges(
-	const std::unordered_set<MeshEdge, MeshEdgeHash>& selectableOuterEdges,
-	const std::unordered_set<int>& obstacleIndices
+	const std::unordered_set<MeshEdge, MeshEdgeHash>& selectableOuterEdges
 ) {
 	std::unordered_set<MeshEdge, MeshEdgeHash> combinedEdges;
 
@@ -1987,10 +1958,6 @@ MeshInspector::buildCombinedBoundaryEdges(
 		buildDomainBoundaryEdges();
 
 	for (const MeshEdge& e : domainEdges) {
-		if (domainEdgeTouchesSolid(e, obstacleIndices)) {
-			continue;
-		}
-
 		combinedEdges.insert(e);
 	}
 

@@ -202,7 +202,8 @@ struct ConfigMultigrid {
 
 	// Sweeps before restriction and again after prolongation, on every level that
 	// has a coarser one beneath it.
-	int linearPrePostSweep = 3;
+	int linearPreSweep = 1;
+	int linearPostSweep = 1;
 
 };
 

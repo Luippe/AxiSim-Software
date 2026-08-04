@@ -558,11 +558,6 @@ void MeshGUI::draw() {
 				mesh.selectedBoundaryIDs.clear();
 				mesh.highlightedBoundarySegmentIDs.clear();
 				mesh.selectableOuterEdges.clear();
-				mesh.g.obstacleIndices.clear();
-				mesh.g.activeCell.assign(
-					static_cast<size_t>(mesh.g.nr) * mesh.g.nz,
-					1
-				);
 				mesh.buildStructuredMultiBlock(sketch);   // single domain-spanning block
 			}
 			else {

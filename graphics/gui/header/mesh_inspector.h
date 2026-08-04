@@ -210,8 +210,7 @@ private:
 	std::unordered_set<MeshEdge, MeshEdgeHash> buildDomainBoundaryEdges() const;
 
 	std::unordered_set<MeshEdge, MeshEdgeHash> buildCombinedBoundaryEdges(
-		const std::unordered_set<MeshEdge, MeshEdgeHash>& selectableOuterEdges,
-		const std::unordered_set<int>& obstacleIndices
+		const std::unordered_set<MeshEdge, MeshEdgeHash>& selectableOuterEdges
 	);
 
 	void setBaseNrNz();

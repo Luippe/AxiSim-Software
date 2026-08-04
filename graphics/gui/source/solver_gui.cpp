@@ -800,13 +800,10 @@ void SolverGUI::drawPropertiesPanel() {
 					ImGui::EndDisabled();
 					disabledHint(graphPrepared, "The multigrid graph is already prepared for this solve.");
 
-					if (!graphPrepared && project.solver.configMultigrid.linearSweep < 1) {
-						project.solver.configMultigrid.linearSweep = 1;
+					if (!graphPrepared && project.solver.configMultigrid.linearSweep < 0) {
+						project.solver.configMultigrid.linearSweep = 0;
 					}
-
 				}
-
-
 			}
 			ImGui::EndTable();
 		}
