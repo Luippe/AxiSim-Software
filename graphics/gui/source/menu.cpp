@@ -376,9 +376,8 @@ void Menu::drawEditShortcut() {
 		openUnitsModal = true;
 	}
 
-	if (beginMenu("Advanced Options")) {
+	if (menuItem("Advanced Options")) {
 		openAdvancedOptionsModal = true;
-		ImGui::EndMenu();
 	}
 }
 
