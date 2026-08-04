@@ -109,31 +109,9 @@ public:
 	std::vector<BoundarySegment> boundarySegments;
 	std::vector<MeshRegionOfInfluence> regionsOfInfluence;
 
-	// ---- per-cell corner vertices (CSR) ----
-	// Deduped node coordinates, plus the corners of every FV cell in
-	// counter-clockwise order: cell c owns
-	// cellCornerIDs[cellCornerStart[c] .. cellCornerStart[c + 1]).
-	//
-	// Rebuilt by refreshFVMesh immediately after the FVMesh, so cell c here is
-	// always fvMesh.cells[c]. Derived state, never serialized -- a loaded project
-	// gets it on the first refresh, exactly like the FVMesh itself.
-	//
-	// This is the one form of the cell outline both mesh paths share. The multiblock
-	// path leaves FVFace::v0/v1 at -1 (createMultiBlockFVMesh fills faces from the
-	// packer, which carries no vertex IDs) and the unstructured path indexes
-	// unstructuredPoints, so anything wanting a cell polygon had to branch on
-	// currentMeshType first -- see the three-way dispatch in MeshInspector::pickCell.
-	//
-	// Points are welded, not copied per cell: two cells sharing a corner share the
-	// index, which is what makes node-based operations (cell -> node interpolation,
-	// smoothing) possible at all.
-	//
-	// A cell whose corners could not be recovered gets an empty range rather than a
-	// partial polygon, so cellCornerStart[c + 1] - cellCornerStart[c] >= 3 is the
-	// test for a usable outline.
-	std::vector<Vec2> meshPoints;       // deduped node coordinates
-	std::vector<int>  cellCornerStart;  // size nCells + 1
-	std::vector<int>  cellCornerIDs;    // indices into meshPoints, CCW
+	// Cell outlines live on the FVMesh itself (FVMesh::points +
+	// cellCornerStart/cellCornerIDs), filled by the builders that fill its cells --
+	// they used to be cached here, one refresh behind the mesh they described.
 
 
 	// Monotonic allocator for boundary group IDs. Must never be rewound while a
@@ -302,12 +280,6 @@ private:
 	// This is the single place the activeCell argument is chosen -- it used to be
 	// decided independently at every call site.
 	FVMesh buildFVMesh() const;
-
-	// Fill meshPoints / cellCornerStart / cellCornerIDs from whichever builder owns
-	// the current mesh type: the multiblock node grids, or the gmsh triangles.
-	// Called only from refreshFVMesh, right after fvMesh is rebuilt, so the two
-	// share one cell indexing by construction.
-	void buildCellCorners();
 
 	void createCylinderVertices();
 

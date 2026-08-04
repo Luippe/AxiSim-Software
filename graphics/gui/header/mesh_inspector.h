@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <optional>
 #include <array>
+#include <vector>
 
 #include "base_surface_viewer.h"
 
@@ -113,8 +114,17 @@ private:
 	bool toggleInspectCell = false;	// toolbar mode: pick cells to read mesh data
 	bool toggleMesh = true;
 	bool toggleAspectRatio = false;	// overlay: shade every cell by its aspect ratio
+	bool toggleOrthogonality = false;	// overlay: shade every cell by its non-orthogonality
+	bool toggleSkewness = false;	// overlay: shade every cell by its skewness
 	int selectedCell = -1;			// FV cell pinned by a left click (-1 = none)
 	bool inspectMeshDirty = true;	// rebuild the snapshot on the next render
+
+	// The three quality overlays are one view of the mesh, not three: each toolbar
+	// toggle clears the other two, so only one shading -- and one legend, they share
+	// the same corner -- is ever up. This is what the rest of the panel asks.
+	bool qualityOverlayActive() const {
+		return toggleAspectRatio || toggleOrthogonality || toggleSkewness;
+	}
 
 	// The FV mesh the inspector reads. Mesh owns and caches it (built at generate
 	// time), so this is the same instance the solver runs on -- the inspector used
@@ -122,12 +132,12 @@ private:
 	// .cpp: Mesh is only forward-declared here.
 	const FVMesh& inspectMesh() const;
 
-	// Cell outlines come from Mesh's per-cell corner store (meshPoints +
-	// cellCornerStart / cellCornerIDs), which refreshFVMesh rebuilds in the same call
-	// as the FVMesh -- so they are index-aligned with inspectMesh().cells on every
-	// mesh path. The inspector used to keep its own multiblock-only copy of the
-	// corner quads, and picking, highlighting and the overlay each had to dispatch
-	// three ways to find an outline.
+	// Cell outlines come off the FVMesh itself (points + cellCornerStart /
+	// cellCornerIDs), filled by the builders that fill its cells -- so they are
+	// index-aligned with inspectMesh().cells on every mesh path, and cannot be a
+	// refresh behind it. The inspector used to keep its own multiblock-only copy of
+	// the corner quads, and picking, highlighting and the overlay each had to
+	// dispatch three ways to find an outline.
 	static constexpr int maxCellCorners = 8;
 
 	// World-space corners of one FV cell, in CCW ring order. Returns the count
@@ -186,9 +196,24 @@ private:
 	void drawRegionsOfInfluence(ImDrawList* drawList);
 	void drawAspectRatio(ImDrawList* drawList);
 	void drawOrthogonality(ImDrawList* drawList);
+	void drawSkewness(ImDrawList* drawList);
 
-	// colorbar for drawAspectRatio, labelled with the range it scaled itself to
-	void drawAspectRatioLegend(ImDrawList* drawList, double lo, double hi);
+	// Shared body of the three overlays above: shade every cell by its own value on
+	// a fixed [lo, hi] ramp, then raise the legend if anything was painted. Only the
+	// numbers and the label differ between the metrics, so they all come through
+	// here. `toMetric` converts a stored value into the quantity the legend is
+	// labelled in (null when it is already in it).
+	void drawQualityOverlay(
+		ImDrawList* drawList,
+		const std::vector<double>& values,
+		double lo,
+		double hi,
+		const char* label,
+		double (*toMetric)(double) = nullptr
+	);
+
+	// colorbar for the quality overlays, labelled with the range and the metric it shades
+	void drawQualityLegend(ImDrawList* drawList, double lo, double hi, const char* label);
 
 
 	// -------------cell inspection--------------

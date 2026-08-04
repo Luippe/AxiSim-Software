@@ -315,6 +315,13 @@ public:
 					dockspaceID
 				);
 
+				// Outline the tab the app toolbar acts on. Drawn after the content so
+				// it sits on top of it, and only with something to tell apart -- with
+				// a single tab the selection is never in question.
+				if (tabs.size() > 1 && tab.id == activeTabID) {
+					drawActiveTabOutline();
+				}
+
 				ImGui::PopID();
 			}
 
@@ -359,6 +366,11 @@ private:
 	int pendingFocusTabID = 0;
 
 	bool isCurrentDockTabDoubleClicked();
+
+	// accent outline around the current window, marking it as the selected tab.
+	// call from inside the tab's Begin/End pair.
+	static constexpr float outlineThickness = 2.0f;
+	void drawActiveTabOutline();
 
 };
 

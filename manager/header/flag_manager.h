@@ -84,6 +84,17 @@ namespace UIDockFlags {
 
 }
 
+namespace UIColors {
+
+	// The one accent in the app. It fills an active toolbar toggle and outlines the
+	// selected dock tab, so the two read as the same "this is what you are acting
+	// on" signal -- keep them the same color.
+	inline constexpr ImU32 Accent        = IM_COL32(60, 140, 255, 255);
+	inline constexpr ImU32 AccentHovered = IM_COL32(80, 160, 255, 255);
+	inline constexpr ImU32 AccentActive  = IM_COL32(40, 120, 235, 255);
+
+}
+
 namespace UIInputTextFlags {
 
 	inline constexpr ImGuiInputTextFlags ConsoleInputFlags =

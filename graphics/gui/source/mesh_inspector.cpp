@@ -219,8 +219,19 @@ namespace {
 		return ring;
 	}
 
-	// Quality ramp for the aspect-ratio overlay: green (well shaped) -> yellow ->
-	// red (badly stretched), the conventional reading in every mesher. Kept local
+	// Quality::nonOrthogonality holds the worst COSINE over a cell's faces (1 =
+	// orthogonal), which is not a number anyone reads a mesh in -- the pinned-cell
+	// report and the manual both state non-orthogonality as the angle, so the
+	// overlay converts before it shades. Clamping first keeps a face whose stored
+	// cosine drifted a hair past +-1 (or divided by a zero-length centroid vector)
+	// out of acos's domain; a NaN that survives is dropped by the overlay itself.
+	double inspectorNonOrthoDegrees(double cosAngle) {
+		constexpr double radToDeg = 57.29577951308232;
+		return std::acos(std::clamp(cosAngle, -1.0, 1.0)) * radToDeg;
+	}
+
+	// Quality ramp for the cell-quality overlays: green (well shaped) -> yellow ->
+	// red (badly shaped), the conventional reading in every mesher. Kept local
 	// rather than taken from Colormap, whose LUTs are picked by the user for
 	// solution fields -- a quality legend has to mean the same thing every time.
 	ImU32 inspectorQualityColor(double t, int alpha) {
@@ -852,14 +863,14 @@ void MeshInspector::buildInspectMesh() {
 }
 
 int MeshInspector::cellCorners(int cellID, Vec2* out, int maxOut) const {
-	const std::vector<int>& start = mesh.cellCornerStart;
+	const FVMesh& fv = inspectMesh();
 
-	if (!out || cellID < 0 || cellID + 1 >= (int)start.size()) {
+	if (!out || cellID < 0 || cellID + 1 >= (int)fv.cellCornerStart.size()) {
 		return 0;
 	}
 
-	const int begin = start[cellID];
-	const int end = start[cellID + 1];
+	const int begin = fv.cellCornerStart[cellID];
+	const int end = fv.cellCornerStart[cellID + 1];
 
 	const int n = end - begin;
 
@@ -870,13 +881,13 @@ int MeshInspector::cellCorners(int cellID, Vec2* out, int maxOut) const {
 	}
 
 	for (int k = 0; k < n; k++) {
-		const int pointID = mesh.cellCornerIDs[begin + k];
+		const int pointID = fv.cellCornerIDs[begin + k];
 
-		if (pointID < 0 || pointID >= (int)mesh.meshPoints.size()) {
+		if (pointID < 0 || pointID >= (int)fv.points.size()) {
 			return 0;
 		}
 
-		out[k] = mesh.meshPoints[pointID];
+		out[k] = fv.points[pointID];
 	}
 
 	return n;
@@ -1496,7 +1507,11 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
 	drawHighlightedCells2D(drawList);
-	drawAspectRatio(drawList);	// under the mesh lines, so the cells stay readable
+	// under the mesh lines, so the cells stay readable. Only one of the three ever
+	// paints (the toolbar toggles are exclusive), so the order between them is moot.
+	drawAspectRatio(drawList);
+	drawOrthogonality(drawList);
+	drawSkewness(drawList);
 	drawMeshLines(drawList);
 	drawRegionsOfInfluence(drawList);
 	drawPendingObjects(drawList);
@@ -1727,8 +1742,25 @@ void MeshInspector::drawToolBar() {
 	ImGui::SameLine();
 	addImageButtonToggle("ToggleMesh", "Mesh", "Toggle mesh", assets.icon("mesh"), toggleMesh);
 	ImGui::SameLine();
-	if (addImageButtonToggle("AspectRatio", "Quality", "Shade cells by aspect ratio", assets.icon("quality"), toggleAspectRatio)) {
+	// One overlay at a time: they shade the same cells from the same corner with the
+	// same ramp, so two at once would leave the top one's colors over the bottom
+	// one's legend.
+	if (addImageButtonToggle("AspectRatio", "Aspect", "Shade cells by aspect ratio", assets.icon("quality"), toggleAspectRatio)) {
+		toggleOrthogonality = false;
+		toggleSkewness = false;
 		inspectMeshDirty = true;	// the overlay needs the cell outlines too
+	}
+	ImGui::SameLine();
+	if (addImageButtonToggle("Orthogonality", "Ortho", "Shade cells by non-orthogonality", assets.icon("quality"), toggleOrthogonality)) {
+		toggleAspectRatio = false;
+		toggleSkewness = false;
+		inspectMeshDirty = true;
+	}
+	ImGui::SameLine();
+	if (addImageButtonToggle("Skewness", "Skew", "Shade cells by skewness", assets.icon("quality"), toggleSkewness)) {
+		toggleAspectRatio = false;
+		toggleOrthogonality = false;
+		inspectMeshDirty = true;
 	}
 	endSection("View");
 
@@ -2272,51 +2304,33 @@ void MeshInspector::drawCellInfo(ImDrawList* drawList) {
 	drawList->PopClipRect();
 }
 
-void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
-	if (!toggleAspectRatio) {
-		return;
-	}
-
+void MeshInspector::drawQualityOverlay(
+	ImDrawList* drawList,
+	const std::vector<double>& values,
+	double lo,
+	double hi,
+	const char* label,
+	double (*toMetric)(double)
+) {
 	const FVMesh& fv = inspectMesh();
-	const std::vector<double>& ratios = mesh.quality.aspectRatios;
 
-	// Mesh::refreshFVMesh measures the ratios as it builds the cells, so a length
+	// Mesh::refreshFVMesh measures the metrics as it builds the cells, so a length
 	// mismatch means we are looking at a mesh nobody has measured yet (a project
 	// mid-load, or one whose geometry moved). Shading it would color cells by
 	// another mesh's numbers, so draw nothing instead.
-	if (ratios.size() != fv.cells.size() || ratios.empty()) {
+	if (values.size() != fv.cells.size() || values.empty()) {
 		return;
 	}
 
-	// Scale to what this mesh actually contains: 1.0 (a perfect cell) is always the
-	// green end, and the worst cell present is always the red end. The floor keeps
-	// an already-good mesh from being stretched over a meaningless range and
-	// painted red -- with hi = 2 a uniform grid stays green, as it should.
-	double hi = 1.0;
-
-	const double lo = 1.0;
-	hi = std::max(hi, 2.0);
-
 	const double span = hi - lo;
 	const int alpha = toggleMesh ? 150 : 200;	// keep the mesh lines legible on top
-
-	auto colorOf = [&](int c) {
-		return inspectorQualityColor((ratios[c] - lo) / span, alpha);
-	};
-
-	// A cell with no measurable ratio is reported as 0 by calculateAspectRatio,
-	// which is below the 1.0 floor of a real value -- skip it rather than paint it
-	// the "excellent" green a clamp would give.
-	auto measured = [&](int c) {
-		return ratios[c] >= lo;
-	};
 
 	bool painted = false;
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 
 	// One outline path for every mesh type. The corner store is rebuilt by the same
-	// refreshFVMesh call that measures the ratios, so cell c means the same thing in
+	// refreshFVMesh call that measures the cells, so cell c means the same thing in
 	// both -- which is what the old three-way dispatch (multiblock quads, raster
 	// grid, triangulation) had to establish by matching cell counts, since a cell ID
 	// meant something different in each and painting through the wrong one drew the
@@ -2324,8 +2338,14 @@ void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
 	Vec2 corners[maxCellCorners];
 	ImVec2 pts[maxCellCorners];
 
-	for (int c = 0; c < (int)ratios.size(); c++) {
-		if (!measured(c)) {
+	for (int c = 0; c < (int)values.size(); c++) {
+		const double v = toMetric ? toMetric(values[c]) : values[c];
+
+		// Below the low end is how a metric reports a cell it could not measure --
+		// calculateAspectRatio uses 0, under the 1.0 floor of any real ratio. Skip
+		// it rather than paint it the "excellent" green a clamp would give. A
+		// non-finite value is the same story with a degenerate cell behind it.
+		if (!std::isfinite(v) || v < lo) {
 			continue;
 		}
 
@@ -2339,7 +2359,11 @@ void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
 			pts[k] = camera.worldToScreen(corners[k]);
 		}
 
-		drawList->AddConvexPolyFilled(pts, n, colorOf(c));
+		drawList->AddConvexPolyFilled(
+			pts,
+			n,
+			inspectorQualityColor((v - lo) / span, alpha)
+		);
 		painted = true;
 	}
 
@@ -2348,17 +2372,62 @@ void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
 	// A legend over an unshaded canvas would be claiming a scale nothing was drawn
 	// against, so it only goes up once at least one cell carries a color.
 	if (painted) {
-		drawAspectRatioLegend(drawList, lo, hi);
+		drawQualityLegend(drawList, lo, hi, label);
 	}
 }
 
-void MeshInspector::drawAspectRatioLegend(
+void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
+	if (!toggleAspectRatio) {
+		return;
+	}
+
+	// 1.0 -- a perfect cell -- is the green end and 2.0 the red end. Fixed rather
+	// than scaled to the worst cell present, which would stretch an already-good
+	// mesh over a meaningless range and paint it red; on this ramp a uniform grid
+	// stays green, as it should.
+	drawQualityOverlay(drawList, mesh.quality.aspectRatios, 1.0, 2.0, "aspect");
+}
+
+void MeshInspector::drawOrthogonality(ImDrawList* drawList) {
+	if (!toggleOrthogonality) {
+		return;
+	}
+
+	// Quality stores the worst cosine over the cell's faces, so 1 means orthogonal.
+	// The overlay reads it as the angle instead, which is the way the pinned-cell
+	// report and the manual both state non-orthogonality. 70 deg is the red end:
+	// the conventional point past which a cell's correction term is too large to
+	// trust, so anything worse pins at red rather than earning its own shade.
+	drawQualityOverlay(
+		drawList,
+		mesh.quality.nonOrthogonality,
+		0.0,
+		70.0,
+		"non-orth deg",
+		inspectorNonOrthoDegrees
+	);
+}
+
+void MeshInspector::drawSkewness(ImDrawList* drawList) {
+	if (!toggleSkewness) {
+		return;
+	}
+
+	// Skewness comes out of Quality already normalized -- 0 is the ideal cell for
+	// its corner count, 1 is degenerate -- so the ramp is its full definition range
+	// and needs no threshold picked for it.
+	drawQualityOverlay(drawList, mesh.quality.skewness, 0.0, 1.0, "skew");
+}
+
+void MeshInspector::drawQualityLegend(
 	ImDrawList* drawList,
 	double lo,
-	double hi
+	double hi,
+	const char* label
 ) {
-	// The overlay auto-scales to the mesh, so the same green can mean 1.2 on one
-	// mesh and 1.02 on another -- without the end labels the colors say nothing.
+	// Three metrics share this corner and the same green-to-red ramp, so without the
+	// end numbers and the metric name a color says nothing about which scale it is
+	// on -- 1 is a flawless cell on the aspect bar and a dead one on the skew bar.
 	const float pad = 10.0f;
 	const float barWidth = 16.0f;
 	const float barHeight = 110.0f;
@@ -2396,19 +2465,15 @@ void MeshInspector::drawAspectRatioLegend(
 		drawList->AddText(ImVec2(barMin.x - 6.0f - width, y), textColor, text);
 	};
 
-	char label[32];
+	char endLabel[32];
 
-	std::snprintf(label, sizeof(label), "%.3g", hi);
-	addLabel(label, barMin.y - 2.0f);
+	std::snprintf(endLabel, sizeof(endLabel), "%.3g", hi);
+	addLabel(endLabel, barMin.y - 2.0f);
 
-	std::snprintf(label, sizeof(label), "%.3g", lo);
-	addLabel(label, barMax.y - lineHeight + 2.0f);
+	std::snprintf(endLabel, sizeof(endLabel), "%.3g", lo);
+	addLabel(endLabel, barMax.y - lineHeight + 2.0f);
 
-	addLabel("aspect", canvasRect.min.y + pad);
-}
-
-void MeshInspector::drawOrthogonality(ImDrawList* drawList) {
-
+	addLabel(label, canvasRect.min.y + pad);
 }
 
 void MeshInspector::render() {
@@ -2452,9 +2517,9 @@ void MeshInspector::render() {
 	updateCurrentMousePos();
 
 	// keep the inspection snapshot in sync while anything that reads it is active.
-	// The aspect-ratio overlay needs it for the same reason picking does: both read
-	// the per-cell corner store, which is only rebuilt when the FVMesh is.
-	if ((toggleInspectCell || toggleAspectRatio) && inspectMeshDirty) {
+	// The quality overlays need it for the same reason picking does: both read the
+	// per-cell corner store, which is only rebuilt when the FVMesh is.
+	if ((toggleInspectCell || qualityOverlayActive()) && inspectMeshDirty) {
 		buildInspectMesh();
 	}
 
@@ -2476,7 +2541,11 @@ void MeshInspector::render() {
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
 	drawHighlightedCells2D(drawList);
-	drawAspectRatio(drawList);	// under the mesh lines, so the cells stay readable
+	// under the mesh lines, so the cells stay readable. Only one of the three ever
+	// paints (the toolbar toggles are exclusive), so the order between them is moot.
+	drawAspectRatio(drawList);
+	drawOrthogonality(drawList);
+	drawSkewness(drawList);
 	drawMeshLines(drawList);
 	drawRegionsOfInfluence(drawList);
 	drawPendingObjects(drawList);

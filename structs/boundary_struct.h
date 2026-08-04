@@ -281,12 +281,34 @@ struct FVMesh {
 	std::vector<FVCell> cells;
 	std::vector<FVFace> faces;
 
+	// ---- per-cell corner vertices (CSR) ----
+	// Deduped node coordinates, and every cell's corners in counter-clockwise ring
+	// order: cell c owns cellCornerIDs[cellCornerStart[c] .. cellCornerStart[c + 1]),
+	// each an index into points.
+	//
+	// Filled by the same builders that fill cells and faces, so an outline always
+	// describes the cell it is stored against -- there is no second object to fall
+	// out of step with. FVFace::v0/v1 index this array too, where a builder sets
+	// them.
+	//
+	// A cell whose corners could not be recovered gets an empty range rather than a
+	// partial polygon, so cellCornerStart[c + 1] - cellCornerStart[c] >= 3 is the
+	// test for a usable outline. cellCornerStart is empty, not size 1, on a mesh
+	// with no cells.
+	std::vector<Vec2> points;
+	std::vector<int> cellCornerStart;
+	std::vector<int> cellCornerIDs;
+
 	int numCells() const {
 		return (int)cells.size();
 	}
 
 	int numFaces() const {
 		return (int)faces.size();
+	}
+
+	int numPoints() const {
+		return (int)points.size();
 	}
 
 };

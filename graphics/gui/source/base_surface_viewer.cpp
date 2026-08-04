@@ -85,6 +85,29 @@ bool DockingSpace::isCurrentDockTabDoubleClicked() {
 	return hoveredTitleBar && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
 }
 
+void DockingSpace::drawActiveTabOutline() {
+
+	const ImVec2 windowPos = ImGui::GetWindowPos();
+	const ImVec2 windowSize = ImGui::GetWindowSize();
+
+	// Inset by half the thickness so the stroke lands fully inside the window --
+	// centered on the edge itself, the outer half falls outside the clip rect and
+	// the outline reads as half as thick as it is.
+	const float inset = outlineThickness * 0.5f;
+
+	const ImVec2 min(windowPos.x + inset, windowPos.y + inset);
+	const ImVec2 max(windowPos.x + windowSize.x - inset, windowPos.y + windowSize.y - inset);
+
+	// The window draw list is clipped to the content region, which for a docked
+	// window excludes the very edge this draws on. Widen the clip to the whole
+	// window for the stroke, then hand it back.
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+	drawList->PushClipRect(windowPos, ImVec2(windowPos.x + windowSize.x, windowPos.y + windowSize.y), false);
+	drawList->AddRect(min, max, UIColors::Accent, ImGui::GetStyle().WindowRounding, 0, outlineThickness);
+	drawList->PopClipRect();
+}
+
 BaseSurfaceViewer::BaseSurfaceViewer(const char* vertexPath, const char* fragmentPath) :
 	shader(vertexPath, fragmentPath) {
 
@@ -630,9 +653,9 @@ bool ToolbarHost::addImageButtonToggle(const char* id, const char* label, const 
 
 	// when the tool is active, fill it with the accent color instead.
 	if (toggle) {
-		ImGui::PushStyleColor(ImGuiCol_Button,        IM_COL32(60, 140, 255, 255));
-		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(80, 160, 255, 255));
-		ImGui::PushStyleColor(ImGuiCol_ButtonActive,  IM_COL32(40, 120, 235, 255));
+		ImGui::PushStyleColor(ImGuiCol_Button,        UIColors::Accent);
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, UIColors::AccentHovered);
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive,  UIColors::AccentActive);
 		styleColorCount += 3;
 	}
 

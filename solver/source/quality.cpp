@@ -6,19 +6,56 @@
 
 void calculateSkewness(
 	const FVMesh& fvMesh,
-	const std::vector<double>& meshPoints,
-	const std::vector<int>& cellCornerStart,
-	const std::vector<int>& cellCornerIDs,
 	std::vector<double>& skewness
 ) {
+
+	constexpr double radToDeg = 57.29577951308232;
+
 	int nCells = fvMesh.numCells();
 
 	skewness.assign(nCells, 0.0);
+	const std::vector<int>& cellCornerStart = fvMesh.cellCornerStart;
+	const std::vector<int>& cellCornerIDs = fvMesh.cellCornerIDs;
+	const std::vector<Vec2>& points = fvMesh.points;
 
 	for (int c = 0; c < nCells; c++) {
+		double skew = 0.0;
+		const int begin = cellCornerStart[c];
 
+		const int n = cellCornerStart[c + 1] - begin; // number of vertices this cell
+
+		if (n < 3) continue;          // no outline: stays at the sentinel
+
+		double thetaMin = 180.0;
+		double thetaMax = 0.0;
+
+		for (int k = 0; k < n; ++k) {
+			const Vec2& prev = points[cellCornerIDs[begin + (k + n - 1) % n]];
+			const Vec2& here = points[cellCornerIDs[begin + k]];
+			const Vec2& next = points[cellCornerIDs[begin + (k + 1) % n]];
+
+			double az = prev.z - here.z, ar = prev.r - here.r;
+			double bz = next.z - here.z, br = next.r - here.r;
+
+			double aMag = std::sqrt(az * az + ar * ar);
+			double bMag = std::sqrt(bz * bz + br * br);
+
+			if (aMag < 1e-30 || bMag < 1e-30) continue;
+
+			double cosT = std::clamp((az * bz + ar * br) / (aMag * bMag), -1.0, 1.0);
+			double theta = std::acos(cosT) * radToDeg;
+
+			thetaMin = std::min(thetaMin, theta);
+			thetaMax = std::max(thetaMax, theta);
+		}
+
+		double thetaE = 180.0 - 360.0 / (double)n;
+
+		skewness[c] = std::max(
+			(thetaMax - thetaE) / (180 - thetaE),
+			(thetaE - thetaMin) / thetaE
+		);
 	}
-
 }
 
 void calculateOrthogonality(
@@ -119,20 +156,19 @@ void calculateAspectRatio(
 	}
 }
 
-void Quality::buildQuality(
-	const FVMesh& fvMesh, 
-	const std::vector<double>& meshPoints,
-	const std::vector<int>& cellCornerStart,
-	const std::vector<int>& cellCornerIDs
-) {
+void Quality::buildQuality(const FVMesh& fvMesh) {
 
 	calculateAspectRatio(fvMesh, aspectRatios);
 	calculateOrthogonality(fvMesh, nonOrthogonality);
-	calculateSkewness(fvMesh, meshPoints, cellCornerStart, cellCornerIDs, skewness);
+	calculateSkewness(fvMesh, skewness);
 
 }
 
 void Quality::reset() {
+	// all three together: the inspector overlays trust a metric whose length matches
+	// the cell count, so a half-cleared Quality is a set of stale numbers waiting to
+	// be painted onto whatever mesh happens to have the same cell count next.
 	aspectRatios.clear();
-
+	nonOrthogonality.clear();
+	skewness.clear();
 }

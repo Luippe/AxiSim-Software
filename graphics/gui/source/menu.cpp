@@ -819,8 +819,9 @@ void Menu::drawAdvancedMeshTab() {
 
 	Mesh& mesh = project.mesh;
 
+	//if (beginAdvancedSection()) {
 
-	advancedEmptyTab("mesh");
+	//}
 }
 
 void Menu::drawAdvancedSolverTab() {
@@ -925,6 +926,20 @@ void Menu::drawAdvancedSolverTab() {
 		}
 		ImGui::PopStyleVar();
 
+		endAdvancedSection();
+	}
+
+	if (beginAdvancedSection("Additional Terms")) {
+
+		const bool orthogonalMesh = project.mesh.currentMeshType == MeshType::Structured;
+		if (orthogonalMesh) {
+			solver.configSolver.useNonOrthCorrector = false;
+		}
+
+		advancedRow("Non-Orthogonal Corrector");
+		ImGui::BeginDisabled(orthogonalMesh);
+		ImGui::Checkbox("##NonOrthCorrector", &project.solver.configSolver.useNonOrthCorrector);
+		ImGui::EndDisabled();
 		endAdvancedSection();
 	}
 }

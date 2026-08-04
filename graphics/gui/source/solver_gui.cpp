@@ -531,21 +531,6 @@ void SolverGUI::drawPropertiesPanel() {
 			labelRow("Add Convection Term");
 			checkBox("##ConvectionTerm", &solver.configSolver.addConvectionTerm);
 
-			// A structured mesh is orthogonal by construction, so the deferred
-			// cross term is identically zero. Force the flag off as well as
-			// greying it -- runCheck does the same, and leaving a stale true here
-			// would show a checked box that the solve ignores.
-			const bool orthogonalMesh = mesh.currentMeshType == MeshType::Structured;
-			if (orthogonalMesh) {
-				project.solver.configSolver.useNonOrthCorrector = false;
-			}
-
-			labelRow("Non-Orthogonal Corrector");
-			ImGui::BeginDisabled(orthogonalMesh);
-			checkBox("##NonOrthCorrector", &project.solver.configSolver.useNonOrthCorrector);
-			ImGui::EndDisabled();
-			disabledHint(orthogonalMesh, "A structured mesh is orthogonal, so there is no cross term to correct.");
-
 			// The discretization only describes a term that is being assembled,
 			// so it is meaningless with convection off.
 			const bool convectionOff = !solver.configSolver.addConvectionTerm;

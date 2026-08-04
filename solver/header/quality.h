@@ -10,12 +10,9 @@ public:
 	std::vector<double> nonOrthogonality;
 	std::vector<double> skewness;
 
-	void buildQuality(
-		const FVMesh& fvMesh,
-		const std::vector<double>& meshPoints,
-		const std::vector<int>& cellCornerStart,
-		const std::vector<int>& cellCornerIDs
-	);
+	// The FVMesh carries its own cell corners (points + cellCornerStart/cellCornerIDs),
+	// so the shape metrics need nothing passed alongside it.
+	void buildQuality(const FVMesh& fvMesh);
 	void reset();
 
 private:

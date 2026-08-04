@@ -351,7 +351,7 @@ void ResidualPlot::drawAppToolBar() {
     beginSection();
     // Add targets whichever dock the selected plot lives in, but that dock id is
     // only resolved inside drawTabs(), so just park the request for draw().
-    if (addImageButton("AddTab", "Add", "Add new plot tab", assets.icon("plus"))) {
+    if (addImageButton("AddPlot", "New Plot", "Add new plot", assets.icon("add_plot"))) {
         pendingAddTab = true;
     }
 
