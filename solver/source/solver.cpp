@@ -254,12 +254,6 @@ void Solver::createDerivedVelocitySolutions(int N) {
     for (int c = 0; c < nCells; c++) {
         const FVCell& cell = fvMesh.cells[c];
 
-        // Solid/inactive cells hold no flow, and their area2D is 0 anyway. Left at
-        // 0 rather than skipped-with-garbage, matching getMassImbalance.
-        if (!cell.active || cell.solid) {
-            continue;
-        }
-
         speed[c] = std::sqrt(u[c] * u[c] + v[c] * v[c]);
 
         // Re_cell = rho |V| h / mu, with h the cell's own length scale: the square
@@ -330,10 +324,6 @@ std::vector<double> Solver::getMassImbalance(int N) {
 
     for (int c = 0; c < N && c < (int)fvMesh.cells.size(); c++) {
         const FVCell& cell = fvMesh.cells[c];
-
-        if (!cell.active || cell.solid) {
-            continue;
-        }
 
         double imbalance = 0.0;
 
@@ -930,8 +920,6 @@ void Solver::runSimple(const Mesh& mesh) {
     const int shmem = mem.shmem;
     const int shmemFace = mem.shmemFace;
 
-
-    uint8_t* activeCells = fvMeshDevice.cells.active;
     bool transient = configSolver.transient;
     const bool useSecondOrderTime =
         transient && configSolver.timeScheme == TimeScheme::TIME_SECOND_ORDER;
@@ -1146,8 +1134,8 @@ void Solver::runSimple(const Mesh& mesh) {
             getCorrectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.DV);
 
             // solve velocity
-            solveLinearSystem(uCoeff, configSolver, stream, simple.u, simple.uTemp, activeCells, threadsPerBlock, coloring);
-            solveLinearSystem(vCoeff, configSolver, stream, simple.v, simple.vTemp, activeCells, threadsPerBlock, coloring);
+            solveLinearSystem(uCoeff, configSolver, stream, simple.u, simple.uTemp, threadsPerBlock, coloring);
+            solveLinearSystem(vCoeff, configSolver, stream, simple.v, simple.vTemp, threadsPerBlock, coloring);
 
             // solve pressure correction
             createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, bcDevice.p);
@@ -1183,7 +1171,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     multigrid->run(stream);
                 }
                 else {
-                    solveLinearSystem(ppCoeff, configSolver, stream, simple.pp, simple.ppTemp, activeCells, threadsPerBlock, coloring);
+                    solveLinearSystem(ppCoeff, configSolver, stream, simple.pp, simple.ppTemp,  threadsPerBlock, coloring);
                 }
             }
 
@@ -1217,7 +1205,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.tempOld, tOld2, 1.0, configSolver.dt);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.temp, simple.momentumRelaxation);
-                solveLinearSystem(tempCoeff, configSolver, stream, simple.temp, simple.tempTemp, activeCells, threadsPerBlock, coloring);
+                solveLinearSystem(tempCoeff, configSolver, stream, simple.temp, simple.tempTemp,  threadsPerBlock, coloring);
             }
 
             // ======================================================================
@@ -1243,7 +1231,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.concOld, cOld2, 1.0, configSolver.dt);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.conc, 1.0);
-                solveLinearSystem(concCoeff, configSolver, stream, simple.conc, simple.concTemp, activeCells, threadsPerBlock, coloring);
+                solveLinearSystem(concCoeff, configSolver, stream, simple.conc, simple.concTemp,  threadsPerBlock, coloring);
             }
 
             // ======================================================================
@@ -1253,7 +1241,6 @@ void Solver::runSimple(const Mesh& mesh) {
             if (k % configSimple.checkConv == 0) {
 
                 residualAll << <blocks, threadsPerBlock, 0, stream >> > (
-                    fvMeshDevice.cells.active,
                     false,
                     ResidualPairs{ uCoeff,    simple.u,    cfg.at("U").res, cfg.at("U").scale, cfg.at("U").scaleType},
                     ResidualPairs{ vCoeff,    simple.v,    cfg.at("V").res, cfg.at("V").scale, cfg.at("V").scaleType},

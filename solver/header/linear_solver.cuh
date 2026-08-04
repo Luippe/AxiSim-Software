@@ -11,7 +11,6 @@ void solveLinearSystem(
 	cudaStream_t stream,
 	double*& x,
 	double*& xTemp,
-	uint8_t*& active,
 	int threadsPerBlock,
 	const MeshColoring& coloring
 );

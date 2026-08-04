@@ -484,8 +484,6 @@ FVMeshHostPacked packFVMeshForDevice(const FVMesh& mesh) {
 	h.cellCenterR.resize(h.nCells);
 	h.cellArea2D.resize(h.nCells);
 	h.cellVolume.resize(h.nCells);
-	h.cellActive.resize(h.nCells);
-	h.cellSolid.resize(h.nCells);
 
 	h.cellFaceStart.resize(h.nCells + 1);
 
@@ -505,9 +503,6 @@ FVMeshHostPacked packFVMeshForDevice(const FVMesh& mesh) {
 		h.cellArea2D[c] = cell.area2D;
 
 		h.cellVolume[c] = cell.volume;
-
-		h.cellActive[c] = cell.active ? 1 : 0;
-		h.cellSolid[c] = cell.solid ? 1 : 0;
 
 		h.cellFaceStart[c] = totalFaceRefs;
 		totalFaceRefs += static_cast<int>(cell.faceIDs.size());
@@ -574,9 +569,6 @@ FVMeshDevice createFVMeshDeviceFromPacked(const FVMeshHostPacked& h) {
 
 	copyHostToDevice(d.cells.volume, h.cellVolume);
 
-	copyHostToDevice(d.cells.active, h.cellActive);
-	copyHostToDevice(d.cells.solid, h.cellSolid);
-
 	copyHostToDevice(d.cells.faceStart, h.cellFaceStart);
 	copyHostToDevice(d.cells.faceIDs, h.cellFaceIDs);
 
@@ -595,7 +587,6 @@ FVMeshDevice createFVMeshDevice(const MultiBlockMesh& mb) {
 	toPackedMesh(mb, h);
 	return createFVMeshDeviceFromPacked(h);
 }
-
 
 void allocateSimple(
 	Config& config,
@@ -913,7 +904,6 @@ void allocateMultigridLevel(MultigridLevel& level) {
 	// each allocates + uploads. cellToCoarse / fineSlotToCoarseSlot are empty on
 	// the coarsest level, which leaves their device pointers null -- there is no
 	// level below to restrict to or prolongate from.
-	copyHostToDevice(level.d_active, level.grid.active);
 	copyHostToDevice(level.d_cellToCoarse, level.grid.cellToCoarse);
 	copyHostToDevice(level.d_fineSlotToCoarseSlot, level.grid.fineSlotToCoarseSlot);
 	CUDA_CHECK(cudaGetLastError());
@@ -927,7 +917,10 @@ void freeMultigridLevel(MultigridLevel& level) {
 
 	// the per-level buffers allocated above; freeAllDev nulls each pointer
 	freeAllDev(level.x, level.xNew, level.res);
-	freeAllDev(level.d_active, level.d_cellToCoarse, level.d_fineSlotToCoarseSlot);
+
+	// Uploaded by allocateMultigridLevel, so they have to come back here. Both are
+	// already null on the coarsest level and freeAllDev tolerates that.
+	freeAllDev(level.d_cellToCoarse, level.d_fineSlotToCoarseSlot);
 	CUDA_CHECK(cudaGetLastError());
 
 }

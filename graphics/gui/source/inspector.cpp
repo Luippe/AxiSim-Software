@@ -300,7 +300,7 @@ bool Inspector::isDrawableCell(int cellID, int fieldSize) const {
 
 	const FVMesh& fv = project.solver.fvMesh;
 	if (cellID < (int)fv.cells.size()) {
-		return fv.cells[cellID].active && !fv.cells[cellID].solid;
+		return true;
 	}
 
 	return true;

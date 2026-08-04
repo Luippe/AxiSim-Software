@@ -246,8 +246,6 @@ struct FVCell {
 
 	std::vector<int> faceIDs;
 
-	bool active = true;
-	bool solid = false;
 };
 
 struct FVFace {

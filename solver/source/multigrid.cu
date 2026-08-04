@@ -47,14 +47,6 @@ GridLevel makeFinestGridLevel(const FVMesh& mesh) {
 	level.nCells = N;
 	buildCellFaceCSR(mesh, level.faceStart, level.faceNeighbor);
 
-	// match the mask the solver kernels use (mesh.cells.active), not
-	// active && !solid -- disagreeing here would agglomerate cells the
-	// solver is skipping
-	level.active.assign(N, 0);
-	for (int c = 0; c < N; c++) {
-		level.active[c] = mesh.cells[c].active ? 1 : 0;
-	}
-
 	return level;
 }
 
@@ -77,12 +69,12 @@ static const double maxShrinkRatio = 0.8;
 // i/2, j/2 + block offset) if deterministic square agglomerates are wanted on
 // multiblock; nothing downstream needs to change.
 //
-// Active and inactive cells are never merged: an inactive cell carries an
-// identity row, which would poison whatever coarse diagonal it folded into.
+// Every cell is agglomerated -- the mesh no longer carries an inactive/solid
+// mask, so there is no class of row that has to be kept out of a coarse cell.
 //
-// Returns the coarse cell count. cellToCoarse comes out dense over
-// [0, nCoarse), including inactive cells -- the coarse arrays are indexed by it
-// directly, so gaps are not allowed. `active` does the filtering instead.
+// Returns the coarse cell count. cellToCoarse comes out dense over [0, nCoarse):
+// the coarse arrays are indexed by it directly, so gaps are not allowed, which is
+// what the compaction pass at the bottom guarantees.
 // ============================================================================
 static int buildAgglomerationMap(const GridLevel& fine, std::vector<int>& cellToCoarse) {
 
@@ -129,7 +121,6 @@ static int buildAgglomerationMap(const GridLevel& fine, std::vector<int>& cellTo
 
 				if (nb < 0) continue;                                            // boundary slot
 				if (cellToCoarse[nb] >= 0) continue;                             // already claimed
-				if ((fine.active[nb] != 0) != (fine.active[n] != 0)) continue;   // never mix
 
 				cellToCoarse[nb] = c;
 				members.push_back(nb);
@@ -164,7 +155,6 @@ static int buildAgglomerationMap(const GridLevel& fine, std::vector<int>& cellTo
 			const int nb = fine.faceNeighbor[k];
 
 			if (nb < 0) continue;
-			if ((fine.active[nb] != 0) != (fine.active[n] != 0)) continue;
 
 			const int cnb = cellToCoarse[nb];
 			if (cnb == c) continue;   // unreachable for a singleton, but cheap
@@ -211,15 +201,6 @@ GridLevel MultigridSolver::coarsenGrid(GridLevel& fine) {
 	const int nCoarse = buildAgglomerationMap(fine, fine.cellToCoarse);
 
 	coarse.nCells = nCoarse;
-
-	// a coarse cell is active if ANY member is active (same rule the structured
-	// 2x2 coarsening used)
-	coarse.active.assign(nCoarse, 0);
-	for (int n = 0; n < fine.nCells; n++) {
-		if (fine.active[n]) {
-			coarse.active[fine.cellToCoarse[n]] = 1;
-		}
-	}
 
 	// ---- pass 2: fine slots that cross an agglomerate boundary --------------
 	// A fine face contributes a coarse off-diagonal only when its two ends land
@@ -371,17 +352,11 @@ void buildCoarseOperatorKernel(
 	Coefficients fine,
 	Coefficients coarse,
 	const int* cellToCoarse,
-	const int* fineSlotToCoarseSlot,
-	const uint8_t* fineActive
+	const int* fineSlotToCoarseSlot
 ) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 	if (n >= fine.N) return;
-
-	// an inactive fine cell is never assembled (createPPCoeff returns early, leaving
-	// the row at AC = 0) and never solved, so folding that empty row into a coarse
-	// cell would only dilute the coarse diagonal
-	if (!fineActive[n]) return;
 
 	const int cn = cellToCoarse[n];
 
@@ -399,12 +374,6 @@ void buildCoarseOperatorKernel(
 
 		const int nb = fine.faceNeighbor[k];
 		if (nb < 0) continue;             // boundary slot
-
-		// coupling to an inactive cell is inert in the fine solve (its x stays 0),
-		// so it must not create a coarse coupling either. Leaving the matching
-		// weight in AC makes the coarse row diagonally dominant, which is the
-		// stable choice.
-		if (!fineActive[nb]) continue;
 
 		const int slot = fineSlotToCoarseSlot[k];
 
@@ -431,13 +400,11 @@ void buildRestrictionKernel(
 	Coefficients fine,
 	Coefficients coarse,
 	const double* fineRes,
-	const int* cellToCoarse,
-	const uint8_t* fineActive
+	const int* cellToCoarse
 ) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 	if (n >= fine.N) return;
-	if (!fineActive[n]) return;
 
 	atomicAdd(&coarse.b[cellToCoarse[n]], fineRes[n]);
 }
@@ -450,13 +417,11 @@ void buildProlongationKernel(
 	Coefficients fine,
 	double* xf,
 	const double* xc,
-	const int* cellToCoarse,
-	const uint8_t* fineActive
+	const int* cellToCoarse
 ) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 	if (n >= fine.N) return;
-	if (!fineActive[n]) return;
 
 	xf[n] += xc[cellToCoarse[n]];
 }
@@ -490,21 +455,26 @@ void jacobiRow(
 	const Coefficients& coeff,
 	const double* xOld,
 	double* xNew,
-	const uint8_t* active,
 	int n,
 	double weight
 ) {
 
-	// Inactive cells must still be carried across. Skipping the write would leave
-	// xNew[n] holding the value from two sweeps ago; since these cells sit
-	// outside the domain the residual would keep dropping normally while the
-	// solution beside the mask quietly rotted.
-	if (active && !active[n]) {
+	const double AC = coeff.AC[n];
+
+	// Empty row -- carry the value through rather than dividing. This used to be
+	// covered by the active mask, since an unassembled row was exactly the AC == 0
+	// case, and it has to be explicit now the mask is gone: a cell whose momentum aP
+	// collapses gets D = 0 out of getCorrectionCoefficient, which zeroes every K in
+	// createPPCoeff and leaves that pp row empty. Dividing there writes a NaN, and
+	// the very next sweep spreads it to the whole level through the face loop. Every
+	// other smoother in the project already guards this (linear_solver.cu's jacobi
+	// and gaussSeidelColorSweep, underRelaxEquation); jacobiRow was the one hole.
+	if (fabs(AC) < 1.0e-30) {
 		xNew[n] = xOld[n];
 		return;
 	}
 
-	double Ax = coeff.AC[n] * xOld[n];
+	double Ax = AC * xOld[n];
 
 	const int start = coeff.faceStart[n];
 	const int end = coeff.faceStart[n + 1];
@@ -516,16 +486,16 @@ void jacobiRow(
 		}
 	}
 
-	xNew[n] = xOld[n] + weight * (coeff.b[n] - Ax) / coeff.AC[n];
+	xNew[n] = xOld[n] + weight * (coeff.b[n] - Ax) / AC;
 }
 
 __global__
-void jacobiFused(Coefficients coeff, const double* xOld, double* xNew, const uint8_t* active, double weight) {
+void jacobiFused(Coefficients coeff, const double* xOld, double* xNew, double weight) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 	if (n >= coeff.N) return;
 
-	jacobiRow(coeff, xOld, xNew, active, n, weight);
+	jacobiRow(coeff, xOld, xNew, n, weight);
 }
 
 // Small-level weighted Jacobi, with every sweep performed inside one block.
@@ -538,7 +508,6 @@ __global__
 void jacobiSingleBlock(
 	Coefficients coeff,
 	double* x,
-	const uint8_t* active,
 	double weight,
 	int iterations
 ) {
@@ -560,7 +529,7 @@ void jacobiSingleBlock(
 	for (int iteration = 0; iteration < iterations; iteration++) {
 
 		if (n < coeff.N) {
-			jacobiRow(coeff, xOld, xNew, active, n, weight);
+			jacobiRow(coeff, xOld, xNew, n, weight);
 		}
 
 		// No thread may return before this barrier: even threads beyond coeff.N
@@ -597,8 +566,7 @@ void MultigridSolver::buildCoarseOperator(const MultigridLevel& fine, MultigridL
 		fine.coeff,
 		coarse.coeff,
 		fine.d_cellToCoarse,
-		fine.d_fineSlotToCoarseSlot,
-		fine.d_active
+		fine.d_fineSlotToCoarseSlot
 		);
 
 }
@@ -614,8 +582,7 @@ void MultigridSolver::buildRestriction(const MultigridLevel& fine, MultigridLeve
 		fine.coeff,
 		coarse.coeff,
 		fine.res,
-		fine.d_cellToCoarse,
-		fine.d_active
+		fine.d_cellToCoarse
 		);
 
 }
@@ -628,8 +595,7 @@ void MultigridSolver::buildProlongation(const MultigridLevel& fine, MultigridLev
 		fine.coeff,
 		fine.x,
 		coarse.x,
-		fine.d_cellToCoarse,
-		fine.d_active
+		fine.d_cellToCoarse
 		);
 }
 
@@ -638,7 +604,6 @@ void MultigridSolver::computeResidual(MultigridLevel& level, cudaStream_t& strea
 	const int blocks = blocksFor(level.grid.nCells);
 
 	residualAll << <blocks, mem.threadsPerBlock, 0, stream >> > (
-		level.d_active,
 		true,
 		ResidualPairs{ level.coeff, level.x, level.res }
 		);
@@ -729,7 +694,7 @@ void MultigridSolver::smoothenRegular(
 
 	for (int n = 0; n < iteration; n++) {
 		jacobiFused << <blocks, mem.threadsPerBlock, 0, stream >> > (
-			level.coeff, level.x, level.xNew, level.d_active, cfg.weight
+			level.coeff, level.x, level.xNew, cfg.weight
 			);
 
 		// Swap the members rather than copying back, so `x` names the live vector
@@ -760,7 +725,6 @@ void MultigridSolver::smoothenSingleBlock(
 	jacobiSingleBlock << <1, threads, sharedBytes, stream >> > (
 		level.coeff,
 		level.x,
-		level.d_active,
 		cfg.weight,
 		iteration
 		);
@@ -776,11 +740,6 @@ std::string MultigridSolver::describeHierarchy() const {
 
 		const GridLevel& g = levels[l].grid;
 
-		int nActive = 0;
-		for (uint8_t a : g.active) {
-			if (a) nActive++;
-		}
-
 		// average number of neighbours per cell. The fine mesh sits near 4 on
 		// quads; if this climbs sharply going coarse, the agglomerates are ragged
 		// and the coarse operator will be denser and worse-conditioned than it
@@ -791,7 +750,6 @@ std::string MultigridSolver::describeHierarchy() const {
 
 		out << "  L" << l
 			<< "  cells " << g.nCells
-			<< "  active " << nActive
 			<< std::fixed << std::setprecision(2)
 			<< "  degree " << degree;
 

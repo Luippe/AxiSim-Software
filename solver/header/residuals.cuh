@@ -14,22 +14,14 @@ struct ResidualPairs {
 
 
 __device__ __forceinline__
-void residualRaw(const uint8_t* activeCell, bool sign, const ResidualPairs& pairs, int n) {
+void residualRaw(bool sign, const ResidualPairs& pairs, int n) {
 
 	const Coefficients& coeff = pairs.coeff;
 	const double* x = pairs.x;
 	double* res = pairs.res;
 	double* scale = pairs.scale;
 
-
 	if (n >= coeff.N) return;
-
-	if (activeCell && !activeCell[n]) {
-		if (res) {
-			res[n] = 0.0;
-		}
-		return;
-	}
 
 	double Ax = coeff.AC[n] * x[n];
 
@@ -91,10 +83,10 @@ void continuityResidual(FVMeshDevice mesh, VariablesSimple simple, double* res);
 
 template <typename... Systems>
 __global__
-void residualAll(uint8_t* activeCell, bool sign, Systems...systems) {
+void residualAll(bool sign, Systems...systems) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
-	(residualRaw(activeCell, sign, systems, n), ...);
+	(residualRaw(sign, systems, n), ...);
 }
 
 // reduce a field's per-cell residual vector (cfg.res) to a single value (cfg.resVal).

@@ -2095,7 +2095,7 @@ bool saveSolutionNpy(const std::filesystem::path& dir, const Project& project) {
 	// weighting an error norm by it drops the centerline cells entirely, exactly
 	// where a Poiseuille peak lives. area2D is the r-z measure to use instead
 	// when the norm is meant to be over the meridional plane.
-	const std::vector<std::string> geomColumns = { "z", "r", "volume", "area2D", "active" };
+	const std::vector<std::string> geomColumns = { "z", "r", "volume", "area2D"};
 	const std::size_t nGeom = geomColumns.size();
 
 	const std::vector<std::string> fieldColumns =
@@ -2116,10 +2116,6 @@ bool saveSolutionNpy(const std::filesystem::path& dir, const Project& project) {
 		row[2] = cell.volume;
 		row[3] = cell.area2D;
 
-		// The solve skips these cells, so their entries hold zeros rather than
-		// results. Flagged instead of dropped: removing rows would break the
-		// nr x nz reshape that a structured mesh gets in Python.
-		row[4] = (cell.active && !cell.solid) ? 1.0 : 0.0;
 	}
 
 	if (!writeNpy(dir / "solution.npy", table, nCells, nCols)) {

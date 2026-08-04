@@ -419,9 +419,6 @@ struct FVCellDevice {
 
 	double* volume = nullptr;
 
-	uint8_t* active = nullptr;
-	uint8_t* solid = nullptr;
-
 	// CSR-style face connectivity
 	int* faceStart = nullptr;
 	int* faceIDs = nullptr;
@@ -488,9 +485,6 @@ struct FVMeshHostPacked {
 	std::vector<double> cellArea2D;
 
 	std::vector<double> cellVolume;
-
-	std::vector<uint8_t> cellActive;
-	std::vector<uint8_t> cellSolid;
 
 	std::vector<int> cellFaceStart;
 	std::vector<int> cellFaceIDs;

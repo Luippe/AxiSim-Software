@@ -1650,19 +1650,6 @@ MeshEdge makeRadialEdge(int iFace, int j) {
 	return edge;
 }
 
-bool isFluidCell(
-	int i,
-	int j,
-	int nr,
-	int nz,
-	const std::vector<uint8_t>& activeCell
-) {
-	if (i < 0 || i >= nr) return false;
-	if (j < 0 || j >= nz) return false;
-
-	return activeCell[cellID(i, j, nz)] != 0;
-}
-
 std::unordered_map<MeshEdge, int, MeshEdgeHash>
 createBoundaryEdgeLookup(const std::vector<BoundarySegmentGroup>& groups) {
 	std::unordered_map<MeshEdge, int, MeshEdgeHash> lookup;
@@ -2019,8 +2006,6 @@ FVMesh Mesh::createUnstructuredMesh(
 		cell.area2D = triangleArea2D(a, b, d);
 		cell.volume = 2.0 * PI * cell.center.r * cell.area2D;
 
-		cell.active = true;
-		cell.solid = false;
 		cell.faceIDs.clear();
 	}
 
@@ -2332,19 +2317,6 @@ void Mesh::createGrid() {
 	}
 }
 
-//FVMesh Mesh::createFVMesh(const std::vector<uint8_t>& activeCell) const {
-//	if (currentMeshType == MeshType::Structured) {
-//		return createStructuredMesh(activeCell);
-//	}
-//
-//	return createUnstructuredMesh(
-//		unstructuredPoints,
-//		unstructuredTriangles,
-//		boundaryVertices,
-//		boundaryEdges
-//	);
-//}
-
 FVMesh Mesh::buildFVMesh() const {
 
 	// The mesh type IS the dispatch: a structured mesh is always built as multiblock
@@ -2569,8 +2541,6 @@ FVMesh Mesh::createMultiBlockFVMesh() const {
 		cell.center = Vec2{ packed.cellCenterZ[c], packed.cellCenterR[c] };
 		cell.volume = packed.cellVolume[c];
 		cell.area2D = packed.cellArea2D[c];
-		cell.active = packed.cellActive[c] != 0;
-		cell.solid  = packed.cellSolid[c] != 0;
 		cell.faceIDs.reserve(packed.cellFaceStart[c + 1] - packed.cellFaceStart[c]);
 		for (int k = packed.cellFaceStart[c]; k < packed.cellFaceStart[c + 1]; k++)
 			cell.faceIDs.push_back(packed.cellFaceIDs[k]);

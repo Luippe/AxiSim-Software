@@ -65,7 +65,7 @@ void getCorrectionCoefficient(
 
 	D[n] = 0.0;
 
-	if (!mesh.cells.active[n]) return;
+
 
 	double aP = coeff.AC[n];
 
@@ -553,7 +553,7 @@ void computeGradient(
 	if (n >= mesh.cells.nCells) return;
 	gradZ[n] = 0.0;
 	gradR[n] = 0.0;
-	if (!mesh.cells.active[n]) return;
+
 
 	if (scheme == GradientScheme::GRAD_GREEN_GAUSS) {
 		phiGradientGreenGauss(n, mesh, bc, phi, gradZ[n], gradR[n]);
@@ -661,7 +661,7 @@ addDiffusionCoefficient(
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) return;
+
 
 	double* AC = coeff.AC;
 	double* b = coeff.b;
@@ -975,7 +975,6 @@ void addRadialMomentumCylindricalSource(
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) return;
 
 	double volume = mesh.cells.volume[n];
 	double r = mesh.cells.centerR[n];
@@ -999,7 +998,7 @@ void addConvectionCoefficient(
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) return;
+
 
 	int start = mesh.cells.faceStart[n];
 	int end = mesh.cells.faceStart[n + 1];
@@ -1125,7 +1124,6 @@ void wallConsumptionDiagnostic(
 
 	int owner = mesh.faces.owner[f];
 	if (owner < 0) return;
-	if (!mesh.cells.active[owner]) return;
 
 	int groupID = mesh.faces.boundaryGroupID[f];
 	if (groupID < 0 || groupID >= bc.nGroups) return;
@@ -1181,7 +1179,7 @@ void addTransientCoefficient(
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) return;
+
 
 	// A null phiOld means the field is not being solved this run, and a
 	// non-positive dt would divide by zero -- both leave the equation steady
@@ -1246,7 +1244,7 @@ void underRelaxEquation(
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) return;
+
 
 	if (alpha <= 0.0 || alpha > 1.0) return;
 

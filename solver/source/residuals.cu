@@ -13,10 +13,6 @@ void continuityResidual(FVMeshDevice mesh, VariablesSimple simple, double* res) 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) {
-		res[n] = 0.0;
-		return;
-	}
 
 	int start = mesh.cells.faceStart[n];
 	int end = mesh.cells.faceStart[n + 1];

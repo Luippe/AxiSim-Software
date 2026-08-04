@@ -15,7 +15,6 @@ void createPPCoeff(
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) return;
 
 	double rho = config.f.rho;
 
@@ -119,7 +118,7 @@ void createPPRhs(
 	// non-orthogonal corrector loop so that later passes can warm-start from,
 	// and take the gradient of, the previous pass's p'.
 
-	if (!mesh.cells.active[n]) return;
+
 
 	double rho = config.f.rho;
 
@@ -165,7 +164,7 @@ void createMomentumPressureRhs(
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) return;
+
 
 	// grad(p) has been precomputed into simple.gradPZ/gradPR (LSQ), so the
 	// momentum body force uses the same gradient as Rhie-Chow instead of an
@@ -186,7 +185,7 @@ void updateVelocity(
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) return;
+
 
 	// grad(p') has already been computed into simple.gradPZ/gradPR using the
 	// pressure-correction boundary conditions (fixed-pressure faces -> p'=0), so
@@ -205,7 +204,7 @@ void updatePressure(
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
-	if (!mesh.cells.active[n]) return;
+
 
 	double* pp = simple.pp;
 	double* p = simple.p;

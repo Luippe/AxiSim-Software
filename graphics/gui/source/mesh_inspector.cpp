@@ -2178,11 +2178,6 @@ std::string MeshInspector::buildCellInfoText(int cellID) const {
 	std::snprintf(line, sizeof(line), "\nfaces:   %d", (int)cell.faceIDs.size());
 	info += line;
 
-	std::snprintf(line, sizeof(line), "\nactive:  %s%s",
-		cell.active ? "yes" : "no",
-		cell.solid ? "   (solid)" : "");
-	info += line;
-
 	// --- non-orthogonality (the mesh-quality measure) ---
 	double avgDeg = 0.0;
 	int interiorFaces = 0;
@@ -2355,11 +2350,6 @@ void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
 	// an already-good mesh from being stretched over a meaningless range and
 	// painted red -- with hi = 2 a uniform grid stays green, as it should.
 	double hi = 1.0;
-	for (int c = 0; c < (int)ratios.size(); c++) {
-		if (fv.cells[c].active && !fv.cells[c].solid) {
-			hi = std::max(hi, ratios[c]);
-		}
-	}
 
 	const double lo = 1.0;
 	hi = std::max(hi, 2.0);
@@ -2375,7 +2365,7 @@ void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
 	// which is below the 1.0 floor of a real value -- skip it rather than paint it
 	// the "excellent" green a clamp would give.
 	auto measured = [&](int c) {
-		return ratios[c] >= lo && fv.cells[c].active && !fv.cells[c].solid;
+		return ratios[c] >= lo;
 	};
 
 	bool painted = false;

@@ -92,7 +92,6 @@ struct Block {
     int nr = 0;                        // cells in radial (i) direction
     int nz = 0;                        // cells in axial  (j) direction
     std::vector<MBNode>  nodes;        // (nr+1)*(nz+1) node positions
-    std::vector<uint8_t> active;       // nr*nz  (1 = fluid, 0 = inactive)
     int globalOffset = 0;              // first global cell index of this block
 
     MeshZone axialZone;
@@ -132,7 +131,6 @@ inline Block makeRectBlock(int id, double z0, double r0,
     for (int I = 0; I <= b.nr; I++)
         for (int J = 0; J <= b.nz; J++)
             b.node(I, J) = MBNode{ zf[J], rf[I] };   // separable tensor product
-    b.active.assign(b.cellCount(), 1);
     b.axialZone = axialZone;
     b.radialZone = radialZone;
 
@@ -490,8 +488,6 @@ inline void toPackedMesh(const MultiBlockMesh& mesh, Packed& out,
     out.cellCenterR.assign(nCells, 0.0);
     out.cellArea2D.assign(nCells, 0.0);
     out.cellVolume.assign(nCells, 0.0);
-    out.cellActive.assign(nCells, 1);
-    out.cellSolid.assign(nCells, 0);
 
     // ---- 1. Cells: centroid + revolved (Pappus) volume ----
     for (const Block& b : mesh.blocks) {
@@ -502,15 +498,13 @@ inline void toPackedMesh(const MultiBlockMesh& mesh, Packed& out,
                 quadCentroidArea(b.node(i, j),         b.node(i, j + 1),
                                  b.node(i + 1, j + 1), b.node(i + 1, j),
                                  cz, cr, area);
-                const uint8_t act = b.active[b.cellLocal(i, j)];
                 out.cellCenterZ[g] = cz;
                 out.cellCenterR[g] = cr;
                 // Geometry, so it stands whether or not the cell carries flow --
                 // matching the structured and triangle cell builders. Only the
                 // revolved volume is gated on `act`.
                 out.cellArea2D[g]  = area;
-                out.cellVolume[g]  = act ? (2.0 * MB_PI * std::fabs(cr) * area) : 0.0;
-                out.cellActive[g]  = act;
+                out.cellVolume[g] = 2.0 * MB_PI * std::fabs(cr) * area;
             }
         }
     }

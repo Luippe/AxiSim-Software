@@ -6,16 +6,11 @@ __global__
 void jacobi(
 	Coefficients coeff,
 	const double* xOld,
-	double* xNew,
-	uint8_t* active
+	double* xNew
 ) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= coeff.N) return;
-	if (active && !active[n]) {
-		xNew[n] = xOld[n];
-		return;
-	}
 
 	double AC = coeff.AC[n];
 
@@ -74,14 +69,11 @@ void jacobi(
 }
 
 __global__
-void gaussSeidelRB(Coefficients coeff, uint8_t* active, double* x, int color) {
+void gaussSeidelRB(Coefficients coeff,  double* x, int color) {
 
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= coeff.N) return;
-	if (active && !active[n]) {
-		return;
-	}
 
 	int nr = coeff.nr;
 	int nz = coeff.nz;
@@ -131,7 +123,6 @@ void gaussSeidelRB(Coefficients coeff, uint8_t* active, double* x, int color) {
 __global__
 void gaussSeidelColorSweep(
 	Coefficients coeff,
-	uint8_t* active,
 	double* x,
 	const int* cellOrder,
 	int colorBegin,
@@ -145,8 +136,6 @@ void gaussSeidelColorSweep(
 	// buildMeshColoring counting-sorts every id in [0, nCells) into cellOrder, and
 	// the caller checks nCells == coeff.N, so n is in range by construction
 	const int n = cellOrder[colorBegin + t];
-
-	if (active && !active[n]) return;
 
 	const double AC = coeff.AC[n];
 
@@ -173,7 +162,6 @@ void solveLinearSystem(
 	cudaStream_t stream,
 	double*& x,
 	double*& xTemp,
-	uint8_t*& active,
 	int threadsPerBlock,
 	const MeshColoring& coloring
 ) {
@@ -202,7 +190,7 @@ void solveLinearSystem(
 	switch (type) {
 	case LINEAR_JACOBI:
 		for (int k = 0; k < config.maxIter; k++) {
-			jacobi << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, xTemp, active);
+			jacobi << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, xTemp);
 			std::swap(x, xTemp);
 		}
 		break;
@@ -222,7 +210,7 @@ void solveLinearSystem(
 					const int colorBlocks = (count + threadsPerBlock - 1) / threadsPerBlock;
 
 					gaussSeidelColorSweep << <colorBlocks, threadsPerBlock, 0, stream >> > (
-						coeff, active, x, coloring.d_cellOrder, begin, count);
+						coeff, x, coloring.d_cellOrder, begin, count);
 				}
 			}
 
@@ -230,8 +218,8 @@ void solveLinearSystem(
 		}
 
 		for (int k = 0; k < config.maxIter; k++) {
-			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, active, x, 0);
-			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff, active, x, 1);
+			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff,  x, 0);
+			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff,  x, 1);
 		}
 		break;
 	}

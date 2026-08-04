@@ -39,11 +39,6 @@ struct GridLevel {
 	// and faceNeighbor on the device.
 	int nFaceRefs() const { return (int)faceNeighbor.size(); }
 
-	// size nCells; 0 = inactive (solid / outside the domain). The smoother and the
-	// residual both skip inactive cells, so an inactive row is never solved and its
-	// correction stays 0. The row is left empty (AC = 0), not made identity.
-	std::vector<uint8_t> active;
-
 	// Agglomeration map INTO the next coarser level: cellToCoarse[n] is the coarse
 	// cell that fine cell n belongs to. Size nCells. Empty on the coarsest level.
 	//
@@ -96,8 +91,6 @@ struct MultigridLevel {
 	// residual in a register and never lands it.
 	double* res = nullptr;
 
-	uint8_t* d_active = nullptr;
-
 	// device copies of the two fine->coarse maps; both null on the coarsest level
 	int* d_cellToCoarse = nullptr;
 	int* d_fineSlotToCoarseSlot = nullptr;
@@ -149,8 +142,8 @@ public:
 	// (P <- (I - w D^-1 A) P) or Krylov acceleration wrapped around the cycle.
 	void run(cudaStream_t& stream);
 
-	// One line per level: cell count, active count, average graph degree and the
-	// coarsening ratio. Host-side only and cheap -- meant to be logged once after
+	// One line per level: cell count, average graph degree and the coarsening
+	// ratio. Host-side only and cheap -- meant to be logged once after
 	// construction to sanity-check that agglomeration actually did something.
 	std::string describeHierarchy() const;
 
