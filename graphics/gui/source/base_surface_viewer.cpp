@@ -407,12 +407,6 @@ void BaseSurfaceViewer::drawAxes(ImDrawList* drawList) {
 			IM_COL32(210, 55, 55, 255),
 			1.5f
 		);
-
-		drawList->AddText(
-			ImVec2(canvasMax.x - 18.0f, origin.y + 6.0f),
-			IM_COL32(230, 80, 80, 255),
-			"z"
-		);
 	}
 
 	if (origin.x >= canvasMin.x && origin.x <= canvasMax.x) {
@@ -421,12 +415,6 @@ void BaseSurfaceViewer::drawAxes(ImDrawList* drawList) {
 			ImVec2(origin.x, canvasMax.y),
 			IM_COL32(55, 190, 95, 255),
 			1.5f
-		);
-
-		drawList->AddText(
-			ImVec2(origin.x + 6.0f, canvasMin.y + 6.0f),
-			IM_COL32(80, 220, 120, 255),
-			"r"
 		);
 	}
 
@@ -495,7 +483,20 @@ void BaseSurfaceViewer::drawGrid(ImDrawList* drawList) {
 	double rMax = std::max(corner0.r, corner1.r);
 
 	const int maxLines = 500; // safety cap
+
+	// Every fifth line is a major one, drawn stronger so boxes can be counted at a
+	// glance without measuring. Which lines those are is decided from the world
+	// coordinate rather than the loop index, so they stay pinned to multiples of
+	// 5 x step while panning instead of sliding along with the visible range.
 	const ImU32 gridColor = IM_COL32(255, 255, 255, 35);
+	const ImU32 majorGridColor = IM_COL32(255, 255, 255, 75);
+	const long long majorEvery = 5;
+
+	auto lineColor = [&](double world) {
+		// negatives are fine: -5 % 5 is 0 as well, and only a non-zero remainder
+		// would need the sign fixed up
+		return (std::llround(world / step) % majorEvery == 0) ? majorGridColor : gridColor;
+	};
 
 	drawList->PushClipRect(canvasMin, canvasMax, true);
 
@@ -505,7 +506,7 @@ void BaseSurfaceViewer::drawGrid(ImDrawList* drawList) {
 	for (int i = 0; i <= nZ; i++) {
 		double z = zStart + i * step;
 		float x = camera.worldToScreen(Vec2{ z, rMin }).x;
-		drawList->AddLine(ImVec2(x, canvasMin.y), ImVec2(x, canvasMax.y), gridColor, 1.0f);
+		drawList->AddLine(ImVec2(x, canvasMin.y), ImVec2(x, canvasMax.y), lineColor(z), 1.0f);
 	}
 
 	double rStart = std::floor(rMin / step) * step;
@@ -514,7 +515,7 @@ void BaseSurfaceViewer::drawGrid(ImDrawList* drawList) {
 	for (int i = 0; i <= nR; i++) {
 		double r = rStart + i * step;
 		float y = camera.worldToScreen(Vec2{ zMin, r }).y;
-		drawList->AddLine(ImVec2(canvasMin.x, y), ImVec2(canvasMax.x, y), gridColor, 1.0f);
+		drawList->AddLine(ImVec2(canvasMin.x, y), ImVec2(canvasMax.x, y), lineColor(r), 1.0f);
 	}
 
 	drawList->PopClipRect();

@@ -199,10 +199,9 @@ void GUI::newFrame() {
 	// render(), once the tab bar has set currentTab), so hand the dockspace what
 	// is left between it and the status bar. Simple view draws neither, so the
 	// dockspace takes the whole work area and the viewport fills the window.
-	simpleViewThisFrame = project.simpleView;
 
-	const float toolbarHeight = simpleViewThisFrame ? 0.0f : ToolbarHost::toolbarStripHeight();
-	const float statusHeight = simpleViewThisFrame ? 0.0f : statusBarHeight;
+	const float toolbarHeight = project.interface.toolbar ? ToolbarHost::toolbarStripHeight() : 0.0f;
+	const float statusHeight = project.interface.statusBar ? statusBarHeight : 0.0f;
 
 	ImVec2 dockPos = viewport->WorkPos;
 	ImVec2 dockSize = viewport->WorkSize;
@@ -499,11 +498,15 @@ void GUI::render() {
 	// go empty and the viewport's node expands to fill the dockspace. drawUI is what
 	// sets currentTab, so the viewport simply holds whichever tab was live when the
 	// panels were hidden — there is no tab bar left to switch it.
-	if (!simpleViewThisFrame) {
-
+	if (project.interface.console) {
 		console.draw();
+	}
 
+	if (project.interface.workspace) {
 		drawUI();
+	}
+
+	if (project.interface.toolbar) {
 
 		// After drawUI, since that is where the tab bar sets currentTab — drawing the
 		// strip any earlier would show the previous tab's tools for a frame.
@@ -538,7 +541,7 @@ void GUI::render() {
 
 	handleKeyInput();
 
-	if (!simpleViewThisFrame) {
+	if (project.interface.statusBar) {
 		drawStatusBar();
 	}
 	drawTutorial();

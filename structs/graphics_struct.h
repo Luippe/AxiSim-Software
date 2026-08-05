@@ -74,6 +74,15 @@ struct VertexShaded {
 	float id;
 };
 
+struct ViewInterface {
+
+	bool workspace = true;
+	bool toolbar = true;
+	bool console = true;
+	bool statusBar = true;
+
+};
+
 enum class ViewTab {
 	TAB_GEOMETRY = 0,
 	TAB_MESH = 1,

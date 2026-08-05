@@ -26,11 +26,30 @@ private:
 	static constexpr float menuIconScale = 1.0f;
 	static constexpr const char* menuIconPlaceholder = "    ";
 
-	// Fixed size of the body under the Advanced Options tab strip. The modal is
-	// AlwaysAutoResize, so without a fixed body it would resize on every tab
-	// switch and every collapsing header toggle.
-	static constexpr float advancedBodyWidth = 520.0f;
-	static constexpr float advancedBodyHeight = 420.0f;
+	// Fixed size of the two Advanced Options panes. The modal is AlwaysAutoResize,
+	// so without a fixed body it would resize on every page switch and every
+	// branch the tree opens. Both panes share the height so their borders line up,
+	// the way the Visual Studio Options dialog this copies has them.
+	static constexpr float advancedNavWidth = 250.0f;
+	static constexpr float advancedBodyWidth = 700.0f;
+	static constexpr float advancedBodyHeight = 560.0f;
+
+	// What the Advanced Options tree has selected. A branch is one page, and its
+	// leaves are that page's sections; the two together are the whole of the
+	// modal's navigation state.
+	enum class AdvancedPage {
+		Geometry,
+		Mesh,
+		Solver,
+		Results
+	};
+
+	AdvancedPage advancedPage = AdvancedPage::Geometry;
+
+	// Which leaf, or null for the branch itself -- selecting a page shows every
+	// section it has, stacked. Always points at one of the static section labels
+	// in menu.cpp, so it never dangles.
+	const char* advancedSection = nullptr;
 
 	// which table of the open Advanced Options section is being filled. the index
 	// only has to make the table IDs unique inside the section, so it is reset per
@@ -75,22 +94,35 @@ private:
 
 	// one page of the Advanced Options modal. each one is a list of
 	// beginAdvancedSection(...) / rows / endAdvancedSection() blocks.
-	void drawAdvancedGeometryTab();
-	void drawAdvancedMeshTab();
-	void drawAdvancedSolverTab();
-	void drawAdvancedResultsTab();
+	void drawAdvancedGeometryPage();
+	void drawAdvancedMeshPage();
+	void drawAdvancedSolverPage();
+	void drawAdvancedResultsPage();
 
-	// fixed-size scrolling page under the tab strip. must be paired, and unlike
-	// ImGui::Begin the end call is unconditional.
-	void beginAdvancedTabBody();
-	void endAdvancedTabBody();
+	// left-hand tree: one branch per page, one leaf per section. what it has
+	// selected decides which drawAdvanced*Page() the body runs and which of that
+	// page's sections beginAdvancedSection() lets through.
+	void drawAdvancedNav();
 
-	// one collapsing section inside an Advanced Options tab. returns true when the
-	// section is expanded -- rows may only be submitted, and endAdvancedSection()
+	// one branch and its leaves. sections is a null-terminated list of section
+	// labels, or null for a page that has none (drawn as a leaf, no arrow).
+	void drawAdvancedBranch(const char* label, AdvancedPage page, const char* const* sections);
+
+	// fixed-size scrolling body beside the category list. must be paired, and
+	// unlike ImGui::Begin the end call is unconditional.
+	void beginAdvancedPageBody();
+	void endAdvancedPageBody();
+
+	// one titled section inside an Advanced Options page. returns true when the
+	// tree has it selected -- rows may only be submitted, and endAdvancedSection()
 	// may only be called, when it does. col opens a first table for you (the usual
 	// 2-column label/value one); pass 0 to open none and start with advancedTable().
 	bool beginAdvancedSection(const char* label, int col = 2);
 	void endAdvancedSection();
+
+	// true when this section is what the tree has selected, either as the leaf
+	// itself or through its page branch. label must match the leaf in the tree.
+	bool advancedSectionVisible(const char* label) const;
 
 	// start another table inside the open section, closing whichever one is open.
 	// a section may hold any number of tables, each with its own column count, so
@@ -106,8 +138,8 @@ private:
 	// advancedRow() left the cursor in. one call per extra column past the first.
 	void advancedCell();
 
-	// stand-in for a tab that has no settings wired up yet.
-	void advancedEmptyTab(const char* what);
+	// stand-in for a page that has no settings wired up yet.
+	void advancedEmptyPage(const char* what);
 
 	bool beginMenu(const char* label, TextureBuffer& icon, bool enabled = true);
 

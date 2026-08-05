@@ -1,4 +1,4 @@
-#include "menu.h"
+﻿#include "menu.h"
 
 #include <algorithm>
 #include <cstring>
@@ -225,8 +225,21 @@ void Menu::drawView() {
 
 	// Checked = the panels are showing. Unchecking leaves only the live viewport;
 	// the GUI picks the flag up on the next frame, not this one.
-	if (menuItem("GUI", nullptr, !project.simpleView)) {
-		project.simpleView = !project.simpleView;
+	if (beginMenu("Interface")) {
+		ViewInterface& interface = project.interface;
+		if (menuItem("Workspace", nullptr, !interface.workspace)) {
+			interface.workspace = !interface.workspace;
+		}
+		else if (menuItem("Tool Bar", nullptr, !interface.toolbar)) {
+			interface.toolbar = !interface.toolbar;
+		}
+		else if (menuItem("Status Bar", nullptr, !interface.statusBar)) {
+			interface.statusBar = !interface.statusBar;
+		}
+		else if (menuItem("Console", nullptr, !interface.console)) {
+			interface.console = !interface.console;
+		}
+		ImGui::EndMenu();
 	}
 
 	ImGui::Separator();
@@ -655,22 +668,128 @@ void Menu::drawUnitsModal() {
 	}
 }
 
-void Menu::beginAdvancedTabBody() {
+// The leaves under each page branch. These labels ARE the section identity: the
+// tree draws them and beginAdvancedSection() matches against them, so one here
+// must match the string its drawAdvanced*Page() passes, or the section is drawn
+// under the branch but has no leaf that reaches it on its own.
+static const char* const advancedSolverSections[] = {
+	"Relaxation Factors",
+	"Multigrid",
+	"Residuals",
+	"Additional Terms",
+	nullptr
+};
+
+static const char* const advancedResultsSections[] = {
+	"Animation",
+	"Camera",
+	nullptr
+};
+
+// Nav items take the hand cursor -- the same rule the setup-tab trees follow.
+// Menu is not a BaseGUI, so BaseGUI::changeCursorOnHover() is out of reach.
+static void advancedNavCursor() {
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+	}
+}
+
+void Menu::drawAdvancedNav() {
+
 	ImGui::BeginChild(
-		"##TabBody",
+		"##AdvancedNav",
+		ImVec2(advancedNavWidth, advancedBodyHeight),
+		ImGuiChildFlags_Borders
+	);
+
+	drawAdvancedBranch("Geometry", AdvancedPage::Geometry, nullptr);
+	drawAdvancedBranch("Mesh", AdvancedPage::Mesh, nullptr);
+	drawAdvancedBranch("Solver", AdvancedPage::Solver, advancedSolverSections);
+	drawAdvancedBranch("Results", AdvancedPage::Results, advancedResultsSections);
+
+	ImGui::EndChild();
+}
+
+void Menu::drawAdvancedBranch(const char* label, AdvancedPage page, const char* const* sections) {
+
+	// selected = the branch itself, which is a different selection from any of
+	// its leaves: it draws every section on the page rather than one
+	const bool selected = advancedPage == page && advancedSection == nullptr;
+
+	// A page with no sections gets LeafFlags so it shows no arrow to open onto
+	// nothing. That also means NoTreePushOnOpen, hence no TreePop for it below.
+	ImGuiTreeNodeFlags branchFlags = sections
+		? UITreeFlags::BranchOpenedFlags
+		: UITreeFlags::LeafFlags;
+
+	if (selected) {
+		branchFlags |= ImGuiTreeNodeFlags_Selected;
+	}
+
+	const bool open = ImGui::TreeNodeEx(label, branchFlags);
+	advancedNavCursor();
+
+	// OpenOnArrow puts selection on the label and open/close on the arrow. The
+	// toggle test is what keeps a click on the arrow from also selecting.
+	if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
+		advancedPage = page;
+		advancedSection = nullptr;
+	}
+
+	if (!sections || !open) {
+		return;
+	}
+
+	for (const char* const* section = sections; *section; ++section) {
+
+		ImGuiTreeNodeFlags leafFlags = UITreeFlags::LeafFlags;
+
+		if (advancedPage == page &&
+			advancedSection &&
+			std::strcmp(advancedSection, *section) == 0) {
+			leafFlags |= ImGuiTreeNodeFlags_Selected;
+		}
+
+		ImGui::TreeNodeEx(*section, leafFlags);
+		advancedNavCursor();
+
+		if (ImGui::IsItemClicked()) {
+			advancedPage = page;
+			advancedSection = *section;
+		}
+	}
+
+	ImGui::TreePop();
+}
+
+void Menu::beginAdvancedPageBody() {
+	ImGui::BeginChild(
+		"##PageBody",
 		ImVec2(advancedBodyWidth, advancedBodyHeight),
 		ImGuiChildFlags_Borders
 	);
 }
 
-void Menu::endAdvancedTabBody() {
+void Menu::endAdvancedPageBody() {
 	ImGui::EndChild();
 }
 
+bool Menu::advancedSectionVisible(const char* label) const {
+
+	// no leaf selected means the page branch is, and that shows all of them
+	return advancedSection == nullptr || std::strcmp(advancedSection, label) == 0;
+}
+
 bool Menu::beginAdvancedSection(const char* label, int col) {
-	if (!ImGui::CollapsingHeader(label)) {
+
+	if (!advancedSectionVisible(label)) {
 		return false;
 	}
+
+	// A plain title rather than a CollapsingHeader: what used to be expanded and
+	// collapsed here is now picked from the tree on the left, and a header that
+	// both selected and collapsed would be two ways to hide the same rows.
+	ImGui::SeparatorText(label);
 
 	// The table ID comes off the ID stack, so pushing the section label is what
 	// keeps two sections from sharing (and fighting over) one table.
@@ -734,11 +853,11 @@ void Menu::advancedCell() {
 	ImGui::AlignTextToFramePadding();
 }
 
-void Menu::advancedEmptyTab(const char* what) {
+void Menu::advancedEmptyPage(const char* what) {
 	ImGui::TextDisabled("No advanced %s options yet.", what);
 }
 
-void Menu::drawAdvancedGeometryTab() {
+void Menu::drawAdvancedGeometryPage() {
 
 	//if (beginAdvancedSection("Sketch")) {
 	//	advancedRow("Some setting");
@@ -753,19 +872,18 @@ void Menu::drawAdvancedGeometryTab() {
 	//
 	//	endAdvancedSection();
 	//}
-	advancedEmptyTab("geometry");
+	advancedEmptyPage("geometry");
 }
 
-void Menu::drawAdvancedMeshTab() {
-
-	Mesh& mesh = project.mesh;
+void Menu::drawAdvancedMeshPage() {
 
 	//if (beginAdvancedSection()) {
 
 	//}
+	advancedEmptyPage("mesh");
 }
 
-void Menu::drawAdvancedSolverTab() {
+void Menu::drawAdvancedSolverPage() {
 
 	Solver& solver = project.solver;
 
@@ -885,7 +1003,7 @@ void Menu::drawAdvancedSolverTab() {
 	}
 }
 
-void Menu::drawAdvancedResultsTab() {
+void Menu::drawAdvancedResultsPage() {
 
 	Results& results = project.results;
 
@@ -928,6 +1046,18 @@ void Menu::drawAdvancedOptionModal() {
 		openAdvancedOptionsModal = false;
 	}
 
+	// Modals are the one popup kind ImGui does not place for you (see Begin(): the
+	// fallback positioning explicitly skips them), so centering is on us. Pivot
+	// 0.5,0.5 puts the window's own center on the viewport's, which is what makes
+	// it work with AlwaysAutoResize -- the size is not known here. Appearing, not
+	// Always, is enough: ModalPopupFlags carries NoMove, so it cannot drift.
+	// Unconditional is safe -- BeginPopupModal clears the request when not open.
+	ImGui::SetNextWindowPos(
+		ImGui::GetMainViewport()->GetCenter(),
+		ImGuiCond_Appearing,
+		ImVec2(0.5f, 0.5f)
+	);
+
 	if (ImGui::BeginPopupModal(
 		"Advanced Options",
 		nullptr,
@@ -935,41 +1065,33 @@ void Menu::drawAdvancedOptionModal() {
 	)) {
 		bool justOpened = ImGui::IsWindowAppearing();
 
-		if (ImGui::BeginTabBar("##AdvancedTabs")) {
-			if (ImGui::BeginTabItem("Geometry")) {
-				beginAdvancedTabBody();
-				drawAdvancedGeometryTab();
-				endAdvancedTabBody();
-				ImGui::EndTabItem();
-			}
+		// Category list on the left, the selected page's settings on the right --
+		// the Visual Studio Options dialog's arrangement. Only the selected page is
+		// submitted, so an ID pushed by one page can never collide with another's.
+		drawAdvancedNav();
 
-			if (ImGui::BeginTabItem("Mesh")) {
-				beginAdvancedTabBody();
-				drawAdvancedMeshTab();
-				endAdvancedTabBody();
-				ImGui::EndTabItem();
-			}
+		ImGui::SameLine();
 
-			if (ImGui::BeginTabItem("Solver")) {
-				beginAdvancedTabBody();
-				drawAdvancedSolverTab();
-				endAdvancedTabBody();
-				ImGui::EndTabItem();
-			}
-
-			if (ImGui::BeginTabItem("Results")) {
-				beginAdvancedTabBody();
-				drawAdvancedResultsTab();
-				endAdvancedTabBody();
-				ImGui::EndTabItem();
-			}
-
-			ImGui::EndTabBar();
+		beginAdvancedPageBody();
+		switch (advancedPage) {
+		case AdvancedPage::Geometry: drawAdvancedGeometryPage(); break;
+		case AdvancedPage::Mesh:     drawAdvancedMeshPage();     break;
+		case AdvancedPage::Solver:   drawAdvancedSolverPage();   break;
+		case AdvancedPage::Results:  drawAdvancedResultsPage();  break;
 		}
+		endAdvancedPageBody();
 
 		ImGui::Separator();
 
-		if (ImGui::Button("Close")) {
+		// Button parked at the bottom right, under the body pane. Measured from the
+		// content region rather than the two pane widths so it stays put if either
+		// pane is resized.
+		const float closeButtonWidth = 88.0f;
+		ImGui::SetCursorPosX(
+			ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - closeButtonWidth
+		);
+
+		if (ImGui::Button("Close", ImVec2(closeButtonWidth, 0.0f))) {
 			ImGui::CloseCurrentPopup();
 		}
 
