@@ -719,7 +719,7 @@ void Menu::drawAdvancedBranch(const char* label, AdvancedPage page, const char* 
 	// A page with no sections gets LeafFlags so it shows no arrow to open onto
 	// nothing. That also means NoTreePushOnOpen, hence no TreePop for it below.
 	ImGuiTreeNodeFlags branchFlags = sections
-		? UITreeFlags::BranchOpenedFlags
+		? UITreeFlags::BranchClosedFlags
 		: UITreeFlags::LeafFlags;
 
 	if (selected) {
@@ -789,7 +789,6 @@ bool Menu::beginAdvancedSection(const char* label, int col) {
 	// A plain title rather than a CollapsingHeader: what used to be expanded and
 	// collapsed here is now picked from the tree on the left, and a header that
 	// both selected and collapsed would be two ways to hide the same rows.
-	ImGui::SeparatorText(label);
 
 	// The table ID comes off the ID stack, so pushing the section label is what
 	// keeps two sections from sharing (and fighting over) one table.

@@ -13,6 +13,10 @@ namespace UITreeFlags{
 		ImGuiTreeNodeFlags_OpenOnArrow |
 		ImGuiTreeNodeFlags_SpanAvailWidth;
 
+	inline constexpr ImGuiTreeNodeFlags BranchClosedFlags =
+		ImGuiTreeNodeFlags_OpenOnArrow |
+		ImGuiTreeNodeFlags_SpanAvailWidth;
+
 }
 
 namespace UIFlagsDocking {

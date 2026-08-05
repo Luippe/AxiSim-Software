@@ -428,7 +428,6 @@ struct FVCellDevice {
 
 	double* volume = nullptr;
 
-	// CSR-style face connectivity
 	int* faceStart = nullptr;
 	int* faceIDs = nullptr;
 };

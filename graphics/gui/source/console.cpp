@@ -750,16 +750,52 @@ void Console::draw() {
 
 	ImGui::EndChild();
 
-	// clicking anywhere in the console (output area, padding, or dead space) reclaims
-	// keyboard focus for the input so you can type immediately; skip clicks on the
-	// input line itself so those place the caret where clicked instead of at the end.
-	// The focus request is deferred to just after the InputText below, where
-	// SetKeyboardFocusHere(-1) reliably wins over the child window that captured the
-	// click -- focusing before the widget (as this used to) loses that race.
+	// EndChild() submits the child as an item in this window, so this is the output
+	// region's rect -- the area a click should hand keyboard focus to the input.
+	ImVec2 outputMin = ImGui::GetItemRectMin();
+	ImVec2 outputMax = ImGui::GetItemRectMax();
+
+	// Clicking anywhere on the output hands keyboard focus to the input so you can type
+	// immediately.
+	//
+	// _AllowWhenBlockedByActiveItem is required: plain IsWindowHovered() returns false
+	// whenever *any* item holds the active id, and the console input is an item, so in
+	// the common case (type a command, click the output, keep typing) the test never
+	// passed. Allowing it back means clicks that already belong to another widget -- the
+	// output child's scrollbar, whose ButtonBehavior claimed the active id inside
+	// EndChild() just above -- have to be excluded by hand, or stealing focus would
+	// cancel the drag.
+	ImGuiID inputId = ImGui::GetID("##Console");
+	ImGuiID activeId = ImGui::GetActiveID();
+	bool otherWidgetActive = activeId != 0 && activeId != inputId;
+
 	bool clickToFocusInput =
-		ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+		!otherWidgetActive &&
+		ImGui::IsWindowHovered(
+			ImGuiHoveredFlags_ChildWindows |
+			ImGuiHoveredFlags_AllowWhenBlockedByActiveItem
+		) &&
 		ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-		!ImGui::IsMouseHoveringRect(lastInputMin, lastInputMax);
+		ImGui::IsMouseHoveringRect(outputMin, outputMax);
+
+	if (clickToFocusInput) {
+		// SetKeyboardFocusHere() cannot do this, from anywhere in this function: it works
+		// by submitting a nav-move request, and at the *end* of this same frame imgui
+		// reacts to the very click we are handling by treating the output child as empty
+		// space -- StartMouseMovingWindow() -> FocusWindow(child) -> SetNavWindow(), which
+		// clears g.NavMoveSubmitted and drops the request on the floor. That runs after
+		// all user code, so no placement of the call can win the race.
+		//
+		// ActivateItemByID() takes the other route: it parks the id in g.NavNextActivateId,
+		// which the focus path never touches, so it survives to the next NavUpdate() and
+		// the InputText picks it up when it is submitted.
+		ImGui::ActivateItemByID(inputId);
+
+		// activating by nav select-alls the buffer, which would make the next keystroke
+		// wipe a half-typed command; snap the caret to the end instead (same reason
+		// acceptCompletion() sets this)
+		resetInputCursor = true;
+	}
 
 	// re-focus the input after a completion accept that had to reset the widget
 	if (refocusInput) {
@@ -780,17 +816,6 @@ void Console::draw() {
 	ImVec2 inputMin = ImGui::GetItemRectMin();
 	ImVec2 inputMax = ImGui::GetItemRectMax();
 	bool inputActive = ImGui::IsItemActive();
-
-	// remember the input box rect so next frame's click-to-focus can exclude it
-	lastInputMin = inputMin;
-	lastInputMax = inputMax;
-
-	// apply the click-to-focus detected above, now that the InputText item exists.
-	// SetKeyboardFocusHere(-1) targets the item submitted just above (the input).
-	if (clickToFocusInput) {
-		ImGui::SetKeyboardFocusHere(-1);
-		resetInputCursor = true;	// snap the caret to the end on the reclaimed focus
-	}
 
 	// reset the highlight whenever the text actually changes
 	if (lastInput != inputBuffer) {

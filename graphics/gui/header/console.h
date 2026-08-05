@@ -128,8 +128,6 @@ private:
 	bool refocusInput = false;						// re-focus input next frame
 	bool resetInputCursor = false;					// snap cursor to end next frame
 	int inputCursorPos = 0;							// live caret position in the input
-	ImVec2 lastInputMin{};							// input box rect from last frame,
-	ImVec2 lastInputMax{};							// used to exclude it from click-to-focus
 
 	CompletionContext getCompletionContext(const std::string& text, int cursor) const;
 	std::vector<CompletionItem> computeMatches(const std::string& text, int cursor) const;

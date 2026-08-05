@@ -65,8 +65,6 @@ void getCorrectionCoefficient(
 
 	D[n] = 0.0;
 
-
-
 	double aP = coeff.AC[n];
 
 	if (fabs(aP) < 1.0e-30) {
@@ -176,7 +174,6 @@ double nonOrthoScalarDiffusionFlux(
 
 	// check if cell-cell or cell-face has greater non-orthogonality. fix the one that has the most non-orthogonality
 	double ndCellCell = getCellToCellDotNorm(mesh, cellID, nb, normalZ, normalR);
-	//double ndCellFace = getCellToFaceDotNorm(mesh, cellID, faceID, normalZ, normalR);
 
 	double dz = mesh.cells.centerZ[nb] - mesh.cells.centerZ[cellID];
 	double dr = mesh.cells.centerR[nb] - mesh.cells.centerR[cellID];
