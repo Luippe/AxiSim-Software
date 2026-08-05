@@ -17,6 +17,7 @@
 #include "printer.h"
 #include "clipboard.h"
 #include "file_manager.h"
+#include "resource_path.h"
 #include "solver_struct.h"
 
 #include "flag_manager.h"
@@ -63,10 +64,12 @@ void initImGuiFonts(AppFonts& fonts) {
 	ImGuiIO& io = ImGui::GetIO();
 	io.Fonts->Clear();
 
+	const std::string fontPath = Resources::resolve("assets/fonts/Roboto-Regular.ttf");
+
 	fonts.defaultFont = io.Fonts->AddFontDefault();
-	fonts.uiFontSmall = io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf", kUiFontSmall);
-	fonts.uiFontNormal = io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf", kUiFontNormal);
-	fonts.uiFontLarge = io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf",	kUiFontLarge);
+	fonts.uiFontSmall = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), kUiFontSmall);
+	fonts.uiFontNormal = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), kUiFontNormal);
+	fonts.uiFontLarge = io.Fonts->AddFontFromFileTTF(fontPath.c_str(),	kUiFontLarge);
 
     IM_ASSERT(fonts.uiFontNormal != nullptr);
 
@@ -122,7 +125,7 @@ TextureBuffer& AppAssets::icon(const std::string& name) {
 void initAssetBuffers(AppAssets& assets) {
 
 	namespace fs = std::filesystem;
-	const std::string dir = "assets/icons";
+	const std::string dir = Resources::resolve("assets/icons");
 
 	std::error_code ec;
 	for (const auto& entry : fs::recursive_directory_iterator(dir, ec)) {
@@ -185,6 +188,47 @@ void GUI::drawAppToolbar() {
 	ImGui::PopStyleVar(3);
 }
 
+// Ratios of the first-run layout. The left column carries the tree and the property
+// panel side by side, with the console under both.
+namespace {
+	constexpr float kLeftColumnFraction = 0.35f;   // of the window width
+	constexpr float kConsoleFraction    = 0.28f;   // of the left column height
+	constexpr float kProjectFraction    = 0.59f;   // of the left column width
+}
+
+void GUI::buildDefaultDockLayout(ImGuiID dockspaceID, const ImVec2& dockSize) {
+
+	ImGui::DockBuilderAddNode(dockspaceID, ImGuiDockNodeFlags_DockSpace);
+	// size floor: the splits below divide this rect, and a degenerate one on the
+	// frame we happen to build would collapse them
+	ImGui::DockBuilderSetNodeSize(
+		dockspaceID,
+		ImVec2(ImMax(dockSize.x, 64.0f), ImMax(dockSize.y, 64.0f))
+	);
+
+	// Splitting off the left column leaves the remainder holding the central node.
+	ImGuiID centralNode = 0;
+	ImGuiID leftColumn = ImGui::DockBuilderSplitNode(
+		dockspaceID, ImGuiDir_Left, kLeftColumnFraction, nullptr, &centralNode
+	);
+
+	ImGuiID leftTop = 0;
+	ImGuiID consoleNode = ImGui::DockBuilderSplitNode(
+		leftColumn, ImGuiDir_Down, kConsoleFraction, nullptr, &leftTop
+	);
+
+	ImGuiID overviewNode = 0;
+	ImGuiID projectNode = ImGui::DockBuilderSplitNode(
+		leftTop, ImGuiDir_Left, kProjectFraction, nullptr, &overviewNode
+	);
+
+	ImGui::DockBuilderDockWindow("Project", projectNode);
+	ImGui::DockBuilderDockWindow("Overview", overviewNode);
+	ImGui::DockBuilderDockWindow("Console", consoleNode);
+	ImGui::DockBuilderDockWindow(UIViewport::DockName, centralNode);
+	ImGui::DockBuilderFinish(dockspaceID);
+}
+
 void GUI::newFrame() {
 
 	setContext(mainImGuiContext, mainImPlotContext);
@@ -219,6 +263,14 @@ void GUI::newFrame() {
 	ImGui::Begin("MainDockSpace", nullptr, UIFlagsDocking::MainDockWindowFlags);
 
 	ImGuiID dockspaceID = ImGui::GetID("MainDockSpaceID");
+
+	// First run only -- after that the layout comes back from imgui.ini, so rebuilding
+	// would throw away wherever the user dragged the splitters. Has to happen before
+	// DockSpace(), which creates the node itself if it is still missing.
+	if (ImGui::DockBuilderGetNode(dockspaceID) == nullptr) {
+		buildDefaultDockLayout(dockspaceID, dockSize);
+	}
+
 	ImGui::DockSpace(dockspaceID, ImVec2(0.0f, 0.0f), UIDockFlags::BaseDockspaceFlags);
 
 	ImGui::End();

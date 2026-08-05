@@ -8,7 +8,6 @@
 #include "multigrid.cuh"
 
 #include "math_func.h"
-#include "solver.h"
 #include "printer.h"
 
 #include "boundary_func.h"

@@ -627,30 +627,6 @@ double faceValue(double phiC, double phiF, double dFf, double dFC) {
 
 
 // ==============================================================
-// ==================DEFERRED CORRECTION=========================
-// ==============================================================
-__device__
-double centralCorrection(double F, double phiP, double phiNb) {
-	double phiUpwind = (F >= 0.0) ? phiP : phiNb;
-	double phiCentral = 0.5 * (phiP + phiNb);
-
-	return F * (phiCentral - phiUpwind);
-}
-
-__device__
-double secondOrderUpwindCorrection(double F, double phiLL, double phiL, double phiR, double phiRR, bool hasLL, bool hasRR) {
-
-	if (F >= 0.0) {
-		if (!hasLL) return 0.0;
-		return 0.5 * F * (phiL - phiLL);
-	}
-	else {
-		if (!hasRR) return 0.0;
-		return 0.5 * F * (phiR - phiRR);
-	}
-}
-
-// ==============================================================
 // ==================DIFFUSION TERM==============================
 // ==============================================================
 __global__ void
@@ -822,9 +798,9 @@ double higherOrderFaceValue(
 ) {
 	if (scheme == ConvectionScheme::CONV_CENTRAL) {
 		// Linear interpolation between the two cell centers. Always a convex
-		// combination of phiP/phiN, so it needs no limiting -- but see the
-		// boundedness note at the call site: central is second order and
-		// oscillatory above cell Peclet ~2 regardless of the face value's range.
+		// combination of phiP/phiN, so it needs no limiting
+		// central difference is second order
+		// oscillatory above cell Peclet ~2 regardless of the face value's range
 		return interpolateFieldToFace(n, faceID, mesh, fieldBC, phi);
 	}
 

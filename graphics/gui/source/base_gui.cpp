@@ -1,7 +1,6 @@
 #include "base_gui.h"
 #include "buffer_manager.h"
 #include "flag_manager.h"
-#include "printer.h"
 
 void BaseGUI::drawIconTreeLabel(const char* label, TextureBuffer* icon, ImGuiTreeNodeFlags flags) {
 	if (!ImGui::IsItemVisible()) {

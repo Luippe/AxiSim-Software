@@ -2,7 +2,6 @@
 #include "shader.h"
 #include "graphics_struct.h"
 
-#include <algorithm>
 #include <vector>
 
 

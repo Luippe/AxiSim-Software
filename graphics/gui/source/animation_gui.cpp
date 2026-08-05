@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cwchar>
-#include <cwctype>
 #include <system_error>
 
 #include "imgui.h"

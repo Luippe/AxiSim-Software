@@ -9,7 +9,6 @@
 #include "graphics_struct.h"
 #include "unit_manager.h"
 
-#include "printer.h"
 
 
 namespace {

@@ -2,13 +2,6 @@
 
 #include <nfd.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#elif defined(__APPLE__)
-#include <mach-o/dyld.h>
-#elif defined(__linux__)
-#include <unistd.h>
-#endif
 #include <string>
 #include <algorithm>
 #include <array>
@@ -31,8 +24,8 @@
 
 #include "file_converter.h"
 #include "keyboard_manager.h"
-#include "memory_manager.h"
 #include "printer.h"
+#include "resource_path.h"
 
 using namespace Shortcuts;
 
@@ -109,45 +102,6 @@ namespace {
 		double transitionThickness = 0.0;
 	};
 	static_assert(sizeof(LegacyMeshRegionOfInfluence) == 96);
-
-	// Directory that holds the running executable. Bundled resources (presets) are
-	// resolved against this rather than the current working directory, so loading
-	// works no matter where the app is launched from. Falls back to the CWD if the
-	// exe path can't be read.
-	std::filesystem::path executableDir() {
-	#ifdef _WIN32
-		wchar_t buffer[MAX_PATH];
-		DWORD len = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-		if (len == 0 || len >= MAX_PATH) {
-			return std::filesystem::current_path();
-		}
-		return std::filesystem::path(buffer).parent_path();
-	#elif defined(__APPLE__)
-		std::uint32_t size = 0;
-		_NSGetExecutablePath(nullptr, &size);
-		std::vector<char> buffer(size);
-		if (_NSGetExecutablePath(buffer.data(), &size) != 0) {
-			return std::filesystem::current_path();
-		}
-		return std::filesystem::weakly_canonical(buffer.data()).parent_path();
-	#elif defined(__linux__)
-		std::vector<char> buffer(1024);
-		for (;;) {
-			const ssize_t len = readlink("/proc/self/exe", buffer.data(), buffer.size());
-			if (len < 0) {
-				return std::filesystem::current_path();
-			}
-			if (static_cast<size_t>(len) < buffer.size()) {
-				return std::filesystem::path(
-					std::string(buffer.data(), static_cast<size_t>(len))
-				).parent_path();
-			}
-			buffer.resize(buffer.size() * 2);
-		}
-	#else
-		return std::filesystem::current_path();
-	#endif
-	}
 
 	std::streamoff remainingBytes(std::ifstream& in) {
 		std::streampos pos = in.tellg();
@@ -1188,7 +1142,7 @@ void loadPresetProject(const std::string& fileName, Project& project) {
 
 	// presets ship next to the exe (see the POST_BUILD copy in CMakeLists.txt),
 	// so anchor to the exe directory instead of the working directory.
-	std::filesystem::path path = executableDir() / "presets" / fileName;
+	std::filesystem::path path = Resources::executableDir() / "presets" / fileName;
 
 	std::ifstream in(path, std::ios::binary);
 

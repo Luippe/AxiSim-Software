@@ -1,5 +1,4 @@
 #include "solver_gui.h"
-#include "scene_view.h"		// must be in front of graphics_struct.h
 #include "mesh.h"
 #include "solver.h"
 

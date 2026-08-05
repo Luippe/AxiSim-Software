@@ -100,6 +100,13 @@ private:
 	void drawResultsViewport();
 	ImGuiWindowClass viewportWindowClass;
 
+	// First-run layout for the main dockspace: Project | Overview over Console on the
+	// left, the shared viewport slot in the central node. Only the central node grows
+	// into space no other node claimed, so the viewport has to be the one that owns it
+	// -- docked in a sibling instead, it stops at its SizeRef and leaves a dead strip
+	// of ImGuiCol_DockingEmptyBg down the right edge.
+	void buildDefaultDockLayout(ImGuiID dockspaceID, const ImVec2& dockSize);
+
 	// draw status bar at the bottom of screen
 	void drawStatusBar();
 

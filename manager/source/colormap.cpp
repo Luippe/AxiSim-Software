@@ -1,4 +1,3 @@
-#include "pch.h"
 
 #include <stdexcept>
 
@@ -6,7 +5,6 @@
 
 #include "colormap_manager.h"
 #include "math_func.h"
-#include "printer.h"
 
 Colormap::Colormap() {
 

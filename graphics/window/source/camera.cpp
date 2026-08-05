@@ -3,10 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include "unit_manager.h"
-#include "printer.h"
 
 // ======================================================================
 // -----------------------CAMERA 3D--------------------------------------

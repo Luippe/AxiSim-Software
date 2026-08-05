@@ -5,6 +5,8 @@
 #include <sstream>
 #include <glm/gtc/type_ptr.hpp>
 
+#include "resource_path.h"
+
 
 GLint Shader::getUniformLocation(const char* name) {
 	std::string key(name);
@@ -65,6 +67,12 @@ void Shader::loadTransformationMatrix(const glm::mat4& model, const glm::mat4& v
 
 Shader::Shader(const char* vertexPath, const char* fragmentPath) {
 
+	// callers name shaders relative to the resource root ("graphics/shaders/mesh.vert"),
+	// so anchor them before opening -- the working directory is not the repo root
+	// when the exe is launched from its build directory
+	const std::string vertexFile = Resources::resolve(vertexPath);
+	const std::string fragmentFile = Resources::resolve(fragmentPath);
+
 	// retrieve the vertex/fragment source code from filePath
 	std::string vertexCode;
 	std::string fragmentCode;
@@ -78,8 +86,8 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
 	try
 	{
 		// open files
-		vShaderFile.open(vertexPath);
-		fShaderFile.open(fragmentPath);
+		vShaderFile.open(vertexFile);
+		fShaderFile.open(fragmentFile);
 		std::stringstream vShaderStream, fShaderStream;
 
 		// read file's buffer contents into streams
@@ -93,7 +101,10 @@ Shader::Shader(const char* vertexPath, const char* fragmentPath) {
 	}
 	catch (std::ifstream::failure e)
 	{
-		std::cout << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ" << std::endl;
+		// name the file: a missing resource root otherwise prints one identical
+		// line per shader with nothing to identify what went missing
+		std::cout << "ERROR::SHADER::FILE_NOT_SUCCESFULLY_READ ('" << vertexFile
+			<< "', '" << fragmentFile << "')" << std::endl;
 	}
 
 	const char* vShaderCode = vertexCode.c_str();

@@ -1,5 +1,4 @@
 #include "boundary_func.h"
-#include "printer.h"
 
 namespace BoundaryGet {
 

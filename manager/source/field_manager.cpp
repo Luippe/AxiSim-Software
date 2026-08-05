@@ -4,7 +4,6 @@
 #include <cmath>
 #include <limits>
 
-#include "printer.h"
 #include "boundary_func.h"
 
 using namespace BoundaryDefaults;

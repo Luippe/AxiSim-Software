@@ -4,7 +4,6 @@
 #include <cfloat>
 #include <cmath>
 
-#include <glm/geometric.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace {

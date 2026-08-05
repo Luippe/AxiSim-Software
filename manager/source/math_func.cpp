@@ -4,7 +4,6 @@
 #include <cctype>
 #include <glm/vec3.hpp>
 #include <glm/vec2.hpp>
-#include <iostream>
 
 std::vector<double> linspace(double start, double end, std::size_t N, double bias) {
 

@@ -14,8 +14,6 @@
 #include <unordered_set>
 #include <unordered_map>
 
-
-
 #include "math_func.h"
 
 
@@ -541,26 +539,6 @@ bool Mesh::hasDomainBoundarySegments() const {
 		}
 	}
 	return false;
-}
-
-int Mesh::createObstacleBoundaryGroup(const std::string& name) {
-	BoundarySegmentGroup obstacle{};
-
-	obstacle.id = getAvailableBoundaryGroupID();
-	obstacle.name = name;
-	obstacle.type = BoundaryType::WALL;
-
-	std::snprintf(
-		obstacle.nameBuffer,
-		sizeof(obstacle.nameBuffer),
-		"%s",
-		obstacle.name.c_str()
-	);
-
-	boundaryGroups.push_back(obstacle);
-	markFVMeshDirty();
-
-	return obstacle.id;
 }
 
 void Mesh::clearUnstructuredGeometry() {

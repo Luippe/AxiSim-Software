@@ -59,13 +59,7 @@ double getDistanceCellToCell(
 	double proj = fabs(dz * normalZ + dr * normalR); // over-relaxed projected distance
 	double full = sqrt(dz * dz + dr * dr);           // true centroid separation
 
-	// Clamp the projection so a highly non-orthogonal / near-axis cell can't
-	// collapse n.d toward zero and blow up coefficients of the form A/(n.d)
-	// (Rhie-Chow face gradient, p' Laplacian, momentum diffusion). On well
-	// shaped cells proj ~ full, so this leaves them untouched.
-	double minProj = 0.3 * full;
-
-	return fmax(proj, minProj);
+	return proj;
 }
 
 __device__ __forceinline__

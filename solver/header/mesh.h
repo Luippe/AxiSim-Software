@@ -59,7 +59,6 @@ public:
 		int nrPoints
 	);
 
-	int createObstacleBoundaryGroup(const std::string& name);
 	void addCircularObstacle(
 		Vec2 center,
 		double radius,

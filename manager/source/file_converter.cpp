@@ -10,7 +10,6 @@
 #include <iostream>
 #include <map>
 #include <set>
-#include <string_view>
 
 #include "boundary_func.h"
 #include "math_func.h"

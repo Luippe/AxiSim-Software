@@ -75,6 +75,11 @@ namespace UIViewport {
 	inline constexpr const char* ResidualPlotTitle = "Residual Plot###Viewport";
 	inline constexpr const char* ResultsTitle = "Results###Viewport";
 
+	// The single window identity behind all four titles: ImHashStr() restarts at the
+	// last "###" and skips it, so this hashes to the same window the titles above do.
+	// Use it to address the shared slot by name (GUI::buildDefaultDockLayout docks it).
+	inline constexpr const char* DockName = "###Viewport";
+
 }
 
 namespace UIDockFlags {

@@ -322,6 +322,19 @@ target_link_libraries(AxiSim PRIVATE
     Gmsh::gmsh
 )
 
+# Fallback resource root for a build-tree exe. Resources::resolve() looks next to
+# the exe first (the packaged layout below), then here -- so running AxiSim.exe
+# straight out of out/build/... still finds assets/ and graphics/shaders/ without
+# copying them, and an edited shader is picked up on the next run. On a machine
+# the package was copied to this path simply does not exist and is skipped.
+#
+# Scoped to the one file that reads it: as a target-wide definition it would put
+# the source path on every C++ and CUDA command line and rebuild the world.
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/manager/source/resource_path.cpp"
+    PROPERTIES COMPILE_DEFINITIONS "AXISIM_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\""
+)
+
 if(WIN32)
     target_compile_definitions(AxiSim PRIVATE
         WIN32_LEAN_AND_MEAN
@@ -363,6 +376,33 @@ set_target_properties(AxiSim PROPERTIES
     CUDA_ARCHITECTURES "${AXISIM_CUDA_ARCHITECTURES}"
 )
 
+# ------------------------------------------------------------
+# Precompiled header
+#
+# Roughly half of every C++ translation unit here was re-parsing the same
+# third-party headers (imgui, glm, glad) and C++20 standard headers (<format>,
+# <filesystem>, ...) -- about 1.7 s of the ~2 s each file took, repeated across
+# ~47 files. manager/header/pch.h collects that set; see the comment there for
+# why no project headers are in it.
+#
+# COMPILE_LANGUAGE:CXX keeps this away from nvcc, which has no MSVC-PCH support.
+# That also excludes solver/source/solver.cpp, which is built as CUDA above.
+# ------------------------------------------------------------
+
+target_precompile_headers(AxiSim PRIVATE
+    "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/manager/header/pch.h>"
+)
+
+# Vendored sources are compiled as-is: they do not include the project's headers,
+# they carry their own include-order requirements, and force-feeding them the PCH
+# only makes them slower.
+set_source_files_properties(
+    ${IMGUI_SOURCES}
+    ${IMPLOT_SOURCES}
+    "${CMAKE_CURRENT_SOURCE_DIR}/externals/stb_image/stb_image.cpp"
+    PROPERTIES SKIP_PRECOMPILE_HEADERS ON
+)
+
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
     ${PROJECT_SOURCES}
     ${PROJECT_HEADERS}
@@ -378,8 +418,8 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
 #   <prefix>/
 #     AxiSim.exe
 #     glfw3.dll, gmsh*.dll, MSVC runtime DLLs
-#     assets/      (fonts + icons, loaded at runtime by relative path)
-#     graphics/shaders/  (GLSL, loaded at runtime by relative path)
+#     assets/      (fonts + icons, resolved at runtime against the exe directory)
+#     graphics/shaders/  (GLSL, same)
 #
 # Build the package with package.ps1, or manually:
 #   cmake --install <build-dir> --prefix dist/AxiSim
@@ -391,9 +431,9 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
 
 install(TARGETS AxiSim RUNTIME DESTINATION .)
 
-# Runtime asset folders are loaded via paths relative to the working
-# directory (e.g. "assets/icons/house.png", "graphics/shaders/mesh.vert"),
-# so they must sit alongside the exe with the same layout.
+# Runtime asset folders are resolved by Resources::resolve() (resource_path.h),
+# which anchors names like "assets/icons/house.png" and "graphics/shaders/mesh.vert"
+# to the exe directory, so they must sit alongside the exe with the same layout.
 # "raw icons" holds the oversized source art that tools/icon128.py downsamples
 # into icons/; it is never read at runtime, so keep it out of the package.
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/assets"           DESTINATION .
