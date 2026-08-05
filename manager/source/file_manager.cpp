@@ -1038,18 +1038,30 @@ void loadEtc(std::ifstream& in, Project& project) {
 // variable-length, so byte counting cannot tell an absent block from the tail
 // of the previous one. A project saved before this existed simply fails the
 // magic check and keeps the defaults.
+//
+// Both fields go out as their own uint8_t underlying value, so the ENUMERATOR
+// ORDER of ProjectionType / RotationType (camera.h) is part of the file format:
+// append to them, never insert or reorder, or bump sceneViewFileVersion and
+// translate on the way in. Today's order matches the byte values the old
+// SceneViewSettings mirror wrote (Perspective = 0, Turntable = 0), so projects
+// saved before Results owned these still load.
 void saveSceneView(std::ofstream& out, const Project& project) {
 
 	writeAll(out, sceneViewFileMagic, sceneViewFileVersion);
-	writeAll(out, project.sceneView.projection, project.sceneView.rotationStyle);
+	writeAll(out, project.results.projectionType, project.results.rotationType);
 }
 
 void loadSceneView(std::ifstream& in, Project& project) {
 
 	// whatever happens, the camera gets told what to use -- an older project
 	// that has no block means the defaults, not whatever the last one left
-	project.sceneView = SceneViewSettings{};
-	project.applySceneViewSettings = true;
+	auto useDefaults = [&]() {
+		project.results.projectionType = ProjectionType::Orthographic;
+		project.results.rotationType = RotationType::Turntable;
+	};
+
+	useDefaults();
+	project.results.applySceneViewSettings = true;
 
 	const std::streampos start = in.tellg();
 
@@ -1058,7 +1070,7 @@ void loadSceneView(std::ifstream& in, Project& project) {
 		if (start != std::streampos(-1)) {
 			in.seekg(start);
 		}
-		project.sceneView = SceneViewSettings{};
+		useDefaults();
 	};
 
 	constexpr std::streamoff blockBytes =
@@ -1079,9 +1091,23 @@ void loadSceneView(std::ifstream& in, Project& project) {
 		return;
 	}
 
-	if (!readAll(in, project.sceneView.projection, project.sceneView.rotationStyle)) {
+	// Read the raw bytes, not the enums: a truncated or hand-edited file can hold
+	// any value, and an out-of-range enum would reach both the scene camera and
+	// the Advanced Options combo, which indexes its label array by enumerator.
+	// The bounds are the last enumerator of each -- extend them if one gains a
+	// member.
+	std::uint8_t projection = 0;
+	std::uint8_t rotation = 0;
+
+	if (!readAll(in, projection, rotation) ||
+		projection > static_cast<std::uint8_t>(ProjectionType::Orthographic) ||
+		rotation > static_cast<std::uint8_t>(RotationType::Arcball)) {
 		bail();
+		return;
 	}
+
+	project.results.projectionType = static_cast<ProjectionType>(projection);
+	project.results.rotationType = static_cast<RotationType>(rotation);
 }
 
 bool saveHotkeyPressed(Project& project) {

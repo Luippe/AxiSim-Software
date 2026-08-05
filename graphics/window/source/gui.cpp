@@ -478,19 +478,12 @@ void GUI::render() {
 	// from here rather than from SceneView because only one viewport is
 	// submitted per frame -- the scene may not be the one drawing, and the
 	// setting still has to land.
-	if (project.applySceneViewSettings) {
+	if (results.applySceneViewSettings) {
 
-		scene.camera.projectionType =
-			(project.sceneView.projection == SceneViewSettings::Perspective)
-			? ProjectionType::Perspective
-			: ProjectionType::Orthographic;
+		scene.camera.projectionType = results.projectionType;
+		scene.camera.rotationType = results.rotationType;
 
-		scene.camera.rotationStyle =
-			(project.sceneView.rotationStyle == SceneViewSettings::Arcball)
-			? RotationStyle::Arcball
-			: RotationStyle::Turntable;
-
-		project.applySceneViewSettings = false;
+		results.applySceneViewSettings = false;
 	}
 
 	// A loaded project restores solution values but not the Fields built from them,

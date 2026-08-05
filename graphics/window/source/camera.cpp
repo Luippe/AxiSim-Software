@@ -141,7 +141,7 @@ bool Camera3D::trackballDelta(const glm::vec2& prevPx, const glm::vec2& curPx, g
 
 void Camera3D::calculateRotation(const glm::vec2& prevPx, const glm::vec2& curPx) {
 
-	if (rotationStyle == RotationStyle::Arcball) {
+	if (rotationType == RotationType::Arcball) {
 		arcballDrag(prevPx, curPx);
 	}
 	else {
@@ -363,7 +363,7 @@ void Camera3D::snapToAxis(const glm::vec3& axis) {
 		// cannot be turned the other way at all. A quarter turn that would land
 		// there is not a landing a turntable may make. Looking straight down
 		// world up none of them do, and all four stay in.
-		if (rotationStyle == RotationStyle::Turntable &&
+		if (rotationType == RotationType::Turntable &&
 			std::abs(glm::dot(landRight, up)) > 1.0e-3f) continue;
 
 		// columns are where the camera's local axes land, so this is exactly the

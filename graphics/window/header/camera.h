@@ -3,7 +3,7 @@
 #include "math_func.h"
 
 
-enum class ProjectionType {
+enum class ProjectionType : uint8_t{
 	Perspective,
 	Orthographic
 };
@@ -11,7 +11,7 @@ enum class ProjectionType {
 
 // How a mouse drag becomes a rotation. Neither one clamps anything, so both
 // reach every orientation -- they differ in whether roll is reachable at all.
-enum class RotationStyle {
+enum class RotationType : uint8_t {
 
 	// yaw about world up, pitch about the camera's own right vector. Cannot
 	// roll, so the horizon never tips and the same drag always does the same
@@ -26,7 +26,7 @@ enum class RotationStyle {
 
 
 // Orbit camera for the 3D scene, with two ways to rotate it -- see
-// RotationStyle. Both are applied the same way, as an incremental world-space
+// RotationType. Both are applied the same way, as an incremental world-space
 // turn about `pivot`, so everything downstream is shared.
 //
 // `rotation` IS the orientation, a free quaternion, and the only state a drag
@@ -49,7 +49,7 @@ public:
 
 	// ------------------------- input -------------------------
 
-	// orbit by a mouse drag, in whichever style `rotationStyle` selects. Both
+	// orbit by a mouse drag, in whichever style `rotationType` selects. Both
 	// positions are in pixels from the TOP-LEFT of the viewport, y pointing
 	// down. The endpoints are passed rather than the delta because the arcball
 	// needs them -- the same delta turns the view differently depending on
@@ -127,7 +127,7 @@ public:
 	float fov = 45.0f;
 	float distance = 1.0f;
 
-	RotationStyle rotationStyle = RotationStyle::Turntable;
+	RotationType rotationType = RotationType::Turntable;
 
 	// Which way is up for a turntable yaw. NOT the model's axis of revolution
 	// (that is world X) -- this is which way is up on screen, and it matches

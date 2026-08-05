@@ -7,6 +7,7 @@
 #include "buffer_manager.h"
 #include "graphics_struct.h"
 #include "field_manager.h"
+#include "camera.h"
 
 class Colormap;
 class Shader;
@@ -16,6 +17,22 @@ class Solver;
 
 class Results {
 public:
+
+	// How the results scene is viewed, saved with the project so a reopened one
+	// looks the way it was left. The camera owns the LIVE setting; these are what
+	// gets written to disk, and applySceneViewSettings asks the GUI to push them
+	// out to the camera (see GUI::render) -- needed because the scene may not be
+	// the viewport drawing on the frame a project lands.
+	//
+	// Label order must match the enumerators in camera.h: createSimpleCombo uses
+	// the enumerator value as the index into these arrays.
+	const char* cameraProjectionType[2] = { "Perspective", "Orthographic" };
+	const char* cameraRotationType[2] = { "Turntable", "Arcball" };
+
+	ProjectionType projectionType = ProjectionType::Orthographic;
+	RotationType rotationType = RotationType::Turntable;
+
+	bool applySceneViewSettings = false;
 
 	// One instant of a transient run, ready to display. Both halves are needed
 	// because the two results views read different data: the 2D inspector colors

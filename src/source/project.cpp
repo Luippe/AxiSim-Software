@@ -25,7 +25,8 @@ void Project::createNew() {
 
 	// a new project views the scene the default way too, not however the last
 	// one left it
-	sceneView = SceneViewSettings{};
-	applySceneViewSettings = true;
+	results.projectionType = ProjectionType::Orthographic;
+	results.rotationType = RotationType::Turntable;
+	results.applySceneViewSettings = true;
 
 }

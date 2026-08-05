@@ -236,65 +236,6 @@ void Menu::drawView() {
 
 		SceneView& scene = gui.scene;
 
-		// Perspective reads depth better; orthographic keeps parallel lines
-		// parallel, which is what you want when comparing sizes across the
-		// domain. Both are framed from the same view height, so switching does
-		// not change how big the scene looks.
-		if (beginMenu("Projection")) {
-
-			const bool perspective = scene.camera.projectionType == ProjectionType::Perspective;
-
-			// the camera holds the live value and project.sceneView is the copy
-			// that gets saved, so both move together
-			if (menuItem("Perspective", nullptr, perspective)) {
-				scene.camera.projectionType = ProjectionType::Perspective;
-				project.sceneView.projection = SceneViewSettings::Perspective;
-			}
-
-			if (menuItem("Orthographic", nullptr, !perspective)) {
-				scene.camera.projectionType = ProjectionType::Orthographic;
-				project.sceneView.projection = SceneViewSettings::Orthographic;
-			}
-
-			ImGui::EndMenu();
-		}
-
-		// What a middle-drag in the scene does. Neither one clamps, so both
-		// reach every orientation -- the difference is roll. Switching is
-		// jump-free; it only changes what the next drag does.
-		if (beginMenu("Rotation")) {
-
-			const bool turntable = scene.camera.rotationStyle == RotationStyle::Turntable;
-
-			if (menuItem("Turntable", nullptr, turntable)) {
-				scene.camera.rotationStyle = RotationStyle::Turntable;
-				project.sceneView.rotationStyle = SceneViewSettings::Turntable;
-			}
-
-			if (ImGui::IsItemHovered()) {
-				ImGui::SetTooltip(
-					"Yaw about up, pitch about the screen's horizontal.\n"
-					"The horizon never tips, and the same drag always does the same thing."
-				);
-			}
-
-			if (menuItem("Arcball", nullptr, !turntable)) {
-				scene.camera.rotationStyle = RotationStyle::Arcball;
-				project.sceneView.rotationStyle = SceneViewSettings::Arcball;
-			}
-
-			if (ImGui::IsItemHovered()) {
-				ImGui::SetTooltip(
-					"Virtual trackball, as in Fluent. Free tumble in the middle of the\n"
-					"viewport, roll near the borders. Reaches rolled views a turntable cannot."
-				);
-			}
-
-			ImGui::EndMenu();
-		}
-
-		ImGui::Separator();
-
 		// flat line cross through world zero, part of the scene
 		if (menuItem("Origin Axis", nullptr, scene.showOriginAxis)) {
 			scene.showOriginAxis = !scene.showOriginAxis;
@@ -945,6 +886,9 @@ void Menu::drawAdvancedSolverTab() {
 }
 
 void Menu::drawAdvancedResultsTab() {
+
+	Results& results = project.results;
+
 	if (beginAdvancedSection("Animation")) {
 		advancedRow("Max stored frames");
 		if (ImGui::InputInt("##MaxTimeFrames", &project.solver.maxTimeFrames, 0, 0)) {
@@ -955,6 +899,24 @@ void Menu::drawAdvancedResultsTab() {
 			"(fields x cells) doubles on the host; hitting the cap stops capture, "
 			"not the solve."
 		);
+
+		endAdvancedSection();
+	}
+
+	if (beginAdvancedSection("Camera")) {
+
+		// no (int&) cast on the enums -- these are uint8_t-backed, so that would
+		// write four bytes over a one-byte field. The enum overload round-trips
+		// through a local int instead.
+		advancedRow("Camera Rotation");
+		if (BaseGUI::createSimpleCombo("##RotationType", results.cameraRotationType, results.rotationType, IM_ARRAYSIZE(results.cameraRotationType))) {
+			gui.scene.camera.rotationType = results.rotationType;
+		}
+
+		advancedRow("Camera Projection");
+		if (BaseGUI::createSimpleCombo("##ProjectionType", results.cameraProjectionType, results.projectionType, IM_ARRAYSIZE(results.cameraProjectionType))) {
+			gui.scene.camera.projectionType = results.projectionType;
+		}
 
 		endAdvancedSection();
 	}
