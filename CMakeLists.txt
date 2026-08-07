@@ -376,6 +376,27 @@ set_target_properties(AxiSim PROPERTIES
     CUDA_ARCHITECTURES "${AXISIM_CUDA_ARCHITECTURES}"
 )
 
+# Per-kernel register/local-memory report from ptxas, printed to stderr during
+# compilation. Purely diagnostic -- it does not affect codegen.
+#
+# Scoped to these two files rather than the whole target on purpose: adding it
+# to the CUDA command line invalidates every .cu, and `cuobjdump -res-usage`
+# on the linked exe showed only three kernels with a nonzero stack frame --
+# addDiffusionCoefficient here, createPPRhs and updateMassFlux in simple.cu.
+#
+# What -v established that cuobjdump could not: all three report 0 spill
+# stores / 0 spill loads, so those frames are ABI overhead from
+# SEPARABLE_COMPILATION, not register pressure. The cost is in the __device__
+# helpers that survive as standalone ABI functions -- see the note at the top
+# of solver_util.cuh. Compare the per-TU register counts printed here against
+# `cuobjdump -res-usage` on the linked exe: the latter is higher because the
+# device link step resolves those external calls into the launch footprint.
+set_source_files_properties(
+    "${CMAKE_CURRENT_SOURCE_DIR}/solver/source/simple.cu"
+    "${CMAKE_CURRENT_SOURCE_DIR}/solver/source/solver_util.cu"
+    PROPERTIES COMPILE_OPTIONS "-Xptxas=-v"
+)
+
 # ------------------------------------------------------------
 # Precompiled header
 #

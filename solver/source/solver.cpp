@@ -40,7 +40,7 @@ void printResidualConsole(int currentIteration, const std::unordered_map<std::st
     for (auto& [name, configResidual] : cfg) {
         if (!configResidual.enabled) continue;
 
-        line << "  " << name << ": " << configResidual.resVal;
+        line << "  " << name << ": " << *configResidual.resVal;
 
     }
 
@@ -71,7 +71,7 @@ bool residualsConverged(const std::unordered_map<std::string, ConfigResidual>& c
 
         anyEnabled = true;
 
-        if (!(configResidual.resVal <= configResidual.tol)) return false;
+        if (!(*configResidual.resVal <= configResidual.tol)) return false;
     }
 
     return anyEnabled;
@@ -862,8 +862,6 @@ void Solver::runSimple(const Mesh& mesh) {
 
         for (auto& [name, configResidual] : cfg) {
             configResidual.free();
-            configResidual.resVal = 0.0;
-            configResidual.scaleVal = 0.0;
         }
         simple.free();
 
@@ -904,6 +902,10 @@ void Solver::runSimple(const Mesh& mesh) {
 
         currentIteration = 0;
     }
+
+    // allocate scratch memory used for reduction kernels
+    double* tmpA = deviceAlloc<double>(Nface);
+    double* tmpB = deviceAlloc<double>(Nface);
 
     // initialize threads, blocks and shared memory
     mem.init(N, fvMeshDevice.faces.nFaces);
@@ -976,6 +978,13 @@ void Solver::runSimple(const Mesh& mesh) {
     double cp = f.cp;
     double rho = f.rho;
     double thermDiffusivity = k / (rho * cp);
+    // create a graph for linear solver
+    LinearSolver linearSolverU(configSolver, mem, coloring);
+    LinearSolver linearSolverV(configSolver, mem, coloring);
+    linearSolverU.prepare(uCoeff, stream, simple.u);
+    linearSolverV.prepare(vCoeff, stream, simple.v);
+    LinearSolver linearSolver(configSolver, mem, coloring);
+
 
     // Multigrid coarsens the cell/face GRAPH rather than a logical nr x nz grid, so
     // it runs on any face-based mesh -- which, since every structured mesh is built
@@ -1134,8 +1143,8 @@ void Solver::runSimple(const Mesh& mesh) {
             getCorrectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.DV);
 
             // solve velocity
-            solveLinearSystem(uCoeff, configSolver, stream, simple.u, simple.uTemp, threadsPerBlock, coloring);
-            solveLinearSystem(vCoeff, configSolver, stream, simple.v, simple.vTemp, threadsPerBlock, coloring);
+            linearSolverU.run();
+            linearSolverV.run();
 
             // solve pressure correction
             createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, bcDevice.p);
@@ -1168,10 +1177,10 @@ void Solver::runSimple(const Mesh& mesh) {
 
                 createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, applyCrossTerm);
                 if (multigrid) {
-                    multigrid->run(stream);
+                    multigrid->run();
                 }
                 else {
-                    solveLinearSystem(ppCoeff, configSolver, stream, simple.pp, simple.ppTemp,  threadsPerBlock, coloring);
+                    linearSolver.solveLinearSystem(ppCoeff, configSolver, stream, simple.pp, simple.ppTemp,  threadsPerBlock, coloring);
                 }
             }
 
@@ -1205,7 +1214,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.tempOld, tOld2, 1.0, configSolver.dt);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.temp, simple.momentumRelaxation);
-                solveLinearSystem(tempCoeff, configSolver, stream, simple.temp, simple.tempTemp,  threadsPerBlock, coloring);
+                linearSolver.solveLinearSystem(tempCoeff, configSolver, stream, simple.temp, simple.tempTemp,  threadsPerBlock, coloring);
             }
 
             // ======================================================================
@@ -1231,7 +1240,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.concOld, cOld2, 1.0, configSolver.dt);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.conc, 1.0);
-                solveLinearSystem(concCoeff, configSolver, stream, simple.conc, simple.concTemp,  threadsPerBlock, coloring);
+                linearSolver.solveLinearSystem(concCoeff, configSolver, stream, simple.conc, simple.concTemp,  threadsPerBlock, coloring);
             }
 
             // ======================================================================
@@ -1266,14 +1275,7 @@ void Solver::runSimple(const Mesh& mesh) {
                 // for the two kernels above. Without this sync it reads stale residuals.
                 CUDA_CHECK(cudaStreamSynchronize(stream));
 
-                // Continuity is normalized by a scale captured in the first few
-                // iterations of the interval it is measured over. A transient step
-                // starts with a fresh imbalance from the unsteady term, so that
-                // interval is the TIME STEP (k), not the run -- pinning it to the
-                // run would normalize every step against the first step's startup.
-                // A steady solve has one step, and keeps the run-global count so a
-                // continued solve stays measured against its original baseline.
-                residualAllHost(cfg, N, transient ? k : currentIteration);
+                residualAllHost(cfg, N, transient ? k : currentIteration, mem, stream, tmpA, tmpB);
                 residualPlot->add(currentIteration, cfg);
                 printResidualConsole(currentIteration, cfg, console);
 
@@ -1352,10 +1354,9 @@ void Solver::runSimple(const Mesh& mesh) {
     CUDA_CHECK(cudaStreamSynchronize(stream));
     createSolutions(N);
 
-    double* tmpA = deviceAlloc<double>(Nface);
-    double* tmpB = deviceAlloc<double>(Nface);
 
-    reduction(Nface, faceThreads, shmemFace, stream, tmpA, tmpB, fvMeshDevice.faces.ocrWall, &scalarSolutions.ocr);
+
+    //reduction(Nface, faceThreads, shmemFace, stream, tmpA, tmpB, fvMeshDevice.faces.ocrWall, &scalarSolutions.ocr);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     // Reactive-wall diagnostic: reports whether the wall is reaction- or
@@ -1411,9 +1412,5 @@ void Solver::runSimple(const Mesh& mesh) {
     isReady = true;
 
     // free memory
-    // coefficient systems are freed/reallocated in the needsAllocation block above
-    // and kept across solves for continuation, so nothing is freed here.
-    //simple.free();
-    //free_GridConfig(configSolver.g);
-
+    freeAllDev(tmpA, tmpB);
 }

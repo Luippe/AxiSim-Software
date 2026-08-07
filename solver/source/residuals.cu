@@ -1,10 +1,5 @@
 #include "residuals.cuh"
 
-#include <math_constants.h>
-
-#include "device_launch_parameters.h"
-
-
 
 
 __global__
@@ -39,108 +34,67 @@ void continuityResidual(FVMeshDevice mesh, VariablesSimple simple, double* res) 
 
 }
 
-double residualScaleSum(ConfigResidual& cfg, int N) {
+void residualAllHost(
+	std::unordered_map<std::string, ConfigResidual>& cfgs,
+	int N,
+	int scaleIteration,
+	const MemoryConfig& mem,
+	cudaStream_t stream,
+	double* tmpA,
+	double* tmpB
+) {
 
-	std::vector<double> h_vec(N);
-
-	cudaMemcpy(h_vec.data(), cfg.scale, N * sizeof(double), cudaMemcpyDeviceToHost);
-
-	double sum = 0.0;
-
-	for (double& x : h_vec) {
-		sum += std::abs(x);
-	}
-
-	return sum;
-
-}
-
-void residualL1Host(ConfigResidual& cfg, int N) {
-
-	std::vector<double> h_vec(N);
-
-	cudaMemcpy(h_vec.data(), cfg.res, N * sizeof(double), cudaMemcpyDeviceToHost);
-
-	double sum = 0.0;
-
-	for (double& x : h_vec) {
-		sum += std::abs(x);
-	}
-
-	cfg.resVal = sum;
-}
-
-
-void residualL2Host(ConfigResidual& cfg, int N) {
-
-	std::vector<double> h_vec(N);
-
-	cudaMemcpy(h_vec.data(), cfg.res, N * sizeof(double), cudaMemcpyDeviceToHost);
-
-	double sum = 0.0;
-
-	for (double& x : h_vec) {
-		sum += x * x;
-	}
-
-	cfg.resVal = sqrt(sum);
-}
-
-
-void residualLInfHost(ConfigResidual& cfg, int N) {
-
-	std::vector<double> h_vec(N);
-
-	cudaMemcpy(h_vec.data(), cfg.res, N * sizeof(double), cudaMemcpyDeviceToHost);
-
-	for (double& x : h_vec) {
-		x = std::abs(x);
-	}
-
-	cfg.resVal = *std::max_element(h_vec.begin(), h_vec.end());
-}
-
-
-void residualAllHost(std::unordered_map<std::string, ConfigResidual>& cfgs, int N, int scaleIteration) {
+	auto reduce = [&](const double* in, double* store, ReductionMethod method,
+		ReductionOp op = ReductionOp::SUM) {
+		reduction(N, mem, stream, tmpA, tmpB, in, store, method, op);
+	};
 
 	for (auto& [name, cfg] : cfgs) {
-		if (cfg.enabled) {
+		if (!cfg.enabled) continue;
 
-			// treat continuity equation differently
-			if (name == "Continuity") {
-				residualL1Host(cfg, N);
-				if (scaleIteration < 5) {
-					cfg.scaleVal = std::max(cfg.resVal, 0.0);
-				}
-
-				// A step whose imbalance is already zero at capture would divide by
-				// zero here. The non-continuity path below guards the same case.
-				if (cfg.scaleVal == 0.0) continue;
-
-				cfg.resVal /= cfg.scaleVal;
-				continue;
-			}
-
+		// treat continuity equation differently
+		if (name == "Continuity") {
+			reduce(cfg.res, cfg.resVal, ReductionMethod::ABSOLUTE);
+		}
+		else {
 			// reduce the per-cell residual vector (cfg.res) to a single value
 			switch (cfg.normType) {
 
-			case ResidualNormType::RESIDUAL_L1:   residualL1Host(cfg, N);   break;
-			case ResidualNormType::RESIDUAL_L2:   residualL2Host(cfg, N);   break;
-			case ResidualNormType::RESIDUAL_LINF: residualLInfHost(cfg, N); break;
+			case ResidualNormType::RESIDUAL_L1:   reduce(cfg.res, cfg.resVal, ReductionMethod::ABSOLUTE);					break;
+			case ResidualNormType::RESIDUAL_L2:   reduce(cfg.res, cfg.resVal, ReductionMethod::SQUARED);					break;
+			case ResidualNormType::RESIDUAL_LINF: reduce(cfg.res, cfg.resVal, ReductionMethod::ABSOLUTE, ReductionOp::MAX);	break;
 			}
 
 			// scale the residual
 			switch (cfg.scaleType) {
 
-			case ResidualScalingType::RESIDUAL_SCALING_NONE:     cfg.scaleVal = 1.0;						break;
-			case ResidualScalingType::RESIDUAL_SCALING_N:        cfg.scaleVal = N;						break;
-			case ResidualScalingType::RESIDUAL_SCALING_SQRT_N:   cfg.scaleVal = sqrt((double)N);			break;
-			case ResidualScalingType::RESIDUAL_SCALING_DIAGONAL: cfg.scaleVal = residualScaleSum(cfg, N);break;
+			case ResidualScalingType::RESIDUAL_SCALING_NONE:     *cfg.scaleVal = 1.0;										break;
+			case ResidualScalingType::RESIDUAL_SCALING_N:        *cfg.scaleVal = N;											break;
+			case ResidualScalingType::RESIDUAL_SCALING_SQRT_N:   *cfg.scaleVal = sqrt((double)N);							break;
+			case ResidualScalingType::RESIDUAL_SCALING_DIAGONAL: reduce(cfg.scale, cfg.scaleVal, ReductionMethod::ABSOLUTE);	break;
 			}
-
-			if (cfg.scaleVal == 0.0) continue;
-
-			cfg.resVal /= cfg.scaleVal;
 		}
+	}
+
+	CUDA_CHECK(cudaStreamSynchronize(stream));
+
+
+	for (auto& [name, cfg] : cfgs) {
+
+		// A scale of zero -- an imbalance already zero at capture, or a diagonal that
+		// summed to nothing -- would divide by zero here.
+		if (name == "Continuity" && scaleIteration < 5) {
+			*cfg.scaleVal = std::max(*cfg.resVal, 0.0);
+		}
+
+		if (*cfg.scaleVal == 0.0) continue;
+
+		// L2 finishes here rather than next to its reduction: the sum of squares
+		// is only readable on the host once the stream has drained.
+		if (cfg.normType == ResidualNormType::RESIDUAL_L2) {
+			*cfg.resVal = sqrt(*cfg.resVal);
+		}
+
+		*cfg.resVal /= *cfg.scaleVal;
 	}
 }

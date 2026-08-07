@@ -3,6 +3,7 @@
 #include "device_launch_parameters.h"
 #include "solver_struct.h"
 #include "boundary_struct.h"
+#include "solver_util.cuh"
 
 struct ResidualPairs {
 	Coefficients coeff;
@@ -90,7 +91,8 @@ void residualAll(bool sign, Systems...systems) {
 }
 
 // reduce a field's per-cell residual vector (cfg.res) to a single value (cfg.resVal).
-// coeff supplies the cell count N used for the norm/scaling.
+// N is the cell count used for the norm/scaling; tmpA/tmpB are reduction scratch and
+// must hold at least ceil(N / mem.threadsPerBlock) doubles each.
 //
 // scaleIteration drives the continuity normalization ONLY: the scale is captured
 // while it is < 5, and every later residual is divided by it. It therefore has to
@@ -99,4 +101,12 @@ void residualAll(bool sign, Systems...systems) {
 // starts with a fresh imbalance from the unsteady term. Passing a run-global count
 // in a transient solve pins the scale to the first step's startup and makes the
 // reported continuity residual meaningless from step 2 on.
-void residualAllHost(std::unordered_map<std::string, ConfigResidual>& cfgs, int N, int scaleIteration);
+void residualAllHost(
+	std::unordered_map<std::string, ConfigResidual>& cfgs,
+	int N,
+	int scaleIteration,
+	const MemoryConfig& mem,
+	cudaStream_t stream,
+	double* tmpA,
+	double* tmpB
+);

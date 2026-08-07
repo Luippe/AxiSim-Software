@@ -5,6 +5,8 @@
 #include "solver_struct.h"
 #include "boundary_struct.h"
 
+#include "cuda_graph_manager.cuh"
+
 
 // ---------------------------------------------------------------------------
 // One level of the hierarchy, described purely as a cell/face graph.
@@ -140,7 +142,7 @@ public:
 	// per-cycle ratio near 1.0 on a large mesh does NOT mean the operator or a
 	// transfer broke. A mesh-independent V-cycle needs smoothed aggregation
 	// (P <- (I - w D^-1 A) P) or Krylov acceleration wrapped around the cycle.
-	void run(cudaStream_t& stream);
+	void run();
 
 	// One line per level: cell count, average graph degree and the coarsening
 	// ratio. Host-side only and cheap -- meant to be logged once after
@@ -156,6 +158,7 @@ private:
 	// caller uses only the constructor, prepare(), run() and describeHierarchy().
 	std::vector<MultigridLevel> levels;
 
+	CudaGraph graph;
 	ConfigMultigrid& cfg;
 	MemoryConfig& mem;
 
@@ -164,14 +167,6 @@ private:
 	// by mem.init() from the FINE mesh, so mem.blocks would under-cover every coarse
 	// launch and silently leave tail cells un-updated.
 	int blocksFor(int n) const { return (n + mem.threadsPerBlock - 1) / mem.threadsPerBlock; }
-
-	// One executable graph owns a complete run(): copy the current fine system
-	// into level 0, rebuild all coarse operators, perform every configured
-	// V-cycle, then copy the live level-0 vector back to the caller. prepare()
-	// captures, instantiates and uploads it before the SIMPLE loop; run() only
-	// replays it for the rest of this MultigridSolver's lifetime.
-	cudaGraph_t runGraph = nullptr;
-	cudaGraphExec_t runGraphExec = nullptr;
 
 	// Kernel arguments and memcpy endpoints are snapshotted during capture. The
 	// numbers stored in those allocations may change freely, but a new allocation
@@ -232,7 +227,6 @@ private:
 
 	void captureRunGraph(Coefficients& coeff, cudaStream_t& stream, double* x);
 	bool runGraphMatches(const Coefficients& coeff, const double* x, cudaStream_t stream) const;
-	void destroyRunGraph();
 
 	// Build the next coarser level from `fine`, and fill fine's cellToCoarse /
 	// fineSlotToCoarseSlot describing the link down to it. NOT const: coarsening

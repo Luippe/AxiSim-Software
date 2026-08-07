@@ -262,14 +262,15 @@ struct ConfigResidual {
 	// residuals
 	double* res = nullptr;
 	double* scale = nullptr;
-	double resVal = 0.0;
-	double scaleVal = 0.0;
+	double* resVal = nullptr;
+	double* scaleVal = nullptr;
 
 	// tolerance
 	double tol = 0.001;
 
 	void free() {
 		freeAllDev(res, scale);
+		freeAllHost(resVal, scaleVal);
 	}
 
 };
@@ -546,3 +547,19 @@ struct BoundaryFieldHost {
 };
 
 
+// Element transform applied on load by the block reduction, before anything is
+// combined. Applies to the FIRST pass only -- see reduction() in solver_util.cuh.
+enum class ReductionMethod {
+	NONE,
+	ABSOLUTE,
+	SQUARED
+};
+
+// How the block reduction combines the transformed values. Unlike the transform
+// above, this holds for EVERY pass of the tree: a max of partial maxima is still
+// the max, but a max of partial sums is meaningless. ABSOLUTE + MAX is the L-Inf
+// norm, which is why it no longer needs a host-side pass.
+enum class ReductionOp {
+	SUM,
+	MAX
+};

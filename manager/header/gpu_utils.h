@@ -10,6 +10,7 @@
   } \
 } while(0)
 
+
 template<typename T>
 T* deviceAlloc(size_t count) {
 	T* ptr = nullptr;

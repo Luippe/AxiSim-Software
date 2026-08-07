@@ -3,9 +3,6 @@
 #include "solver_struct.h"
 #include "boundary_struct.h"
 
-// reduction kernel
-void reduction(int N, int threadsPerBlock, size_t shmem, cudaStream_t stream, double* tmpA, double* tmpB, double* in, double* store);
-
 // ======================================================================
 // Inline face helpers
 //
@@ -21,6 +18,40 @@ void reduction(int N, int threadsPerBlock, size_t shmem, cudaStream_t stream, do
 // the call site and the stack frame goes away. Keep new hot-loop helpers here
 // for the same reason; anything called once per cell can stay in the .cu.
 // ======================================================================
+
+// ==============================================================
+// ====================TREE REDUCTION============================
+// ==============================================================
+
+// ReductionMethod lives in solver_struct.h, next to the residual norm/scaling enums.
+
+// Reduce `in` (N elements) to one value in `store`, using tmpA/tmpB as ping-pong
+// scratch. Each must hold at least ceil(N / mem.threadsPerBlock) doubles.
+//
+// The final kernel writes `store` directly from the device, so `store` must be
+// device-accessible -- device memory or pinned host memory (cudaMallocHost). A
+// plain host double will fault. Everything is enqueued on `stream`; the caller
+// must synchronize before reading `store`.
+//
+// `method` applies to the FIRST pass only. Every later pass consumes partials, and
+// the transforms do not survive that: a sum of squares squared again is not a sum
+// of squares. So the transform degrades to NONE after the first launch.
+//
+// `op` is the opposite -- it holds for every pass, since the tree is only correct
+// if each level combines the one below it the same way. ABSOLUTE + MAX gives the
+// L-Inf norm; SUM (the default) gives every other norm the residuals use.
+void reduction(
+	int N,
+	const MemoryConfig& mem,
+	cudaStream_t stream,
+	double* tmpA,
+	double* tmpB,
+	const double* in,
+	double* store,
+	ReductionMethod method,
+	ReductionOp op = ReductionOp::SUM
+);
+
 
 __device__ __forceinline__
 void getOutwardNormalForCell(
@@ -56,10 +87,9 @@ double getDistanceCellToCell(
 	double dz = zN - zP;
 	double dr = rN - rP;
 
-	double proj = fabs(dz * normalZ + dr * normalR); // over-relaxed projected distance
 	double full = sqrt(dz * dz + dr * dr);           // true centroid separation
 
-	return proj;
+	return full;
 }
 
 __device__ __forceinline__
@@ -350,36 +380,654 @@ double interpolateFieldToFace(
 	return phiP;
 }
 
-// computational helper functions
-__device__
-void phiGradientGreenGauss(
-	int cellID,
-	FVMeshDevice mesh,
-	BoundaryFieldDevice bc,
-	const double* phi,
-	double& gradZ,
-	double& gradR
-);
+// ======================================================================
+// Computational helpers, moved here from solver_util.cu
+//
+// Same reason as the block above. Under CUDA_SEPARABLE_COMPILATION each of
+// these compiled to a standalone ABI function: every call marshalled its
+// by-value structs through local memory, paid a callee-save prologue, and
+// blocked the compiler from hoisting the repeated mesh.faces.* loads across
+// the call boundary. `cuobjdump -res-usage` and ptxas -v showed all eleven
+// carrying a 32-byte frame with 32 bytes of save/restore traffic each.
+//
+// Same rule as above applies to anything added here: hot-loop helpers taking
+// the big structs by const reference. Anything called once per cell can stay
+// in the .cu.
+// ======================================================================
 
-__device__
-void phiGradientLeastSquare(
+// find value of varaible at the adjacent cell. also finds coord, the coordinate of the cell
+__device__ __forceinline__
+double phiAtSide(
 	int cellID,
-	FVMeshDevice mesh,
-	BoundaryFieldDevice bc,
+	int faceID,
+	const FVMeshDevice& mesh,
+	const BoundaryFieldDevice& phiBC,
 	const double* phi,
-	double& gradZ,
-	double& gradR
-);
+	bool useZCoord,
+	double& coord
+) {
+	int owner = mesh.faces.owner[faceID];
+	int neighbor = mesh.faces.neighbor[faceID];
 
-__device__
+	if (neighbor >= 0) {
+		int nb = (owner == cellID) ? neighbor : owner;
+
+		coord = useZCoord
+			? mesh.cells.centerZ[nb]
+			: mesh.cells.centerR[nb];
+
+		return phi[nb];
+	}
+
+	coord = useZCoord
+		? mesh.faces.centerZ[faceID]
+		: mesh.faces.centerR[faceID];
+
+	return interpolateFieldToFace(
+		cellID,
+		faceID,
+		mesh,
+		phiBC,
+		phi
+	);
+}
+
+__device__ __forceinline__
+double getCellToCellDotNorm(
+	const FVMeshDevice& mesh,
+	int cellID,
+	int nb,
+	double normalZ,
+	double normalR
+) {
+	double dz = mesh.cells.centerZ[nb] - mesh.cells.centerZ[cellID];
+	double dr = mesh.cells.centerR[nb] - mesh.cells.centerR[cellID];
+
+	double len = sqrt(dz * dz + dr * dr);
+	if (len <= 1.0e-30) return 0.0;
+
+	return (normalZ * dz + normalR * dr) / len;	// cos(theta) = n . d / |d|  (n is unit)
+}
+
+__device__ __forceinline__
+double getCellToFaceDotNorm(
+	const FVMeshDevice& mesh,
+	int cellID,
+	int nb,
+	double normalZ,
+	double normalR
+) {
+	double dz = mesh.faces.centerZ[nb] - mesh.cells.centerZ[cellID];
+	double dr = mesh.faces.centerR[nb] - mesh.cells.centerR[cellID];
+
+	double len = sqrt(dz * dz + dr * dr);
+	if (len <= 1.0e-30) return 0.0;
+
+	return (normalZ * dz + normalR * dr) / len;	// cos(theta) = n . d / |d|
+}
+
+__device__ __forceinline__
 double nonOrthoScalarDiffusionFlux(
 	int cellID,
 	int faceID,
-	FVMeshDevice mesh,
+	const FVMeshDevice& mesh,
 	const double* gradPhiZ,
 	const double* gradPhiR,
 	double gamma
-);
+) {
+	int owner = mesh.faces.owner[faceID];
+	int neighbor = mesh.faces.neighbor[faceID];
+
+	if (neighbor < 0 || !gradPhiZ || !gradPhiR) {
+		return 0.0;
+	}
+
+	int nb = (owner == cellID) ? neighbor : owner;
+
+	double normalZ, normalR;
+	getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
+
+	double area = mesh.faces.area[faceID];
+
+	// check if cell-cell or cell-face has greater non-orthogonality. fix the one that has the most non-orthogonality
+	double ndCellCell = getCellToCellDotNorm(mesh, cellID, nb, normalZ, normalR);
+
+	double dz = mesh.cells.centerZ[nb] - mesh.cells.centerZ[cellID];
+	double dr = mesh.cells.centerR[nb] - mesh.cells.centerR[cellID];
+	double dOrth = getDistanceCellToCell(mesh, cellID, nb, normalZ, normalR);
+
+
+
+	if (dOrth <= 1.0e-30) {
+		return 0.0;
+	}
+
+	//double signedDOrth = (nd < 0.0) ? -dOrth : dOrth;
+	double aOverNd = area / dOrth;
+	double Tz = area * normalZ - aOverNd * dz;
+	double Tr = area * normalR - aOverNd * dr;
+
+	// Face gradient from the precomputed cell-centered gradients (built once
+	// per iteration with the user-selected scheme), distance-weighted to the
+	// face. The closer cell gets more weight (same convention as
+	// interpolateFieldToFace), staying second-order on stretched cells where a
+	// plain average would not. Symmetric under owner<->neighbor swap, so the
+	// pressure-correction RHS and the mass-flux correction stay consistent.
+	double dPF = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
+	double dNF = getDistanceCellToFace(mesh, nb,     faceID, normalZ, normalR);
+	double denom = dPF + dNF;
+
+	double gradFaceZ, gradFaceR;
+	if (denom <= 1.0e-30) {
+		gradFaceZ = 0.5 * (gradPhiZ[cellID] + gradPhiZ[nb]);
+		gradFaceR = 0.5 * (gradPhiR[cellID] + gradPhiR[nb]);
+	}
+	else {
+		gradFaceZ = (dNF * gradPhiZ[cellID] + dPF * gradPhiZ[nb]) / denom;
+		gradFaceR = (dNF * gradPhiR[cellID] + dPF * gradPhiR[nb]) / denom;
+	}
+
+	return gamma * (Tz * gradFaceZ + Tr * gradFaceR);
+}
+
+__device__ __forceinline__
+int findFaceOnSide(
+	const FVMeshDevice& mesh,
+	int cellID,
+	double targetZ,
+	double targetR
+) {
+	int start = mesh.cells.faceStart[cellID];
+	int end = mesh.cells.faceStart[cellID + 1];
+
+	for (int k = start; k < end; k++) {
+		int faceID = mesh.cells.faceIDs[k];
+
+		double normalZ, normalR;
+		getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
+
+		double dot = normalZ * targetZ + normalR * targetR;
+
+		if (dot > 0.9) {	// WARNING may have to calibrate if faces are not perfectly aligned
+			return faceID;
+		}
+	}
+
+	return -1;
+}
+
+__device__ __forceinline__
+void phiGradientGreenGauss(
+	int cellID,
+	const FVMeshDevice& mesh,
+	const BoundaryFieldDevice& bc,
+	const double* phi,
+	double& gradZ,
+	double& gradR
+) {
+	// Accumulate in locals, not through gradZ/gradR. Those are references to global memory
+	// (computeGradient binds them to gradZ[n]/gradR[n]), and since phi and the gradient
+	// arrays are unqualified double* the compiler must assume they alias -- so it cannot
+	// hold the running sum in a register and every += below compiles to a global
+	// load-modify-store, per face. Locals stay in registers and commit once at the end.
+	double gz = 0.0;
+	double gr = 0.0;
+
+	// The stored face areas and cell volumes are the *revolved* (axisymmetric)
+	// metrics: area = 2*pi*rf*L2D and volume = 2*pi*rc*A2D. Green-Gauss for the
+	// meridional-plane gradient (d/dz, d/dr) is a purely 2D operation, so it must
+	// use the planar face length L2D and cell area A2D -- feeding the revolved
+	// area/volume in directly biases the radial gradient (a constant field would
+	// give grad_r = c/rc, worst near the axis). Recover the planar metrics from
+	// the revolved ones: L2D = area/(2*pi*rf), A2D = volume/(2*pi*rc).
+	double volume = mesh.cells.volume[cellID];
+	double rc = mesh.cells.centerR[cellID];
+	if (volume <= 1.0e-30 || rc <= 1.0e-30) {
+		gradZ = 0.0;
+		gradR = 0.0;
+		return;
+	}
+
+	constexpr double twoPi = 6.28318530717958647692;
+
+	int start = mesh.cells.faceStart[cellID];
+	int end = mesh.cells.faceStart[cellID + 1];
+
+	// A face lying on the axis has rf = 0 (revolved area = 0), so its L2D cannot be
+	// recovered by the area/(2*pi*rf) division. Instead use the fact that the cell's
+	// 2D face polygon closes -- sum(n * L2D) = 0 -- so the axis face's (n * L2D)
+	// equals minus the running sum over all the other faces. A cell touches the
+	// axis on at most one face.
+	double closureZ = 0.0;
+	double closureR = 0.0;
+
+	bool hasAxisFace = false;
+	double axisPhiF = 0.0;
+
+	for (int k = start; k < end; k++) {
+		int faceID = mesh.cells.faceIDs[k];
+
+		double normalZ = 0.0;
+		double normalR = 0.0;
+		getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
+
+		double phiF = interpolateFieldToFace(
+			cellID,
+			faceID,
+			mesh,
+			bc,
+			phi
+		);
+
+		double rf = mesh.faces.centerR[faceID];
+
+		if (rf > 1.0e-30) {
+			double length2D = mesh.faces.area[faceID] / (twoPi * rf);
+
+			gz += phiF * normalZ * length2D;
+			gr += phiF * normalR * length2D;
+
+			closureZ += normalZ * length2D;
+			closureR += normalR * length2D;
+		}
+		else {
+			// axis face: resolve its n * L2D from polygon closure below
+			hasAxisFace = true;
+			axisPhiF = phiF;
+		}
+	}
+
+	if (hasAxisFace) {
+		// n_axis * L2D_axis = -(sum over the other faces)
+		gz += axisPhiF * (-closureZ);
+		gr += axisPhiF * (-closureR);
+	}
+
+	// divide by the planar cell area A2D = volume / (2*pi*rc)
+	double invA2D = twoPi * rc / volume;
+	gradZ = gz * invA2D;
+	gradR = gr * invA2D;
+}
+
+__device__ __forceinline__
+void phiGradientLeastSquare(
+	int cellID,
+	const FVMeshDevice& mesh,
+	const BoundaryFieldDevice& bc,
+	const double* phi,
+	double& gradZ,
+	double& gradR
+) {
+
+	gradZ = 0.0;
+	gradR = 0.0;
+
+	double zP = mesh.cells.centerZ[cellID];
+	double rP = mesh.cells.centerR[cellID];
+	double phiP = phi[cellID];
+
+	// weighted least-squares normal equations:  M * grad = rhs
+	double Szz = 0.0, Szr = 0.0, Srr = 0.0;
+	double bz = 0.0, br = 0.0;
+
+	int start = mesh.cells.faceStart[cellID];
+	int end = mesh.cells.faceStart[cellID + 1];
+
+	for (int k = start; k < end; k++) {
+		int faceID = mesh.cells.faceIDs[k];
+
+		int owner = mesh.faces.owner[faceID];
+		int neighbor = mesh.faces.neighbor[faceID];
+
+		double dz, dr, dphi;
+
+		if (neighbor >= 0) {
+			int nb = (owner == cellID) ? neighbor : owner;
+			dz = mesh.cells.centerZ[nb] - zP;
+			dr = mesh.cells.centerR[nb] - rP;
+			dphi = phi[nb] - phiP;
+		}
+		else {
+			// boundary face: sample the BC value at the face center. For a
+			// zero-gradient (e.g. symmetry) pressure face this gives dphi = 0
+			// along the face direction, so LSQ respects symmetry directly.
+			double phiF = interpolateFieldToFace(cellID, faceID, mesh, bc, phi);
+			dz = mesh.faces.centerZ[faceID] - zP;
+			dr = mesh.faces.centerR[faceID] - rP;
+			dphi = phiF - phiP;
+		}
+
+		double d2 = dz * dz + dr * dr;
+		if (d2 <= 1.0e-30) continue;
+
+		double w = 1.0 / d2; // inverse-distance-squared weighting
+
+		Szz += w * dz * dz;
+		Szr += w * dz * dr;
+		Srr += w * dr * dr;
+		bz += w * dz * dphi;
+		br += w * dr * dphi;
+	}
+
+	double det = Szz * Srr - Szr * Szr;
+
+	if (fabs(det) <= 1.0e-30) return;
+
+	gradZ = (Srr * bz - Szr * br) / det;
+	gradR = (-Szr * bz + Szz * br) / det;
+}
+
+__device__ __forceinline__
+double rhieChowNormalVelocityToFace(
+	int cellID,
+	int faceID,
+	const FVMeshDevice& mesh,
+	const VariablesSimple& simple,
+	const BoundarySolverDevice& bc
+) {
+	int owner = mesh.faces.owner[faceID];
+	int neighbor = mesh.faces.neighbor[faceID];
+
+	double normalZ = 0.0;
+	double normalR = 0.0;
+
+	getOutwardNormalForCell(
+		mesh,
+		cellID,
+		faceID,
+		normalZ,
+		normalR
+	);
+
+	// Linear/interpolated face velocity
+	double uFace = interpolateFieldToFace(
+		cellID,
+		faceID,
+		mesh,
+		bc.u,
+		simple.u
+	);
+
+	double vFace = interpolateFieldToFace(
+		cellID,
+		faceID,
+		mesh,
+		bc.v,
+		simple.v
+	);
+
+	double unLinear = uFace * normalZ + vFace * normalR;
+
+	// ---------------- boundary face ----------------
+	if (neighbor < 0) {
+		// Only a fixed-pressure boundary (pressure outlet) couples its face flux
+		// to the pressure field. Every other boundary type carries zero-gradient
+		// p and has its flux set by the velocity BC alone; adding a pressure term
+		// there would inject a flux the p' equation never accounts for, since
+		// createPPCoeff and updateMassFlux both skip non-Dirichlet p faces.
+		//
+		// Without this branch the outlet flux was rho*A*u_P.n, so the prescribed
+		// p_b reached the solution only through the momentum body force. That
+		// left the two halves of SIMPLE inconsistent: the p' equation already
+		// assembles d(mDot_b)/d(p_P) = +rho*A*Df/dPB for this face (the exact
+		// sensitivity the term below produces), while the flux it corrects had
+		// no pressure dependence at all. A case driven purely by a pressure
+		// difference therefore never felt the outlet pressure.
+		int groupID = mesh.faces.boundaryGroupID[faceID];
+
+		if (groupID < 0 || groupID >= bc.p.nGroups) {
+			return unLinear;
+		}
+
+		if (!isDirichletType(bc.p.typeByGroup[groupID])) {
+			return unLinear;
+		}
+
+		double dPB = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
+
+		if (dPB <= 1.0e-30) {
+			return unLinear;
+		}
+
+		// Same Rhie-Chow form as the interior face below, with the neighbour cell
+		// replaced by the boundary face: compact pressure difference across
+		// P -> b, minus the smooth cell-centred gradient. There is no second cell
+		// to interpolate that gradient with, so P's own value is used directly.
+		//
+		// The two gradients cancel to leading order for a smooth pressure field,
+		// so this reduces to unLinear once p_P sits where the prescribed p_b
+		// implies -- including on a cold start, where p = 0 everywhere but
+		// grad(p) already carries p_b through interpolateFieldToFace.
+		double DfB = interpolateNormalCorrectionCoeffToFace(
+			cellID,
+			faceID,
+			mesh,
+			simple
+		);
+
+		double gradPCompact = (bc.p.valueByGroup[groupID] - simple.p[cellID]) / dPB;
+
+		double gradPCellNormal =
+			simple.gradPZ[cellID] * normalZ +
+			simple.gradPR[cellID] * normalR;
+
+		return unLinear - DfB * (gradPCompact - gradPCellNormal);
+	}
+
+	int nb = (owner == cellID) ? neighbor : owner;
+
+	double dPN = getDistanceCellToCell(mesh, cellID, nb, normalZ, normalR);
+
+	if (dPN <= 1.0e-30) {
+		return unLinear;
+	}
+
+	double pP = simple.p[cellID];
+	double pN = simple.p[nb];
+
+	// Direct pressure gradient between cell centers
+	double gradPN = (pN - pP) / dPN;
+
+	// Interpolate precomputed Green-Gauss pressure gradients to the face
+	double dPF = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
+	double dNF = getDistanceCellToFace(mesh, nb,	 faceID, normalZ, normalR);
+
+	double denom = dPF + dNF;
+
+	double gradPzF = 0.5 * (simple.gradPZ[cellID] + simple.gradPZ[nb]);
+	double gradPrF = 0.5 * (simple.gradPR[cellID] + simple.gradPR[nb]);
+
+	if (denom > 1.0e-30) {
+		gradPzF =
+			(dNF * simple.gradPZ[cellID] + dPF * simple.gradPZ[nb]) / denom;
+
+		gradPrF =
+			(dNF * simple.gradPR[cellID] + dPF * simple.gradPR[nb]) / denom;
+	}
+
+	double gradPFaceNormal =
+		gradPzF * normalZ +
+		gradPrF * normalR;
+
+	double Df = interpolateNormalCorrectionCoeffToFace(
+		cellID,
+		faceID,
+		mesh,
+		simple
+	);
+
+	double unRC = unLinear - Df * (gradPN - gradPFaceNormal);
+
+	return unRC;
+}
+
+__device__ __forceinline__
+double faceValue(double phiC, double phiF, double dFf, double dFC) {
+	double gC = dFf / dFC;
+	return phiC * gC + (1 - gC) * phiF;
+}
+
+// Higher-order face value for the deferred correction. Returns the first-order
+// upwind value itself when the scheme is upwind or the data it needs is missing,
+// which makes the correction below vanish.
+__device__ __forceinline__
+double higherOrderFaceValue(
+	int n,
+	int nb,
+	int faceID,
+	const FVMeshDevice& mesh,
+	const BoundaryFieldDevice& fieldBC,
+	const double* phi,
+	const double* gradPhiZ,
+	const double* gradPhiR,
+	ConvectionScheme scheme,
+	double F,
+	double phiUD
+) {
+	switch (scheme) {
+	case ConvectionScheme::CONV_CENTRAL:
+		// central difference is second order
+		// oscillatory above cell Peclet ~2 regardless of the face value's range
+		return interpolateFieldToFace(n, faceID, mesh, fieldBC, phi);
+
+	case ConvectionScheme::CONV_SECOND_ORDER_UPWIND: {
+
+		// Second-order (linear) upwind extrapolate from the UPWIND cell along the vector to
+		// the face using that cell's gradient.
+		//
+		// phi_f = phi_U + grad(phi)_U . (r_f - r_U)
+
+		int up = (F > 0.0) ? n : nb;
+
+		double dz = mesh.faces.centerZ[faceID] - mesh.cells.centerZ[up];
+		double dr = mesh.faces.centerR[faceID] - mesh.cells.centerR[up];
+
+		double phiHO = phi[up] + gradPhiZ[up] * dz + gradPhiR[up] * dr;
+
+		// Clipping reduces the scheme to upwind at local extrema, which is what makes it bounded.
+		double lo = fmin(phi[n], phi[nb]);
+		double hi = fmax(phi[n], phi[nb]);
+
+		return fmin(fmax(phiHO, lo), hi);
+	}
+
+	default:
+		return phiUD;
+	}
+}
+
+__device__ __forceinline__
+void addConvectionContribution(
+	int n,
+	int nb,
+	int faceID,
+	const FVMeshDevice& mesh,
+	double F,
+	bool isBoundary,
+	int groupID,
+	const Coefficients& coeff,
+	const BoundaryFieldDevice& fieldBC,
+	const double* phi,
+	const double* gradPhiZ,
+	const double* gradPhiR,
+	ConvectionScheme scheme
+) {
+	// ------------------------------------------------------------
+	// Interior face
+	// ------------------------------------------------------------
+	if (!isBoundary) {
+
+		// First-order upwind:
+		//
+		// F > 0: flow leaves current cell, phi_f = phi_P
+		// F < 0: flow enters current cell, phi_f = phi_N
+		coeff.AC[n] += fmax(F, 0.0);
+
+		double aNb = fmin(F, 0.0);
+
+		addNeighborCoeff(n,	nb,	mesh, aNb, coeff);
+
+		// ---- deferred higher-order correction ----
+		//
+		// The convection term contributes F*phi_f to the LHS. Split it as
+		//
+		//     F*phi_HO = F*phi_UD + F*(phi_HO - phi_UD)
+		//
+		// and keep only the upwind part implicit. The matrix therefore stays
+		// exactly the first-order upwind operator -- diagonally dominant, positive
+		// off-diagonals, an M-matrix -- which is what Jacobi, Gauss-Seidel and the
+		// multigrid coarse operator all rely on. Assembling central or linear
+		// upwind directly into the matrix would break that and diverge.
+		//
+		// The difference goes to the RHS, lagged one outer iteration. At
+		// convergence phi satisfies the full higher-order scheme.
+		if (scheme != ConvectionScheme::CONV_UPWIND && phi) {
+
+			double phiUD = (F > 0.0) ? phi[n] : phi[nb];
+
+			double phiHO = higherOrderFaceValue(
+				n, nb, faceID, mesh, fieldBC,
+				phi, gradPhiZ, gradPhiR, scheme, F, phiUD
+			);
+
+			coeff.b[n] -= F * (phiHO - phiUD);
+		}
+
+		return;
+	}
+
+	// ------------------------------------------------------------
+	// Boundary face
+	// ------------------------------------------------------------
+	if (groupID < 0 || groupID >= fieldBC.nGroups) {
+		// Default zero-gradient:
+		// phi_f = phi_P
+		coeff.AC[n] += F;
+		return;
+	}
+
+	uint8_t bcType = fieldBC.typeByGroup[groupID];
+	double bcValue = fieldBC.valueByGroup[groupID];
+
+	if (isDirichletType(bcType)) {
+
+		if (F < 0.0) {
+			// Inflow boundary:
+			// convection contribution is F * phi_b.
+			// Move known value to RHS:
+			coeff.b[n] += -F * bcValue;
+		}
+		else {
+			// Outflow boundary:
+			// use current cell value.
+			coeff.AC[n] += F;
+		}
+	}
+	else if (isNeumannType(bcType)) {
+		// zero-gradient:
+		// phi_f = phi_P.
+		coeff.AC[n] += F;
+	}
+	else if (isFullyDevelopedType(bcType)) {
+		// Prescribed parabolic inlet, so the same inflow/outflow split as
+		// Dirichlet above: the profile is only known on the way IN. Reverse flow
+		// out through a velocity inlet happens on a cold start, and the RHS form
+		// would flip the source sign there and leave AC without its outflow
+		// term, costing the row its diagonal dominance.
+		if (F < 0.0) {
+			coeff.b[n] += -F * prescribedBoundaryFaceValue(
+				mesh,
+				faceID,
+				bcType,
+				bcValue,
+				fieldBC.lengthByGroup[groupID]
+			);
+		}
+		else {
+			coeff.AC[n] += F;
+		}
+	}
+}
 
 __global__
 void computeGradient(
@@ -393,9 +1041,6 @@ void computeGradient(
 
 __global__
 void copyVector(double* vec1, double* vec2, int N);
-
-__device__
-double faceValue(double phiC, double phiF, double dFf, double dFC);
 
 __global__ void
 addDiffusionCoefficient(

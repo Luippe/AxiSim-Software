@@ -253,9 +253,13 @@ void allocateResiduals(std::unordered_map<std::string, ConfigResidual>& configRe
 	for (auto& [name, cfg] : configResiduals) {
 		cfg.res = deviceAlloc<double>(N);
 		cfg.scale = deviceAlloc<double>(N);
+		cfg.resVal = deviceAllocHost<double>(1);
+		cfg.scaleVal = deviceAllocHost<double>(1);
 
 		CUDA_CHECK(cudaMemset(cfg.res, 0, N * sizeof(double)));
 		CUDA_CHECK(cudaMemset(cfg.scale, 0, N * sizeof(double)));
+		CUDA_CHECK(cudaMemset(cfg.resVal, 0, sizeof(double)));
+		CUDA_CHECK(cudaMemset(cfg.scaleVal, 0, sizeof(double)));
 	}
 }
 

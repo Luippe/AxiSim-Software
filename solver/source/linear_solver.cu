@@ -2,6 +2,10 @@
 #include "device_launch_parameters.h"
 #include <utility>
 
+// ==============================================================
+// ====================LINEAR SOLVERS============================
+// ==============================================================
+
 __global__
 void jacobi(
 	Coefficients coeff,
@@ -156,7 +160,124 @@ void gaussSeidelColorSweep(
 	x[n] = val / AC;
 }
 
-void solveLinearSystem(
+// ==============================================================
+// ====================LINEAR SOLVER MEMBERS=====================
+// ==============================================================
+LinearSolver::LinearSolver(ConfigSolver& config, MemoryConfig& mem, MeshColoring& coloring) :
+	config(config),
+	mem(mem),
+	coloring(coloring) {
+
+}
+
+LinearSolver::RunGraphKey LinearSolver::currentKey(
+	const Coefficients& coeff,
+	const double* x,
+	cudaStream_t stream
+) const {
+	RunGraphKey key;
+
+	key.stream = stream;
+	key.threadsPerBlock = mem.threadsPerBlock;
+
+	key.AC = coeff.AC;
+	key.AF = coeff.AF;
+	key.b = coeff.b;
+	key.x = x;
+
+	key.colorStart = coloring.colorStart;
+	key.nColors = coloring.nColors;
+
+	key.linearMaxIter = config.linearMaxIter;
+	key.d_cell_order = coloring.d_cellOrder;
+
+	key.faceStart = coeff.faceStart;
+	key.faceNeighbor = coeff.faceNeighbor;
+
+
+
+	return key;
+
+
+}
+
+bool LinearSolver::runGraphMatches(
+	const Coefficients& coeff,
+	const double* x,
+	cudaStream_t stream
+) const {
+
+	return graph.exec != nullptr && runGraphKey == currentKey(coeff, x, stream);
+
+}
+
+void LinearSolver::captureRunGraph(
+	Coefficients& coeff,
+	cudaStream_t& stream,
+	double* x
+) {
+
+	graph.stream = stream;
+
+	graph.beginCapture();
+
+	enqueueGaussSeidel(coeff, stream, x);
+
+	graph.endCapture();
+	graph.instantiate();
+
+	runGraphKey = currentKey(coeff, x, stream);
+
+}
+
+void LinearSolver::enqueueGaussSeidel(
+	Coefficients& coeff,
+	cudaStream_t& stream,
+	double* x
+) {
+
+
+	for (int k = 0; k < config.linearMaxIter; k++) {
+		for (int c = 0; c < coloring.nColors; c++) {
+
+			const int begin = coloring.colorStart[c];
+			const int count = coloring.colorStart[c + 1] - begin;
+
+			if (count <= 0) continue;
+
+			const int colorBlocks = blocksFor(count);
+
+			gaussSeidelColorSweep << <colorBlocks, mem.threadsPerBlock, 0, stream >> > (
+				coeff, x, coloring.d_cellOrder, begin, count);
+		}
+	}
+
+
+
+
+}
+
+
+void LinearSolver::prepare(
+	Coefficients& coeff,
+	cudaStream_t& stream,
+	double* x
+) {
+	if (!runGraphMatches(coeff, x, stream)) {
+		if (graph.exec || graph.graph) {
+			// Synchronize the stream that owns the existing executable before
+			// destroying graph resources which one of its launches may still use.
+			CUDA_CHECK(cudaStreamSynchronize(runGraphKey.stream));
+			graph.destroy();
+		}
+
+		captureRunGraph(coeff, stream, x);
+		graph.upload();
+	}
+}
+
+
+void LinearSolver::solveLinearSystem(
 	Coefficients& coeff,
 	const ConfigSolver& config,
 	cudaStream_t stream,
@@ -225,3 +346,6 @@ void solveLinearSystem(
 	}
 }
 
+void LinearSolver::run() {
+	graph.launch();
+}

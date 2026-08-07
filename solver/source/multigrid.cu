@@ -11,6 +11,7 @@
 
 #include "residuals.cuh"
 
+
 #include "memory_manager.h"
 #include "printer.h"
 
@@ -30,7 +31,7 @@ MultigridSolver::MultigridSolver(ConfigMultigrid& cfg, MemoryConfig& mem, GridLe
 }
 
 MultigridSolver::~MultigridSolver() {
-	destroyRunGraph();
+	graph.destroy();
 
 	for (MultigridLevel& level : levels) {
 		freeMultigridLevel(level);
@@ -848,7 +849,7 @@ bool MultigridSolver::runGraphMatches(
 	cudaStream_t stream
 ) const {
 
-	return runGraphExec != nullptr && runGraphKey == currentKey(coeff, x, stream);
+	return graph.exec != nullptr && runGraphKey == currentKey(coeff, x, stream);
 
 }
 
@@ -866,60 +867,50 @@ void MultigridSolver::prepare(
 	assert(coeff.nFaceRefs == levels[0].grid.nFaceRefs());
 
 	if (!runGraphMatches(coeff, x, stream)) {
-		if (runGraphExec || runGraph) {
+		if (graph.exec || graph.graph) {
 			// Synchronize the stream that owns the existing executable before
 			// destroying graph resources which one of its launches may still use.
 			CUDA_CHECK(cudaStreamSynchronize(runGraphKey.stream));
-			destroyRunGraph();
+			graph.destroy();
 		}
 
 		captureRunGraph(coeff, stream, x);
-		CUDA_CHECK(cudaGraphUpload(runGraphExec, stream));
+		graph.upload();
 	}
 }
 
 void MultigridSolver::captureRunGraph(Coefficients& coeff, cudaStream_t& stream, double* x) {
 
+	// Bind the graph to the stream it is about to be recorded on. Doing it here
+	// rather than in the constructor is what keeps the two from ever disagreeing:
+	// beginCapture, the enqueueRun below, upload, launch and destroy then all name
+	// the same stream by construction. Capturing on one stream while enqueueing to
+	// another records an EMPTY graph and runs the work eagerly instead -- no error,
+	// no diagnostic, just a replay that does nothing.
+	graph.stream = stream;
+
 	// Thread-local mode avoids imposing capture restrictions on unrelated GUI
 	// threads which may also make CUDA/graphics API calls.
-	CUDA_CHECK(cudaStreamBeginCapture(stream, cudaStreamCaptureModeThreadLocal));
+	graph.beginCapture();
 
 	// CUDA work is recorded rather than submitted. Host loops, recursion and the
 	// smoother's std::swap calls still execute here, flattening the complete solve
 	// and fixing the ping-pong address used by every graph node.
 	enqueueRun(coeff, stream, x);
 
-	CUDA_CHECK(cudaStreamEndCapture(stream, &runGraph));
-	CUDA_CHECK(cudaGraphInstantiate(&runGraphExec, runGraph, nullptr, nullptr, 0));
+	graph.endCapture();
+	graph.instantiate();
 
 	runGraphKey = currentKey(coeff, x, stream);
 
 }
 
-void MultigridSolver::destroyRunGraph() {
-
-	// Destroy the executable first: it snapshots nodes from runGraph and both
-	// objects retain device addresses owned by the multigrid levels.
-	if (runGraphExec) {
-		CUDA_CHECK(cudaGraphExecDestroy(runGraphExec));
-		runGraphExec = nullptr;
-	}
-
-	if (runGraph) {
-		CUDA_CHECK(cudaGraphDestroy(runGraph));
-		runGraph = nullptr;
-	}
-
-	runGraphKey = {};
-
-}
-
-void MultigridSolver::run(cudaStream_t& stream) {
+void MultigridSolver::run() {
 
 	// check to make sure the executable and stream matches what was captured
-	assert(runGraphExec != nullptr);
-	assert(runGraphKey.stream == stream);
+	assert(graph.exec != nullptr);
+	assert(runGraphKey.stream == graph.stream);
 
-	CUDA_CHECK(cudaGraphLaunch(runGraphExec, stream));
+	graph.launch();
 
 }

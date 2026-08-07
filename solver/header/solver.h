@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "linear_solver.cuh"
 #include "residual_plot.h"
 
 #include "solver_struct.h"
