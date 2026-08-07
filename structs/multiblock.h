@@ -423,7 +423,7 @@ inline void fitMultiBlockToBox(MultiBlockMesh& m, double L, double R) {
 // toPackedMesh — assemble the multi-block grid into a face-based packed mesh
 // (Step 3/6). Templated on the packed-mesh type so this header stays
 // dependency-free; call it with your FVMeshHostPacked (member names must match:
-// nCells, nFaces, nr, nz, face{Owner,Neighbor,NormalZ,NormalR,CenterZ,CenterR,
+// nCells, nFaces, face{Owner,Neighbor,NormalZ,NormalR,CenterZ,CenterR,
 // Area,BoundaryGroupID}, cell{CenterZ,CenterR,Area2D,Volume,Active,Solid,
 // FaceStart,FaceIDs}).
 //
@@ -480,8 +480,6 @@ inline void toPackedMesh(const MultiBlockMesh& mesh, Packed& out,
                          int defaultBoundaryGroup = -1) {
     const int nCells = mesh.totalCells;
 
-    out.nr = 0;   // no single logical nr x nz for a multi-block mesh; consumers
-    out.nz = 0;   // use the face-based (useFaceCoeffs) solver path.
     out.nCells = nCells;
 
     out.cellCenterZ.assign(nCells, 0.0);

@@ -30,7 +30,6 @@ struct GridConfig {
 	double zBias = 1.0;
 	double rBias = 1.0;
 
-	int N = 0;
 	int n_cell = 0;
 	double A_tot = 0.0;
 

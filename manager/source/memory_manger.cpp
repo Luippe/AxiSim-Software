@@ -387,34 +387,6 @@ void buildMeshColoring(
 	CUDA_CHECK(cudaGetLastError());
 }
 
-void allocateCoefficients(Coefficients& coeff, int nr, int nz) {
-
-	// get N
-	int N = nr * nz;
-	coeff.N = N;
-	coeff.nr = nr;
-	coeff.nz = nz;
-	coeff.nFaceRefs = 0;
-	coeff.useFaceCoeffs = 0;
-
-	coeff.AE = deviceAlloc<double>(N);
-	coeff.AW = deviceAlloc<double>(N);
-	coeff.AN = deviceAlloc<double>(N);
-	coeff.AS = deviceAlloc<double>(N);
-	coeff.AC = deviceAlloc<double>(N);
-	coeff.b = deviceAlloc<double>(N);
-
-	CUDA_CHECK(cudaMemset(coeff.AE, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.AW, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.AN, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.AS, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.AC, 0, N * sizeof(double)));
-	CUDA_CHECK(cudaMemset(coeff.b, 0, N * sizeof(double)));
-
-
-}
-
-
 void allocateCoefficients(std::unordered_map<std::string, Coefficients>& coefficients, const FVMesh& mesh) {
 
 	const int N = mesh.numCells();
@@ -425,13 +397,7 @@ void allocateCoefficients(std::unordered_map<std::string, Coefficients>& coeffic
 	buildCellFaceCSR(mesh, faceStart, faceNeighbor);
 
 	for (auto& [name, coeff] : coefficients) {
-
 		allocateCoefficients(coeff, N, faceStart, faceNeighbor);
-
-		// the face-path allocator zeroes nr/nz; this mesh does have a logical grid
-		// behind it, and the structured kernels still read them
-		coeff.nr = mesh.nr;
-		coeff.nz = mesh.nz;
 	}
 
 }
@@ -443,16 +409,10 @@ void allocateCoefficients(Coefficients& coeff, const FVMesh& mesh) {
 
 	buildCellFaceCSR(mesh, faceStart, faceNeighbor);
 	allocateCoefficients(coeff, mesh.numCells(), faceStart, faceNeighbor);
-
-	coeff.nr = mesh.nr;
-	coeff.nz = mesh.nz;
 }
 
 FVMeshHostPacked packFVMeshForDevice(const FVMesh& mesh) {
 	FVMeshHostPacked h{};
-
-	h.nr = mesh.nr;
-	h.nz = mesh.nz;
 
 	h.nCells = static_cast<int>(mesh.cells.size());
 	h.nFaces = static_cast<int>(mesh.faces.size());
@@ -537,9 +497,6 @@ FVMeshDevice createFVMeshDeviceFromPacked(const FVMeshHostPacked& h) {
 	FVMeshDevice d{};
 
 	// normal scalar values: assign directly
-	d.nr = h.nr;
-	d.nz = h.nz;
-
 	d.cells.nCells = h.nCells;
 	d.faces.nFaces = h.nFaces;
 
@@ -599,7 +556,6 @@ void allocateSimple(
 ) {
 
 	int N = mesh.numCells();
-	config.g.N = N;
 
 	vars.DU = deviceAlloc<double>(N);
 	vars.DV = deviceAlloc<double>(N);
@@ -819,42 +775,23 @@ void copyCoefficients(Coefficients& dst, const Coefficients& src, int N, cudaStr
 	cudaMemcpyAsync(dst.AC, src.AC, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
 	cudaMemcpyAsync(dst.b, src.b, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
 
-	// The two paths keep their off-diagonals in different places. On the face path
-	// (multiblock / unstructured) they live in the CSR array AF and AE/AW/AN/AS are
-	// never written, so copying only the 5-point arrays would hand dst a
-	// DIAGONAL-ONLY operator. That does not fail loudly: AC is populated either
-	// way, so a smoother converges to x = b/AC and the residual still drops.
-	if (src.useFaceCoeffs) {
-
-		if (src.AF && dst.AF && src.nFaceRefs == dst.nFaceRefs) {
-			cudaMemcpyAsync(dst.AF, src.AF, src.nFaceRefs * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-		}
-		else {
-			// loud beats silently wrong, for the reason above
-			printf("copyCoefficients: face-path source but AF not copyable "
-				"(src.nFaceRefs=%d dst.nFaceRefs=%d src.AF=%p dst.AF=%p)\n",
-				src.nFaceRefs, dst.nFaceRefs, (void*)src.AF, (void*)dst.AF);
-		}
-
-		return;
+	// The off-diagonals live in AF. Skipping it hands dst a DIAGONAL-ONLY operator,
+	// which does not fail loudly: AC is populated either way, so a smoother
+	// converges to x = b/AC and the residual still drops. Loud beats silently wrong.
+	if (src.AF && dst.AF && src.nFaceRefs == dst.nFaceRefs) {
+		cudaMemcpyAsync(dst.AF, src.AF, src.nFaceRefs * sizeof(double), cudaMemcpyDeviceToDevice, stream);
 	}
-
-	cudaMemcpyAsync(dst.AE, src.AE, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-	cudaMemcpyAsync(dst.AW, src.AW, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-	cudaMemcpyAsync(dst.AN, src.AN, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-	cudaMemcpyAsync(dst.AS, src.AS, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+	else {
+		printf("copyCoefficients: AF not copyable "
+			"(src.nFaceRefs=%d dst.nFaceRefs=%d src.AF=%p dst.AF=%p)\n",
+			src.nFaceRefs, dst.nFaceRefs, (void*)src.AF, (void*)dst.AF);
+	}
 }
 
-// THE face-path allocator. Both FVMesh overloads above funnel here after
+// THE coefficient allocator. Both FVMesh overloads above funnel here after
 // flattening their mesh with buildCellFaceCSR, and a multigrid coarse level --
 // which has no FVMesh, its connectivity coming from the agglomeration map --
 // hands its CSR in directly.
-//
-// AE/AW/AN/AS are deliberately NOT allocated: nothing on the face path reads them
-// (residualRaw, addNeighborCoeff and the jacobi kernel all take the AF branch,
-// and clearCoefficients null-guards each one), and copyCoefficients skips them
-// when useFaceCoeffs is set. Allocating them anyway cost 4 * 8 * nCells bytes of
-// device memory per field, permanently zero.
 void allocateCoefficients(
 	Coefficients& coeff,
 	int nCells,
@@ -863,9 +800,6 @@ void allocateCoefficients(
 ) {
 
 	coeff.N = nCells;
-	coeff.nr = 0;   // no single logical grid on the face path
-	coeff.nz = 0;
-	coeff.useFaceCoeffs = 1;
 	coeff.nFaceRefs = (int)faceNeighbor.size();
 
 	coeff.AC = deviceAlloc<double>(nCells);

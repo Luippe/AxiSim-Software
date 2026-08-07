@@ -31,45 +31,14 @@ void residualRaw(bool sign, const ResidualPairs& pairs, int n) {
 		scale[n] = Ax;
 	}
 
-	if (coeff.useFaceCoeffs &&
-		coeff.AF &&
-		coeff.faceStart &&
-		coeff.faceNeighbor) {
-		int start = coeff.faceStart[n];
-		int end = coeff.faceStart[n + 1];
+	int start = coeff.faceStart[n];
+	int end = coeff.faceStart[n + 1];
 
-		for (int k = start; k < end; k++) {
-			int nb = coeff.faceNeighbor[k];
-			if (nb >= 0) {
-				Ax += coeff.AF[k] * x[nb];
-			}
+	for (int k = start; k < end; k++) {
+		int nb = coeff.faceNeighbor[k];
+		if (nb >= 0) {
+			Ax += coeff.AF[k] * x[nb];
 		}
-
-		double r = coeff.b[n] - Ax;
-		res[n] = sign ? r : fabs(r);
-		return;
-	}
-
-	int nr = coeff.nr;
-	int nz = coeff.nz;
-
-	int j = n % nz;
-	int i = n / nz;
-
-	if (j < nz - 1) {
-		Ax += coeff.AE[n] * x[n + 1];
-	}
-
-	if (j > 0) {
-		Ax += coeff.AW[n] * x[n - 1];
-	}
-
-	if (i < nr - 1) {
-		Ax += coeff.AN[n] * x[n + nz];
-	}
-
-	if (i > 0) {
-		Ax += coeff.AS[n] * x[n - nz];
 	}
 
 	double r = coeff.b[n] - Ax;

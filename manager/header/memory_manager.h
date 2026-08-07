@@ -21,7 +21,6 @@ void buildCellFaceCSR(const FVMesh& mesh, std::vector<int>& faceStart, std::vect
 
 // allocate memory for coefficient matrix
 void allocateCoefficients(std::unordered_map<std::string, Coefficients>& coefficients, const FVMesh& mesh);
-void allocateCoefficients(Coefficients& coeff, int nr, int nz);
 void allocateCoefficients(Coefficients& coeff, const FVMesh& mesh);
 
 // Face-path allocation for a level that has no FVMesh behind it (a multigrid

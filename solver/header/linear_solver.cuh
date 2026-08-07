@@ -79,12 +79,11 @@ private:
 		// kernels are recorded, not just their arguments, so a change here needs a new
 		// graph rather than a replay with different numbers.
 		LinearSolverType type = LinearSolverType::LINEAR_JACOBI;
-		int useFaceCoeffs = 0;
 		int N = 0;
 		int nCells = 0;
 
 		auto tie() const{
-			return std::tie(AC, b, AF, d_cell_order, stream, threadsPerBlock, linearMaxIter, colorStart, nColors, x, xTemp, faceStart, faceNeighbor, type, useFaceCoeffs, N, nCells);
+			return std::tie(AC, b, AF, d_cell_order, stream, threadsPerBlock, linearMaxIter, colorStart, nColors, x, xTemp, faceStart, faceNeighbor, type, N, nCells);
 		}
 
 		bool operator==(const RunGraphKey& other) const { return tie() == other.tie(); };

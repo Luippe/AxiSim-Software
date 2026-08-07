@@ -193,37 +193,13 @@ void addNeighborCoeff(
 		return;
 	}
 
-	if (coeff.useFaceCoeffs &&
-		coeff.AF &&
-		coeff.faceStart &&
-		coeff.faceNeighbor) {
-		int start = coeff.faceStart[n];
-		int end = coeff.faceStart[n + 1];
+	int start = coeff.faceStart[n];
+	int end = coeff.faceStart[n + 1];
 
-		for (int k = start; k < end; k++) {
-			if (coeff.faceNeighbor[k] == nb) {
-				coeff.AF[k] += aNb;
-				return;
-			}
-		}
-
-		return;
-	}
-
-	int nz = coeff.nz;
-
-	if (nz > 0) {
-		if (nb == n + 1) {
-			coeff.AE[n] += aNb;
-		}
-		else if (nb == n - 1) {
-			coeff.AW[n] += aNb;
-		}
-		else if (nb == n + nz) {
-			coeff.AN[n] += aNb;
-		}
-		else if (nb == n - nz) {
-			coeff.AS[n] += aNb;
+	for (int k = start; k < end; k++) {
+		if (coeff.faceNeighbor[k] == nb) {
+			coeff.AF[k] += aNb;
+			return;
 		}
 	}
 }
@@ -300,10 +276,6 @@ double prescribedBoundaryFaceValue(
 		return bcValue;
 	}
 
-	if (totalLength <= 1.0e-30) {
-		return bcValue;
-	}
-
 	double x = getFaceCenterAlongOrientation(mesh, faceID) / totalLength;
 
 	return bcValue * (1.0 - x * x);
@@ -336,10 +308,6 @@ double interpolateFieldToFace(
 		double dNF = getDistanceCellToFace(mesh, nb, faceID, normalZ, normalR);
 
 		double denom = dPF + dNF;
-
-		if (denom <= 0.0) {
-			return 0.5 * (phiP + phiN);
-		}
 
 		// Linear interpolation to face
 		return (dNF * phiP + dPF * phiN) / denom;
@@ -1134,8 +1102,31 @@ void wallConsumptionDiagnostic(
 	double* diag
 );
 
+
+__device__ __forceinline__
+void clearCoefficients(Coefficients& coeff) {
+
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+	if (n >= coeff.N) return;
+
+	if (coeff.AC) coeff.AC[n] = 0.0;
+	if (coeff.b) coeff.b[n] = 0.0;
+
+	if (coeff.AF && coeff.faceStart) {
+		int start = coeff.faceStart[n];
+		int end = coeff.faceStart[n + 1];
+
+		for (int k = start; k < end; k++) {
+			coeff.AF[k] = 0.0;
+		}
+	}
+}
+
+template <typename...Args>
 __global__
-void clearCoefficients(Coefficients coeff);
+void clearAllCoefficients(Args... args) {
+	(clearCoefficients(args), ...);
+}
 
 __global__
 void underRelaxEquation(

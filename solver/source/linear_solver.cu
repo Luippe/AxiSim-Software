@@ -6,9 +6,6 @@
 // ====================LINEAR SOLVERS============================
 // ==============================================================
 
-// Face path only: every allocateCoefficients that runs sets useFaceCoeffs and
-// allocates AF / faceStart / faceNeighbor, so there is no AE/AW/AN/AS fallback
-// and no structured red/black kernel here. residualRaw keeps those.
 __global__
 void jacobi(
 	Coefficients coeff,
@@ -201,7 +198,6 @@ LinearSolver::RunGraphKey LinearSolver::currentKey(
 	// Switching the GUI from Gauss-Seidel to Jacobi changes which kernels exist in
 	// the graph, not just their arguments.
 	key.type = config.type;
-	key.useFaceCoeffs = coeff.useFaceCoeffs;
 	key.N = coeff.N;
 	key.nCells = coloring.nCells;
 

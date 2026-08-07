@@ -24,15 +24,6 @@
 #include "unit_manager.h"
 #include "boundary_func.h"
 
-#define CUDA_CHECK(x) do { \
-  cudaError_t err = (x); \
-  if (err != cudaSuccess) { \
-    printf("CUDA error %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
-    std::abort(); \
-  } \
-} while(0)
-
-
 void printResidualConsole(int currentIteration, const std::unordered_map<std::string, ConfigResidual>& cfg, Console* console) {
     std::ostringstream line;
 
@@ -82,10 +73,11 @@ bool residualsConverged(const std::unordered_map<std::string, ConfigResidual>& c
 
 void initCoefficients(std::unordered_map<std::string, Coefficients>& coeffs) {
 
+    // No "Continuity" entry: continuity is a residual, not a linear system. Its
+    // residual comes straight off the mass fluxes in continuityResidual.
     coeffs.emplace("U", Coefficients{});
     coeffs.emplace("V", Coefficients{});
     coeffs.emplace("PP", Coefficients{});
-    coeffs.emplace("Continuity", Coefficients{});
     coeffs.emplace("Temperature", Coefficients{});
     coeffs.emplace("Concentration", Coefficients{});
 
@@ -118,7 +110,6 @@ Solver::Solver(Config& config) :
 
     initCoefficients(coeffs);
     initConfigResiduals(cfg);
-    //setDefault();
 }
 
 
@@ -192,10 +183,6 @@ void Solver::requestStop() {
     }
 }
 
-//void Solver::createResidualConfig(int N) {
-//
-//}
-
 void Solver::createSolutions(int N) {
 
     solutions["Axial Velocity"] = SolutionField{ copyDeviceToHostVector(simple.u, N), g.dr, g.dz, BoundaryVariable::UVelocity };
@@ -221,9 +208,7 @@ void Solver::createSolutions(int N) {
         solutions["dC/dr"] = SolutionField{ copyDeviceToHostVector(simple.gradCR, N), g.dr, g.dz, BoundaryVariable::Concentration };
     }
 
-    // per-face mass flux
-    mDotHost = copyDeviceToHostVector(simple.mDot, (size_t)fvMesh.numFaces());
-    
+    // getMassImbalance refreshes mDotHost (the per-face mass flux) on the way in.
     solutions["Continuity"] = SolutionField{
         getMassImbalance(N),
         g.dr,
@@ -315,8 +300,7 @@ std::vector<double> Solver::getMassImbalance(int N) {
 
     mDotHost = copyDeviceToHostVector(simple.mDot, (size_t)fvMesh.numFaces());
 
-    std::vector<double> mContinuity;
-    mContinuity.assign(N, 0.0);
+    std::vector<double> mContinuity((size_t)N, 0.0);
 
     for (int c = 0; c < N && c < (int)fvMesh.cells.size(); c++) {
         const FVCell& cell = fvMesh.cells[c];
@@ -417,8 +401,8 @@ namespace {
             // run on `stream`, which is cudaStreamNonBlocking -- so the null-stream
             // copy below does NOT wait for them. Without this sync the new boundary
             // value can land while the tail of the previous step is still reading
-            // the old one. Same hazard the residual read guards against further
-            // down; see the cudaStreamSynchronize before residualAllHost.
+            // the old one. Same hazard residualAllHost guards against with its own
+            // stream sync before reading cfg.res.
             //
             // Sync sits inside the hasPulsatile branch so a run with no pulsatile
             // BC pays nothing for it.
@@ -438,6 +422,17 @@ namespace {
             ));
         }
     }
+}
+
+// Total cell->face references, i.e. the length of the face-CSR the coefficient
+// systems are sized against. Compared across runs to detect a connectivity change,
+// so both the continuation check and the allocation check must count it the same way.
+static int countFaceRefs(const FVMesh& mesh) {
+    int faceRefs = 0;
+    for (const FVCell& cell : mesh.cells) {
+        faceRefs += static_cast<int>(cell.faceIDs.size());
+    }
+    return faceRefs;
 }
 
 bool Solver::buildContinuationState(
@@ -461,15 +456,10 @@ bool Solver::buildContinuationState(
         return false;
     }
 
-    int faceRefs = 0;
-    for (const FVCell& cell : candidate.cells) {
-        faceRefs += static_cast<int>(cell.faceIDs.size());
-    }
-
     state.valid = true;
     state.cells = candidate.numCells();
     state.faces = candidate.numFaces();
-    state.faceRefs = faceRefs;
+    state.faceRefs = countFaceRefs(candidate);
     state.solveEnergy = fieldOption.solveEnergy;
     state.solveConcentration = fieldOption.solveConcentration;
 
@@ -543,11 +533,6 @@ bool Solver::runCheck(const Mesh& mesh) {
         console->addLine("Solver still running");
         return false;
     }
-
-    //if (!mesh.isReady) {
-    //    console->addLine("No mesh exists");
-    //    return false;
-    //}
 
     if (configSimple.maxIter < 1) {
         configSimple.maxIter = 50;
@@ -697,11 +682,16 @@ static void printBoundaryDiagnostics(
     int boundaryFaces = 0;
     int groupedBoundaryFaces = 0;
 
+    // Per-group counts are accumulated in this same pass; counting them per group
+    // instead would rescan every face once per group.
+    std::unordered_map<int, int> facesPerGroup;
+
     for (const FVFace& face : fvMesh.faces) {
         if (face.neighbor < 0) {
             boundaryFaces++;
             if (face.boundaryGroupID >= 0) {
                 groupedBoundaryFaces++;
+                facesPerGroup[face.boundaryGroupID]++;
             }
         }
     }
@@ -713,27 +703,6 @@ static void printBoundaryDiagnostics(
             groupedEdges++;
         }
     }
-
-    auto bcTypeName = [](BCType t) -> const char* {
-        switch (t) {
-        case BCType::DIRICHLET:       return "Dirichlet";
-        case BCType::NEUMANN:         return "Neumann";
-        case BCType::FULLY_DEVELOPED: return "FullyDeveloped";
-        case BCType::PULSATILE:       return "Pulsatile";
-        default:              return "None";
-        }
-    };
-
-    auto boundaryTypeName = [](BoundaryType t) -> const char* {
-        switch (t) {
-        case BoundaryType::WALL:            return "Wall";
-        case BoundaryType::VELOCITY_INLET:  return "VelocityInlet";
-        case BoundaryType::PRESSURE_OUTLET: return "PressureOutlet";
-        case BoundaryType::SYMMETRY:        return "Symmetry";
-        case BoundaryType::FAR_FIELD:       return "FarField";
-        default:                            return "Unknown";
-        }
-    };
 
     std::ostringstream line;
     line << "----- Boundary diagnostics (effective BCs) -----\n";
@@ -748,28 +717,24 @@ static void printBoundaryDiagnostics(
                 "inlet BC never applied (gmsh boundary-node remap failed)\n";
     }
 
+    const BoundaryVariable printVars[] = {
+        BoundaryVariable::UVelocity,
+        BoundaryVariable::VVelocity,
+        BoundaryVariable::Pressure
+    };
+
     for (const BoundarySegmentGroup& group : boundaryGroups) {
-        int faceCount = 0;
-        for (const FVFace& face : fvMesh.faces) {
-            if (face.neighbor < 0 && face.boundaryGroupID == group.id) {
-                faceCount++;
-            }
-        }
+
+        const auto found = facesPerGroup.find(group.id);
 
         line << "Group " << group.id << " '" << group.name << "'"
-             << " type=" << boundaryTypeName(group.type)
-             << " faces=" << faceCount << "\n";
+             << " type=" << BoundaryGet::boundaryTypeToString(group.type)
+             << " faces=" << (found == facesPerGroup.end() ? 0 : found->second) << "\n";
 
-        const BoundaryVariable printVars[] = {
-            BoundaryVariable::UVelocity,
-            BoundaryVariable::VVelocity,
-            BoundaryVariable::Pressure
-        };
-        const char* printNames[] = { "U", "V", "P" };
-
-        for (int vi = 0; vi < 3; vi++) {
-            BoundaryCondition bc = BoundaryDefaults::getEffectiveBC(group, printVars[vi]);
-            line << "    " << printNames[vi] << ": " << bcTypeName(bc.type())
+        for (const BoundaryVariable var : printVars) {
+            BoundaryCondition bc = BoundaryDefaults::getEffectiveBC(group, var);
+            line << "    " << BoundaryGet::boundaryVariableToString(var)
+                 << ": " << BoundaryGet::bcTypeToString(bc.type())
                  << " = " << bc.value();
 
             if (const auto* pulsatile = std::get_if<PulsatileParams>(&bc.params)) {
@@ -787,16 +752,15 @@ static void printBoundaryDiagnostics(
 
 void Solver::runSimple(const Mesh& mesh) {
 
-    // Field coefficient systems now live in the `coeffs` map (created by
+    // Field coefficient systems live in the `coeffs` map (created by
     // initCoefficients). Bind readable aliases into it so the body below still
-    // reads uCoeff/vCoeff/... These are references to the map's own storage, so
-    // free()/allocateCoefficients on them operate directly on the map entries.
-    Coefficients& uCoeff        = coeffs.at("U");
-    Coefficients& vCoeff        = coeffs.at("V");
-    Coefficients& ppCoeff       = coeffs.at("PP");
-    Coefficients& massFluxCoeff = coeffs.at("Continuity");
-    Coefficients& tempCoeff     = coeffs.at("Temperature");
-    Coefficients& concCoeff     = coeffs.at("Concentration");
+    // reads uCoeff/vCoeff/... unordered_map never relocates a value, so these stay
+    // valid across the allocation below.
+    Coefficients& uCoeff    = coeffs.at("U");
+    Coefficients& vCoeff    = coeffs.at("V");
+    Coefficients& ppCoeff   = coeffs.at("PP");
+    Coefficients& tempCoeff = coeffs.at("Temperature");
+    Coefficients& concCoeff = coeffs.at("Concentration");
 
     // create configs for solver and residual
     Config config{ f, g, varUnits };
@@ -808,7 +772,6 @@ void Solver::runSimple(const Mesh& mesh) {
     fvMesh = mesh.getFVMesh();
     int N = fvMesh.numCells();
     int Nface = fvMesh.numFaces();
-    config.g.N = N;
 
     if (N <= 0) {
         if (console) {
@@ -833,10 +796,7 @@ void Solver::runSimple(const Mesh& mesh) {
 
 
     // allocate memory
-    int expectedFaceRefs = 0;
-    for (const FVCell& cell : fvMesh.cells) {
-        expectedFaceRefs += static_cast<int>(cell.faceIDs.size());
-    }
+    const int expectedFaceRefs = countFaceRefs(fvMesh);
 
     const bool needsAllocation =
         !isReady ||
@@ -848,31 +808,25 @@ void Solver::runSimple(const Mesh& mesh) {
         continuationState.solveEnergy != fieldOption.solveEnergy ||
         continuationState.solveConcentration != fieldOption.solveConcentration ||
         uCoeff.N != N ||
-        uCoeff.useFaceCoeffs != 1 ||
+        uCoeff.AC == nullptr ||
         uCoeff.nFaceRefs != expectedFaceRefs;
 
     if (needsAllocation) {
 
         residualPlot->setName(cfg);
 
-        uCoeff.free();
-        vCoeff.free();
-        ppCoeff.free();
-        massFluxCoeff.free();
-        tempCoeff.free();
-        concCoeff.free();
+        for (auto& [name, coeff] : coeffs) {
+            coeff.free();
+        }
 
         for (auto& [name, configResidual] : cfg) {
             configResidual.free();
         }
         simple.free();
 
-        allocateCoefficients(uCoeff, fvMesh);
-        allocateCoefficients(vCoeff, fvMesh);
-        allocateCoefficients(ppCoeff, fvMesh);
-        allocateCoefficients(massFluxCoeff, fvMesh);
-        allocateCoefficients(tempCoeff, fvMesh);
-        allocateCoefficients(concCoeff, fvMesh);
+        // Map overload, not one call per field: every field sits on the same mesh,
+        // so this walks the cell-face CSR once instead of once per system.
+        allocateCoefficients(coeffs, fvMesh);
 
         // Gauss-Seidel ordering. Nothing else reads it, so building it under any
         // other solver type is a wasted O(N * degree) graph walk plus an N-int
@@ -915,8 +869,6 @@ void Solver::runSimple(const Mesh& mesh) {
     const int blocks = mem.blocks;
     const int faceThreads = mem.faceThreads;
     const int faceBlocks = mem.faceBlocks;
-    const int shmem = mem.shmem;
-    const int shmemFace = mem.shmemFace;
 
     bool transient = configSolver.transient;
     const bool useSecondOrderTime =
@@ -938,13 +890,9 @@ void Solver::runSimple(const Mesh& mesh) {
     bool solveConcentration = fieldOption.solveConcentration;
     const int applyNonOrtho = configSolver.useNonOrthCorrector ? 1 : 0;
 
-    // Transient snapshots are kept in memory rather than exported to
-    // flow_motion.bin: the binary export wrote a single nr x nz raster block, which
-    // only a single-block structured mesh has -- and the Generate path builds every
-    // structured mesh as multiblock, so that export could never actually fire.
-    // Results reads timeFrames directly to build the animation.
-    // Also cleared for a steady run, so switching Transient off drops the previous
-    // run's animation instead of leaving the player showing stale frames.
+    // Transient snapshots live in memory; Results reads timeFrames directly to build
+    // the animation. Cleared for a steady run too, so switching Transient off drops
+    // the previous run's frames instead of leaving the player showing stale ones.
     if (!transient || !continueSolver) {
         timeFrames.clear();
     }
@@ -976,10 +924,7 @@ void Solver::runSimple(const Mesh& mesh) {
 
     int numSteps = transient ? (int)std::ceil(configSolver.tEnd / configSolver.dt) : 1;
 
-    double k = f.k;
-    double cp = f.cp;
-    double rho = f.rho;
-    double thermDiffusivity = k / (rho * cp);
+    const double thermDiffusivity = f.k / (f.rho * f.cp);
     // One LinearSolver per field this run will actually solve, keyed by field name.
     // A captured graph bakes its own field's coefficient and solution pointers in as
     // by-value kernel arguments, so the graphs cannot be shared -- this map is what
@@ -1020,6 +965,13 @@ void Solver::runSimple(const Mesh& mesh) {
     LinearSolver& uSolver = linearSolvers.at("u");
     LinearSolver& vSolver = linearSolvers.at("v");
 
+    // Same reasoning for the residual configs, read on every convergence check.
+    ConfigResidual& uRes          = cfg.at("U");
+    ConfigResidual& vRes          = cfg.at("V");
+    ConfigResidual& tempRes       = cfg.at("Temperature");
+    ConfigResidual& concRes       = cfg.at("Concentration");
+    ConfigResidual& continuityRes = cfg.at("Continuity");
+
     LinearSolver* ppSolver = nullptr;
     LinearSolver* tempSolver = nullptr;
     LinearSolver* concSolver = nullptr;
@@ -1045,6 +997,40 @@ void Solver::runSimple(const Mesh& mesh) {
         concSolver->prepare(concCoeff, stream, simple.conc, simple.concTemp);
     }
 
+    // Energy and species are the same scalar transport equation -- identical
+    // assembly sequence, differing only in the data below. Collected once here so
+    // the SIMPLE loop assembles both from one code path and they cannot drift.
+    //
+    // Both convect with the VOLUMETRIC flux (fluxScale 1/rho) and diffuse with a
+    // kinematic diffusivity (k/(rho*cp) and f.D), so both equations are already
+    // divided through by rho and the unsteady term takes capacity 1.0. f.rho > 0 is
+    // enforced in runCheck.
+    struct ScalarTransport {
+        Coefficients& coeff;
+        BoundaryFieldDevice bc;
+        double* phi;
+        double* gradZ;
+        double* gradR;
+        const double* phiOld;
+        const double* phiOld2;
+        double diffusivity;
+        bool underRelax;      // temperature relaxes with the momentum factor, species does not
+        LinearSolver* solver;
+    };
+
+    std::vector<ScalarTransport> scalarTransport;
+
+    if (solveEnergy) {
+        scalarTransport.push_back({ tempCoeff, bcDevice.temp, simple.temp,
+            simple.gradTZ, simple.gradTR, simple.tempOld, simple.tempOld2,
+            thermDiffusivity, true, tempSolver });
+    }
+
+    if (solveConcentration) {
+        scalarTransport.push_back({ concCoeff, bcDevice.conc, simple.conc,
+            simple.gradCZ, simple.gradCR, simple.concOld, simple.concOld2,
+            f.D, false, concSolver });
+    }
 
     // Multigrid coarsens the cell/face GRAPH rather than a logical nr x nz grid, so
     // it runs on any face-based mesh -- which, since every structured mesh is built
@@ -1069,7 +1055,6 @@ void Solver::runSimple(const Mesh& mesh) {
         captureTimeFrame(timeOffset, N);
     }
 
-    //print(Nface, N, threadsPerBlock, blocks);
     for (int tCount = 0; tCount < numSteps; tCount++) {
 
         // The equations for this step are implicit at t_(n+1), so prescribe the
@@ -1133,10 +1118,8 @@ void Solver::runSimple(const Mesh& mesh) {
         // second step on. Passing null here is what selects BDF1 in the kernel.
         const bool bdf2ThisStep = useSecondOrderTime && tCount > 0;
 
-        const double* uOld2  = bdf2ThisStep ? simple.uOld2 : nullptr;
-        const double* vOld2  = bdf2ThisStep ? simple.vOld2 : nullptr;
-        const double* tOld2  = bdf2ThisStep ? simple.tempOld2 : nullptr;
-        const double* cOld2  = bdf2ThisStep ? simple.concOld2 : nullptr;
+        const double* uOld2 = bdf2ThisStep ? simple.uOld2 : nullptr;
+        const double* vOld2 = bdf2ThisStep ? simple.vOld2 : nullptr;
 
         // Reset per time step: a transient run drives each step to convergence
         // on its own before advancing time.
@@ -1149,12 +1132,17 @@ void Solver::runSimple(const Mesh& mesh) {
             // SIMPLE sequence, so what is on the device is a consistent state.
             if (stopRequested) break;
 
-            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (uCoeff);
-            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (vCoeff);
-            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
-            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (tempCoeff);
-            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (concCoeff);
-            clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (massFluxCoeff);
+            clearAllCoefficients << <blocks, threadsPerBlock, 0, stream >> > (
+                uCoeff,
+                vCoeff,
+                ppCoeff,
+                tempCoeff,
+                concCoeff
+            );
+            //clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (vCoeff);
+            //clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
+            //clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (tempCoeff);
+            //clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (concCoeff);
 
             // Gradients feed two consumers now: the non-orthogonal diffusion
             // correction, and the second-order-upwind convection extrapolation. The
@@ -1222,12 +1210,10 @@ void Solver::runSimple(const Mesh& mesh) {
             // do not launch a gradient kernel just to write zeros. Each later
             // corrector computes grad(p') from the preceding solve and adds the
             // lagged non-orthogonal term to the RHS.
-            const int nNonOrth = configSolver.useNonOrthCorrector ? 1 : 0;
-
             cudaMemsetAsync(simple.pp, 0, N * sizeof(double), stream);
             CUDA_CHECK(cudaGetLastError());
 
-            for (int corr = 0; corr <= nNonOrth; corr++) {
+            for (int corr = 0; corr <= applyNonOrtho; corr++) {
                 const int applyCrossTerm = corr > 0 ? 1 : 0;
 
                 if (applyCrossTerm) {
@@ -1252,54 +1238,26 @@ void Solver::runSimple(const Mesh& mesh) {
             updatePressure << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple);
 
             // ======================================================================
-            // -----------------------ENERGY EQUATION--------------------------------
+            // -----------------ENERGY / CONCENTRATION EQUATIONS---------------------
             // ======================================================================
-            if (solveEnergy) {
-                if (applyNonOrtho || convectionNeedsGradient) {
-                    computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, gradientScheme);
-                }
-                addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, applyNonOrtho, thermDiffusivity);
-                if (addConvectionTerm) {
-                    // Volumetric flux (1/rho), the same as concentration below: with
-                    // thermDiffusivity = k/(rho*cp) the energy equation has already
-                    // been divided through by rho*cp, so a mass flux here would leave
-                    // one rho on the convection term and none on the diffusion term.
-                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, tempCoeff, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, convectionScheme, 1.0 / f.rho);
-                }
-                // capacity 1.0, not rho: this equation convects volumetrically
-                // (fluxScale 1/rho) and diffuses with k/(rho*cp), so it is already
-                // divided through by rho*cp.
-                if (transient) {
-                    addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.tempOld, tOld2, 1.0, configSolver.dt);
-                }
-                underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.temp, simple.momentumRelaxation);
-                tempSolver->run();
-            }
-
-            // ======================================================================
-            // -----------------------CONCENTRATION EQUATION-------------------------
-            // ======================================================================
-            if (solveConcentration) {
+            for (const ScalarTransport& s : scalarTransport) {
 
                 if (applyNonOrtho || convectionNeedsGradient) {
-                    computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, gradientScheme);
+                    computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, s.bc, s.phi, s.gradZ, s.gradR, gradientScheme);
                 }
-                addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, applyNonOrtho, f.D);
+
+                addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, s.coeff, s.bc, s.phi, s.gradZ, s.gradR, applyNonOrtho, s.diffusivity);
+
                 if (addConvectionTerm) {
-                    // Species concentration convects with the VOLUMETRIC flux u*area,
-                    // not the mass flux rho*u*area, so divide rho out of mDot. This
-                    // matches the kinematic diffusivity f.D used above and the mm-unit
-                    // reference solver (me = Az*u, no density). f.rho > 0 is enforced
-                    // in runCheck.
-                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, concCoeff, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, convectionScheme, 1.0 / f.rho);
+                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, s.coeff, s.bc, s.phi, s.gradZ, s.gradR, convectionScheme, 1.0 / f.rho);
                 }
-                // capacity 1.0 for the same reason as temperature: volumetric flux
-                // and kinematic diffusivity f.D, so no density belongs here either.
+
                 if (transient) {
-                    addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.concOld, cOld2, 1.0, configSolver.dt);
+                    addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, s.coeff, s.phiOld, bdf2ThisStep ? s.phiOld2 : nullptr, 1.0, configSolver.dt);
                 }
-                underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.conc, 1.0);
-                concSolver->run();
+
+                underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, s.coeff, s.phi, s.underRelax ? simple.momentumRelaxation : 1.0);
+                s.solver->run();
             }
 
             // ======================================================================
@@ -1310,10 +1268,10 @@ void Solver::runSimple(const Mesh& mesh) {
 
                 residualAll << <blocks, threadsPerBlock, 0, stream >> > (
                     false,
-                    ResidualPairs{ uCoeff,    simple.u,    cfg.at("U").res, cfg.at("U").scale, cfg.at("U").scaleType},
-                    ResidualPairs{ vCoeff,    simple.v,    cfg.at("V").res, cfg.at("V").scale, cfg.at("V").scaleType},
-                    ResidualPairs{ tempCoeff, simple.temp, cfg.at("Temperature").res, cfg.at("Temperature").scale, cfg.at("Temperature").scaleType },
-                    ResidualPairs{ concCoeff, simple.conc, cfg.at("Concentration").res, cfg.at("Concentration").scale, cfg.at("Concentration").scaleType }
+                    ResidualPairs{ uCoeff,    simple.u,    uRes.res, uRes.scale, uRes.scaleType },
+                    ResidualPairs{ vCoeff,    simple.v,    vRes.res, vRes.scale, vRes.scaleType },
+                    ResidualPairs{ tempCoeff, simple.temp, tempRes.res, tempRes.scale, tempRes.scaleType },
+                    ResidualPairs{ concCoeff, simple.conc, concRes.res, concRes.scale, concRes.scaleType }
                     );
 
                 if (cudaError_t errResidualAll = cudaGetLastError(); errResidualAll != cudaSuccess) {
@@ -1322,17 +1280,12 @@ void Solver::runSimple(const Mesh& mesh) {
                 continuityResidual << <blocks, threadsPerBlock, 0, stream >> > (
                     fvMeshDevice,
                     simple,
-                    cfg.at("Continuity").res
+                    continuityRes.res
                     );
 
                 if (cudaError_t errContinuity = cudaGetLastError(); errContinuity != cudaSuccess) {
                     printf("continuityResidual launch error: %s\n", cudaGetErrorString(errContinuity));
                 }
-
-                // residualAllHost reads cfg.res with a blocking cudaMemcpy on the null
-                // stream, and stream is cudaStreamNonBlocking, so the copy does not wait
-                // for the two kernels above. Without this sync it reads stale residuals.
-                CUDA_CHECK(cudaStreamSynchronize(stream));
 
                 residualAllHost(cfg, N, transient ? k : currentIteration, mem, stream, tmpA, tmpB);
                 residualPlot->add(currentIteration, cfg);
@@ -1402,19 +1355,12 @@ void Solver::runSimple(const Mesh& mesh) {
     computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, gradientScheme);
     computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.p, simple.p, simple.gradPZ, simple.gradPR, gradientScheme);
 
-    if (solveEnergy) {
-        computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.temp, simple.temp, simple.gradTZ, simple.gradTR, gradientScheme);
-    }
-
-    if (solveConcentration) {
-        computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, bcDevice.conc, simple.conc, simple.gradCZ, simple.gradCR, gradientScheme);
+    for (const ScalarTransport& s : scalarTransport) {
+        computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, s.bc, s.phi, s.gradZ, s.gradR, gradientScheme);
     }
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
     createSolutions(N);
-
-    //reduction(Nface, faceThreads, shmemFace, stream, tmpA, tmpB, fvMeshDevice.faces.ocrWall, &scalarSolutions.ocr);
-    CUDA_CHECK(cudaStreamSynchronize(stream));
 
     // Reactive-wall diagnostic: reports whether the wall is reaction- or
     // mass-transfer-limited and what fraction of the inlet supply it consumes.
@@ -1422,14 +1368,13 @@ void Solver::runSimple(const Mesh& mesh) {
         double* diag = deviceAlloc<double>(10);
         CUDA_CHECK(cudaMemsetAsync(diag, 0, 10 * sizeof(double), stream));
 
-        int diagBlocks = (Nface + faceThreads - 1) / faceThreads;
-        wallConsumptionDiagnostic << <diagBlocks, faceThreads, 0, stream >> > (
+        wallConsumptionDiagnostic << <faceBlocks, faceThreads, 0, stream >> > (
             fvMeshDevice, simple, bcDevice.conc, simple.conc, f.D, diag);
 
         double hd[10] = {};
         CUDA_CHECK(cudaMemcpyAsync(hd, diag, 10 * sizeof(double), cudaMemcpyDeviceToHost, stream));
         CUDA_CHECK(cudaStreamSynchronize(stream));
-        cudaFree(diag);
+        freeDev(diag);
 
         double totalOCR = hd[0], inlet = hd[1], ceiling = hd[2], nWall = hd[3];
 
@@ -1464,10 +1409,12 @@ void Solver::runSimple(const Mesh& mesh) {
         console->addLine(d.str());
     }
 
-    //scalarSolutions.ocr = getOCR();
-    //mFlux = SolutionField{copyDevice}
     isReady = true;
 
-    // free memory
+    // free memory. bcDevice and ppBC are rebuilt from the boundary groups on every
+    // run, so they are released here rather than carried over -- ppBC only owns its
+    // own valueByGroup, the rest of it aliases bcDevice.p.
     freeAllDev(tmpA, tmpB);
+    freeDev(ppBC.valueByGroup);
+    freeBoundarySolverDevice(bcDevice);
 }

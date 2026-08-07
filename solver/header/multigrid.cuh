@@ -176,7 +176,6 @@ private:
 		int nFaceRefs = 0;
 		int nCycles = 0;
 		int threadsPerBlock = 0;
-		int useFaceCoeffs = 0;
 
 		// The smoother settings are baked in at capture: the sweep counts decide how
 		// many kernel nodes get recorded, and `weight` is a by-value kernel argument
@@ -201,7 +200,7 @@ private:
 		// crash, no diagnostic. Do NOT compare these by memcmp: the struct has
 		// padding, and NSDMI aggregate init does not zero it.
 		auto tie() const {
-			return std::tie(N, nFaceRefs, nCycles, threadsPerBlock, useFaceCoeffs,
+			return std::tie(N, nFaceRefs, nCycles, threadsPerBlock,
 			                linearSweep, linearPreSweep, linearPostSweep, weight,
 			                externalX, AC, b, AF, stream);
 		}

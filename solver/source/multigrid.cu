@@ -440,12 +440,6 @@ void buildProlongationKernel(
 // applied to one and not the other degrades convergence rather than failing, which
 // is close to undiagnosable.
 //
-// Face path only, deliberately: multigrid is constructed solely when
-// useFaceCoefficients is set (solver.cpp), and coarse levels come from the
-// face-path allocator, so AF / faceStart / faceNeighbor are always live here.
-// No structured AE/AW/AN/AS fallback and no useFaceCoeffs branch -- residualRaw
-// keeps those for the structured mesh path.
-//
 // xOld and xNew MUST be distinct buffers. This reads neighbour values while
 // writing its own cell, so sharing one array would let a thread see a neighbour
 // another thread had already advanced this sweep -- chaotic relaxation, not
@@ -828,7 +822,6 @@ MultigridSolver::RunGraphKey MultigridSolver::currentKey(
 	key.nFaceRefs = coeff.nFaceRefs;
 	key.nCycles = cycleCount();
 	key.threadsPerBlock = mem.threadsPerBlock;
-	key.useFaceCoeffs = coeff.useFaceCoeffs;
 	key.linearSweep = cfg.linearSweep;
 	key.linearPreSweep = cfg.linearPreSweep;
 	key.linearPostSweep = cfg.linearPostSweep;

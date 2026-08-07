@@ -622,28 +622,6 @@ void addTransientCoefficient(
 	coeff.b[n] += a * phiOld[n];
 }
 
-__global__
-void clearCoefficients(Coefficients coeff) {
-
-	int n = blockIdx.x * blockDim.x + threadIdx.x;
-	if (n >= coeff.N) return;
-
-	if (coeff.AE) coeff.AE[n] = 0.0;
-	if (coeff.AW) coeff.AW[n] = 0.0;
-	if (coeff.AN) coeff.AN[n] = 0.0;
-	if (coeff.AS) coeff.AS[n] = 0.0;
-	if (coeff.AC) coeff.AC[n] = 0.0;
-	if (coeff.b) coeff.b[n] = 0.0;
-
-	if (coeff.AF && coeff.faceStart) {
-		int start = coeff.faceStart[n];
-		int end = coeff.faceStart[n + 1];
-
-		for (int k = start; k < end; k++) {
-			coeff.AF[k] = 0.0;
-		}
-	}
-}
 
 
 __global__

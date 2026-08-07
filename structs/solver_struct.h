@@ -106,12 +106,11 @@ struct CudaTimer {
 	}
 };
 
-// coefficients required for each field variable
+// Coefficients required for each field variable. Face path only: off-diagonals
+// live in the CSR array AF, indexed by faceStart / faceNeighbor. The 5-point
+// AE/AW/AN/AS form and the nr x nz it needed are gone -- every mesh is built as
+// multiblock, so nothing could construct a structured system any more.
 struct Coefficients {
-	double* AE = nullptr;
-	double* AW = nullptr;
-	double* AN = nullptr;
-	double* AS = nullptr;
 	double* AF = nullptr;
 	double* AC = nullptr;
 	double* b = nullptr;
@@ -119,15 +118,12 @@ struct Coefficients {
 	int* faceStart = nullptr;
 	int* faceNeighbor = nullptr;
 
-	int nr = 0;
-	int nz = 0;
 	int N = 0;
 	int nFaceRefs = 0;
-	int useFaceCoeffs = 0;
 
 
 	void free() {
-		freeAllDev(AE, AW, AN, AS, AF, AC, b);
+		freeAllDev(AF, AC, b);
 		freeAllDev(faceStart, faceNeighbor);
 	}
 };
@@ -456,19 +452,15 @@ struct FVFaceDevice {
 	double* ocrWall = nullptr;
 };
 
+// No nr/nz: the device path is purely face-based. The logical grid still exists
+// on FVMesh for the raster-based results views, but no kernel ever needed it.
 struct FVMeshDevice {
-	int nr = 0;
-	int nz = 0;
-
 	FVCellDevice cells;
 	FVFaceDevice faces;
 };
 
 // struct used to store mesh data, which will be sent to device
 struct FVMeshHostPacked {
-	int nr = 0;
-	int nz = 0;
-
 	int nCells = 0;
 	int nFaces = 0;
 

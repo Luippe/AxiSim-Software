@@ -33,7 +33,6 @@ public:
 	// order must match enum TimeScheme
 	const char* timeSchemeType[2] = { "First Order Implicit", "Second Order Implicit" };
 	const char* residualPlotType[5] = { "U", "V", "Continuity", "Temperature", "Concentration" };
-	const char* coefficientNames[6] = { "U", "V", "PP", "Continuity", "Temperature", "Concentration" };
 
 	std::vector<std::string> fieldType;
 
@@ -118,9 +117,6 @@ public:
 	// field: they all sit on the same mesh CSR.
 	MeshColoring coloring;
 
-	// scalar solution
-	SolutionScalar scalarSolutions;
-
 	// fvMesh
 	FVMesh fvMesh;
 
@@ -150,9 +146,7 @@ public:
 private:
 
 	// Every mesh the Generate path produces rides the face-based path (structured
-	// meshes are always built as multiblock), so there is no mesh-type field here
-	// any more: useFaceCoefficients was always true, and nr/nz only mattered to the
-	// index-based structured path that could never be constructed.
+	// meshes are always built as multiblock), so there is no mesh-type field here.
 	struct ContinuationState {
 		bool valid = false;
 		int cells = 0;
