@@ -6,6 +6,8 @@
 #include <iomanip>
 #include <optional>
 #include <sstream>
+#include <string>
+#include <unordered_map>
 #include <cuda_profiler_api.h>
 #include "printer.h"
 #include "file_manager.h"
@@ -978,12 +980,70 @@ void Solver::runSimple(const Mesh& mesh) {
     double cp = f.cp;
     double rho = f.rho;
     double thermDiffusivity = k / (rho * cp);
-    // create a graph for linear solver
-    LinearSolver linearSolverU(configSolver, mem, coloring);
-    LinearSolver linearSolverV(configSolver, mem, coloring);
-    linearSolverU.prepare(uCoeff, stream, simple.u);
-    linearSolverV.prepare(vCoeff, stream, simple.v);
-    LinearSolver linearSolver(configSolver, mem, coloring);
+    // One LinearSolver per field this run will actually solve, keyed by field name.
+    // A captured graph bakes its own field's coefficient and solution pointers in as
+    // by-value kernel arguments, so the graphs cannot be shared -- this map is what
+    // holds that multiplicity, and it carries nothing for a field the run skips.
+    //
+    // try_emplace, not operator[]: LinearSolver has no default constructor and is
+    // neither copyable nor movable (reference members, and CudaGraph owns handles it
+    // would double-destroy). unordered_map is node-based, so it constructs each value
+    // in place and never relocates one, which is also what keeps the references taken
+    // below valid for the whole run.
+    std::unordered_map<std::string, LinearSolver> linearSolvers;
+
+    linearSolvers.try_emplace("u", configSolver, mem, coloring);
+    linearSolvers.try_emplace("v", configSolver, mem, coloring);
+
+    // pp is handed to multigrid when that is enabled, so it only needs a linear
+    // solver when it is not.
+    if (!configSolver.useMultigrid) {
+        linearSolvers.try_emplace("pp", configSolver, mem, coloring);
+    }
+
+    if (solveEnergy) {
+        linearSolvers.try_emplace("temp", configSolver, mem, coloring);
+    }
+
+    if (solveConcentration) {
+        linearSolvers.try_emplace("conc", configSolver, mem, coloring);
+    }
+
+    // Resolved once, outside the SIMPLE loop: at() hashes a string, and these run
+    // every iteration. Safe to hold because unordered_map never relocates a value
+    // once inserted.
+    //
+    // The three conditional fields are pointers rather than references because their
+    // map entries only exist when the run solves them. None is ever dereferenced
+    // while null -- the same condition guards the entry, the prepare and the call
+    // site.
+    LinearSolver& uSolver = linearSolvers.at("u");
+    LinearSolver& vSolver = linearSolvers.at("v");
+
+    LinearSolver* ppSolver = nullptr;
+    LinearSolver* tempSolver = nullptr;
+    LinearSolver* concSolver = nullptr;
+
+    // Capturing here rather than per-iteration only bakes in ADDRESSES -- the
+    // coefficient arrays are still empty at this point, and the graph replays
+    // whatever numbers they hold at launch.
+    uSolver.prepare(uCoeff, stream, simple.u, simple.uTemp);
+    vSolver.prepare(vCoeff, stream, simple.v, simple.vTemp);
+
+    if (!configSolver.useMultigrid) {
+        ppSolver = &linearSolvers.at("pp");
+        ppSolver->prepare(ppCoeff, stream, simple.pp, simple.ppTemp);
+    }
+
+    if (solveEnergy) {
+        tempSolver = &linearSolvers.at("temp");
+        tempSolver->prepare(tempCoeff, stream, simple.temp, simple.tempTemp);
+    }
+
+    if (solveConcentration) {
+        concSolver = &linearSolvers.at("conc");
+        concSolver->prepare(concCoeff, stream, simple.conc, simple.concTemp);
+    }
 
 
     // Multigrid coarsens the cell/face GRAPH rather than a logical nr x nz grid, so
@@ -1143,8 +1203,8 @@ void Solver::runSimple(const Mesh& mesh) {
             getCorrectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.DV);
 
             // solve velocity
-            linearSolverU.run();
-            linearSolverV.run();
+            uSolver.run();
+            vSolver.run();
 
             // solve pressure correction
             createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, bcDevice.p);
@@ -1165,7 +1225,6 @@ void Solver::runSimple(const Mesh& mesh) {
             const int nNonOrth = configSolver.useNonOrthCorrector ? 1 : 0;
 
             cudaMemsetAsync(simple.pp, 0, N * sizeof(double), stream);
-            cudaMemsetAsync(simple.ppTemp, 0, N * sizeof(double), stream);
             CUDA_CHECK(cudaGetLastError());
 
             for (int corr = 0; corr <= nNonOrth; corr++) {
@@ -1180,7 +1239,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     multigrid->run();
                 }
                 else {
-                    linearSolver.solveLinearSystem(ppCoeff, configSolver, stream, simple.pp, simple.ppTemp,  threadsPerBlock, coloring);
+                    ppSolver->run();
                 }
             }
 
@@ -1214,7 +1273,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.tempOld, tOld2, 1.0, configSolver.dt);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, tempCoeff, simple.temp, simple.momentumRelaxation);
-                linearSolver.solveLinearSystem(tempCoeff, configSolver, stream, simple.temp, simple.tempTemp,  threadsPerBlock, coloring);
+                tempSolver->run();
             }
 
             // ======================================================================
@@ -1240,7 +1299,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.concOld, cOld2, 1.0, configSolver.dt);
                 }
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, concCoeff, simple.conc, 1.0);
-                linearSolver.solveLinearSystem(concCoeff, configSolver, stream, simple.conc, simple.concTemp,  threadsPerBlock, coloring);
+                concSolver->run();
             }
 
             // ======================================================================
@@ -1353,8 +1412,6 @@ void Solver::runSimple(const Mesh& mesh) {
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
     createSolutions(N);
-
-
 
     //reduction(Nface, faceThreads, shmemFace, stream, tmpA, tmpB, fvMeshDevice.faces.ocrWall, &scalarSolutions.ocr);
     CUDA_CHECK(cudaStreamSynchronize(stream));

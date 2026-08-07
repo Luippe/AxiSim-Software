@@ -6,6 +6,9 @@
 // ====================LINEAR SOLVERS============================
 // ==============================================================
 
+// Face path only: every allocateCoefficients that runs sets useFaceCoeffs and
+// allocates AF / faceStart / faceNeighbor, so there is no AE/AW/AN/AS fallback
+// and no structured red/black kernel here. residualRaw keeps those.
 __global__
 void jacobi(
 	Coefficients coeff,
@@ -16,7 +19,7 @@ void jacobi(
 
 	if (n >= coeff.N) return;
 
-	double AC = coeff.AC[n];
+	const double AC = coeff.AC[n];
 
 	if (fabs(AC) < 1.0e-30) {
 		xNew[n] = xOld[n];
@@ -25,96 +28,17 @@ void jacobi(
 
 	double val = coeff.b[n];
 
-	if (coeff.useFaceCoeffs &&
-		coeff.AF &&
-		coeff.faceStart &&
-		coeff.faceNeighbor) {
-		int start = coeff.faceStart[n];
-		int end = coeff.faceStart[n + 1];
+	const int start = coeff.faceStart[n];
+	const int end = coeff.faceStart[n + 1];
 
-		for (int k = start; k < end; k++) {
-			int nb = coeff.faceNeighbor[k];
-			if (nb >= 0) {
-				val -= coeff.AF[k] * xOld[nb];
-			}
+	for (int k = start; k < end; k++) {
+		const int nb = coeff.faceNeighbor[k];
+		if (nb >= 0) {
+			val -= coeff.AF[k] * xOld[nb];
 		}
-
-		xNew[n] = val / AC;
-		return;
-	}
-
-	int nz = coeff.nz;
-	int nr = coeff.nr;
-
-	int j = n % nz;
-	int i = n / nz;
-
-	// East neighbor
-	if (j < nz - 1) {
-		val -= coeff.AE[n] * xOld[n + 1];
-	}
-
-	// West neighbor
-	if (j > 0) {
-		val -= coeff.AW[n] * xOld[n - 1];
-	}
-
-	// North neighbor
-	if (i < nr - 1) {
-		val -= coeff.AN[n] * xOld[n + nz];
-	}
-
-	// South neighbor
-	if (i > 0) {
-		val -= coeff.AS[n] * xOld[n - nz];
 	}
 
 	xNew[n] = val / AC;
-}
-
-__global__
-void gaussSeidelRB(Coefficients coeff,  double* x, int color) {
-
-	int n = blockIdx.x * blockDim.x + threadIdx.x;
-
-	if (n >= coeff.N) return;
-
-	int nr = coeff.nr;
-	int nz = coeff.nz;
-
-	int j = n % nz;
-	int i = n / nz;
-
-	if ((i + j) % 2 != color) return;
-
-	double* AC = coeff.AC;
-	double* AE = coeff.AE;
-	double* AW = coeff.AW;
-	double* AN = coeff.AN;
-	double* AS = coeff.AS;
-	double* b = coeff.b;
-
-	double val = b[n];
-
-	if (j != nz - 1) {
-		val -= AE[n] * x[n + 1];
-	}
-
-	if (j != 0) {
-		val -= AW[n] * x[n - 1];
-	}
-
-	if (i != nr - 1) {
-		val -= AN[n] * x[n + nz];
-	}
-
-	if (i != 0) {
-		val -= AS[n] * x[n - nz];
-	}
-
-	val /= AC[n];
-
-	x[n] = val;
 }
 
 // Gauss-Seidel over ONE color of the multicolor ordering (see MeshColoring).
@@ -161,6 +85,82 @@ void gaussSeidelColorSweep(
 }
 
 // ==============================================================
+// ====================DISPATCH==================================
+// ==============================================================
+
+// Enqueue the CONFIGURED solve onto `stream`. A pure enqueue -- no synchronization,
+// no host read of device memory -- so it is equally valid submitted directly
+// (solveLinearSystem) or recorded into a stream capture (LinearSolver::prepare).
+//
+// Both callers going through one function is the whole point. The colored-GS loop
+// used to be written out twice, once eagerly and once for capture, and the capture
+// copy recorded ONLY that branch. Under the default LINEAR_JACOBI config the
+// coloring is never built (solver.cpp only builds it for LINEAR_GS_RB), so nColors
+// was 0, the capture recorded zero nodes, and the replayed graph silently solved
+// nothing at all -- no error, no NaN, just a field that never moved.
+//
+// x / xTemp are by reference because the Jacobi branch ping-pongs them: on return,
+// x names whichever buffer holds the answer.
+static void enqueueSolve(
+	Coefficients& coeff,
+	const ConfigSolver& config,
+	const MeshColoring& coloring,
+	cudaStream_t stream,
+	double*& x,
+	double*& xTemp,
+	int threadsPerBlock
+) {
+
+	const int N = coeff.N;
+	const int blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
+
+	// Floored at 1 for the same reason multigrid floors its cycle count: a config of
+	// 0 makes the solve a no-op, and a no-op recorded into a graph is an EMPTY graph
+	// that replays forever without touching the field.
+
+	LinearSolverType type = config.type;
+
+	// Gauss-Seidel needs a coloring to sweep.
+	const bool faceColored =
+		coloring.valid() && coloring.nCells == N &&
+		coeff.AF && coeff.faceStart && coeff.faceNeighbor;
+
+	// Jacobi and multicolor GS are the only two schemes implemented. Anything else
+	// (BiCGStab / GMRES, or GS without a usable coloring) falls back to Jacobi rather
+	// than dropping through the switch and silently running zero iterations.
+	if (!(type == LinearSolverType::LINEAR_GS_RB && faceColored)) {
+		type = LinearSolverType::LINEAR_JACOBI;
+	}
+
+	switch (type) {
+	case LinearSolverType::LINEAR_JACOBI:
+		for (int k = 0; k < config.linearMaxIter; k++) {
+			jacobi << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, xTemp);
+			std::swap(x, xTemp);
+		}
+		break;
+
+	// Reached only when faceColored, per the normalization above.
+	case LinearSolverType::LINEAR_GS_RB:
+		for (int k = 0; k < config.linearMaxIter; k++) {
+			for (int c = 0; c < coloring.nColors; c++) {
+
+				const int begin = coloring.colorStart[c];
+				const int count = coloring.colorStart[c + 1] - begin;
+
+				if (count <= 0) continue;
+
+				const int colorBlocks = (count + threadsPerBlock - 1) / threadsPerBlock;
+
+				gaussSeidelColorSweep << <colorBlocks, threadsPerBlock, 0, stream >> > (
+					coeff, x, coloring.d_cellOrder, begin, count);
+			}
+		}
+		break;
+	}
+}
+
+// ==============================================================
 // ====================LINEAR SOLVER MEMBERS=====================
 // ==============================================================
 LinearSolver::LinearSolver(ConfigSolver& config, MemoryConfig& mem, MeshColoring& coloring) :
@@ -173,6 +173,7 @@ LinearSolver::LinearSolver(ConfigSolver& config, MemoryConfig& mem, MeshColoring
 LinearSolver::RunGraphKey LinearSolver::currentKey(
 	const Coefficients& coeff,
 	const double* x,
+	const double* xTemp,
 	cudaStream_t stream
 ) const {
 	RunGraphKey key;
@@ -184,6 +185,7 @@ LinearSolver::RunGraphKey LinearSolver::currentKey(
 	key.AF = coeff.AF;
 	key.b = coeff.b;
 	key.x = x;
+	key.xTemp = xTemp;
 
 	key.colorStart = coloring.colorStart;
 	key.nColors = coloring.nColors;
@@ -194,66 +196,67 @@ LinearSolver::RunGraphKey LinearSolver::currentKey(
 	key.faceStart = coeff.faceStart;
 	key.faceNeighbor = coeff.faceNeighbor;
 
-
+	// The dispatch inside enqueueSolve is resolved on the host and frozen into the
+	// recorded node list, so every input to that decision has to key the graph.
+	// Switching the GUI from Gauss-Seidel to Jacobi changes which kernels exist in
+	// the graph, not just their arguments.
+	key.type = config.type;
+	key.useFaceCoeffs = coeff.useFaceCoeffs;
+	key.N = coeff.N;
+	key.nCells = coloring.nCells;
 
 	return key;
-
 
 }
 
 bool LinearSolver::runGraphMatches(
 	const Coefficients& coeff,
 	const double* x,
+	const double* xTemp,
 	cudaStream_t stream
 ) const {
 
-	return graph.exec != nullptr && runGraphKey == currentKey(coeff, x, stream);
+	return graph.exec != nullptr && runGraphKey == currentKey(coeff, x, xTemp, stream);
 
 }
 
 void LinearSolver::captureRunGraph(
 	Coefficients& coeff,
 	cudaStream_t& stream,
-	double* x
+	double* x,
+	double* xTemp
 ) {
 
 	graph.stream = stream;
 
 	graph.beginCapture();
 
-	enqueueGaussSeidel(coeff, stream, x);
+	// Local copies, so the Jacobi ping-pong never reaches the caller. The host swaps
+	// run once -- here, during capture -- and that is what gives every recorded node
+	// its fixed, alternating input/output address. Replay does not repeat them.
+	double* live = x;
+	double* spare = xTemp;
+
+	enqueueSolve(coeff, config, coloring, stream, live, spare, mem.threadsPerBlock);
+
+	// An odd Jacobi sweep count leaves the answer in xTemp. Land it back in x from
+	// inside the graph so that `x` always names the solution after run(), whatever
+	// the sweep count's parity, and the caller never has to track which buffer is
+	// live. One extra node, recorded only when the parity is actually odd.
+	if (live != x) {
+		CUDA_CHECK(cudaMemcpyAsync(
+			x,
+			live,
+			(size_t)coeff.N * sizeof(double),
+			cudaMemcpyDeviceToDevice,
+			stream
+		));
+	}
 
 	graph.endCapture();
 	graph.instantiate();
 
-	runGraphKey = currentKey(coeff, x, stream);
-
-}
-
-void LinearSolver::enqueueGaussSeidel(
-	Coefficients& coeff,
-	cudaStream_t& stream,
-	double* x
-) {
-
-
-	for (int k = 0; k < config.linearMaxIter; k++) {
-		for (int c = 0; c < coloring.nColors; c++) {
-
-			const int begin = coloring.colorStart[c];
-			const int count = coloring.colorStart[c + 1] - begin;
-
-			if (count <= 0) continue;
-
-			const int colorBlocks = blocksFor(count);
-
-			gaussSeidelColorSweep << <colorBlocks, mem.threadsPerBlock, 0, stream >> > (
-				coeff, x, coloring.d_cellOrder, begin, count);
-		}
-	}
-
-
-
+	runGraphKey = currentKey(coeff, x, xTemp, stream);
 
 }
 
@@ -261,90 +264,21 @@ void LinearSolver::enqueueGaussSeidel(
 void LinearSolver::prepare(
 	Coefficients& coeff,
 	cudaStream_t& stream,
-	double* x
+	double* x,
+	double* xTemp
 ) {
-	if (!runGraphMatches(coeff, x, stream)) {
-		if (graph.exec || graph.graph) {
-			// Synchronize the stream that owns the existing executable before
-			// destroying graph resources which one of its launches may still use.
-			CUDA_CHECK(cudaStreamSynchronize(runGraphKey.stream));
-			graph.destroy();
-		}
+	if (runGraphMatches(coeff, x, xTemp, stream)) return;
 
-		captureRunGraph(coeff, stream, x);
-		graph.upload();
-	}
+	// Unconditional: destroy() null-checks both handles, and it synchronizes
+	// graph.stream -- which captureRunGraph set to the stream the existing exec was
+	// actually recorded on. No separate sync here, and in particular not one on the
+	// key's stream, which is only meaningful once a capture has happened.
+	graph.destroy();
+
+	captureRunGraph(coeff, stream, x, xTemp);
+	graph.upload();
 }
 
-
-void LinearSolver::solveLinearSystem(
-	Coefficients& coeff,
-	const ConfigSolver& config,
-	cudaStream_t stream,
-	double*& x,
-	double*& xTemp,
-	int threadsPerBlock,
-	const MeshColoring& coloring
-) {
-
-	int N = coeff.N;
-	int blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
-
-	LinearSolverType type = config.type;
-
-	// The face path can run Gauss-Seidel only with a coloring to sweep; the
-	// structured gaussSeidelRB kernel is unusable there because it derives the
-	// checkerboard from coeff.nr / coeff.nz, which are 0.
-	const bool faceColored =
-		coeff.useFaceCoeffs &&
-		coloring.valid() && coloring.nCells == N &&
-		coeff.AF && coeff.faceStart && coeff.faceNeighbor;
-
-	// Jacobi and multicolor GS are the only two schemes implemented on the face
-	// path. Anything else (BiCGStab / GMRES, or GS without a usable coloring) falls
-	// back to Jacobi rather than dropping through the switch and silently running
-	// zero iterations.
-	if (coeff.useFaceCoeffs && !(type == LinearSolverType::LINEAR_GS_RB && faceColored)) {
-		type = LinearSolverType::LINEAR_JACOBI;
-	}
-
-	switch (type) {
-	case LinearSolverType::LINEAR_JACOBI:
-		for (int k = 0; k < config.linearMaxIter; k++) {
-			jacobi << <blocks, threadsPerBlock, 0, stream >> > (coeff, x, xTemp);
-			std::swap(x, xTemp);
-		}
-		break;
-
-	case LinearSolverType::LINEAR_GS_RB:
-
-		if (faceColored) {
-
-			for (int k = 0; k < config.linearMaxIter; k++) {
-				for (int c = 0; c < coloring.nColors; c++) {
-
-					const int begin = coloring.colorStart[c];
-					const int count = coloring.colorStart[c + 1] - begin;
-
-					if (count <= 0) continue;
-
-					const int colorBlocks = (count + threadsPerBlock - 1) / threadsPerBlock;
-
-					gaussSeidelColorSweep << <colorBlocks, threadsPerBlock, 0, stream >> > (
-						coeff, x, coloring.d_cellOrder, begin, count);
-				}
-			}
-
-			break;
-		}
-
-		for (int k = 0; k < config.linearMaxIter; k++) {
-			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff,  x, 0);
-			gaussSeidelRB << <blocks, threadsPerBlock, 0, stream >> > (coeff,  x, 1);
-		}
-		break;
-	}
-}
 
 void LinearSolver::run() {
 	graph.launch();
