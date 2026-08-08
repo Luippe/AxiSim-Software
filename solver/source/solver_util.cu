@@ -125,26 +125,21 @@ void reduction(
 // ==============================================================
 
 __global__
-void getCorrectionCoefficient(
+void getCorrectionCoefficients(
 	FVMeshDevice mesh,
-	Coefficients coeff,
-	double* D
+	Coefficients uCoeff,
+	Coefficients vCoeff,
+	double* DU,
+	double* DV
 ) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
 
-	D[n] = 0.0;
-
-	double aP = coeff.AC[n];
-
-	if (fabs(aP) < 1.0e-30) {
-		D[n] = 0.0;
-		return;
-	}
-
 	double volume = mesh.cells.volume[n];
-	D[n] = volume / aP;
+
+	DU[n] = volume * uCoeff.invAC[n];
+	DV[n] = volume * vCoeff.invAC[n];
 
 }
 
@@ -218,18 +213,22 @@ void copyVector(double* vec1, double* vec2, int N) {
 }
 
 // ==============================================================
-// ==================DIFFUSION TERM==============================
+// ============ DIFFUSION + CONVECTION TERM =====================
 // ==============================================================
 __global__ void
-addDiffusionCoefficient(
+addTransportCoefficients(
 	FVMeshDevice mesh,
+	VariablesSimple simple,
 	Coefficients coeff,
 	BoundaryFieldDevice bc,
 	const double* phi,
 	const double* gradPhiZ,
 	const double* gradPhiR,
 	int applyNonOrtho,
-	double constVar
+	double constVar,
+	int addConvection,
+	ConvectionScheme scheme,
+	double fluxScale
 ) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -242,17 +241,48 @@ addDiffusionCoefficient(
 	int start = mesh.cells.faceStart[n];
 	int end = mesh.cells.faceStart[n + 1];
 
+	// Net outward mass flux through this cell's faces. For a converged flow this
+	// is the discrete continuity residual (~0); before convergence it is nonzero
+	// and is what lets an unbounded upwind row overshoot its boundary values.
+	double netF = 0.0;
+
 	for (int k = start; k < end; k++) {
 
 		int faceID = mesh.cells.faceIDs[k];
 
+		int owner = mesh.faces.owner[faceID];
 		int neighbor = mesh.faces.neighbor[faceID];
 
 		double area = mesh.faces.area[faceID];
 
-		double normalZ, normalR;
-		getOutwardNormalForCell(mesh, n, faceID, normalZ, normalR);
+		// Convecting flux seen from THIS cell. mDot is stored positive outward
+		// from owner; fluxScale converts that MASS flux to whatever the field
+		// actually convects (1.0 for momentum, 1/rho for a passive scalar).
+		//
+		// A zero flux clears F instead of skipping the face: a face can carry no
+		// flux and still diffuse, so unlike the standalone convection kernel this
+		// must not `continue` past the diffusion half.
+		double F = 0.0;
 
+		if (addConvection) {
+
+			double Fowner = simple.mDot[faceID] * fluxScale;
+
+			if (owner == n) {
+				F = Fowner;
+			}
+			else if (neighbor == n) {
+				F = -Fowner;
+			}
+
+			if (fabs(F) <= 1.0e-30) {
+				F = 0.0;
+			}
+
+			// Accumulate only the faces that actually contribute to the matrix, so
+			// the correction below cancels the assembled row sum exactly.
+			netF += F;
+		}
 
 		// ------------------------------------------------------------
 		// Interior face
@@ -283,6 +313,25 @@ addDiffusionCoefficient(
 					constVar
 				);
 			}
+
+			if (F != 0.0) {
+				addConvectionContribution(
+					n,
+					(owner == n) ? neighbor : owner,
+					faceID,
+					k,
+					mesh,
+					F,
+					false,
+					-1,
+					coeff,
+					bc,
+					phi,
+					gradPhiZ,
+					gradPhiR,
+					scheme
+				);
+			}
 		}
 
 		// ------------------------------------------------------------
@@ -292,76 +341,114 @@ addDiffusionCoefficient(
 
 			int groupID = mesh.faces.boundaryGroupID[faceID];
 
-			if (groupID < 0 || groupID >= bc.nGroups) {
-				// Unassigned boundary face.
-				// Usually you should avoid this by assigning all boundary faces
-				// to a boundary group.
-				continue;
+			// Outward normal for cell n, read here rather than above the branch:
+			// only the boundary half needs it, and interior faces dominate. No sign
+			// flip -- getOutwardNormalForCell negates only when n is the face's
+			// NEIGHBOUR, which a boundary face does not have.
+			double normalZ = mesh.faces.normalZ[faceID];
+			double normalR = mesh.faces.normalR[faceID];
+
+			// Diffusion needs a real group to know the BC type. Convection does not:
+			// addConvectionContribution treats an unassigned face as zero-gradient,
+			// so it stays outside this guard rather than skipping the face entirely
+			// the way the standalone diffusion kernel's `continue` did.
+			if (groupID >= 0 && groupID < bc.nGroups) {
+
+				uint8_t bcType = bc.typeByGroup[groupID];
+				double bcValue = bc.valueByGroup[groupID];
+				double totalLength = bc.lengthByGroup[groupID];
+				uint8_t boundaryType = bc.boundaryTypeByGroup
+					? bc.boundaryTypeByGroup[groupID]
+					: (uint8_t)(BoundaryType::WALL);
+
+				double dPF = getDistanceCellToFace(mesh, n, faceID, normalZ, normalR);
+
+				double K = constVar * area / dPF;
+
+				if (isDirichletType(bcType)) {
+					AC[n] += K;
+					b[n] += K * bcValue;
+
+				}
+				else if (isNeumannType(bcType)) {
+					// For zero-gradient Neumann, bcValue = 0, so this adds nothing.
+					// If bcValue = du/dn, then this adds prescribed diffusive flux.
+					b[n] += constVar * area * bcValue;
+				}
+				else if (isFullyDevelopedType(bcType)) {
+					AC[n] += K;
+					b[n] += K * prescribedBoundaryFaceValue(
+						mesh,
+						faceID,
+						bcType,
+						bcValue,
+						totalLength
+					);
+				}
+				else if (isMichaelisMentenType(bcType)) {
+
+					double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
+					double h = 1 / Rtot;
+					double& cw = mesh.faces.cw[faceID];
+
+					wallConcentrationMichaelisMenten(bc, groupID, phi[n], cw, h);
+					mesh.faces.ocrWall[faceID] = area * MichaelisMenten(bc, groupID, cw) * Inhibition(bc, groupID, cw);
+
+					AC[n] += area * h;
+					b[n] += area * h * cw;
+
+				}
+				else if (isHillType(bcType)) {
+
+					double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
+					double h = 1 / Rtot;
+					double& cw = mesh.faces.cw[faceID];
+
+					wallConcentrationHill(bc, groupID, phi[n], cw, h);
+					mesh.faces.ocrWall[faceID] = area * Hill(bc, groupID, cw) * Inhibition(bc, groupID, cw);
+
+					AC[n] += area * h;
+					b[n] += area * h * cw;
+				}
 			}
 
-			uint8_t bcType = bc.typeByGroup[groupID];
-			double bcValue = bc.valueByGroup[groupID];
-			double totalLength = bc.lengthByGroup[groupID];
-			uint8_t boundaryType = bc.boundaryTypeByGroup
-				? bc.boundaryTypeByGroup[groupID]
-				: (uint8_t)(BoundaryType::WALL);
-
-			double dPF = getDistanceCellToFace(mesh, n, faceID, normalZ, normalR);
-
-			double K = constVar * area / dPF;
-
-			if (isDirichletType(bcType)) {
-				AC[n] += K;
-				b[n] += K * bcValue;
-
-			}
-			else if (isNeumannType(bcType)) {
-				// For zero-gradient Neumann, bcValue = 0, so this adds nothing.
-				// If bcValue = du/dn, then this adds prescribed diffusive flux.
-				b[n] += constVar * area * bcValue;
-			}
-			else if (isFullyDevelopedType(bcType)) {
-				AC[n] += K;
-				b[n] += K * prescribedBoundaryFaceValue(
-					mesh,
+			if (F != 0.0) {
+				// Boundary faces stay first order. A Dirichlet boundary already
+				// supplies the exact face value, and the zero-gradient/outflow cases
+				// have no downstream cell to extrapolate from.
+				addConvectionContribution(
+					n,
+					-1,
 					faceID,
-					bcType,
-					bcValue,
-					totalLength
+					k,
+					mesh,
+					F,
+					true,
+					groupID,
+					coeff,
+					bc,
+					phi,
+					gradPhiZ,
+					gradPhiR,
+					scheme
 				);
 			}
-			else if (isMichaelisMentenType(bcType)) {
-
-				double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
-				double h = 1 / Rtot;
-				double& cw = mesh.faces.cw[faceID];
-
-				wallConcentrationMichaelisMenten(bc, groupID, phi[n], cw, h);
-				mesh.faces.ocrWall[faceID] = area * MichaelisMenten(bc, groupID, cw) * Inhibition(bc, groupID, cw);
-
-				//printf("%e, %e, %e, %e, %e, %e\n",cw, area, Rtot, dPF, constVar, bc.RtotByGroup[groupID]);
-				AC[n] += area * h;
-				b[n] += area * h * cw;
-
-			}
-			else if (isHillType(bcType)) {
-
-				double Rtot = (dPF / constVar) + bc.RtotByGroup[groupID];
-				double h = 1 / Rtot;
-				double& cw = mesh.faces.cw[faceID];
-
-				wallConcentrationHill(bc, groupID, phi[n], cw, h);
-				mesh.faces.ocrWall[faceID] = area * Hill(bc, groupID, cw) * Inhibition(bc, groupID, cw);
-
-				AC[n] += area * h;
-				b[n] += area * h * cw;
-			}
 		}
+	}
+
+	// Bounded-convection correction (OpenFOAM's -Sp(div(phi), phi)). Upwind is
+	// only bounded when the face fluxes are divergence-free (netF == 0); while
+	// the SIMPLE flow is still converging netF != 0 acts as a spurious source
+	// that lets phi over/undershoot its boundary values. Subtracting phi_P*netF
+	// forces the convection row sum to zero, restoring the M-matrix property.
+	// netF -> 0 at convergence, so the final field is unchanged.
+	if (addConvection) {
+		AC[n] -= netF;
 	}
 }
 
 // ==============================================================
-// ==================CONVECTION TERM=============================
+// ==============CYLINDRICAL SOURCE TERM=========================
 // ==============================================================
 
 __global__
@@ -380,125 +467,6 @@ void addRadialMomentumCylindricalSource(
 
 	coeff.AC[n] += scalar * volume / (r * r);
 
-}
-
-__global__
-void addConvectionCoefficient(
-	FVMeshDevice mesh,
-	VariablesSimple simple,
-	Coefficients coeff,
-	BoundaryFieldDevice bc,
-	const double* phi,
-	const double* gradPhiZ,
-	const double* gradPhiR,
-	ConvectionScheme scheme,
-	double fluxScale
-) {
-	int n = blockIdx.x * blockDim.x + threadIdx.x;
-
-	if (n >= mesh.cells.nCells) return;
-
-
-	int start = mesh.cells.faceStart[n];
-	int end = mesh.cells.faceStart[n + 1];
-
-	// Net outward mass flux through this cell's faces. For a converged flow this
-	// is the discrete continuity residual (~0); before convergence it is nonzero
-	// and is what lets an unbounded upwind row overshoot its boundary values.
-	double netF = 0.0;
-
-	for (int k = start; k < end; k++) {
-
-		int faceID = mesh.cells.faceIDs[k];
-
-		int owner = mesh.faces.owner[faceID];
-		int neighbor = mesh.faces.neighbor[faceID];
-
-		// mDot is stored positive outward from owner. It is a MASS flux
-		// (rho*u*area); fluxScale converts it to the flux this field actually
-		// convects (1.0 for momentum, 1/rho for a passive scalar -> volumetric).
-		double Fowner = simple.mDot[faceID] * fluxScale;
-
-		double F = 0.0;
-
-		if (owner == n) {
-			F = Fowner;
-		}
-		else if (neighbor == n) {
-			F = -Fowner;
-		}
-		else {
-			continue;
-		}
-
-		if (fabs(F) <= 1.0e-30) {
-			continue;
-		}
-
-		// Accumulate only the faces that actually contribute to the matrix, so
-		// the correction below cancels the assembled row sum exactly.
-		netF += F;
-
-		// ------------------------------------------------------------
-		// Interior face
-		// ------------------------------------------------------------
-		if (neighbor >= 0) {
-
-			int nb = (owner == n) ? neighbor : owner;
-
-			addConvectionContribution(
-				n,
-				nb,
-				faceID,
-				k,
-				mesh,
-				F,
-				false,
-				-1,
-				coeff,
-				bc,
-				phi,
-				gradPhiZ,
-				gradPhiR,
-				scheme
-			);
-		}
-
-		// ------------------------------------------------------------
-		// Boundary face
-		// ------------------------------------------------------------
-		else {
-
-			// Boundary faces stay first order. A Dirichlet boundary already
-			// supplies the exact face value, and the zero-gradient/outflow cases
-			// have no downstream cell to extrapolate from.
-			int groupID = mesh.faces.boundaryGroupID[faceID];
-			addConvectionContribution(
-				n,
-				-1,
-				faceID,
-				k,
-				mesh,
-				F,
-				true,
-				groupID,
-				coeff,
-				bc,
-				phi,
-				gradPhiZ,
-				gradPhiR,
-				scheme
-			);
-		}
-	}
-
-	// Bounded-convection correction (OpenFOAM's -Sp(div(phi), phi)). Upwind is
-	// only bounded when the face fluxes are divergence-free (netF == 0); while
-	// the SIMPLE flow is still converging netF != 0 acts as a spurious source
-	// that lets phi over/undershoot its boundary values. Subtracting phi_P*netF
-	// forces the convection row sum to zero, restoring the M-matrix property.
-	// netF -> 0 at convergence, so the final field is unchanged.
-	coeff.AC[n] -= netF;
 }
 
 // ==============================================================
@@ -632,4 +600,16 @@ void underRelaxEquation(
 	coeff.AC[n] = AC_old / alpha;
 
 	coeff.b[n] += ((1.0 - alpha) / alpha) * AC_old * x[n];
+}
+
+__global__
+void buildInverseDiagonal(Coefficients coeff) {
+
+	int n = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (n >= coeff.N) return;
+
+	const double AC = coeff.AC[n];
+
+	coeff.invAC[n] = (fabs(AC) < 1.0e-30) ? 0.0 : 1.0 / AC;
 }

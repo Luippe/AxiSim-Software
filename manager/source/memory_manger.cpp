@@ -829,6 +829,7 @@ void copyCoefficients(Coefficients& dst, const Coefficients& src, int N, cudaStr
 
 	cudaMemcpyAsync(dst.AC, src.AC, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
 	cudaMemcpyAsync(dst.b, src.b, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+	cudaMemcpyAsync(dst.invAC, src.invAC, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
 
 	// The off-diagonals live in AF. Skipping it hands dst a DIAGONAL-ONLY operator,
 	// which does not fail loudly: AC is populated either way, so a smoother
@@ -859,9 +860,11 @@ void allocateCoefficients(
 
 	coeff.AC = deviceAlloc<double>(nCells);
 	coeff.b = deviceAlloc<double>(nCells);
+	coeff.invAC = deviceAlloc<double>(nCells);
 
 	CUDA_CHECK(cudaMemset(coeff.AC, 0, nCells * sizeof(double)));
 	CUDA_CHECK(cudaMemset(coeff.b, 0, nCells * sizeof(double)));
+	CUDA_CHECK(cudaMemset(coeff.invAC, 0, nCells * sizeof(double)));
 
 	if (coeff.nFaceRefs > 0) {
 		coeff.AF = deviceAlloc<double>(coeff.nFaceRefs);

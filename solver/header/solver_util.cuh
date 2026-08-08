@@ -900,16 +900,48 @@ void computeGradient(
 __global__
 void copyVector(double* vec1, double* vec2, int N);
 
+// Assembles diffusion AND convection in ONE pass over the cell's faces. These
+// were two kernels walking the identical cells.faceStart CSR and accumulating
+// into the same AC[n] / b[n] / AF[k]; fusing them halves the traversal and the
+// shared per-face loads (faceID, owner, neighbor, area). Every contribution is a
+// `+=`, so the merged loop assembles the same matrix -- up to the summation order
+// on AC[n], which now interleaves the two terms face by face instead of running
+// diffusion to completion first.
+//
+// `constVar` is the diffusivity: mu for momentum, a kinematic diffusivity for a
+// scalar. `addConvection` = 0 assembles diffusion alone and leaves `scheme` and
+// `fluxScale` unread.
+//
+// fluxScale multiplies the face MASS flux (mDot = rho*u*area) before it is used
+// as the convecting flux F. Momentum convects mass, so it passes 1.0. A passive
+// scalar (species concentration) convects with the VOLUMETRIC flux u*area, so it
+// passes 1/rho to divide the density out and stay consistent with the kinematic
+// diffusivity it is handed as constVar.
+//
+// `scheme` selects the face interpolation, applied by DEFERRED CORRECTION: the
+// matrix is always the first-order upwind operator and the higher-order difference
+// is added to the RHS, lagged one outer iteration. That keeps the system an
+// M-matrix for Jacobi/Gauss-Seidel/multigrid while converging to the higher-order
+// solution.
+//
+// CONV_SECOND_ORDER_UPWIND and CONV_QUICK read gradPhiZ/gradPhiR at the upwind
+// cell, and applyNonOrtho reads them at this cell, so the caller MUST have filled
+// them for this field before launching. Passing null gradients silently degrades
+// those schemes to upwind. CONV_UPWIND and CONV_CENTRAL ignore them.
 __global__ void
-addDiffusionCoefficient(
+addTransportCoefficients(
 	FVMeshDevice mesh,
+	VariablesSimple simple,
 	Coefficients coeff,
 	BoundaryFieldDevice bc,
 	const double* phi,
 	const double* gradPhiZ,
 	const double* gradPhiR,
 	int applyNonOrtho,
-	double constVar
+	double constVar,
+	int addConvection,
+	ConvectionScheme scheme,
+	double fluxScale
 );
 
 // Implicit unsteady term, assembled so the system solves for phi at the NEW time
@@ -945,35 +977,6 @@ void addRadialMomentumCylindricalSource(
 	FVMeshDevice mesh,
 	Coefficients coeff,
 	double scalar
-);
-
-// fluxScale multiplies the face MASS flux (mDot = rho*u*area) before it is used
-// as the convecting flux F. Momentum convects mass, so it passes 1.0. A passive
-// scalar (species concentration) convects with the VOLUMETRIC flux u*area, so it
-// passes 1/rho to divide the density out and stay consistent with the kinematic
-// diffusivity (f.D) used by addDiffusionCoefficient.
-//
-// `scheme` selects the face interpolation, applied by DEFERRED CORRECTION: the
-// matrix is always the first-order upwind operator and the higher-order difference
-// is added to the RHS, lagged one outer iteration. That keeps the system an
-// M-matrix for Jacobi/Gauss-Seidel/multigrid while converging to the higher-order
-// solution.
-//
-// CONV_SECOND_ORDER_UPWIND and CONV_QUICK read gradPhiZ/gradPhiR at the upwind
-// cell, so the caller MUST have filled them for this field before launching this
-// kernel. Passing null gradients silently degrades those schemes to upwind.
-// CONV_UPWIND and CONV_CENTRAL ignore them.
-__global__
-void addConvectionCoefficient(
-	FVMeshDevice mesh,
-	VariablesSimple simple,
-	Coefficients coeff,
-	BoundaryFieldDevice bc,
-	const double* phi,
-	const double* gradPhiZ,
-	const double* gradPhiR,
-	ConvectionScheme scheme,
-	double fluxScale
 );
 
 // One-shot post-solve diagnostic for reactive (Michaelis-Menten / Hill) walls.
@@ -1015,6 +1018,22 @@ __global__
 void clearAllCoefficients(Args... args) {
 	(clearCoefficients(args), ...);
 }
+
+// Reciprocal of the diagonal, so the smoothers multiply instead of divide -- an
+// FP64 divide is ~20x a multiply on sm_86 and ran once per cell per sweep.
+//
+// Launch after EVERY kernel that touches AC (under-relaxation included), once per
+// coefficient set that gets solved. pp is assembled by createPPCoeff and is never
+// under-relaxed, so it needs its own launch -- folding this into another kernel is
+// what kept leaving one field behind.
+//
+// Writing every cell every time is deliberate: a row skipped here keeps the
+// PREVIOUS outer iteration's reciprocal, and the smoothers cannot tell that stale
+// nonzero from a live one.
+//
+// invAC == 0 encodes a collapsed row (|AC| ~ 0), so no consumer needs its own test.
+__global__
+void buildInverseDiagonal(Coefficients coeff);
 
 __global__
 void underRelaxEquation(

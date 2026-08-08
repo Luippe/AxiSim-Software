@@ -43,17 +43,10 @@ void createPPRhs(
 
 // ---------------------update variables----------------
 __global__
-void updateVelocity(
+void updateMomentumPressure(
 	FVMeshDevice mesh,
 	VariablesSimple simple,
 	BoundaryFieldDevice pBC
-);
-
-
-__global__
-void updatePressure(
-	FVMeshDevice mesh,
-	VariablesSimple simple
 );
 
 __global__
@@ -65,9 +58,13 @@ void updateMassFlux(
 	int applyNonOrtho
 );
 
+// D = V / aP for both momentum equations in one pass. Fused because the two
+// share the cell volume and differ only in which diagonal they divide it by.
 __global__
-void getCorrectionCoefficient(
+void getCorrectionCoefficients(
 	FVMeshDevice mesh,
-	Coefficients coeff,
-	double* D
+	Coefficients uCoeff,
+	Coefficients vCoeff,
+	double* DU,
+	double* DV
 );

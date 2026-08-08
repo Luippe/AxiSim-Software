@@ -113,6 +113,7 @@ struct Coefficients {
 	double* AF = nullptr;
 	double* AC = nullptr;
 	double* b = nullptr;
+	double* invAC = nullptr;
 
 	int* faceStart = nullptr;
 	int* faceNeighbor = nullptr;
@@ -122,7 +123,7 @@ struct Coefficients {
 
 
 	void free() {
-		freeAllDev(AF, AC, b);
+		freeAllDev(AF, AC, b, invAC);
 		freeAllDev(faceStart, faceNeighbor);
 	}
 };

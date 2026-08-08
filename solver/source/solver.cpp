@@ -1113,10 +1113,6 @@ void Solver::runSimple(const Mesh& mesh) {
                 tempCoeff,
                 concCoeff
             );
-            //clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (vCoeff);
-            //clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
-            //clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (tempCoeff);
-            //clearCoefficients << <blocks, threadsPerBlock, 0, stream >> > (concCoeff);
 
             // Gradients feed two consumers now: the non-orthogonal diffusion
             // correction, and the second-order-upwind convection extrapolation. The
@@ -1129,13 +1125,8 @@ void Solver::runSimple(const Mesh& mesh) {
             }
 
             // create coeffs for velocity and pressure correction equations
-            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, applyNonOrtho, f.mu);
-            addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, applyNonOrtho, f.mu);
-
-           if (addConvectionTerm) {
-                addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, uCoeff, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, convectionScheme, 1.0);
-                addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, vCoeff, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, convectionScheme, 1.0);
-            }
+            addTransportCoefficients << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, uCoeff, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, applyNonOrtho, f.mu, addConvectionTerm ? 1 : 0, convectionScheme, 1.0);
+            addTransportCoefficients << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, vCoeff, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, applyNonOrtho, f.mu, addConvectionTerm ? 1 : 0, convectionScheme, 1.0);
 
             // add mu * ur / r^2 contribution
             addRadialMomentumCylindricalSource << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, f.mu);
@@ -1161,8 +1152,12 @@ void Solver::runSimple(const Mesh& mesh) {
             underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, simple.u, simple.momentumRelaxation);
             underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.v, simple.momentumRelaxation);
 
-            getCorrectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, simple.DU);
-            getCorrectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, simple.DV);
+            // last touch of AC, so the reciprocals below are the relaxed diagonal --
+            // which is what both DU/DV and the momentum smoothers must see
+            buildInverseDiagonal << <blocks, threadsPerBlock, 0, stream >> > (uCoeff);
+            buildInverseDiagonal << <blocks, threadsPerBlock, 0, stream >> > (vCoeff);
+
+            getCorrectionCoefficients << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, uCoeff, vCoeff, simple.DU, simple.DV);
 
             // solve velocity
             uSolver.run();
@@ -1170,6 +1165,10 @@ void Solver::runSimple(const Mesh& mesh) {
 
             // solve pressure correction
             createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, bcDevice.p);
+
+            // pp never reaches underRelaxEquation, so this is its only reciprocal.
+            // Outside the corrector loop below because createPPRhs rewrites only b.
+            buildInverseDiagonal << <blocks, threadsPerBlock, 0, stream >> > (ppCoeff);
 
             // grad(p) for Rhie-Chow is still in gradPZ/gradPR from the momentum
             // step above (nothing overwrote it), so no recompute is needed here.
@@ -1207,9 +1206,8 @@ void Solver::runSimple(const Mesh& mesh) {
             computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
 
             // update field variables
-            updateVelocity << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, bcDevice.p);
+            updateMomentumPressure << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, bcDevice.p);
             updateMassFlux << <faceBlocks, faceThreads, 0, stream >> > (config, fvMeshDevice, simple, bcDevice.p, applyNonOrtho);
-            updatePressure << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple);
 
             // ======================================================================
             // -----------------ENERGY / CONCENTRATION EQUATIONS---------------------
@@ -1220,17 +1218,14 @@ void Solver::runSimple(const Mesh& mesh) {
                     computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, s.bc, s.phi, s.gradZ, s.gradR, gradientScheme);
                 }
 
-                addDiffusionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, s.coeff, s.bc, s.phi, s.gradZ, s.gradR, applyNonOrtho, s.diffusivity);
-
-                if (addConvectionTerm) {
-                    addConvectionCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, s.coeff, s.bc, s.phi, s.gradZ, s.gradR, convectionScheme, 1.0 / f.rho);
-                }
+                addTransportCoefficients << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, s.coeff, s.bc, s.phi, s.gradZ, s.gradR, applyNonOrtho, s.diffusivity, addConvectionTerm ? 1 : 0, convectionScheme, 1.0 / f.rho);
 
                 if (transient) {
                     addTransientCoefficient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, s.coeff, s.phiOld, bdf2ThisStep ? s.phiOld2 : nullptr, 1.0, configSolver.dt);
                 }
 
                 underRelaxEquation << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, s.coeff, s.phi, s.underRelax ? simple.momentumRelaxation : 1.0);
+                buildInverseDiagonal << <blocks, threadsPerBlock, 0, stream >> > (s.coeff);
                 s.solver->run();
             }
 

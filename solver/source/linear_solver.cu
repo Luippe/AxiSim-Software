@@ -16,13 +16,7 @@ void jacobi(
 
 	if (n >= coeff.N) return;
 
-	const double AC = coeff.AC[n];
-
-	if (fabs(AC) < 1.0e-30) {
-		xNew[n] = xOld[n];
-		return;
-	}
-
+	const double invAC = coeff.invAC[n];
 	double val = coeff.b[n];
 
 	const int start = coeff.faceStart[n];
@@ -35,7 +29,7 @@ void jacobi(
 		}
 	}
 
-	xNew[n] = val / AC;
+	xNew[n] = (invAC != 0.0) ? val * invAC : xOld[n];
 }
 
 // Gauss-Seidel over ONE color of the multicolor ordering (see MeshColoring).

@@ -34,8 +34,6 @@ void createPPCoeff(
 		double normalZ, normalR;
 		getOutwardNormalForCell(mesh, n, faceID, normalZ, normalR);
 
-		//double dPF = getDistanceCellToFace(mesh, n, faceID, normalZ, normalR);
-
 		double Df = interpolateNormalCorrectionCoeffToFace(
 			n,
 			faceID,
@@ -48,13 +46,10 @@ void createPPCoeff(
 		// ------------------------------------------------------------
 		if (neighbor >= 0) {
 
-			double invDPN = mesh.faces.invCellToCell[faceID];
+			double K = rho * area * Df * mesh.faces.invCellToCell[faceID];;
 
-			double K = rho * area * Df * invDPN;
-
-			// Style A pressure-correction matrix assembly
+			// pressure-correction matrix assembly
 			AC[n] += K;
-
 			coeff.AF[k] -= K;
 
 		}
@@ -86,8 +81,6 @@ void createPPCoeff(
 				// No b contribution because p'_boundary = 0.
 			}
 			else if (isNeumannType(bcType)) {
-				// Zero-gradient pressure correction:
-				// no coefficient contribution.
 				continue;
 			}
 		}
@@ -171,7 +164,7 @@ void createMomentumPressureRhs(
 }
 
 __global__
-void updateVelocity(
+void updateMomentumPressure(
 	FVMeshDevice mesh,
 	VariablesSimple simple,
 	BoundaryFieldDevice pBC
@@ -180,33 +173,9 @@ void updateVelocity(
 
 	if (n >= mesh.cells.nCells) return;
 
-
-	// grad(p') has already been computed into simple.gradPZ/gradPR using the
-	// pressure-correction boundary conditions (fixed-pressure faces -> p'=0), so
-	// we reuse it here. This also avoids the old phiGradientCell(pp, pBC) call,
-	// which incorrectly fed the *pressure* Dirichlet value into grad(p').
 	simple.u[n] -= simple.DU[n] * simple.gradPZ[n];
 	simple.v[n] -= simple.DV[n] * simple.gradPR[n];
-}
-
-
-__global__
-void updatePressure(
-	FVMeshDevice mesh,
-	VariablesSimple simple
-) {
-	int n = blockIdx.x * blockDim.x + threadIdx.x;
-
-	if (n >= mesh.cells.nCells) return;
-
-
-	double* pp = simple.pp;
-	double* p = simple.p;
-
-	double pressureRelaxation = simple.pressureRelaxation;
-
-	p[n] += pressureRelaxation * pp[n];
-
+	simple.p[n] += simple.pressureRelaxation * simple.pp[n];
 }
 
 __global__

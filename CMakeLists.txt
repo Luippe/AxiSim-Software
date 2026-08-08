@@ -382,7 +382,7 @@ set_target_properties(AxiSim PROPERTIES
 # Scoped to these two files rather than the whole target on purpose: adding it
 # to the CUDA command line invalidates every .cu, and `cuobjdump -res-usage`
 # on the linked exe showed only three kernels with a nonzero stack frame --
-# addDiffusionCoefficient here, createPPRhs and updateMassFlux in simple.cu.
+# addTransportCoefficients here, createPPRhs and updateMassFlux in simple.cu.
 #
 # What -v established that cuobjdump could not: all three report 0 spill
 # stores / 0 spill loads, so those frames are ABI overhead from
