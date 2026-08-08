@@ -427,6 +427,10 @@ struct FVCellDevice {
 
 	int* faceStart = nullptr;
 	int* faceIDs = nullptr;
+
+	// precomputed values
+	// 1 / A2D, the planar (pre-revolve) cell area: 2*pi*centerR / volume.
+	double* invA2D = nullptr;
 };
 
 struct FVFaceDevice {

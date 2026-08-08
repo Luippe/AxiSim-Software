@@ -478,10 +478,8 @@ void phiGradientGreenGauss(
 	// use the planar face length L2D and cell area A2D -- feeding the revolved
 	// area/volume in directly biases the radial gradient (a constant field would
 	// give grad_r = c/rc, worst near the axis). Recover the planar metrics from
-	// the revolved ones: L2D = area/(2*pi*rf), A2D = volume/(2*pi*rc).
-	double volume = mesh.cells.volume[cellID];
-	double rc = mesh.cells.centerR[cellID];
-
+	// the revolved ones: L2D = area/(2*pi*rf), A2D = volume/(2*pi*rc) -- the latter
+	// precomputed per cell as invA2D.
 	constexpr double twoPi = 6.28318530717958647692;
 
 	int start = mesh.cells.faceStart[cellID];
@@ -537,8 +535,8 @@ void phiGradientGreenGauss(
 		gr += axisPhiF * (-closureR);
 	}
 
-	// divide by the planar cell area A2D = volume / (2*pi*rc)
-	double invA2D = twoPi * rc / volume;
+	// divide by the planar cell area A2D
+	double invA2D = mesh.cells.invA2D[cellID];
 	gradZ = gz * invA2D;
 	gradR = gr * invA2D;
 }

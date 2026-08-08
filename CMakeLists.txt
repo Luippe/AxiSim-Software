@@ -360,11 +360,11 @@ if(UNIX)
     )
 endif()
 
-# CUDA GPU target. Building native SASS (-real) for this machine's GPU only --
-# sm_86 (Ampere, RTX 30 series) -- to keep local build times short.
+# CUDA GPU target. The default builds native SASS (-real) for this machine's GPU
+# only -- sm_86 (Ampere, RTX 30 series) -- to keep local build times short.
 #
-# For distribution across many consumer cards, use a multi-arch list instead,
-# e.g. "75-real;86-real;89-real;120-real;75-virtual" (Turing/Ampere/Ada/Blackwell
+# The release presets override it with the distribution list
+# "75-real;86-real;89-real;120-real;75-virtual" (Turing/Ampere/Ada/Blackwell
 # SASS plus compute_75 PTX as a JIT fallback for anything >= 7.5). CUDA 13.0
 # dropped Maxwell/Pascal/Volta, so 7.5 is the floor. Check arches with
 # `nvcc --list-gpu-arch`.

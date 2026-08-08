@@ -17,6 +17,7 @@ struct PreCompute {
 	std::vector<double> invDPN;
 	std::vector<double> wP;
 	std::vector<double> dPB;
+	std::vector<double> invA2D;
 };
 
 bool isObstacleCell(
@@ -502,6 +503,13 @@ PreCompute preComputeVariables(const FVMeshHostPacked& h) {
 	preCompute.invDPN.assign(h.nFaces, 0.0);
 	preCompute.wP.assign(h.nFaces, 0.0);
 	preCompute.dPB.assign(h.nFaces, 0.0);
+	preCompute.invA2D.assign(h.nCells, 0.0);
+
+	// Green-Gauss needs the planar cell area A2D = volume / (2*pi*centerR); hoisting
+	// the fp64 divide here drops it (and both operand loads) from every gradient call.
+	for (int c = 0; c < h.nCells; c++) {
+		preCompute.invA2D[c] = 2.0 * PI * h.cellCenterR[c] / h.cellVolume[c];
+	}
 
 	for (int f = 0; f < h.nFaces; f++) {
 
@@ -586,6 +594,7 @@ FVMeshDevice createFVMeshDeviceFromPacked(const FVMeshHostPacked& h) {
 	copyHostToDevice(d.faces.invCellToCell, preCompute.invDPN);
 	copyHostToDevice(d.faces.wP, preCompute.wP);
 	copyHostToDevice(d.faces.dPB, preCompute.dPB);
+	copyHostToDevice(d.cells.invA2D, preCompute.invA2D);
 
 	return d;
 }

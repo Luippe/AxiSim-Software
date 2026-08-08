@@ -52,13 +52,9 @@ void gaussSeidelColorSweep(
 
 	if (t >= colorCount) return;
 
-	// buildMeshColoring counting-sorts every id in [0, nCells) into cellOrder, and
-	// the caller checks nCells == coeff.N, so n is in range by construction
 	const int n = cellOrder[colorBegin + t];
 
-	const double AC = coeff.AC[n];
-
-	if (fabs(AC) < 1.0e-30) return;
+	const double invAC = coeff.invAC[n];
 
 	double val = coeff.b[n];
 
@@ -72,7 +68,7 @@ void gaussSeidelColorSweep(
 		}
 	}
 
-	x[n] = val / AC;
+	x[n] = (invAC != 0.0) ? val * invAC : x[n];
 }
 
 // ==============================================================
