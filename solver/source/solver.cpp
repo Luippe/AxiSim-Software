@@ -824,13 +824,8 @@ void Solver::runSimple(const Mesh& mesh) {
         }
         simple.free();
 
-        // Map overload, not one call per field: every field sits on the same mesh,
-        // so this walks the cell-face CSR once instead of once per system.
         allocateCoefficients(coeffs, fvMesh);
 
-        // Gauss-Seidel ordering. Nothing else reads it, so building it under any
-        // other solver type is a wasted O(N * degree) graph walk plus an N-int
-        // upload.
         coloring.free();
 
         if (configSolver.type == LinearSolverType::LINEAR_GS_RB) {
@@ -904,18 +899,6 @@ void Solver::runSimple(const Mesh& mesh) {
 
     CUDA_CHECK(cudaGetLastError());
 
-    if (addConvectionTerm && console) {
-        const char* schemeName =
-            convectionScheme == ConvectionScheme::CONV_CENTRAL ? "central difference" :
-            convectionScheme == ConvectionScheme::CONV_SECOND_ORDER_UPWIND ? "second order upwind" :
-            convectionScheme == ConvectionScheme::CONV_QUICK ? "QUICK (falls back to second order upwind)" :
-            "first order upwind";
-
-        std::ostringstream schemeMsg;
-        schemeMsg << "Convection: " << schemeName << "\n";
-        console->addLine(schemeMsg.str());
-    }
-
     cudaProfilerStart();
 
     // record time
@@ -925,16 +908,7 @@ void Solver::runSimple(const Mesh& mesh) {
     int numSteps = transient ? (int)std::ceil(configSolver.tEnd / configSolver.dt) : 1;
 
     const double thermDiffusivity = f.k / (f.rho * f.cp);
-    // One LinearSolver per field this run will actually solve, keyed by field name.
-    // A captured graph bakes its own field's coefficient and solution pointers in as
-    // by-value kernel arguments, so the graphs cannot be shared -- this map is what
-    // holds that multiplicity, and it carries nothing for a field the run skips.
-    //
-    // try_emplace, not operator[]: LinearSolver has no default constructor and is
-    // neither copyable nor movable (reference members, and CudaGraph owns handles it
-    // would double-destroy). unordered_map is node-based, so it constructs each value
-    // in place and never relocates one, which is also what keeps the references taken
-    // below valid for the whole run.
+
     std::unordered_map<std::string, LinearSolver> linearSolvers;
 
     linearSolvers.try_emplace("u", configSolver, mem, coloring);

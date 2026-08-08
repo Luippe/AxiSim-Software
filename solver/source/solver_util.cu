@@ -268,11 +268,9 @@ addDiffusionCoefficient(
 
 			int nb = (owner == n) ? neighbor : owner;
 
-			double dPN = getDistanceCellToCell(mesh, n, nb, normalZ, normalR);
+			double invDPN = mesh.faces.invCellToCell[faceID];
 
-			if (dPN <= 0.0) continue;
-
-			double K = constVar * area / dPN;
+			double K = constVar * area * invDPN;
 
 			// Add diagonal contribution
 			AC[n] += K;

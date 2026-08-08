@@ -70,6 +70,7 @@ public:
 	void runGmshTriangulation();
 	void applyRegionOfInfluenceFields(double defaultMeshSize);
 
+
 	int nseg = 64;	// number of vertices on the circle
 	bool showFill = true;
 	bool isReady = false;

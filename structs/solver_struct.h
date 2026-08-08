@@ -450,6 +450,12 @@ struct FVFaceDevice {
 
 	// Wall oxygen-consumption rate per face (solver output; 0 on interior faces).
 	double* ocrWall = nullptr;
+
+	// precomputed values
+	double* invCellToCell = nullptr;
+	double* wP = nullptr;
+	double* dPB = nullptr;
+
 };
 
 // No nr/nz: the device path is purely face-based. The logical grid still exists

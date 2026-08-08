@@ -12,6 +12,13 @@
 
 #include "boundary_func.h"
 
+// precompute
+struct PreCompute {
+	std::vector<double> invDPN;
+	std::vector<double> wP;
+	std::vector<double> dPB;
+};
+
 bool isObstacleCell(
 	const std::unordered_set<int>& obstacleSet,
 	int nrBase,
@@ -489,6 +496,50 @@ FVMeshHostPacked packFVMeshForDevice(const FVMesh& mesh) {
 }
 
 
+PreCompute preComputeVariables(const FVMeshHostPacked& h) {
+
+	PreCompute preCompute;
+	preCompute.invDPN.assign(h.nFaces, 0.0);
+	preCompute.wP.assign(h.nFaces, 0.0);
+	preCompute.dPB.assign(h.nFaces, 0.0);
+
+	for (int f = 0; f < h.nFaces; f++) {
+
+		int neighbor = h.faceNeighbor[f];
+		int owner = h.faceOwner[f];
+
+		double dzPF = h.faceCenterZ[f] - h.cellCenterZ[owner];
+		double drPF = h.faceCenterR[f] - h.cellCenterR[owner];
+
+		if (neighbor < 0) {
+			preCompute.dPB[f] = std::abs(dzPF * h.faceNormalZ[f] + drPF * h.faceNormalR[f]);
+			continue;
+		}
+
+
+		double dzNF = h.faceCenterZ[f] - h.cellCenterZ[neighbor];
+		double drNF = h.faceCenterR[f] - h.cellCenterR[neighbor];
+
+		double dzPN = h.cellCenterZ[neighbor] - h.cellCenterZ[owner];
+		double drPN = h.cellCenterR[neighbor] - h.cellCenterR[owner];
+
+		double dPF = std::abs(dzPF * h.faceNormalZ[f] + drPF * h.faceNormalR[f]);
+		double dNF = std::abs(dzNF * h.faceNormalZ[f] + drNF * h.faceNormalR[f]);
+		double dPN = std::sqrt(dzPN * dzPN + drPN * drPN);
+
+		double denom = dPF + dNF;
+
+		preCompute.invDPN[f] = 1.0 / dPN;
+
+		// 0.5 is the plain-average fallback the kernel used to take when the two
+		// face distances summed to nothing; it also survives the owner/neighbour
+		// flip unchanged.
+		preCompute.wP[f] = (denom > 1.0e-30) ? dNF / denom : 0.5;
+	}
+
+	return preCompute;
+
+}
 
 // Upload an already-packed host mesh to the device. Shared by both the FVMesh
 // and MultiBlockMesh entry points below.
@@ -531,6 +582,13 @@ FVMeshDevice createFVMeshDeviceFromPacked(const FVMeshHostPacked& h) {
 
 	copyHostToDevice(d.cells.faceStart, h.cellFaceStart);
 	copyHostToDevice(d.cells.faceIDs, h.cellFaceIDs);
+
+
+
+	PreCompute preCompute = preComputeVariables(h);
+	copyHostToDevice(d.faces.invCellToCell, preCompute.invDPN);
+	copyHostToDevice(d.faces.wP, preCompute.wP);
+	copyHostToDevice(d.faces.dPB, preCompute.dPB);
 
 	return d;
 }

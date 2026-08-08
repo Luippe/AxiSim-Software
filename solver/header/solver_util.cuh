@@ -70,26 +70,21 @@ void getOutwardNormalForCell(
 	}
 }
 
+// Weight on phi[cellID] for a linear interpolation to the face:
+//   phiF = w * phi[cellID] + (1 - w) * phi[nb]
+//
+// faces.wP is stored owner-relative, but every interior face sits in BOTH cells'
+// CSR lists, so a cell loop reaches it from either side. Flip when cellID is the
+// neighbour -- same reason getOutwardNormalForCell above negates the normal.
 __device__ __forceinline__
-double getDistanceCellToCell(
+double getFaceWeightForCell(
 	const FVMeshDevice& mesh,
-	int owner,
-	int neighbor,
-	double normalZ,
-	double normalR
+	int cellID,
+	int faceID
 ) {
-	double zP = mesh.cells.centerZ[owner];
-	double rP = mesh.cells.centerR[owner];
+	double w = mesh.faces.wP[faceID];
 
-	double zN = mesh.cells.centerZ[neighbor];
-	double rN = mesh.cells.centerR[neighbor];
-
-	double dz = zN - zP;
-	double dr = rN - rP;
-
-	double full = sqrt(dz * dz + dr * dr);           // true centroid separation
-
-	return full;
+	return (mesh.faces.owner[faceID] == cellID) ? w : 1.0 - w;
 }
 
 __device__ __forceinline__
@@ -138,11 +133,6 @@ double interpolateNormalCorrectionCoeffToFace(
 	int owner = mesh.faces.owner[faceID];
 	int neighbor = mesh.faces.neighbor[faceID];
 
-	double normalZ, normalR;
-	getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
-
-	double dPF = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
-
 	double DP = getNormalCorrectionCoeff(
 		cellID,
 		faceID,
@@ -157,8 +147,6 @@ double interpolateNormalCorrectionCoeffToFace(
 
 	int nb = (owner == cellID) ? neighbor : owner;
 
-	double dNF = getDistanceCellToFace(mesh, nb, faceID, normalZ, normalR);
-
 	double DN = getNormalCorrectionCoeff(
 		nb,
 		faceID,
@@ -166,14 +154,10 @@ double interpolateNormalCorrectionCoeffToFace(
 		simple
 	);
 
-	double denom = dPF + dNF;
-
-	if (denom <= 0.0) {
-		return 0.5 * (DP + DN);
-	}
+	double w = getFaceWeightForCell(mesh, cellID, faceID);
 
 	// Linear interpolation to face
-	return (dNF * DP + dPF * DN) / denom;
+	return w * DP + (1.0 - w) * DN;
 }
 
 // Scatters aNb into the matrix slot linking cell n to neighbour nb.
@@ -294,24 +278,16 @@ double interpolateFieldToFace(
 
 	double phiP = phi[cellID];
 
-	double normalZ, normalR;
-	getOutwardNormalForCell(mesh, cellID, faceID, normalZ, normalR);
-
-	double dPF = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
-
 	// ---------------- interior face ----------------
 	if (neighbor >= 0) {
 		int nb = (owner == cellID) ? neighbor : owner;
 
-		double phiN = phi[nb];
-
-		double dNF = getDistanceCellToFace(mesh, nb, faceID, normalZ, normalR);
-
-		double denom = dPF + dNF;
+		double wP = getFaceWeightForCell(mesh, cellID, faceID);
 
 		// Linear interpolation to face
-		return (dNF * phiP + dPF * phiN) / denom;
+		return wP * phiP + (1.0 - wP) * phi[nb];
 	}
+
 
 	// ---------------- boundary face ----------------
 	int groupID = mesh.faces.boundaryGroupID[faceID];
@@ -338,7 +314,7 @@ double interpolateFieldToFace(
 	else if (isNeumannType(bcType)) {
 		// dphi/dn = bcValue
 		// zero-gradient means bcValue = 0, so phiF = phiP
-		return phiP + bcValue * dPF;
+		return phiP + bcValue * mesh.faces.dPB[faceID];
 	}
 
 	// Only NONE and the kinetics walls (Michaelis-Menten / Hill) land here. Note
@@ -462,16 +438,10 @@ double nonOrthoScalarDiffusionFlux(
 
 	double dz = mesh.cells.centerZ[nb] - mesh.cells.centerZ[cellID];
 	double dr = mesh.cells.centerR[nb] - mesh.cells.centerR[cellID];
-	double dOrth = getDistanceCellToCell(mesh, cellID, nb, normalZ, normalR);
-
-
-
-	if (dOrth <= 1.0e-30) {
-		return 0.0;
-	}
+	double invDOrth = mesh.faces.invCellToCell[faceID];
 
 	//double signedDOrth = (nd < 0.0) ? -dOrth : dOrth;
-	double aOverNd = area / dOrth;
+	double aOverNd = area * invDOrth;
 	double Tz = area * normalZ - aOverNd * dz;
 	double Tr = area * normalR - aOverNd * dr;
 
@@ -481,19 +451,10 @@ double nonOrthoScalarDiffusionFlux(
 	// interpolateFieldToFace), staying second-order on stretched cells where a
 	// plain average would not. Symmetric under owner<->neighbor swap, so the
 	// pressure-correction RHS and the mass-flux correction stay consistent.
-	double dPF = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
-	double dNF = getDistanceCellToFace(mesh, nb,     faceID, normalZ, normalR);
-	double denom = dPF + dNF;
+	double wP = getFaceWeightForCell(mesh, cellID, faceID);
 
-	double gradFaceZ, gradFaceR;
-	if (denom <= 1.0e-30) {
-		gradFaceZ = 0.5 * (gradPhiZ[cellID] + gradPhiZ[nb]);
-		gradFaceR = 0.5 * (gradPhiR[cellID] + gradPhiR[nb]);
-	}
-	else {
-		gradFaceZ = (dNF * gradPhiZ[cellID] + dPF * gradPhiZ[nb]) / denom;
-		gradFaceR = (dNF * gradPhiR[cellID] + dPF * gradPhiR[nb]) / denom;
-	}
+	double gradFaceZ = wP * gradPhiZ[cellID] + (1.0 - wP) * gradPhiZ[nb];
+	double gradFaceR = wP * gradPhiR[cellID] + (1.0 - wP) * gradPhiR[nb];
 
 	return gamma * (Tz * gradFaceZ + Tr * gradFaceR);
 }
@@ -751,7 +712,7 @@ double rhieChowNormalVelocityToFace(
 			return unLinear;
 		}
 
-		double dPB = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
+		double dPB = mesh.faces.dPB[faceID];
 
 		if (dPB <= 1.0e-30) {
 			return unLinear;
@@ -784,34 +745,19 @@ double rhieChowNormalVelocityToFace(
 
 	int nb = (owner == cellID) ? neighbor : owner;
 
-	double dPN = getDistanceCellToCell(mesh, cellID, nb, normalZ, normalR);
-
-	if (dPN <= 1.0e-30) {
-		return unLinear;
-	}
+	double invDPN = mesh.faces.invCellToCell[faceID];
 
 	double pP = simple.p[cellID];
 	double pN = simple.p[nb];
 
 	// Direct pressure gradient between cell centers
-	double gradPN = (pN - pP) / dPN;
+	double gradPN = (pN - pP) * invDPN;
 
 	// Interpolate precomputed Green-Gauss pressure gradients to the face
-	double dPF = getDistanceCellToFace(mesh, cellID, faceID, normalZ, normalR);
-	double dNF = getDistanceCellToFace(mesh, nb,	 faceID, normalZ, normalR);
+	double w = getFaceWeightForCell(mesh, cellID, faceID);
 
-	double denom = dPF + dNF;
-
-	double gradPzF = 0.5 * (simple.gradPZ[cellID] + simple.gradPZ[nb]);
-	double gradPrF = 0.5 * (simple.gradPR[cellID] + simple.gradPR[nb]);
-
-	if (denom > 1.0e-30) {
-		gradPzF =
-			(dNF * simple.gradPZ[cellID] + dPF * simple.gradPZ[nb]) / denom;
-
-		gradPrF =
-			(dNF * simple.gradPR[cellID] + dPF * simple.gradPR[nb]) / denom;
-	}
+	double gradPzF = w * simple.gradPZ[cellID] + (1.0 - w) * simple.gradPZ[nb];
+	double gradPrF = w * simple.gradPR[cellID] + (1.0 - w) * simple.gradPR[nb];
 
 	double gradPFaceNormal =
 		gradPzF * normalZ +

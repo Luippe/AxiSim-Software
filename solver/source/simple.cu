@@ -53,11 +53,9 @@ void createPPCoeff(
 
 			int nb = (owner == n) ? neighbor : owner;
 
-			double dPN = getDistanceCellToCell(mesh, n, nb, normalZ, normalR);
+			double invDPN = mesh.faces.invCellToCell[faceID];
 
-			if (dPN <= 1.0e-30) continue;
-
-			double K = rho * area * Df / dPN;
+			double K = rho * area * Df * invDPN;
 
 			// Style A pressure-correction matrix assembly
 			AC[n] += K;
@@ -223,58 +221,56 @@ void updateMassFlux(
 	BoundaryFieldDevice pBC,
 	int applyNonOrtho
 ) {
-	int f = blockIdx.x * blockDim.x + threadIdx.x;
+	int faceID = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (f >= mesh.faces.nFaces) return;
+	if (faceID >= mesh.faces.nFaces) return;
 
-	int owner = mesh.faces.owner[f];
-	int neighbor = mesh.faces.neighbor[f];
+	int owner = mesh.faces.owner[faceID];
+	int neighbor = mesh.faces.neighbor[faceID];
 
 	if (owner < 0) return;
 
-	double area = mesh.faces.area[f];
+	double area = mesh.faces.area[faceID];
 
 	if (area <= 1.0e-30) {
-		simple.mDot[f] = 0.0;
+		simple.mDot[faceID] = 0.0;
 		return;
 	}
 
 	double rho = config.f.rho;
 
-	double normalZ = mesh.faces.normalZ[f];
-	double normalR = mesh.faces.normalR[f];
+	double normalZ = mesh.faces.normalZ[faceID];
+	double normalR = mesh.faces.normalR[faceID];
 
 	double Df = interpolateNormalCorrectionCoeffToFace(
 		owner,
-		f,
+		faceID,
 		mesh,
 		simple
 	);
 
 	if (neighbor >= 0) {
 
-		double dPN = getDistanceCellToCell(mesh, owner, neighbor, normalZ, normalR);
-
-		if (dPN <= 1.0e-30) return;
+		double invDPN = mesh.faces.invCellToCell[faceID];
 
 		double ppP = simple.pp[owner];
 		double ppN = simple.pp[neighbor];
 
 		// Orthogonal correction (implicit part of the p' equation).
-		simple.mDot[f] -= rho * area * Df * (ppN - ppP) / dPN;
+		simple.mDot[faceID] -= rho * area * Df * (ppN - ppP) * invDPN;
 
 		// Deferred non-orthogonal correction. Only applied when the p' equation
 		// was solved with the matching cross term (i.e. correctors were run),
 		// otherwise it would inject a divergence the solve never accounted for.
 		if (applyNonOrtho) {
-			double Df = interpolateNormalCorrectionCoeffToFace(owner, f, mesh, simple);
-			simple.mDot[f] -= nonOrthoScalarDiffusionFlux(owner, f, mesh, simple.gradPZ, simple.gradPR, rho * Df);
+			double Df = interpolateNormalCorrectionCoeffToFace(owner, faceID, mesh, simple);
+			simple.mDot[faceID] -= nonOrthoScalarDiffusionFlux(owner, faceID, mesh, simple.gradPZ, simple.gradPR, rho * Df);
 		}
 		return;
 	}
 
 	// Boundary face
-	int groupID = mesh.faces.boundaryGroupID[f];
+	int groupID = mesh.faces.boundaryGroupID[faceID];
 
 	if (groupID < 0 || groupID >= pBC.nGroups) {
 		return;
@@ -284,14 +280,12 @@ void updateMassFlux(
 
 	if (isDirichletType(pType)) {
 		// fixed pressure boundary -> p'_b = 0
-		double dPB = getDistanceCellToFace(mesh, owner, f, normalZ, normalR);
-
-		if (dPB <= 1.0e-30) return;
+		double dPB = getDistanceCellToFace(mesh, owner, faceID, normalZ, normalR);
 
 		double ppB = 0.0;
 		double ppP = simple.pp[owner];
 
-		simple.mDot[f] -= rho * area * Df * (ppB - ppP) / dPB;
+		simple.mDot[faceID] -= rho * area * Df * (ppB - ppP) / dPB;
 	}
 	else {
 		// velocity-specified wall/inlet/symmetry/mass-flux boundary:
