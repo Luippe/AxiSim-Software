@@ -160,34 +160,6 @@ double interpolateNormalCorrectionCoeffToFace(
 	return w * DP + (1.0 - w) * DN;
 }
 
-// Scatters aNb into the matrix slot linking cell n to neighbour nb.
-//
-// The face path searches n's own neighbour list for nb, which is O(faces per
-// cell) per call. Callers that are already walking that list know the slot
-// index and should write coeff.AF[k] directly instead of calling this.
-__device__ __forceinline__
-void addNeighborCoeff(
-	int n,
-	int nb,
-	const FVMeshDevice& mesh,
-	double aNb,
-	const Coefficients& coeff
-) {
-	if (nb < 0) {
-		return;
-	}
-
-	int start = coeff.faceStart[n];
-	int end = coeff.faceStart[n + 1];
-
-	for (int k = start; k < end; k++) {
-		if (coeff.faceNeighbor[k] == nb) {
-			coeff.AF[k] += aNb;
-			return;
-		}
-	}
-}
-
 // boolean helper functions
 __device__ __forceinline__
 bool isDirichletType(uint8_t type) {
@@ -420,7 +392,7 @@ double nonOrthoScalarDiffusionFlux(
 	int owner = mesh.faces.owner[faceID];
 	int neighbor = mesh.faces.neighbor[faceID];
 
-	if (neighbor < 0 || !gradPhiZ || !gradPhiR) {
+	if (neighbor < 0) {
 		return 0.0;
 	}
 
@@ -509,11 +481,6 @@ void phiGradientGreenGauss(
 	// the revolved ones: L2D = area/(2*pi*rf), A2D = volume/(2*pi*rc).
 	double volume = mesh.cells.volume[cellID];
 	double rc = mesh.cells.centerR[cellID];
-	if (volume <= 1.0e-30 || rc <= 1.0e-30) {
-		gradZ = 0.0;
-		gradR = 0.0;
-		return;
-	}
 
 	constexpr double twoPi = 6.28318530717958647692;
 
@@ -828,6 +795,7 @@ void addConvectionContribution(
 	int n,
 	int nb,
 	int faceID,
+	int slot,
 	const FVMeshDevice& mesh,
 	double F,
 	bool isBoundary,
@@ -844,30 +812,13 @@ void addConvectionContribution(
 	// ------------------------------------------------------------
 	if (!isBoundary) {
 
-		// First-order upwind:
-		//
-		// F > 0: flow leaves current cell, phi_f = phi_P
-		// F < 0: flow enters current cell, phi_f = phi_N
+		// First-order upwind
 		coeff.AC[n] += fmax(F, 0.0);
 
 		double aNb = fmin(F, 0.0);
 
-		addNeighborCoeff(n,	nb,	mesh, aNb, coeff);
+		coeff.AF[slot] += aNb;
 
-		// ---- deferred higher-order correction ----
-		//
-		// The convection term contributes F*phi_f to the LHS. Split it as
-		//
-		//     F*phi_HO = F*phi_UD + F*(phi_HO - phi_UD)
-		//
-		// and keep only the upwind part implicit. The matrix therefore stays
-		// exactly the first-order upwind operator -- diagonally dominant, positive
-		// off-diagonals, an M-matrix -- which is what Jacobi, Gauss-Seidel and the
-		// multigrid coarse operator all rely on. Assembling central or linear
-		// upwind directly into the matrix would break that and diverge.
-		//
-		// The difference goes to the RHS, lagged one outer iteration. At
-		// convergence phi satisfies the full higher-order scheme.
 		if (scheme != ConvectionScheme::CONV_UPWIND && phi) {
 
 			double phiUD = (F > 0.0) ? phi[n] : phi[nb];
@@ -1048,16 +999,14 @@ void clearCoefficients(Coefficients& coeff) {
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 	if (n >= coeff.N) return;
 
-	if (coeff.AC) coeff.AC[n] = 0.0;
-	if (coeff.b) coeff.b[n] = 0.0;
+	coeff.AC[n] = 0.0;
+	coeff.b[n] = 0.0;
 
-	if (coeff.AF && coeff.faceStart) {
-		int start = coeff.faceStart[n];
-		int end = coeff.faceStart[n + 1];
+	int start = coeff.faceStart[n];
+	int end = coeff.faceStart[n + 1];
 
-		for (int k = start; k < end; k++) {
-			coeff.AF[k] = 0.0;
-		}
+	for (int k = start; k < end; k++) {
+		coeff.AF[k] = 0.0;
 	}
 }
 

@@ -27,7 +27,6 @@ void createPPCoeff(
 
 		int faceID = mesh.cells.faceIDs[k];
 
-		int owner = mesh.faces.owner[faceID];
 		int neighbor = mesh.faces.neighbor[faceID];
 
 		double area = mesh.faces.area[faceID];
@@ -35,7 +34,7 @@ void createPPCoeff(
 		double normalZ, normalR;
 		getOutwardNormalForCell(mesh, n, faceID, normalZ, normalR);
 
-		double dPF = getDistanceCellToFace(mesh, n, faceID, normalZ, normalR);
+		//double dPF = getDistanceCellToFace(mesh, n, faceID, normalZ, normalR);
 
 		double Df = interpolateNormalCorrectionCoeffToFace(
 			n,
@@ -49,8 +48,6 @@ void createPPCoeff(
 		// ------------------------------------------------------------
 		if (neighbor >= 0) {
 
-			int nb = (owner == n) ? neighbor : owner;
-
 			double invDPN = mesh.faces.invCellToCell[faceID];
 
 			double K = rho * area * Df * invDPN;
@@ -58,7 +55,7 @@ void createPPCoeff(
 			// Style A pressure-correction matrix assembly
 			AC[n] += K;
 
-			addNeighborCoeff(n, nb, mesh, -K, coeff);
+			coeff.AF[k] -= K;
 
 		}
 
@@ -82,7 +79,8 @@ void createPPCoeff(
 				// p_boundary is fixed, so p'_boundary = 0.
 				//
 				// This adds K * pP' to the equation.
-				double K = rho * area * Df / dPF;
+				double dPB = mesh.faces.dPB[faceID];
+				double K = rho * area * Df / dPB;
 				AC[n] += K;
 
 				// No b contribution because p'_boundary = 0.
@@ -225,8 +223,6 @@ void updateMassFlux(
 
 	int owner = mesh.faces.owner[faceID];
 	int neighbor = mesh.faces.neighbor[faceID];
-
-	if (owner < 0) return;
 
 	double area = mesh.faces.area[faceID];
 

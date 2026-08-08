@@ -185,12 +185,6 @@ void computeFaceMassFluxRhieChow(
 	if (f >= mesh.faces.nFaces) return;
 
 	int owner = mesh.faces.owner[f];
-	int neighbor = mesh.faces.neighbor[f];
-
-	if (owner < 0) return;
-
-	double normalZ = mesh.faces.normalZ[f]; // outward from owner
-	double normalR = mesh.faces.normalR[f];
 
 	double area = mesh.faces.area[f];
 
@@ -252,7 +246,6 @@ addDiffusionCoefficient(
 
 		int faceID = mesh.cells.faceIDs[k];
 
-		int owner = mesh.faces.owner[faceID];
 		int neighbor = mesh.faces.neighbor[faceID];
 
 		double area = mesh.faces.area[faceID];
@@ -266,8 +259,6 @@ addDiffusionCoefficient(
 		// ------------------------------------------------------------
 		if (neighbor >= 0) {
 
-			int nb = (owner == n) ? neighbor : owner;
-
 			double invDPN = mesh.faces.invCellToCell[faceID];
 
 			double K = constVar * area * invDPN;
@@ -275,7 +266,7 @@ addDiffusionCoefficient(
 			// Add diagonal contribution
 			AC[n] += K;
 
-			addNeighborCoeff(n, nb, mesh, -K, coeff);
+			coeff.AF[k] -= K;
 
 			// Deferred non-orthogonal correction. The orthogonal part above is
 			// implicit in the matrix; this explicit cross-diffusion flux is added
@@ -459,6 +450,7 @@ void addConvectionCoefficient(
 				n,
 				nb,
 				faceID,
+				k,
 				mesh,
 				F,
 				false,
@@ -485,6 +477,7 @@ void addConvectionCoefficient(
 				n,
 				-1,
 				faceID,
+				k,
 				mesh,
 				F,
 				true,
@@ -531,7 +524,6 @@ void wallConsumptionDiagnostic(
 	if (mesh.faces.neighbor[f] >= 0) return;			// interior face
 
 	int owner = mesh.faces.owner[f];
-	if (owner < 0) return;
 
 	int groupID = mesh.faces.boundaryGroupID[f];
 	if (groupID < 0 || groupID >= bc.nGroups) return;

@@ -106,10 +106,9 @@ struct CudaTimer {
 	}
 };
 
-// Coefficients required for each field variable. Face path only: off-diagonals
-// live in the CSR array AF, indexed by faceStart / faceNeighbor. The 5-point
-// AE/AW/AN/AS form and the nr x nz it needed are gone -- every mesh is built as
-// multiblock, so nothing could construct a structured system any more.
+// faceStart/faceNeighbor come from the same walk over cell.faceIDs that builds
+// mesh.cells.faceStart/faceIDs, so slot k IS mesh.cells.faceIDs[k]: an assembly
+// kernel already looping over a cell's faces writes AF[k] with no lookup.
 struct Coefficients {
 	double* AF = nullptr;
 	double* AC = nullptr;
