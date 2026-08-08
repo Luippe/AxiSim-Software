@@ -431,6 +431,13 @@ struct FVCellDevice {
 	// precomputed values
 	// 1 / A2D, the planar (pre-revolve) cell area: 2*pi*centerR / volume.
 	double* invA2D = nullptr;
+
+	// Inverted least-squares normal matrix, so the gradient is a plain
+	// mat-vec against the rhs: [ZZ ZR; ZR RR] * (bz, br). Zero on a cell whose
+	// normal matrix is singular, which reproduces the old bail-out gradient of 0.
+	double* lsqInvZZ = nullptr;
+	double* lsqInvZR = nullptr;
+	double* lsqInvRR = nullptr;
 };
 
 struct FVFaceDevice {
@@ -459,6 +466,11 @@ struct FVFaceDevice {
 	double* invCellToCell = nullptr;
 	double* wP = nullptr;
 	double* dPB = nullptr;
+
+	// Least-squares gradient weight w*(dz, dr), oriented owner -> neighbor
+	// (owner -> face center on a boundary face).
+	double* lsqWZ = nullptr;
+	double* lsqWR = nullptr;
 
 };
 

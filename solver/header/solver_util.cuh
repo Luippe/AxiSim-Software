@@ -551,15 +551,13 @@ void phiGradientLeastSquare(
 	double& gradR
 ) {
 
-	gradZ = 0.0;
-	gradR = 0.0;
-
-	double zP = mesh.cells.centerZ[cellID];
-	double rP = mesh.cells.centerR[cellID];
 	double phiP = phi[cellID];
 
-	// weighted least-squares normal equations:  M * grad = rhs
-	double Szz = 0.0, Szr = 0.0, Srr = 0.0;
+	// Only the rhs of the weighted least-squares normal equations M * grad = rhs
+	// depends on phi. The offsets, their weights and M itself are geometry, so the
+	// host precomputes the weighted offsets per face and M inverted per cell, which
+	// leaves an accumulation and a 2x2 mat-vec: the per-face weighting divide and the
+	// two solve divides are gone, along with the neighbor cell-center loads.
 	double bz = 0.0, br = 0.0;
 
 	int start = mesh.cells.faceStart[cellID];
@@ -571,41 +569,32 @@ void phiGradientLeastSquare(
 		int owner = mesh.faces.owner[faceID];
 		int neighbor = mesh.faces.neighbor[faceID];
 
-		double dz, dr, dphi;
+		double dphi;
 
 		if (neighbor >= 0) {
-			int nb = (owner == cellID) ? neighbor : owner;
-			dz = mesh.cells.centerZ[nb] - zP;
-			dr = mesh.cells.centerR[nb] - rP;
-			dphi = phi[nb] - phiP;
+			bool isOwner = (owner == cellID);
+			double phiNb = phi[isOwner ? neighbor : owner];
+
+			// lsqW* is owner-oriented, so orienting dphi the same way cancels the
+			// sign flip on the neighbor side and both cells read the one face entry.
+			dphi = isOwner ? (phiNb - phiP) : (phiP - phiNb);
 		}
 		else {
 			// boundary face: sample the BC value at the face center. For a
 			// zero-gradient (e.g. symmetry) pressure face this gives dphi = 0
 			// along the face direction, so LSQ respects symmetry directly.
-			double phiF = interpolateFieldToFace(cellID, faceID, mesh, bc, phi);
-			dz = mesh.faces.centerZ[faceID] - zP;
-			dr = mesh.faces.centerR[faceID] - rP;
-			dphi = phiF - phiP;
+			dphi = interpolateFieldToFace(cellID, faceID, mesh, bc, phi) - phiP;
 		}
 
-		double d2 = dz * dz + dr * dr;
-
-		double w = 1.0 / d2; // inverse-distance-squared weighting
-
-		Szz += w * dz * dz;
-		Szr += w * dz * dr;
-		Srr += w * dr * dr;
-		bz += w * dz * dphi;
-		br += w * dr * dphi;
+		bz += mesh.faces.lsqWZ[faceID] * dphi;
+		br += mesh.faces.lsqWR[faceID] * dphi;
 	}
 
-	double det = Szz * Srr - Szr * Szr;
+	// a singular M was stored as a zeroed inverse, which yields the old bail-out gradient of 0
+	double invZR = mesh.cells.lsqInvZR[cellID];
 
-	if (fabs(det) <= 1.0e-30) return;
-
-	gradZ = (Srr * bz - Szr * br) / det;
-	gradR = (-Szr * bz + Szz * br) / det;
+	gradZ = mesh.cells.lsqInvZZ[cellID] * bz + invZR * br;
+	gradR = invZR * bz + mesh.cells.lsqInvRR[cellID] * br;
 }
 
 __device__ __forceinline__

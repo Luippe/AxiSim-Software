@@ -18,6 +18,11 @@ struct PreCompute {
 	std::vector<double> wP;
 	std::vector<double> dPB;
 	std::vector<double> invA2D;
+	std::vector<double> lsqWZ;
+	std::vector<double> lsqWR;
+	std::vector<double> lsqInvZZ;
+	std::vector<double> lsqInvZR;
+	std::vector<double> lsqInvRR;
 };
 
 bool isObstacleCell(
@@ -542,6 +547,59 @@ PreCompute preComputeVariables(const FVMeshHostPacked& h) {
 		preCompute.wP[f] = dNF / denom;
 	}
 
+	// Least squares gradient: only dphi depends on the field, so the offsets, their
+	// weights and the normal matrix they sum into are all geometry. The matrix is
+	// inverted here so the kernel does a mat-vec instead of a 2x2 solve per cell.
+	preCompute.lsqWZ.assign(h.nFaces, 0.0);
+	preCompute.lsqWR.assign(h.nFaces, 0.0);
+	preCompute.lsqInvZZ.assign(h.nCells, 0.0);
+	preCompute.lsqInvZR.assign(h.nCells, 0.0);
+	preCompute.lsqInvRR.assign(h.nCells, 0.0);
+
+	// owner-oriented offsets, kept only to build the normal matrix below
+	std::vector<double> lsqDZ(h.nFaces, 0.0);
+	std::vector<double> lsqDR(h.nFaces, 0.0);
+
+	for (int f = 0; f < h.nFaces; f++) {
+
+		int owner = h.faceOwner[f];
+		int neighbor = h.faceNeighbor[f];
+
+		// interior faces reach the neighbor cell center, boundary faces the face center
+		double dz = (neighbor >= 0 ? h.cellCenterZ[neighbor] : h.faceCenterZ[f]) - h.cellCenterZ[owner];
+		double dr = (neighbor >= 0 ? h.cellCenterR[neighbor] : h.faceCenterR[f]) - h.cellCenterR[owner];
+
+		double w = 1.0 / (dz * dz + dr * dr); // inverse-distance-squared weighting
+
+		lsqDZ[f] = dz;
+		lsqDR[f] = dr;
+
+		preCompute.lsqWZ[f] = w * dz;
+		preCompute.lsqWR[f] = w * dr;
+	}
+
+	for (int c = 0; c < h.nCells; c++) {
+
+		double Szz = 0.0, Szr = 0.0, Srr = 0.0;
+
+		for (int k = h.cellFaceStart[c]; k < h.cellFaceStart[c + 1]; k++) {
+			int f = h.cellFaceIDs[k];
+
+			// every entry pairs two offsets, so the owner-oriented pair serves both cells
+			Szz += preCompute.lsqWZ[f] * lsqDZ[f];
+			Szr += preCompute.lsqWZ[f] * lsqDR[f];
+			Srr += preCompute.lsqWR[f] * lsqDR[f];
+		}
+
+		double det = Szz * Srr - Szr * Szr;
+
+		if (std::abs(det) <= 1.0e-30) continue; // singular: leave the inverse zeroed
+
+		preCompute.lsqInvZZ[c] = Srr / det;
+		preCompute.lsqInvZR[c] = -Szr / det;
+		preCompute.lsqInvRR[c] = Szz / det;
+	}
+
 	return preCompute;
 
 }
@@ -595,6 +653,11 @@ FVMeshDevice createFVMeshDeviceFromPacked(const FVMeshHostPacked& h) {
 	copyHostToDevice(d.faces.wP, preCompute.wP);
 	copyHostToDevice(d.faces.dPB, preCompute.dPB);
 	copyHostToDevice(d.cells.invA2D, preCompute.invA2D);
+	copyHostToDevice(d.faces.lsqWZ, preCompute.lsqWZ);
+	copyHostToDevice(d.faces.lsqWR, preCompute.lsqWR);
+	copyHostToDevice(d.cells.lsqInvZZ, preCompute.lsqInvZZ);
+	copyHostToDevice(d.cells.lsqInvZR, preCompute.lsqInvZR);
+	copyHostToDevice(d.cells.lsqInvRR, preCompute.lsqInvRR);
 
 	return d;
 }
