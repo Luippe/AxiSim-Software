@@ -388,7 +388,6 @@ double getCellToCellDotNorm(
 	double dr = mesh.cells.centerR[nb] - mesh.cells.centerR[cellID];
 
 	double len = sqrt(dz * dz + dr * dr);
-	if (len <= 1.0e-30) return 0.0;
 
 	return (normalZ * dz + normalR * dr) / len;	// cos(theta) = n . d / |d|  (n is unit)
 }
@@ -405,7 +404,6 @@ double getCellToFaceDotNorm(
 	double dr = mesh.faces.centerR[nb] - mesh.cells.centerR[cellID];
 
 	double len = sqrt(dz * dz + dr * dr);
-	if (len <= 1.0e-30) return 0.0;
 
 	return (normalZ * dz + normalR * dr) / len;	// cos(theta) = n . d / |d|
 }
@@ -627,7 +625,6 @@ void phiGradientLeastSquare(
 		}
 
 		double d2 = dz * dz + dr * dr;
-		if (d2 <= 1.0e-30) continue;
 
 		double w = 1.0 / d2; // inverse-distance-squared weighting
 
@@ -713,10 +710,6 @@ double rhieChowNormalVelocityToFace(
 		}
 
 		double dPB = mesh.faces.dPB[faceID];
-
-		if (dPB <= 1.0e-30) {
-			return unLinear;
-		}
 
 		// Same Rhie-Chow form as the interior face below, with the neighbour cell
 		// replaced by the boundary face: compact pressure difference across

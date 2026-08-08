@@ -317,8 +317,6 @@ addDiffusionCoefficient(
 
 			double dPF = getDistanceCellToFace(mesh, n, faceID, normalZ, normalR);
 
-			if (dPF <= 0.0) continue;
-
 			double K = constVar * area / dPF;
 
 			if (isDirichletType(bcType)) {
@@ -553,7 +551,6 @@ void wallConsumptionDiagnostic(
 	getOutwardNormalForCell(mesh, owner, f, normalZ, normalR);
 
 	double dPF = getDistanceCellToFace(mesh, owner, f, normalZ, normalR);
-	if (dPF <= 0.0) return;
 
 	double h = 1.0 / (dPF / D + bc.RtotByGroup[groupID]);
 	double area = mesh.faces.area[f];

@@ -531,10 +531,7 @@ PreCompute preComputeVariables(const FVMeshHostPacked& h) {
 
 		preCompute.invDPN[f] = 1.0 / dPN;
 
-		// 0.5 is the plain-average fallback the kernel used to take when the two
-		// face distances summed to nothing; it also survives the owner/neighbour
-		// flip unchanged.
-		preCompute.wP[f] = (denom > 1.0e-30) ? dNF / denom : 0.5;
+		preCompute.wP[f] = dNF / denom;
 	}
 
 	return preCompute;

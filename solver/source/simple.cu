@@ -37,8 +37,6 @@ void createPPCoeff(
 
 		double dPF = getDistanceCellToFace(mesh, n, faceID, normalZ, normalR);
 
-		if (dPF <= 1.0e-30) continue;
-
 		double Df = interpolateNormalCorrectionCoeffToFace(
 			n,
 			faceID,
