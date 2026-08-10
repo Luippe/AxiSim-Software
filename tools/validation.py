@@ -1,3 +1,4 @@
+import argparse
 import numpy as np, json, pathlib, re
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
@@ -10,10 +11,9 @@ from enum import Enum
 HERE = pathlib.Path(__file__).resolve().parent          # tools/
 ROOT = HERE.parent                                      # repo root
 
-# Peak typed into the AxiSim fully-developed inlet BC, converted to base SI.
-# solution.npy is base SI (see meta.json) while the GUI shows mm/s, so this is
-# 0.0844 mm/s. Bare 0.0844 would be off by 1000x.
-INLET_PEAK = 0.0844e-3
+# Peak typed into the Poiseuille validation case's AxiSim fully-developed inlet
+# BC, converted to base SI. The GUI shows 0.0844 mm/s.
+POISEUILLE_INLET_PEAK = 0.0844e-3
 
 class CompareType(Enum):
     POISEUILLE = 1
@@ -39,6 +39,11 @@ class Solution:
 
     @property
     def live(self):
+        # "active" is only in exports predating the solid-cell mask being dropped,
+        # and read all-ones even then -- no exported cell has ever been inactive.
+        if "active" not in self.col:
+            return np.ones(self.sol.shape[0], bool)
+
         return self.c("active") > 0
 
     def c(self, name):
@@ -483,8 +488,8 @@ def foam_compare_maps(s, c, f, live, idx, field):
 # ======================================================================
 # -------------------FDA NOZZLE PIV EXPERIMENT--------------------------
 # ======================================================================
-# Interlaboratory PIV for the FDA benchmark nozzle, sudden-expansion orientation.
-# Unzip SE_exp_0500.zip from
+# Interlaboratory PIV for both orientations of the FDA benchmark nozzle. Unzip
+# the Re=500 sudden-expansion and/or conical-diffuser measurements from
 #   https://github.com/OSEL-DAM/CFD-and-Blood-Damage-Benchmarks  (Nozzle/Data)
 # into `experiment/` NEXT TO THIS SCRIPT -- it sits under tools/, not at the repo
 # root, because tools/ is gitignored and the measurements are not ours to vendor.
@@ -496,17 +501,42 @@ def foam_compare_maps(s, c, f, live, idx, field):
 # curve -- the spread between them IS the tolerance the solver has to land in.
 PIV_DIR = HERE / "experiment"
 
+# Both Re=500 orientations use the same 12 mm inlet pipe, fluid and flow rate.
+# The experiment prescribes Q; AxiSim's FULLY_DEVELOPED BC takes the parabola's
+# peak.
+FDA_INLET_RADIUS = 0.006
+FDA_INLET_FLOW_RATE = 5.20624e-6
+FDA_INLET_MEAN = FDA_INLET_FLOW_RATE / (np.pi * FDA_INLET_RADIUS**2)
+FDA_INLET_PEAK = 2.0 * FDA_INLET_MEAN
+
+
+def axisim_fda_inlet_velocity(r):
+    """AxiSim inlet profile U(r)=Umax*(1-(r/R)^2) for the FDA Re=500 case."""
+    radial_position = np.asarray(r, dtype=float)
+    shape = 1.0 - (radial_position / FDA_INLET_RADIUS) ** 2
+    return FDA_INLET_PEAK * np.clip(shape, 0.0, None)
+
+
+@dataclass(frozen=True)
+class FdaCase:
+    orientation: str
+    default_solution: str
+
+
+# Keep the short command-line names separate from the exact strings in the PIV
+# headers. Filtering on those headers is important because both datasets can be
+# extracted into the same directory.
+FDA_CASES = {
+    "se": FdaCase("Sudden Expansion", "SE_sim_0500_solution"),
+    "cd": FdaCase("Conical Diffuser", "CD_sim_0500_solution"),
+}
+
 # The nozzle is run in both directions, and both orientations unzip into the same
 # folder as the same five lab codes measured on a different geometry. So the
 # folder does not say which case is being compared and an unfiltered read merges
 # two geometries into one band -- silently, since it fails no check: the codes
 # look like ten labs and the stations like a union.
 #
-# Filtered on the header rather than the filename because the two datasets do not
-# share a naming convention ("PIV_Sudden_Expansion_500_243" against
-# "PIV_conical_diffuser_500_243"). Set to None to read whatever is there.
-PIV_ORIENTATION = "Sudden Expansion"
-
 # Profile block name (the part between "plot-profile-" and "-at-z") -> the AxiSim
 # field it should be compared against. Reynolds stress is deliberately absent: at
 # Re = 500 the flow is laminar and the block is ~0 everywhere, present only so the
@@ -545,6 +575,11 @@ class PivLab:
 class Piv:
     labs: list[PivLab]
     stations: list[float]           # every z any lab has an axial-velocity profile at
+
+    @property
+    def orientation(self):
+        orientations = sorted({lab.orientation for lab in self.labs})
+        return orientations[0] if len(orientations) == 1 else " / ".join(orientations)
 
 
 @dataclass
@@ -598,23 +633,23 @@ def read_piv_file(path: pathlib.Path) -> PivLab:
     return PivLab(path.stem.split("_")[-1], header, profiles, axial)
 
 
-def load_piv(folder=PIV_DIR, orientation=PIV_ORIENTATION) -> Piv:
+def load_piv(folder=PIV_DIR, orientation="Sudden Expansion") -> Piv:
     """Every lab file of one orientation, plus the union of their stations.
 
-    Union, not intersection: code 468 is missing z = +0.016, +0.024 and +0.080
-    (42 blocks against the others' 54), and dropping three stations everywhere to
-    accommodate it would throw away data the other four labs did measure.
+    Union, not intersection: the lab files do not all contain the same profile
+    blocks, and dropping a station everywhere to accommodate one file would throw
+    away data the other labs did measure.
 
     Union across ORIENTATIONS is the one thing that would not be data -- see
-    PIV_ORIENTATION. Every file is read before filtering; they are ~150 kB each
-    and the header is the only thing that identifies them.
+    the orientation argument. Every file is read before filtering; the header is
+    the only reliable way to identify its orientation.
     """
     d = pathlib.Path(folder)
 
     paths = sorted(d.glob("*.txt"))
     if not paths:
         raise FileNotFoundError(
-            f"{d}: no PIV .txt files -- unzip SE_exp_0500.zip here")
+            f"{d}: no PIV .txt files -- extract the FDA Re=500 data here")
 
     labs = [read_piv_file(p) for p in paths]
 
@@ -847,12 +882,17 @@ def piv_case_check(s: Solution, piv: Piv, sample=None):
 
     rho, mu = s.meta["fluid"]["rho"], s.meta["fluid"]["mu"]
 
+    print(f"orientation       = {piv.orientation}")
     print(f"labs              = {', '.join(l.code for l in piv.labs)}"
           f"  ({len(piv.stations)} stations)")
     print(f"rho               = {rho:.6g} AxiSim vs {lab.rho:.6g} experiment"
           f"   [{100.0 * (rho / lab.rho - 1.0):+.3f}%]")
     print(f"mu                = {mu:.6g} AxiSim vs {lab.mu:.6g} experiment"
           f"   [{100.0 * (mu / lab.mu - 1.0):+.3f}%]")
+    print(f"inlet Umean       = {FDA_INLET_MEAN:.6g} m/s"
+          f"   [Q/(pi*R^2), R={FDA_INLET_RADIUS * 1e3:.0f} mm]")
+    print(f"inlet Upeak       = {FDA_INLET_PEAK:.6g} m/s"
+          "   [AxiSim fully-developed BC value]")
 
     Q = axisim_flow_rate(s, sample=sample)
 
@@ -865,8 +905,12 @@ def piv_case_check(s: Solution, piv: Piv, sample=None):
     print(f"Re (throat)       = {4.0 * rho * Q / (np.pi * dThroat * mu):.1f}"
           f"   [benchmark: 500]")
 
-    if any(l.rho != lab.rho or l.mu != lab.mu for l in piv.labs):
-        print("warning: the lab files do not agree on the fluid properties")
+    if any(l.rho != lab.rho or l.mu != lab.mu or l.flow != lab.flow
+           for l in piv.labs):
+        print("warning: the lab files do not agree on the case conditions")
+
+    if not np.isclose(lab.flow, FDA_INLET_FLOW_RATE, rtol=0.0, atol=1e-15):
+        print("warning: the FDA inlet profile does not match the dataset flow rate")
 
 
 def piv_report(s: Solution, piv: Piv, quantity="axial-velocity", recenter=False,
@@ -981,19 +1025,38 @@ def piv_validation(s: Solution, piv: Piv, quantity="axial-velocity",
         row[0].set_ylabel("r (mm)", fontsize=8)
 
     axes[0][0].legend(fontsize=7, loc="best")
-    fig.suptitle(f"FDA nozzle, sudden expansion, Re_throat = 500 -- {field}")
+    fig.suptitle(
+        f"FDA nozzle, {piv.orientation.lower()}, Re_throat = 500 -- {field}")
     fig.tight_layout()
 
     return fig
 
 
-def main():
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description=(
+            "Compare an AxiSim result with analytical, OpenFOAM, or FDA PIV data."))
+    parser.add_argument(
+        "--fda-case", choices=FDA_CASES, default="se", metavar="{se,cd}",
+        help=(
+            "FDA nozzle orientation: sudden expansion (se, default) or "
+            "conical diffuser (cd)"))
+    parser.add_argument(
+        "--solution", metavar="FOLDER",
+        help=(
+            "solution-export folder relative to the repository root; defaults "
+            "to the selected case"))
+    return parser.parse_args(argv)
 
+
+def main(argv=None):
+
+    args = parse_args(argv)
+    fda_case = FDA_CASES[args.fda_case]
     compare = CompareType.EXPERIMENT
     # compare = CompareType.OPENFOAM
 
-    folder_name = "SE_sim_0500_solution"
-
+    folder_name = args.solution or fda_case.default_solution
     # The exported case. Keep it on the WSL filesystem, not /mnt/c -- OpenFOAM's
     # tiny-file I/O crawls across the 9p mount.
     foam_case = r"\\wsl$\Ubuntu\home\luits\run\SE_sim_0500_case"
@@ -1002,12 +1065,12 @@ def main():
     c = load_cells(folder_name)
 
     if compare == CompareType.POISEUILLE:
-        p = poiseuille_flow(s, c, Umax=INLET_PEAK)
+        p = poiseuille_flow(s, c, Umax=POISEUILLE_INLET_PEAK)
         poiseuille_report(s, p)
         field_validation(s, c, CompareType.POISEUILLE, p)
 
     elif compare == CompareType.EXPERIMENT:
-        piv = load_piv()
+        piv = load_piv(orientation=fda_case.orientation)
 
         # One triangulation for all seven passes below -- rebuilding it per call
         # is a Delaunay over every live cell each time.
