@@ -50,9 +50,6 @@ void buildMeshColoring(MeshColoring& coloring, const FVMesh& mesh);
 // allocate memory for simple algorithm
 void allocateSimple(Config& config, VariablesSimple& vars, FVMesh& mesh, const SolverFieldOption& option);
 
-// initialize and allocate cell variables
-void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& vars);
-
 // copy coefficients
 void copyCoefficients(Coefficients& dst, const Coefficients& src, int N, cudaStream_t stream);
 

@@ -227,16 +227,16 @@ void Menu::drawView() {
 	// the GUI picks the flag up on the next frame, not this one.
 	if (beginMenu("Interface")) {
 		ViewInterface& interface = project.interface;
-		if (menuItem("Workspace", nullptr, !interface.workspace)) {
+		if (menuItem("Workspace", nullptr, interface.workspace)) {
 			interface.workspace = !interface.workspace;
 		}
-		else if (menuItem("Tool Bar", nullptr, !interface.toolbar)) {
+		else if (menuItem("Tool Bar", nullptr, interface.toolbar)) {
 			interface.toolbar = !interface.toolbar;
 		}
-		else if (menuItem("Status Bar", nullptr, !interface.statusBar)) {
+		else if (menuItem("Status Bar", nullptr, interface.statusBar)) {
 			interface.statusBar = !interface.statusBar;
 		}
-		else if (menuItem("Console", nullptr, !interface.console)) {
+		else if (menuItem("Console", nullptr, interface.console)) {
 			interface.console = !interface.console;
 		}
 		ImGui::EndMenu();
@@ -882,17 +882,21 @@ void Menu::drawAdvancedMeshPage() {
 	advancedEmptyPage("mesh");
 }
 
+void inputDoubleClamped(const char* label, double& value, double minValue, double maxValue, const char* format = "%.1f") {
+	if (ImGui::InputDouble(label, &value, 0.0, 0.0, format)) {
+		value = std::clamp(value, minValue, maxValue);
+	}
+}
+
 void Menu::drawAdvancedSolverPage() {
 
 	Solver& solver = project.solver;
 
 	if (beginAdvancedSection("Relaxation Factors")) {
 		advancedRow("Momentum");
-		ImGui::InputDouble("##MomentumRelaxation", &solver.simple.momentumRelaxation, 0, 0, "%.1f");
+		inputDoubleClamped("##MomentumRelaxation", solver.simple.momentumRelaxation, 0.0, 1.0);
 		advancedRow("Pressure");
-		ImGui::InputDouble("##PressureRelaxation", &solver.simple.pressureRelaxation, 0, 0, "%.1f");
-		advancedRow("Pressure Correction");
-		ImGui::InputDouble("##CorrectionRelaxation", &solver.simple.correctionRelaxation, 0, 0, "%.1f");
+		inputDoubleClamped("##PressureRelaxation", solver.simple.pressureRelaxation, 0.0, 1.0);
 		endAdvancedSection();
 	}
 

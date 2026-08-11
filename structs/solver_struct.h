@@ -38,20 +38,11 @@ enum class ResidualScalingType : uint8_t {
 
 enum class LinearSolverType : uint8_t {
     LINEAR_JACOBI         = 0,
-	LINEAR_GS_RB		  = 1,
-    LINEAR_BICGSTAB       = 2,
-    LINEAR_GMRES          = 3
+	LINEAR_GS_RB		  = 1
 };
 
 enum class VelocitySolverType : uint8_t {
-    SOLVER_SIMPLE         = 0,
-    SOLVER_SIMPLER        = 1
-};
-
-enum class CellStoreType : uint8_t {
-	CENTER,
-	AXIAL,
-	RADIAL
+    SOLVER_SIMPLE         = 0
 };
 
 enum class ConvectionScheme : uint8_t {
@@ -319,7 +310,6 @@ struct VariablesSimple {
 	// SIMPLE requires under-relaxation to be stable. 1.0/1.0 (no relaxation)
 	// diverges; the standard pairing is momentum ~0.7 with pressure ~0.3.
 	double momentumRelaxation = 0.7;
-	double correctionRelaxation = 1.0;
 	double pressureRelaxation = 0.3;
 
 	double* mDot = nullptr;
@@ -327,83 +317,6 @@ struct VariablesSimple {
 	void free() {
 		freeAllDev(DU, DV, p, pp, u, v, temp, conc, uTemp, vTemp, ppTemp, tempTemp, concTemp, uOld, vOld, tempOld, concOld, gradPZ, gradPR, gradUZ, gradUR, gradVZ, gradVR, gradTZ, gradTR, gradCZ, gradCR, mDot);
 		freeAllDev(uOld2, vOld2, tempOld2, concOld2);
-	}
-};
-
-
-struct VariablesBiCGStab {
-
-	double conc;
-
-	double* ACC = nullptr;
-	double* ACnew = nullptr;
-	double* AKE = nullptr;
-	double* AKW = nullptr;
-	double* AKN = nullptr;
-	double* AKS = nullptr;
-	double* foxy = nullptr;
-	double* foxynew = nullptr;
-
-	double* oxy = nullptr;
-	double* beta = nullptr;
-	double* alpha = nullptr;
-	double* cs = nullptr;
-	double* cw = nullptr;
-	double* cp = nullptr;
-	double* res = nullptr;
-	double* res_t = nullptr;
-	double* jp = nullptr;
-	double* jp_t = nullptr;
-	double* js = nullptr;
-	double* js_t = nullptr;
-	double* jrho = nullptr;
-	double* jv = nullptr;
-	double* jt = nullptr;
-
-	double* snorm = nullptr;
-	double* resnorm = nullptr;
-	double* jw = nullptr;
-	double* alpha_den = nullptr;
-	double* w_num = nullptr;
-	double* w_den = nullptr;
-	double* OCR_num = nullptr;
-
-	double* jw_num_val = nullptr;
-	double* jw_den_val = nullptr;
-	double* jalpha_val = nullptr;
-
-	double* jalpha_den_val = nullptr;
-	double* jbeta_val = nullptr;
-	double* jrho_val_prev = nullptr;
-	double* jrho_val = nullptr;
-	double* jw_val = nullptr;
-	double* snorm_val = nullptr;
-	double* resnorm_val = nullptr;
-	double* OCR_num_val = nullptr;
-
-	double* tmpA = nullptr;
-	double* tmpB = nullptr;
-
-	void free() {
-		freeAllDev(ACC, ACnew, AKE, AKW, AKN, AKS);
-		freeAllDev(foxy, foxynew, oxy);
-		freeAllDev(beta, alpha, cs, cw, cp);
-		freeAllDev(res, res_t, jp, jp_t, js, js_t, jrho, jv, jt);
-		freeAllDev(snorm, resnorm, jw, alpha_den, w_num, w_den, OCR_num);
-		freeAllDev(
-			jw_num_val,
-			jw_den_val,
-			jalpha_val,
-			jalpha_den_val,
-			jbeta_val,
-			jrho_val_prev,
-			jrho_val,
-			jw_val,
-			snorm_val,
-			resnorm_val,
-			OCR_num_val
-		);
-		freeAllDev(tmpA, tmpB);
 	}
 };
 
@@ -471,6 +384,8 @@ struct FVFaceDevice {
 	// (owner -> face center on a boundary face).
 	double* lsqWZ = nullptr;
 	double* lsqWR = nullptr;
+
+	double* length2D = nullptr;
 
 };
 

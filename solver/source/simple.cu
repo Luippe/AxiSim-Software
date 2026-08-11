@@ -6,7 +6,7 @@
 
 __global__
 void createPPCoeff(
-	Config config,
+	FluidPropertyConfig fluid,
 	FVMeshDevice mesh,
 	Coefficients coeff,
 	VariablesSimple simple,
@@ -16,7 +16,7 @@ void createPPCoeff(
 
 	if (n >= mesh.cells.nCells) return;
 
-	double rho = config.f.rho;
+	double rho = fluid.rho;
 
 	double* AC = coeff.AC;
 
@@ -89,7 +89,7 @@ void createPPCoeff(
 
 __global__
 void createPPRhs(
-	Config config,
+	FluidPropertyConfig fluid,
 	FVMeshDevice mesh,
 	Coefficients ppCoeff,
 	VariablesSimple simple,
@@ -107,7 +107,7 @@ void createPPRhs(
 
 
 
-	double rho = config.f.rho;
+	double rho = fluid.rho;
 
 	int start = mesh.cells.faceStart[n];
 	int end = mesh.cells.faceStart[n + 1];
@@ -180,7 +180,7 @@ void updateMomentumPressure(
 
 __global__
 void updateMassFlux(
-	Config config,
+	FluidPropertyConfig fluid,
 	FVMeshDevice mesh,
 	VariablesSimple simple,
 	BoundaryFieldDevice pBC,
@@ -200,7 +200,7 @@ void updateMassFlux(
 		return;
 	}
 
-	double rho = config.f.rho;
+	double rho = fluid.rho;
 
 	double normalZ = mesh.faces.normalZ[faceID];
 	double normalR = mesh.faces.normalR[faceID];

@@ -475,7 +475,7 @@ void jacobiRow(
 
 	for (int k = start; k < end; k++) {
 		const int nb = coeff.faceNeighbor[k];
-		if (nb >= 0) {
+		if (nb != -1) {
 			Ax += coeff.AF[k] * xOld[nb];
 		}
 	}

@@ -18,11 +18,19 @@ struct PreCompute {
 	std::vector<double> wP;
 	std::vector<double> dPB;
 	std::vector<double> invA2D;
+
+	// for least square gradient scheme
 	std::vector<double> lsqWZ;
 	std::vector<double> lsqWR;
 	std::vector<double> lsqInvZZ;
 	std::vector<double> lsqInvZR;
 	std::vector<double> lsqInvRR;
+
+	// for length
+	std::vector<double> length2D;
+
+	// for fully developed bc
+	std::vector<double> faceCenterOrientation;
 };
 
 bool isObstacleCell(
@@ -168,7 +176,7 @@ BoundaryFieldDevice createBoundaryFieldDevice(
 
 	std::vector<double> kmN(nGroups, 0.0);
 	std::vector<double> k2M(nGroups, 0.0);
-	//print(nGroups);
+
 	for (size_t g = 0; g < nGroups; ++g) {
 		kmN[g] = std::pow(h.kmByGroup[g], h.nByGroup[g]);
 		k2M[g] = std::pow(h.k2ByGroup[g], h.mByGroup[g]);
@@ -412,7 +420,6 @@ void allocateCoefficients(std::unordered_map<std::string, Coefficients>& coeffic
 	for (auto& [name, coeff] : coefficients) {
 		allocateCoefficients(coeff, N, faceStart, faceNeighbor);
 	}
-
 }
 
 void allocateCoefficients(Coefficients& coeff, const FVMesh& mesh) {
@@ -509,7 +516,9 @@ PreCompute preComputeVariables(const FVMeshHostPacked& h) {
 	preCompute.wP.assign(h.nFaces, 0.0);
 	preCompute.dPB.assign(h.nFaces, 0.0);
 	preCompute.invA2D.assign(h.nCells, 0.0);
+	preCompute.length2D.assign(h.nFaces, 0.0);
 
+	//preCompute.faceCenterOrientation(h.)
 	// Green-Gauss needs the planar cell area A2D = volume / (2*pi*centerR); hoisting
 	// the fp64 divide here drops it (and both operand loads) from every gradient call.
 	for (int c = 0; c < h.nCells; c++) {
@@ -518,11 +527,15 @@ PreCompute preComputeVariables(const FVMeshHostPacked& h) {
 
 	for (int f = 0; f < h.nFaces; f++) {
 
+		preCompute.length2D[f] = h.faceArea[f] / (2 * PI * h.faceCenterR[f]);
+
 		int neighbor = h.faceNeighbor[f];
 		int owner = h.faceOwner[f];
 
 		double dzPF = h.faceCenterZ[f] - h.cellCenterZ[owner];
 		double drPF = h.faceCenterR[f] - h.cellCenterR[owner];
+
+
 
 		if (neighbor < 0) {
 			preCompute.dPB[f] = std::abs(dzPF * h.faceNormalZ[f] + drPF * h.faceNormalR[f]);
@@ -543,7 +556,6 @@ PreCompute preComputeVariables(const FVMeshHostPacked& h) {
 		double denom = dPF + dNF;
 
 		preCompute.invDPN[f] = 1.0 / dPN;
-
 		preCompute.wP[f] = dNF / denom;
 	}
 
@@ -658,6 +670,7 @@ FVMeshDevice createFVMeshDeviceFromPacked(const FVMeshHostPacked& h) {
 	copyHostToDevice(d.cells.lsqInvZZ, preCompute.lsqInvZZ);
 	copyHostToDevice(d.cells.lsqInvZR, preCompute.lsqInvZR);
 	copyHostToDevice(d.cells.lsqInvRR, preCompute.lsqInvRR);
+	copyHostToDevice(d.faces.length2D, preCompute.length2D);
 
 	return d;
 }
@@ -759,140 +772,6 @@ void allocateSimple(
 	CUDA_CHECK(cudaMemcpy(vars.concTemp, vars.conc, N * sizeof(double), cudaMemcpyDeviceToDevice));
 }
 
-
-void allocateBiCGStab(GridConfig& g, FluidPropertyConfig& f, VariablesBiCGStab& vars) {
-
-	int nr = g.nr;
-	int nz = g.nz;
-	int n = nr * nz;
-	int n_cell = g.n_cell;
-	double conc = vars.conc;
-
-	//std::vector<double> h_oxy(nr * nz, 0.0);
-//std::vector<double> h_cs(n_cell, 0.0);
-//std::vector<double> h_cw(n_cell, 0.0);
-//std::vector<double> h_cp(n_cell, 0.0);
-
-	// vectors
-	std::vector<double> h_ACC(n, 0.0);
-	std::vector<double> h_AKE(n, 0.0);
-	std::vector<double> h_AKW(n, 0.0);
-	std::vector<double> h_AKN(n, 0.0);
-	std::vector<double> h_AKS(n, 0.0);
-	std::vector<double> h_foxy(n, 0.0);
-	std::vector<double> h_oxy(n, conc);
-	std::vector<double> h_cs(n_cell, conc);
-	std::vector<double> h_cw(n_cell, conc);
-	std::vector<double> h_cp(n_cell, conc);
-	std::vector<double> h_beta(n_cell, 0.0);
-	std::vector<double> h_alpha(n_cell, 0.0);
-	std::vector<double> h_res(n, 0.0);
-	std::vector<double> h_res_t(n, 0.0);
-	std::vector<double> h_jp(n, 0.0);
-	std::vector<double> h_jp_t(n, 0.0);
-	std::vector<double> h_jw(n, 0.0);
-	std::vector<double> h_alpha_den(n, 0.0);
-	std::vector<double> h_w_num(n, 0.0);
-	std::vector<double> h_w_den(n, 0.0);
-	std::vector<double> h_ACnew(n, 0.0);
-	std::vector<double> h_foxynew(n, 0.0);
-	std::vector<double> h_jrho(n, 0.0);
-	std::vector<double> h_jv(n, 0.0);
-	std::vector<double> h_js(n, 0.0);
-	std::vector<double> h_js_t(n, 0.0);
-	std::vector<double> h_jt(n, 0.0);
-	std::vector<double> h_snorm(n, 0.0);
-	std::vector<double> h_resnorm(n, 0.0);
-	std::vector<double> h_OCR_num(n_cell, 0.0);
-
-	// allocate memory
-
-	vars.tmpA = deviceAlloc<double>(n);
-	vars.tmpB = deviceAlloc<double>(n);
-	//cudaMalloc(&vars.tmpA, n * sizeof(double));
-	//cudaMalloc(&vars.tmpB, n * sizeof(double));
-
-	copyHostToDevice(vars.ACC, h_ACC);
-	copyHostToDevice(vars.AKE, h_AKE);
-	copyHostToDevice(vars.AKW, h_AKW);
-	copyHostToDevice(vars.AKN, h_AKN);
-	copyHostToDevice(vars.AKS, h_AKS);
-
-	copyHostToDevice(vars.foxy, h_foxy);
-	copyHostToDevice(vars.ACnew, h_ACnew);
-	copyHostToDevice(vars.foxynew, h_foxynew);
-
-	copyHostToDevice(vars.res_t, h_res_t);
-
-	copyHostToDevice(vars.jrho, h_jrho);
-	copyHostToDevice(vars.jv, h_jv);
-	copyHostToDevice(vars.jp_t, h_jp_t);
-	copyHostToDevice(vars.js, h_js);
-	copyHostToDevice(vars.js_t, h_js_t);
-	copyHostToDevice(vars.jt, h_jt);
-
-	copyHostToDevice(vars.snorm, h_snorm);
-	copyHostToDevice(vars.resnorm, h_resnorm);
-
-	copyHostToDevice(vars.oxy, h_oxy);
-
-	copyHostToDevice(vars.beta, h_beta);
-	copyHostToDevice(vars.alpha, h_alpha);
-
-	copyHostToDevice(vars.cs, h_cs);
-	copyHostToDevice(vars.cw, h_cw);
-	copyHostToDevice(vars.cp, h_cp);
-
-	copyHostToDevice(vars.alpha_den, h_alpha_den);
-
-	copyHostToDevice(vars.w_num, h_w_num);
-	copyHostToDevice(vars.w_den, h_w_den);
-
-	copyHostToDevice(vars.res, h_res);
-
-	copyHostToDevice(vars.jp, h_jp);
-	copyHostToDevice(vars.jw, h_jw);
-
-	copyHostToDevice(vars.OCR_num, h_OCR_num);
-
-	// constant values
-	double h_jw_num_val = 0.0;
-	double h_jw_den_val = 0.0;
-	double h_jalpha_val = 1.0;
-	double h_jalpha_den_val = 1.0;
-	double h_jbeta_val = 0.0;
-	double h_jrho_val_prev = 1.0;
-	double h_jrho_val = 1.0;
-	double h_jw_val = 1.0;
-	double h_snorm_val = 1.0;
-	double h_resnorm_val = 0.0;
-	double h_OCR_num_val = 0.0;
-
-	copyHostToDevice(vars.jw_num_val, h_jw_num_val);
-	copyHostToDevice(vars.jw_den_val, h_jw_den_val);
-
-	copyHostToDevice(vars.jalpha_val, h_jalpha_val);
-	copyHostToDevice(vars.jalpha_den_val, h_jalpha_den_val);
-
-	copyHostToDevice(vars.jbeta_val, h_jbeta_val);
-
-	copyHostToDevice(vars.jrho_val, h_jrho_val);
-	copyHostToDevice(vars.jrho_val_prev, h_jrho_val_prev);
-
-	copyHostToDevice(vars.jw_val, h_jw_val);
-
-	double* d_snorm_val, * d_resnorm_val, * d_OCR_num_val;
-	cudaMallocHost(&d_snorm_val, sizeof(double));
-	cudaMallocHost(&d_OCR_num_val, sizeof(double));
-	cudaMallocHost(&d_resnorm_val, sizeof(double));
-
-	cudaMemcpy(d_snorm_val, &h_snorm_val, sizeof(double), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_resnorm_val, &h_resnorm_val, sizeof(double), cudaMemcpyHostToDevice);
-	cudaMemcpy(d_OCR_num_val, &h_OCR_num_val, sizeof(double), cudaMemcpyHostToDevice);
-	vars.snorm_val = d_snorm_val;
-	vars.resnorm_val = d_resnorm_val;
-	vars.OCR_num_val = d_OCR_num_val;
-}
 
 
 // copy operator arrays device -> device. NOTE: copies the NUMBERS, not the

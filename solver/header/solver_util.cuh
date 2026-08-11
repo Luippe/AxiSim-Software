@@ -472,16 +472,6 @@ void phiGradientGreenGauss(
 	double gz = 0.0;
 	double gr = 0.0;
 
-	// The stored face areas and cell volumes are the *revolved* (axisymmetric)
-	// metrics: area = 2*pi*rf*L2D and volume = 2*pi*rc*A2D. Green-Gauss for the
-	// meridional-plane gradient (d/dz, d/dr) is a purely 2D operation, so it must
-	// use the planar face length L2D and cell area A2D -- feeding the revolved
-	// area/volume in directly biases the radial gradient (a constant field would
-	// give grad_r = c/rc, worst near the axis). Recover the planar metrics from
-	// the revolved ones: L2D = area/(2*pi*rf), A2D = volume/(2*pi*rc) -- the latter
-	// precomputed per cell as invA2D.
-	constexpr double twoPi = 6.28318530717958647692;
-
 	int start = mesh.cells.faceStart[cellID];
 	int end = mesh.cells.faceStart[cellID + 1];
 
@@ -514,7 +504,7 @@ void phiGradientGreenGauss(
 		double rf = mesh.faces.centerR[faceID];
 
 		if (rf > 1.0e-30) {
-			double length2D = mesh.faces.area[faceID] / (twoPi * rf);
+			double length2D = mesh.faces.length2D[faceID];
 
 			gz += phiF * normalZ * length2D;
 			gr += phiF * normalR * length2D;

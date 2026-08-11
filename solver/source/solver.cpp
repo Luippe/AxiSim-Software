@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <cuda_profiler_api.h>
 #include "printer.h"
 #include "file_manager.h"
@@ -128,7 +129,6 @@ void Solver::reset() {
     solutions.clear();
     timeFrames.clear();
     fieldType.clear();
-    mDotHost.clear();
     fvMesh = FVMesh{};
     continuationState = ContinuationState{};
     currentIteration = 0;
@@ -208,7 +208,6 @@ void Solver::createSolutions(int N) {
         solutions["dC/dr"] = SolutionField{ copyDeviceToHostVector(simple.gradCR, N), g.dr, g.dz, BoundaryVariable::Concentration };
     }
 
-    // getMassImbalance refreshes mDotHost (the per-face mass flux) on the way in.
     solutions["Continuity"] = SolutionField{
         getMassImbalance(N),
         g.dr,
@@ -298,7 +297,8 @@ void Solver::captureTimeFrame(double time, int N) {
 
 std::vector<double> Solver::getMassImbalance(int N) {
 
-    mDotHost = copyDeviceToHostVector(simple.mDot, (size_t)fvMesh.numFaces());
+    const std::vector<double> mDotHost =
+        copyDeviceToHostVector(simple.mDot, (size_t)fvMesh.numFaces());
 
     std::vector<double> mContinuity((size_t)N, 0.0);
 
@@ -762,7 +762,9 @@ void Solver::runSimple(const Mesh& mesh) {
     Coefficients& tempCoeff = coeffs.at("Temperature");
     Coefficients& concCoeff = coeffs.at("Concentration");
 
-    // create configs for solver and residual
+    // Host-side only: allocateSimple needs the grid. Never hand this to a kernel --
+    // GridConfig owns nine std::vectors, so a by-value kernel parameter would
+    // deep-copy all nine per launch and put host heap pointers on the device.
     Config config{ f, g, varUnits };
 
     // Copy the mesh's cache into our own snapshot rather than rebuilding it. Still a
@@ -1062,16 +1064,21 @@ void Solver::runSimple(const Mesh& mesh) {
         // field and BDF2's (4*phiOld - phiOld2) collapses to 3*phi.
         if (transient) {
 
+            // A swap, not a copy: the n-1 <- n shift only has to RENAME two buffers,
+            // and the n <- current memcpy below overwrites whatever the swap left in
+            // the old n-1 slot. Safe because the old levels reach kernels only as
+            // explicit by-value arguments -- unlike simple.u/uTemp, whose addresses
+            // the linear solvers bake into a captured graph in prepare().
             if (useSecondOrderTime) {
-                cudaMemcpyAsync(simple.uOld2, simple.uOld, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
-                cudaMemcpyAsync(simple.vOld2, simple.vOld, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+                std::swap(simple.uOld2, simple.uOld);
+                std::swap(simple.vOld2, simple.vOld);
 
                 if (solveEnergy) {
-                    cudaMemcpyAsync(simple.tempOld2, simple.tempOld, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+                    std::swap(simple.tempOld2, simple.tempOld);
                 }
 
                 if (solveConcentration) {
-                    cudaMemcpyAsync(simple.concOld2, simple.concOld, N * sizeof(double), cudaMemcpyDeviceToDevice, stream);
+                    std::swap(simple.concOld2, simple.concOld);
                 }
             }
 
@@ -1164,7 +1171,7 @@ void Solver::runSimple(const Mesh& mesh) {
             vSolver.run();
 
             // solve pressure correction
-            createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, bcDevice.p);
+            createPPCoeff << <blocks, threadsPerBlock, 0, stream >> > (f, fvMeshDevice, ppCoeff, simple, bcDevice.p);
 
             // pp never reaches underRelaxEquation, so this is its only reciprocal.
             // Outside the corrector loop below because createPPRhs rewrites only b.
@@ -1172,7 +1179,7 @@ void Solver::runSimple(const Mesh& mesh) {
 
             // grad(p) for Rhie-Chow is still in gradPZ/gradPR from the momentum
             // step above (nothing overwrote it), so no recompute is needed here.
-            computeFaceMassFluxRhieChow << <faceBlocks, faceThreads, 0, stream >> > (config, fvMeshDevice, simple, bcDevice);
+            computeFaceMassFluxRhieChow << <faceBlocks, faceThreads, 0, stream >> > (f, fvMeshDevice, simple, bcDevice);
 
             // ---- pressure correction with deferred non-orthogonal correctors ----
             // gradPZ/gradPR are reused below to hold grad(p'); they are no longer
@@ -1193,7 +1200,7 @@ void Solver::runSimple(const Mesh& mesh) {
                     computeGradient << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, ppBC, simple.pp, simple.gradPZ, simple.gradPR, gradientScheme);
                 }
 
-                createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (config, fvMeshDevice, ppCoeff, simple, applyCrossTerm);
+                createPPRhs << <blocks, threadsPerBlock, 0, stream >> > (f, fvMeshDevice, ppCoeff, simple, applyCrossTerm);
                 if (multigrid) {
                     multigrid->run();
                 }
@@ -1207,7 +1214,7 @@ void Solver::runSimple(const Mesh& mesh) {
 
             // update field variables
             updateMomentumPressure << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, bcDevice.p);
-            updateMassFlux << <faceBlocks, faceThreads, 0, stream >> > (config, fvMeshDevice, simple, bcDevice.p, applyNonOrtho);
+            updateMassFlux << <faceBlocks, faceThreads, 0, stream >> > (f, fvMeshDevice, simple, bcDevice.p, applyNonOrtho);
 
             // ======================================================================
             // -----------------ENERGY / CONCENTRATION EQUATIONS---------------------

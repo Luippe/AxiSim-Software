@@ -120,11 +120,6 @@ public:
 	// fvMesh
 	FVMesh fvMesh;
 
-	// host copy of the per-face mass flux (indexed like fvMesh.faces), filled
-	// after a solve so the inspector can report face fluxes and per-cell
-	// continuity imbalance.
-	std::vector<double> mDotHost;
-
 	// config for simple algorithm
 	ConfigSimple configSimple;
 

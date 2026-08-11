@@ -170,7 +170,7 @@ void computeGradient(
 
 __global__
 void computeFaceMassFluxRhieChow(
-	Config config,
+	FluidPropertyConfig fluid,
 	FVMeshDevice mesh,
 	VariablesSimple simple,
 	BoundarySolverDevice bc
@@ -188,7 +188,7 @@ void computeFaceMassFluxRhieChow(
 		return;
 	}
 
-	double rho = config.f.rho;
+	double rho = fluid.rho;
 
 	double unFace = rhieChowNormalVelocityToFace(
 		owner,
@@ -589,9 +589,6 @@ void underRelaxEquation(
 	int n = blockIdx.x * blockDim.x + threadIdx.x;
 
 	if (n >= mesh.cells.nCells) return;
-
-
-	if (alpha <= 0.0 || alpha > 1.0) return;
 
 	double AC_old = coeff.AC[n];
 

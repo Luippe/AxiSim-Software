@@ -25,19 +25,11 @@ class Solver;
 class Results;
 struct AppSettings;
 struct Config;
-struct BoundaryCondition;
-struct BoundaryConditionConfig;
 struct SolutionField;
 
 // ====================================================
-// -------------------FILED DIALOG---------------------
+// -------------------FILE DIALOG----------------------
 // ====================================================
-
-// check if file exists
-bool fileExists(const std::string& filename);
-
-// open .bin file and return stream
-std::ofstream openBinaryFile(const char* path);
 
 // which kind of file a dialog is for -- selects the extension filter and the
 // default extension appended when the user types a bare name
@@ -165,20 +157,9 @@ void loadFromPathSolver(std::ifstream& in, Solver& solver);
 // load solver after opening explorer
 void loadFromExplorerSolver(Solver& solver);
 
-// write boundarycondtion struct to save file
-void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc);
-
-// read boundary condition from save file
-void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc);
-
 // load selected files when the application launches
 void loadAtLaunch(Project& project, AppSettings& settings);
 
-// read boundary condition config from save file
-template<typename...Args>
-void readBoundaryConditionConfig(std::ifstream& in, Args&... args) {
-	(readOneBoundaryCondition(in, args),...);
-}
 // ======================================================================
 // -----------------------RESULTS----------------------------------------
 // ======================================================================
@@ -213,6 +194,12 @@ inline std::streamoff bytesLeft(std::ifstream& in) {
 	in.seekg(0, std::ios::end);
 	std::streampos end = in.tellg();
 	in.seekg(pos);
+
+	// A failed end-seek leaves tellg at -1, which would otherwise come back as a
+	// huge negative "space remaining" and defeat every caller's ceiling check.
+	if (end == std::streampos(-1) || end < pos) {
+		return 0;
+	}
 
 	return end - pos;
 }
@@ -501,8 +488,8 @@ bool writeNpyInt32(
 //   solution.npy   nCells x nColumns, one row per cell
 //   meta.json      column names, mesh shape, fluid properties, frame index
 //   frame_NNNN.npy one per captured transient frame, field columns only
-//   points.npy     nPoints x 2 (z, r) welded cell corners  } multiblock only,
-//   cells.npy      nCells x 4 indices into points.npy      } see "cellCorners"
+//   points.npy     nPoints x 2 (z, r) cell corners            } corner-bearing
+//   cells.npy      nCells x cellCorners indices into points   } meshes only
 //
 // Read meta.json "columns" for the layout rather than assuming one -- the field
 // set follows whatever the run solved. Frames carry "frameColumns" only, since

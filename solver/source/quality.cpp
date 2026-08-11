@@ -78,7 +78,7 @@ void calculateOrthogonality(
 			double fz = face.center.z - cell.center.z;
 			double fr = face.center.r - cell.center.r;
 
-			double fDot = fz * face.normal.z + fr * face.normal.r;
+			double fDot = std::abs(fz * face.normal.z + fr * face.normal.r);
 			double fMag = std::sqrt(fz * fz + fr * fr);
 
 			orth = std::min(orth, fDot / fMag);
@@ -86,12 +86,13 @@ void calculateOrthogonality(
 			// centroid to centroid
 			if (face.isBoundary()) continue;
 
-			const FVCell& nbCell = fvMesh.cells[face.neighbor];
+			const FVCell& N = fvMesh.cells[face.neighbor];
+			const FVCell& P = fvMesh.cells[face.owner];
 
-			double dz = nbCell.center.z - cell.center.z;
-			double dr = nbCell.center.r - cell.center.r;
+			double dz = N.center.z - P.center.z;
+			double dr = N.center.r - P.center.r;
 
-			double dDot = dz * face.normal.z + dr * face.normal.r;
+			double dDot = std::abs(dz * face.normal.z + dr * face.normal.r);
 			double dMag = std::sqrt(dz * dz + dr * dr);
 
 			orth = std::min(orth, dDot / dMag);

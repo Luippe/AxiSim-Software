@@ -23,11 +23,8 @@
 #include "app_struct.h"		// AppSettings (complete type for serialization)
 
 #include "file_converter.h"
-#include "keyboard_manager.h"
 #include "printer.h"
 #include "resource_path.h"
-
-using namespace Shortcuts;
 
 namespace {
 	constexpr std::uint32_t solverFileMagic = 0x53585641u; // "AXVS" little-endian
@@ -39,12 +36,11 @@ namespace {
 	//     solver enum became uint8_t-backed. That reshapes both config blobs -- one
 	//     grew fields, the other lost its trailing bool and shrank 32 -> 24 -- so v5
 	//     is a new format rather than an appended field.
-	// v3 and v4 are still readable (see readSolverPayloadLegacy): dropping them would
-	// throw away the rest of the solver setup in every project saved before this.
-	// Legacy (v1/v2/pre-magic) loaders were removed.
+	// v4 is still readable (see readSolverPayloadLegacy): dropping it would throw away
+	// the rest of the solver setup in every project saved before this.
+	// Legacy v1/v2/v3 (and pre-magic) loaders were removed.
 	constexpr std::uint32_t solverFileVersion = 5u;
 	constexpr std::uint32_t solverFileVersionSplitConfig = 4u;
-	constexpr std::uint32_t solverFileVersionNoGradientScheme = 3u;
 	constexpr std::uint32_t meshRegionFileMagic = 0x494F5241u; // "AROI" little-endian
 	constexpr std::uint32_t meshRegionFileVersion = 1u;
 	constexpr std::uint32_t sceneViewFileMagic = 0x57565641u;  // "AVVW" little-endian
@@ -102,23 +98,6 @@ namespace {
 		double transitionThickness = 0.0;
 	};
 	static_assert(sizeof(LegacyMeshRegionOfInfluence) == 96);
-
-	std::streamoff remainingBytes(std::ifstream& in) {
-		std::streampos pos = in.tellg();
-		if (pos == std::streampos(-1)) {
-			return 0;
-		}
-
-		in.seekg(0, std::ios::end);
-		std::streampos end = in.tellg();
-		in.seekg(pos);
-
-		if (end == std::streampos(-1) || end < pos) {
-			return 0;
-		}
-
-		return end - pos;
-	}
 
 	// Fixed on-disk order of the named residuals for the v2 payload. Do NOT reorder:
 	// the file format depends on it. Each name must match a key inserted by
@@ -269,10 +248,10 @@ namespace {
 			solver.configSimple.ppTol = 1e-5;
 		}
 
-		// Every clamp below is against what the GUI can actually OFFER, not against
-		// the enum's last enumerator: LINEAR_BICGSTAB / GMRES / SOLVER_SIMPLER /
-		// CONV_QUICK exist in the enums but have no implementation behind them, so a
-		// file naming one has to come back as something the solver can run.
+		// Every clamp below is against what the GUI can actually OFFER. CONV_QUICK
+		// still exists in its enum with no implementation behind it, and an old file
+		// can name a linear solver or velocity solver whose enumerator has since been
+		// deleted, so a stored byte has to come back as something the solver can run.
 		if (!enumInRange(solver.configSolver.type, LinearSolverType::LINEAR_GS_RB)) {
 			solver.configSolver.type = LinearSolverType::LINEAR_JACOBI;
 		}
@@ -335,15 +314,11 @@ namespace {
 		return readResidualConfigs(in, solver);
 	}
 
-	// v3/v4 payload. ConfigSolver was 32 bytes of int-width enums back then, and the
-	// four settings it has since absorbed were written as loose ints on either side of
-	// the fluid/SIMPLE blocks -- so this reads the old shape and assembles the current
+	// v4 payload. ConfigSolver was 32 bytes of int-width enums back then, and the four
+	// settings it has since absorbed were written as loose ints on either side of the
+	// fluid/SIMPLE blocks -- so this reads the old shape and assembles the current
 	// struct from the pieces rather than trying to overlay them.
-	//
-	// `hasGradientScheme` distinguishes v4 from v3. The payload is positional, so a v3
-	// file has nothing where gradientScheme sits and reading one would desync every
-	// field after it; v3 keeps the default instead.
-	bool readSolverPayloadLegacy(std::ifstream& in, Solver& solver, bool hasGradientScheme) {
+	bool readSolverPayloadLegacy(std::ifstream& in, Solver& solver) {
 
 		LegacyConfigSolverV4 legacy;
 		LegacyConfigSimpleV4 legacySimple;
@@ -369,7 +344,7 @@ namespace {
 
 		std::int32_t gradientScheme = (std::int32_t)GradientScheme::GRAD_LSQ;
 
-		if (hasGradientScheme && !readVar(in, gradientScheme)) {
+		if (!readVar(in, gradientScheme)) {
 			return false;
 		}
 
@@ -612,13 +587,6 @@ std::wstring loadFileDialog(FileKind kind) {
 		reportDialogError();
 	}
 	return L"";
-}
-
-bool fileExists(const std::string& filename) {
-
-	std::ifstream file(filename);
-	return file.good();
-
 }
 
 // ====================================================
@@ -875,25 +843,6 @@ bool readMeshRegions(
 	return true;
 }
 
-void writeString(std::ofstream& out, const std::string& value) {
-	size_t size = value.size();
-	out.write((const char*)(&size), sizeof(size));
-	out.write(value.data(), size);
-}
-
-bool readString(std::ifstream& in, std::string& value) {
-	size_t size = 0;
-	if (!in.read((char*)(&size), sizeof(size))) {
-		return false;
-	}
-
-	value.resize(size);
-	if (size == 0) {
-		return true;
-	}
-
-	return (bool)in.read(value.data(), size);
-}
 // ====================================================
 // -------------------SETTINGS-------------------------
 // ====================================================
@@ -916,27 +865,6 @@ bool loadSettings(std::ifstream& in, AppSettings& settings) {
 		settings.quickLaunch
 	);
 
-}
-
-// ====================================================
-// -------------------KEYBOARD-------------------------
-// ====================================================
-void saveKeyboardShortcuts(std::ofstream& out) {
-
-	writeAll(
-		out,
-		undoShortcut,
-		redoShortcut,
-		resetViewShortcut,
-		selectToolShortcut,
-		rulerToolShortcut,
-		trimToolShortcut,
-		eraseToolShortcut,
-		lineToolShortcut,
-		rectangleToolShortcut,
-		circleToolShortcut,
-		saveProjectShortcut
-	);
 }
 
 // ====================================================
@@ -977,7 +905,7 @@ void loadEtc(std::ifstream& in, Project& project) {
 
 	// Multiblock per-band resolution (appended after lengthScale; guard so older
 	// saves without it still load -- empty vectors let ensureBandSizes default to 20).
-	if (remainingBytes(in) >= static_cast<std::streamoff>(2 * sizeof(size_t))) {
+	if (bytesLeft(in) >= static_cast<std::streamoff>(2 * sizeof(size_t))) {
 		readAll(in, project.mesh.zBandCells, project.mesh.rBandCells);
 	}
 	else {
@@ -1030,7 +958,7 @@ void loadSceneView(std::ifstream& in, Project& project) {
 	constexpr std::streamoff blockBytes =
 		2 * sizeof(std::uint32_t) + 2 * sizeof(std::uint8_t);
 
-	if (start == std::streampos(-1) || remainingBytes(in) < blockBytes) {
+	if (start == std::streampos(-1) || bytesLeft(in) < blockBytes) {
 		bail();
 		return;
 	}
@@ -1084,7 +1012,6 @@ void saveFromPathProject(const std::wstring& path, Project& project) {
 	saveEtc(out, project);
 	saveFromPathResults(out, project.results);
 	saveSceneView(out, project);
-	//saveKeyboardShortcuts(out);
 	out.close();
 }
 
@@ -1587,7 +1514,7 @@ void loadFromPathSolver(std::ifstream& in, Solver& solver) {
 	}
 
 	std::streampos start = in.tellg();
-	if (start == std::streampos(-1) || remainingBytes(in) <= 0) {
+	if (start == std::streampos(-1) || bytesLeft(in) <= 0) {
 		return;
 	}
 
@@ -1607,13 +1534,7 @@ void loadFromPathSolver(std::ifstream& in, Solver& solver) {
 				ok = readSolverPayload(in, solver);
 			}
 			else if (version == solverFileVersionSplitConfig) {
-				ok = readSolverPayloadLegacy(in, solver, true);
-			}
-			else if (version == solverFileVersionNoGradientScheme) {
-				// Pre-gradientScheme save: everything else still reads, and the
-				// scheme keeps its default rather than costing the user the whole
-				// solver setup.
-				ok = readSolverPayloadLegacy(in, solver, false);
+				ok = readSolverPayloadLegacy(in, solver);
 			}
 		}
 	}
@@ -1754,7 +1675,7 @@ void loadFromPathResults(std::ifstream& in, Results& results) {
 	// A failed tellg gives bail() nothing to seek back to, so treat it as "no block"
 	// up front -- same guard loadFromPathSolver uses.
 	if (start == std::streampos(-1) ||
-		remainingBytes(in) < (std::streamoff)(2 * sizeof(std::uint32_t))) {
+		bytesLeft(in) < (std::streamoff)(2 * sizeof(std::uint32_t))) {
 		bail();
 		return;
 	}
@@ -1826,7 +1747,7 @@ void loadFromPathResults(std::ifstream& in, Results& results) {
 	// the bytes left are a hard ceiling; grow one frame at a time under it.
 	constexpr std::streamoff minFrameBytes = (std::streamoff)(sizeof(double) + sizeof(size_t));
 
-	if ((std::streamoff)frameCount > remainingBytes(in) / minFrameBytes) {
+	if ((std::streamoff)frameCount > bytesLeft(in) / minFrameBytes) {
 		bail();
 		return;
 	}
@@ -1865,39 +1786,6 @@ void loadAtLaunch(Project& project, AppSettings& settings) {
 		
 	}
 
-}
-
-void writeBoundaryCondition(std::ofstream& out, const BoundaryCondition& bc) {
-	int type = (int)(bc.type());
-	double value = bc.value();
-
-	out.write((const char*)&type, sizeof(type));
-	out.write((const char*)&value, sizeof(value));
-
-	if (const auto* pulsatile = std::get_if<PulsatileParams>(&bc.params)) {
-		out.write((const char*)&pulsatile->amplitude, sizeof(pulsatile->amplitude));
-		out.write((const char*)&pulsatile->frequency, sizeof(pulsatile->frequency));
-	}
-}
-
-void readBoundaryCondition(std::ifstream& in, BoundaryCondition& bc) {
-	int type = 0;
-	double value = 0.0;
-
-	in.read((char*)&type, sizeof(type));
-	in.read((char*)&value, sizeof(value));
-
-	bc.setType((BCType)(type));
-	bc.setValue(value);
-
-	if (auto* pulsatile = std::get_if<PulsatileParams>(&bc.params)) {
-		in.read((char*)&pulsatile->amplitude, sizeof(pulsatile->amplitude));
-		in.read((char*)&pulsatile->frequency, sizeof(pulsatile->frequency));
-	}
-}
-
-std::ofstream openBinaryFile(const char* path) {
-	return std::ofstream(path, std::ios::binary);
 }
 
 // ====================================================

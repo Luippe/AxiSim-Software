@@ -190,7 +190,7 @@ public:
 		double& value,
 		std::uint8_t& unitIndex,
 		const std::array<UnitT, N>& units,
-		const char* format = "%.3g"
+		const char* format = "%.6g"
 	) {
 		if (unitIndex >= N) {
 			unitIndex = 0;

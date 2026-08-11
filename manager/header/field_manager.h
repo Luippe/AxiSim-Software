@@ -83,7 +83,6 @@ private:
 	// update vmin and vmax
 	void updateMinMax();
 
-	CellStoreType type;
 	std::vector<double> unProcessedData;
 
 	std::vector<double> dr; // cell widths

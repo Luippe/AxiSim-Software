@@ -26,7 +26,6 @@
 #include <vector>
 #include <cstdint>
 #include <cmath>
-#include <stdexcept>
 #include <string>
 #include <set>
 
@@ -103,8 +102,6 @@ struct Block {
     // the same integer your existing BC arrays use (BoundarySegmentGroup.id ->
     // BoundaryFieldDevice per-group slot), so no new BC plumbing is needed.
     int edgeGroup[4] = { -1, -1, -1, -1 };
-
-    void setEdgeGroup(Edge e, int group) { edgeGroup[(int)e] = group; }
 
     int  nodeIdx(int I, int J) const { return I * (nz + 1) + J; }
     int  cellLocal(int i, int j) const { return i * nz + j; }
@@ -200,15 +197,6 @@ struct Interface {
     bool reversed = false;             // A's edge order runs opposite to B's
 };
 
-// One matched interior-cell pair across an interface. This is the atom of the
-// connectivity: feed it to a ghost exchange (copy cellB's value into cellA's
-// ghost slot) OR emit it as an internal face (owner=cellA, neighbor=cellB) in
-// FVMeshHostPacked. Both coupling strategies consume this same list.
-struct InterfacePair {
-    int cellA;   // global cell index in blockA (interior cell touching the seam)
-    int cellB;   // global cell index in blockB
-};
-
 // ---------------------------------------------------------------------------
 // Whole mesh: blocks + interfaces + global numbering.
 // ---------------------------------------------------------------------------
@@ -223,64 +211,6 @@ struct MultiBlockMesh {
         for (Block& b : blocks) { b.globalOffset = off; off += b.cellCount(); }
         totalCells = off;
     }
-
-    // Conformality check: both edges of every interface must have equal cell
-    // counts, or the faces don't match 1:1 (that's the non-conformal case).
-    void validate() const {
-        for (const Interface& itf : interfaces) {
-            const int na = edgeCellCount(blocks[itf.blockA], itf.edgeA);
-            const int nb = edgeCellCount(blocks[itf.blockB], itf.edgeB);
-            if (na != nb)
-                throw std::runtime_error(
-                    "non-conformal interface between blocks "
-                    + std::to_string(blocks[itf.blockA].id) + " and "
-                    + std::to_string(blocks[itf.blockB].id) + " ("
-                    + std::to_string(na) + " vs " + std::to_string(nb) + " cells)");
-        }
-    }
-
-    // Build all interface cell-pairs — the halo map. Requires global numbering.
-    std::vector<InterfacePair> buildHaloMap() const {
-        std::vector<InterfacePair> all;
-        for (const Interface& itf : interfaces) {
-            const Block& A = blocks[itf.blockA];
-            const Block& B = blocks[itf.blockB];
-            const std::vector<int> ca = edgeCells(A, itf.edgeA);
-            const std::vector<int> cb = edgeCells(B, itf.edgeB);
-            if (ca.size() != cb.size())
-                throw std::runtime_error("non-conformal interface (run validate() first)");
-
-            const int n = (int)ca.size();
-            for (int k = 0; k < n; k++) {
-                const int kb = itf.reversed ? (n - 1 - k) : k;
-                all.push_back(InterfacePair{ A.globalOffset + ca[k],
-                                             B.globalOffset + cb[kb] });
-            }
-        }
-        return all;
-    }
-};
-
-// Optional: infer `reversed` by comparing shared-edge endpoint coordinates, so
-// you don't have to reason about orientation by hand. Aligned if A's edge start
-// coincides with B's edge start; reversed if it coincides with B's edge end.
-inline bool detectReversed(const Block& A, Edge ea, const Block& B, Edge eb,
-                           double tol = 1e-9) {
-    MBNode as, ae, bs, be;
-    edgeCorners(A, ea, as, ae);
-    edgeCorners(B, eb, bs, be);
-    auto d2 = [](const MBNode& p, const MBNode& q) {
-        const double dz = p.z - q.z, dr = p.r - q.r; return dz * dz + dr * dr;
-    };
-    (void)tol;
-    return d2(as, bs) > d2(as, be);   // A.start closer to B.end => reversed
-}
-
-// Cell counts for one structured block. Keyed by sketch-rectangle id in the Mesh
-// and edited per block in the Mesh tab's Edit panel (one block per rectangle).
-struct BlockResolution {
-    int nr = 20;   // radial (i) cells
-    int nz = 20;   // axial  (j) cells
 };
 
 // Auto-detect conformal interfaces by matching fully-coincident block edges (both
@@ -319,113 +249,12 @@ inline bool autoDetectInterfaces(MultiBlockMesh& m, std::string& reason,
     return true;
 }
 
-// Every external edge (one not claimed by an interface) must carry a boundary
-// group, or its faces would have no boundary condition. Throws on the first
-// untagged external edge. Call after interfaces + edgeGroups are set.
-inline void validateBoundaryTags(const MultiBlockMesh& mesh) {
-    std::set<long long> claimed;
-    for (const Interface& itf : mesh.interfaces) {
-        claimed.insert(mbEdgeKey(itf.blockA, itf.edgeA));
-        claimed.insert(mbEdgeKey(itf.blockB, itf.edgeB));
-    }
-    const Edge edges[4] = { Edge::West, Edge::East, Edge::South, Edge::North };
-    const char* names[4] = { "West", "East", "South", "North" };
-    for (int bi = 0; bi < (int)mesh.blocks.size(); bi++) {
-        for (int e = 0; e < 4; e++) {
-            if (claimed.count(mbEdgeKey(bi, edges[e]))) continue;   // interface, ok
-            if (mesh.blocks[bi].edgeGroup[e] < 0)
-                throw std::runtime_error(
-                    std::string("untagged external edge ") + names[e] + " on block "
-                    + std::to_string(mesh.blocks[bi].id)
-                    + " (set edgeGroup or pass a defaultBoundaryGroup)");
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
-// Worked example: the 5-block conformal layout from the figure.
-//
-//   r=5  +----------1----------+--2--+----------3----------+     (wall, r = R)
-//        |  nr=12, wall-graded  | fine|  nr=12, wall-graded  |
-//   r=2  +----------+----------+--+--+----------+----------+
-//        |    5     |          (notch, external)|    4     |
-//   r=0  +----------+                           +----------+
-//       z=0        z=4        z=5              z=10
-//
-// Constraints demonstrated:
-//   - Blocks 1,2,3 share the SAME radial distribution (nr=12, same zones) so the
-//     vertical interfaces 1-2 and 2-3 are conformal AND coincident.
-//   - Block 2 is finer in z (its non-shared direction) — allowed, because its
-//     south edge faces the notch (external), not a neighbor.
-//   - Interfaces 1-5 and 3-4 match axial counts over their shared z spans.
-// ---------------------------------------------------------------------------
-inline MultiBlockMesh buildFiveBlockExample() {
-    // Shared radial distribution for the top row (r: 2 -> 5), clustered toward
-    // the wall at r=5 (coef < 1 shrinks cells along +r). Reused by 1, 2, 3.
-    const MeshZone radTop = { 3.0, 12, Grading::Progression, 0.9 };
-    const MeshZone radBot = { 2.0,  8, Grading::Uniform,     1.0 };  // r: 0 -> 2
-    const MeshZone axLeft = { 4.0, 16, Grading::Uniform,     1.0 };  // z: 0 -> 4
-    const MeshZone axMid  = { 1.0,  6, Grading::Uniform,     1.0 };  // z: 4 -> 5 (fine)
-    const MeshZone axRight= { 5.0, 20, Grading::Uniform,     1.0 };  // z: 5 -> 10
-
-    MultiBlockMesh m;
-    m.blocks = {
-        makeRectBlock(1, 0.0, 2.0, axLeft,  radTop),   // index 0
-        makeRectBlock(2, 4.0, 2.0, axMid,   radTop),   // index 1
-        makeRectBlock(3, 5.0, 2.0, axRight, radTop),   // index 2
-        makeRectBlock(4, 5.0, 0.0, axRight, radBot),   // index 3
-        makeRectBlock(5, 0.0, 0.0, axLeft,  radBot),   // index 4
-    };
-
-    // All axis-aligned and same orientation here, so reversed = false throughout.
-    m.interfaces = {
-        { 0, 1, Edge::East,  Edge::West,  false },   // 1 <-> 2  (vertical seam z=4)
-        { 1, 2, Edge::East,  Edge::West,  false },   // 2 <-> 3  (vertical seam z=5)
-        { 0, 4, Edge::South, Edge::North, false },   // 1 <-> 5  (horizontal seam r=2)
-        { 2, 3, Edge::South, Edge::North, false },   // 3 <-> 4  (horizontal seam r=2)
-    };
-
-    // Tag external edges with boundary-group ids (indices your BC arrays use):
-    //   0 = outer wall (r=5)   1 = inlet (z=0)   2 = outlet (z=10)   3 = axis (r=0)
-    // The three edges facing the notch are physical walls, so they reuse group 0.
-    enum { WALL = 0, INLET = 1, OUTLET = 2, AXIS = 3 };
-    m.blocks[0].setEdgeGroup(Edge::North, WALL);   m.blocks[0].setEdgeGroup(Edge::West,  INLET);
-    m.blocks[1].setEdgeGroup(Edge::North, WALL);   m.blocks[1].setEdgeGroup(Edge::South, WALL);   // notch
-    m.blocks[2].setEdgeGroup(Edge::North, WALL);   m.blocks[2].setEdgeGroup(Edge::East,  OUTLET);
-    m.blocks[3].setEdgeGroup(Edge::East,  OUTLET); m.blocks[3].setEdgeGroup(Edge::South, AXIS);
-    m.blocks[3].setEdgeGroup(Edge::West,  WALL);                                                  // notch
-    m.blocks[4].setEdgeGroup(Edge::West,  INLET);  m.blocks[4].setEdgeGroup(Edge::South, AXIS);
-    m.blocks[4].setEdgeGroup(Edge::East,  WALL);                                                  // notch
-
-    m.assignGlobalNumbering();
-    m.validate();               // throws if any interface is non-conformal
-    validateBoundaryTags(m);    // throws if any external edge is untagged
-    return m;
-}
-
-// Rescale a mesh anchored at the origin so its extent fills [0,L] x [0,R]. Lets a
-// fixed-coordinate demo (buildFiveBlockExample: 10 x 5) land in the project's real
-// domain, so it frames like the old uniform grid. Topology/cell counts unchanged.
-inline void fitMultiBlockToBox(MultiBlockMesh& m, double L, double R) {
-    double zMax = 0.0, rMax = 0.0;
-    for (const Block& b : m.blocks)
-        for (const MBNode& n : b.nodes) {
-            if (n.z > zMax) zMax = n.z;
-            if (n.r > rMax) rMax = n.r;
-        }
-    const double sz = (zMax > 0.0) ? L / zMax : 1.0;
-    const double sr = (rMax > 0.0) ? R / rMax : 1.0;
-    for (Block& b : m.blocks)
-        for (MBNode& n : b.nodes) { n.z *= sz; n.r *= sr; }
-}
-
-// ---------------------------------------------------------------------------
-// toPackedMesh — assemble the multi-block grid into a face-based packed mesh
-// (Step 3/6). Templated on the packed-mesh type so this header stays
-// dependency-free; call it with your FVMeshHostPacked (member names must match:
-// nCells, nFaces, face{Owner,Neighbor,NormalZ,NormalR,CenterZ,CenterR,
-// Area,BoundaryGroupID}, cell{CenterZ,CenterR,Area2D,Volume,Active,Solid,
-// FaceStart,FaceIDs}).
+// toPackedMesh — assemble the multi-block grid into a face-based packed mesh.
+// Templated only to avoid including solver_struct.h here; the sole instantiation
+// is FVMeshHostPacked, whose members it writes: nCells, nFaces,
+// face{Owner,Neighbor,NormalZ,NormalR,CenterZ,CenterR,Area,BoundaryGroupID},
+// cell{CenterZ,CenterR,Area2D,Volume,FaceStart,FaceIDs}.
 //
 // Geometry (axisymmetric r-z), consistent with the existing solver:
 //   - cell volume = 2*pi * r_centroid * quad_area        (Pappus revolve)

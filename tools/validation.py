@@ -1052,7 +1052,8 @@ def parse_args(argv=None):
 def main(argv=None):
 
     args = parse_args(argv)
-    fda_case = FDA_CASES[args.fda_case]
+    # fda_case = FDA_CASES[args.fda_case]
+    fda_case = FDA_CASES["cd"]
     compare = CompareType.EXPERIMENT
     # compare = CompareType.OPENFOAM
 
