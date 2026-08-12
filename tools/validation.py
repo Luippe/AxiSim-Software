@@ -20,6 +20,37 @@ class CompareType(Enum):
     OPENFOAM = 2
     EXPERIMENT = 3
 
+
+@dataclass(frozen=True)
+class Case:
+    """One validation target: which reference data, and the run it defaults to.
+
+    orientation/reynolds are matched against the PIV file HEADERS, never against
+    filenames -- see load_piv.
+    """
+    compare: CompareType
+    solution: str                   # default export folder, relative to ROOT
+    orientation: str = ""           # dataset-orientation header, EXPERIMENT only
+    reynolds: int = 0               # dataset-reynolds header, EXPERIMENT only
+    foam: str = ""                  # exported OpenFOAM case, --compare openfoam
+    Umax: float | None = None       # prescribed inlet peak, POISEUILLE only
+
+
+# The whole selector. A case name picks the reference data; --solution swaps the
+# run it is checked against, --compare swaps the reference. Keep the OpenFOAM
+# cases on the WSL filesystem, not /mnt/c -- OpenFOAM's tiny-file I/O crawls
+# across the 9p mount.
+CASES = {
+    "SE_500": Case(CompareType.EXPERIMENT, "SE_sim_0500_solution",
+                   "Sudden Expansion", 500,
+                   r"\\wsl$\Ubuntu\home\luits\run\SE_sim_0500_case"),
+    "CD_500": Case(CompareType.EXPERIMENT, "CD_sim_0500_solution",
+                   "Conical Diffuser", 500,
+                   r"\\wsl$\Ubuntu\home\luits\run\CD_sim_0500_case"),
+    "POISEUILLE": Case(CompareType.POISEUILLE, "poiseuille_solution",
+                       Umax=POISEUILLE_INLET_PEAK),
+}
+
 # AxiSim's name for each field the OpenFOAM export writes. U is one vector file
 # carrying two of them; its third component is the wedge direction and means
 # nothing here. The concentration is "Conc" and not "C" because OpenFOAM reserves
@@ -311,6 +342,9 @@ def load_foam(case_dir, time=None, rho=1.0) -> Foam:
     """
     d = pathlib.Path(case_dir).expanduser()
 
+    if not d.is_dir():
+        raise FileNotFoundError(f"{d}: no such OpenFOAM case -- export it first")
+
     def numeric(p):
         try:
             float(p.name)
@@ -517,20 +551,6 @@ def axisim_fda_inlet_velocity(r):
     return FDA_INLET_PEAK * np.clip(shape, 0.0, None)
 
 
-@dataclass(frozen=True)
-class FdaCase:
-    orientation: str
-    default_solution: str
-
-
-# Keep the short command-line names separate from the exact strings in the PIV
-# headers. Filtering on those headers is important because both datasets can be
-# extracted into the same directory.
-FDA_CASES = {
-    "se": FdaCase("Sudden Expansion", "SE_sim_0500_solution"),
-    "cd": FdaCase("Conical Diffuser", "CD_sim_0500_solution"),
-}
-
 # The nozzle is run in both directions, and both orientations unzip into the same
 # folder as the same five lab codes measured on a different geometry. So the
 # folder does not say which case is being compared and an unfiltered read merges
@@ -569,6 +589,8 @@ class PivLab:
     def flow(self): return float(self.header["fluid-volumetric-flow-rate"])
     @property
     def orientation(self): return self.header.get("dataset-orientation", "")
+    @property
+    def reynolds(self): return int(self.header.get("dataset-reynolds", 0))
 
 
 @dataclass
@@ -578,8 +600,17 @@ class Piv:
 
     @property
     def orientation(self):
-        orientations = sorted({lab.orientation for lab in self.labs})
-        return orientations[0] if len(orientations) == 1 else " / ".join(orientations)
+        return self._one({lab.orientation for lab in self.labs})
+
+    @property
+    def reynolds(self):
+        return self._one({lab.reynolds for lab in self.labs})
+
+    # Joined rather than collapsed to the first: these label the report and the
+    # figures, and a merged load has to say so there rather than pass for one case.
+    @staticmethod
+    def _one(values):
+        return " / ".join(str(v) for v in sorted(values))
 
 
 @dataclass
@@ -633,41 +664,48 @@ def read_piv_file(path: pathlib.Path) -> PivLab:
     return PivLab(path.stem.split("_")[-1], header, profiles, axial)
 
 
-def load_piv(folder=PIV_DIR, orientation="Sudden Expansion") -> Piv:
-    """Every lab file of one orientation, plus the union of their stations.
+def load_piv(folder=PIV_DIR, orientation=None, reynolds=None) -> Piv:
+    """Every lab file of one case, plus the union of their stations.
 
     Union, not intersection: the lab files do not all contain the same profile
     blocks, and dropping a station everywhere to accommodate one file would throw
     away data the other labs did measure.
 
-    Union across ORIENTATIONS is the one thing that would not be data -- see
-    the orientation argument. Every file is read before filtering; the header is
-    the only reliable way to identify its orientation.
+    Union across CASES is the one thing that would not be data -- see the
+    orientation and reynolds arguments, either of which may be None to keep
+    everything. Every file is read before filtering; the headers are the only
+    reliable way to identify a file, since both orientations and every Reynolds
+    number unzip into this one folder.
     """
     d = pathlib.Path(folder)
 
     paths = sorted(d.glob("*.txt"))
     if not paths:
         raise FileNotFoundError(
-            f"{d}: no PIV .txt files -- extract the FDA Re=500 data here")
+            f"{d}: no PIV .txt files -- extract the FDA data here")
 
     labs = [read_piv_file(p) for p in paths]
 
-    if orientation is not None:
-        keep = [lab for lab in labs if lab.orientation == orientation]
+    keep = [lab for lab in labs
+            if (orientation is None or lab.orientation == orientation)
+            and (reynolds is None or lab.reynolds == reynolds)]
 
-        if not keep:
-            found = sorted({lab.orientation for lab in labs})
-            raise FileNotFoundError(
-                f"{d}: no {orientation!r} files among {len(labs)} read"
-                f" -- found {found}")
+    if not keep:
+        found = sorted({(lab.orientation, lab.reynolds) for lab in labs})
+        raise FileNotFoundError(
+            f"{d}: no {orientation!r} Re={reynolds} files among {len(labs)} read"
+            f" -- found {found}")
 
-        labs = keep
+    piv = Piv(keep, sorted({z for lab in keep for (q, z) in lab.profiles
+                            if q == "axial-velocity"}))
 
-    stations = sorted({z for lab in labs for (q, z) in lab.profiles
-                       if q == "axial-velocity"})
+    # An unfiltered load merges two geometries into one band and fails no check:
+    # the codes look like ten labs and the stations like a union.
+    if len({(lab.orientation, lab.reynolds) for lab in keep}) > 1:
+        print(f"warning: merging {piv.orientation} at Re {piv.reynolds}"
+              " -- these are different cases, not repeats of one")
 
-    return Piv(labs, stations)
+    return piv
 
 
 def trim_edge_zeros(r, v):
@@ -803,7 +841,20 @@ def profile_sampler(s: Solution):
     points stay inside. Anything sampled from elsewhere must respect that.
     """
     live = s.live
-    tri = mtri.Triangulation(s.c("z")[live], s.c("r")[live])
+    z, r = s.c("z")[live], s.c("r")[live]
+    tri = mtri.Triangulation(z, r)
+
+    # Delaunay over a STRUCTURED mesh emits collinear slivers, and the trifinder
+    # then rejects the whole triangulation ("Triangulation is invalid") rather
+    # than ignoring them -- this died outright on the Poiseuille export. Slivers
+    # carry no area, so masking them changes nothing that is sampled: it drops
+    # 103 of 4381 triangles there, and 0 of 172667 / 1 of 151578 on the two FDA
+    # meshes, whose reported numbers are unchanged either way.
+    t = tri.triangles
+    area = np.abs((z[t[:, 1]] - z[t[:, 0]]) * (r[t[:, 2]] - r[t[:, 0]])
+                  - (z[t[:, 2]] - z[t[:, 0]]) * (r[t[:, 1]] - r[t[:, 0]]))
+    tri.set_mask(area <= 1e-9 * np.median(area))
+
     cache = {}
 
     def sample(field, z, r):
@@ -827,9 +878,14 @@ def axisim_flow_rate(s: Solution, z=None, sample=None, n=400):
     rate anywhere. Integrating a single station is exact on any radius.
 
     Defaults to the inlet plane, which is what makes this a check on the BC.
-    Slightly under-reads: the outermost sample is a cell centre, half a cell
-    inside the wall, so a thin annulus is missed -- u is near zero there, so the
-    truncation is second order (~0.1% on a 44-cell radius).
+    Under-reads: the outermost sample is a cell centre, half a cell inside the
+    wall, so a thin annulus is missed. u is near zero there, so the truncation is
+    second order -- but only in the ratio of that annulus to the local radius, so
+    it scales with how coarsely THAT station's radius is resolved, not the mesh's
+    average. Measured against an injected parabola of known integral: 0.04-0.13%
+    on the 6 mm pipe, but 0.4-1.0% at a station inside the 2 mm throat. Read the
+    default plane as a BC check to ~0.1%; do not read Q at a throat station as a
+    mass-conservation check, the quadrature alone costs more than the signal.
     """
     live = s.live
     zc, rc = s.c("z")[live], s.c("r")[live]
@@ -903,7 +959,7 @@ def piv_case_check(s: Solution, piv: Piv, sample=None):
     # laminar case and the only one AxiSim can claim, having no turbulence model.
     dThroat = 0.004
     print(f"Re (throat)       = {4.0 * rho * Q / (np.pi * dThroat * mu):.1f}"
-          f"   [benchmark: 500]")
+          f"   [benchmark: {piv.reynolds}]")
 
     if any(l.rho != lab.rho or l.mu != lab.mu or l.flow != lab.flow
            for l in piv.labs):
@@ -1026,7 +1082,8 @@ def piv_validation(s: Solution, piv: Piv, quantity="axial-velocity",
 
     axes[0][0].legend(fontsize=7, loc="best")
     fig.suptitle(
-        f"FDA nozzle, {piv.orientation.lower()}, Re_throat = 500 -- {field}")
+        f"FDA nozzle, {piv.orientation.lower()}, Re_throat = {piv.reynolds}"
+        f" -- {field}")
     fig.tight_layout()
 
     return fig
@@ -1037,41 +1094,48 @@ def parse_args(argv=None):
         description=(
             "Compare an AxiSim result with analytical, OpenFOAM, or FDA PIV data."))
     parser.add_argument(
-        "--fda-case", choices=FDA_CASES, default="se", metavar="{se,cd}",
+        "case", nargs="?", default="SE_500", type=str.upper, choices=CASES,
         help=(
-            "FDA nozzle orientation: sudden expansion (se, default) or "
-            "conical diffuser (cd)"))
+            "which reference data to validate against; also picks the solution "
+            "folder unless one is given (default: %(default)s)"))
     parser.add_argument(
-        "--solution", metavar="FOLDER",
+        "solution", nargs="?", metavar="FOLDER",
         help=(
             "solution-export folder relative to the repository root; defaults "
-            "to the selected case"))
+            "to the selected case's own run"))
+    parser.add_argument(
+        "--compare", type=str.upper, choices=[t.name for t in CompareType],
+        help="override what to compare against (default: the case's own)")
+    parser.add_argument(
+        "--foam-case", metavar="DIR",
+        help="exported OpenFOAM case, for --compare OPENFOAM")
     return parser.parse_args(argv)
 
 
 def main(argv=None):
 
     args = parse_args(argv)
-    # fda_case = FDA_CASES[args.fda_case]
-    fda_case = FDA_CASES["cd"]
-    compare = CompareType.EXPERIMENT
-    # compare = CompareType.OPENFOAM
+    case = CASES[args.case]
 
-    folder_name = args.solution or fda_case.default_solution
-    # The exported case. Keep it on the WSL filesystem, not /mnt/c -- OpenFOAM's
-    # tiny-file I/O crawls across the 9p mount.
-    foam_case = r"\\wsl$\Ubuntu\home\luits\run\SE_sim_0500_case"
+    compare = CompareType[args.compare] if args.compare else case.compare
+    folder_name = args.solution or case.solution
+    foam_case = args.foam_case or case.foam
+
+    print(f"case              = {args.case}   [{compare.name.lower()}]")
+    print(f"solution          = {folder_name}")
 
     s = load_solution(folder_name)
     c = load_cells(folder_name)
 
     if compare == CompareType.POISEUILLE:
-        p = poiseuille_flow(s, c, Umax=POISEUILLE_INLET_PEAK)
+        # None on a case with no prescribed peak, which is poiseuille_flow's
+        # documented "use the mass flux" default rather than a missing value.
+        p = poiseuille_flow(s, c, Umax=case.Umax)
         poiseuille_report(s, p)
         field_validation(s, c, CompareType.POISEUILLE, p)
 
     elif compare == CompareType.EXPERIMENT:
-        piv = load_piv(orientation=fda_case.orientation)
+        piv = load_piv(orientation=case.orientation, reynolds=case.reynolds)
 
         # One triangulation for all seven passes below -- rebuilding it per call
         # is a Delaunay over every live cell each time.
@@ -1088,6 +1152,10 @@ def main(argv=None):
             piv_validation(s, piv, quantity, sample=sample)
 
     else:
+        if not foam_case:
+            raise SystemExit(f"{args.case}: no exported OpenFOAM case"
+                             " -- pass --foam-case DIR")
+
         f = load_foam(foam_case, rho=s.meta["fluid"]["rho"])
         live, idx, dist = match_to_foam(s, f)
         foam_report(s, f, live, idx, dist)

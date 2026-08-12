@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+title: "AxiSim: GPU-accelerated axisymmetric CFD solver"
+message: "If you use this software, please cite the archived release below."
+type: software
+authors:
+  - family-names: Tsumura
+    given-names: Lui
+    email: luitsumura@gmail.com
+repository-code: "https://github.com/Luippe/AxiSim-Software"
+url: "https://github.com/Luippe/AxiSim-Software"
+abstract: >-
+  AxiSim is an interactive finite-volume solver for axisymmetric incompressible
+  flow. It solves the incompressible Navier-Stokes equations in axisymmetric
+  (r-z) coordinates using the SIMPLE pressure-velocity coupling scheme, with the
+  linear algebra running on the GPU through CUDA. Geometry sketching, meshing,
+  solving, and post-processing are combined in a single real-time interface,
+  with optional energy and concentration scalar transport.
+keywords:
+  - computational fluid dynamics
+  - axisymmetric flow
+  - finite volume method
+  - Navier-Stokes
+  - SIMPLE algorithm
+  - CUDA
+  - GPU computing
+license: MIT
+version: v1.04-alpha
+date-released: "2026-07-07"
+doi: 10.5281/zenodo.20452828
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.21231204
+    description: Archived snapshot of v1.04-alpha
+  - type: doi
+    value: 10.5281/zenodo.20452828
+    description: Concept DOI, always resolves to the latest version
