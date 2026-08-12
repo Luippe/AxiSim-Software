@@ -266,6 +266,14 @@ set_source_files_properties(
 )
 
 # ------------------------------------------------------------
+# Sub-projects
+# ------------------------------------------------------------
+
+# Not covered by the globs above, so its sources stay out of the AxiSim target
+# and the boundary is enforced by the compiler rather than by convention.
+add_subdirectory(aximesh)
+
+# ------------------------------------------------------------
 # Executable
 # ------------------------------------------------------------
 
@@ -320,6 +328,7 @@ target_link_libraries(AxiSim PRIVATE
     PNG::PNG
     CUDA::cudart
     Gmsh::gmsh
+    aximesh
 )
 
 # Fallback resource root for a build-tree exe. Resources::resolve() looks next to
