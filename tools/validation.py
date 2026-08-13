@@ -1,4 +1,4 @@
-import argparse
+import argparse, os
 import numpy as np, json, pathlib, re
 from dataclasses import dataclass
 import matplotlib.pyplot as plt
@@ -32,21 +32,31 @@ class Case:
     solution: str                   # default export folder, relative to ROOT
     orientation: str = ""           # dataset-orientation header, EXPERIMENT only
     reynolds: int = 0               # dataset-reynolds header, EXPERIMENT only
-    foam: str = ""                  # exported OpenFOAM case, --compare openfoam
+    foam: str = ""                  # case FOLDER NAME under FOAM_ROOT, not a path
     Umax: float | None = None       # prescribed inlet peak, POISEUILLE only
 
 
+# Where the exported OpenFOAM cases were run, read from the environment rather
+# than written here -- it is a machine-local path, and this file is committed.
+# Unset is fine: it only means --foam-case has to be passed for --compare
+# OPENFOAM. On WSL point it at a native Linux directory (\\wsl$\<distro>\home\
+# <user>\run), never at /mnt/c -- OpenFOAM's tiny-file I/O crawls across the 9p
+# mount.
+FOAM_ROOT = os.environ.get("AXISIM_FOAM_ROOT", "")
+
+
+def foam_case_dir(name: str) -> str:
+    """A case's default OpenFOAM directory, or "" when AXISIM_FOAM_ROOT is unset."""
+    return str(pathlib.Path(FOAM_ROOT) / name) if FOAM_ROOT and name else ""
+
+
 # The whole selector. A case name picks the reference data; --solution swaps the
-# run it is checked against, --compare swaps the reference. Keep the OpenFOAM
-# cases on the WSL filesystem, not /mnt/c -- OpenFOAM's tiny-file I/O crawls
-# across the 9p mount.
+# run it is checked against, --compare swaps the reference.
 CASES = {
     "SE_500": Case(CompareType.EXPERIMENT, "SE_sim_0500_solution",
-                   "Sudden Expansion", 500,
-                   r"\\wsl$\Ubuntu\home\luits\run\SE_sim_0500_case"),
+                   "Sudden Expansion", 500, "SE_sim_0500_case"),
     "CD_500": Case(CompareType.EXPERIMENT, "CD_sim_0500_solution",
-                   "Conical Diffuser", 500,
-                   r"\\wsl$\Ubuntu\home\luits\run\CD_sim_0500_case"),
+                   "Conical Diffuser", 500, "CD_sim_0500_case"),
     "POISEUILLE": Case(CompareType.POISEUILLE, "poiseuille_solution",
                        Umax=POISEUILLE_INLET_PEAK),
 }
@@ -1108,7 +1118,9 @@ def parse_args(argv=None):
         help="override what to compare against (default: the case's own)")
     parser.add_argument(
         "--foam-case", metavar="DIR",
-        help="exported OpenFOAM case, for --compare OPENFOAM")
+        help=(
+            "exported OpenFOAM case, for --compare OPENFOAM; defaults to the "
+            "case's folder under $AXISIM_FOAM_ROOT"))
     return parser.parse_args(argv)
 
 
@@ -1119,7 +1131,7 @@ def main(argv=None):
 
     compare = CompareType[args.compare] if args.compare else case.compare
     folder_name = args.solution or case.solution
-    foam_case = args.foam_case or case.foam
+    foam_case = args.foam_case or foam_case_dir(case.foam)
 
     print(f"case              = {args.case}   [{compare.name.lower()}]")
     print(f"solution          = {folder_name}")
@@ -1153,8 +1165,9 @@ def main(argv=None):
 
     else:
         if not foam_case:
-            raise SystemExit(f"{args.case}: no exported OpenFOAM case"
-                             " -- pass --foam-case DIR")
+            raise SystemExit(f"{args.case}: no exported OpenFOAM case -- pass"
+                             " --foam-case DIR, or set AXISIM_FOAM_ROOT to the"
+                             f" directory holding {case.foam or 'the case'}")
 
         f = load_foam(foam_case, rho=s.meta["fluid"]["rho"])
         live, idx, dist = match_to_foam(s, f)

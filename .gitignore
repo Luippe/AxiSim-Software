@@ -49,9 +49,13 @@ imgui.ini
 CLAUDE.local.md
 .claude/settings.local.json
 
-# Local icon pipeline (not shared): raw exports + helper scripts
+# Local icon pipeline (not shared): raw exports + helper scripts. validation.py
+# is the exception and IS tracked -- it backs the validation claims in the README.
+# Needs /tools/* rather than /tools/, or git never descends far enough to see the
+# negation.
 /assets/raw icons/
-/tools/
+/tools/*
+!/tools/validation.py
 
 # Animation/video export scratch output (was committed by accident once)
 /test.mp4

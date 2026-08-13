@@ -1132,8 +1132,8 @@ void Solver::runSimple(const Mesh& mesh) {
             }
 
             // create coeffs for velocity and pressure correction equations
-            addTransportCoefficients << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, uCoeff, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, applyNonOrtho, f.mu, 0, convectionScheme, 1.0);
-            addTransportCoefficients << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, vCoeff, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, applyNonOrtho, f.mu, 0, convectionScheme, 1.0);
+            addTransportCoefficients << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, uCoeff, bcDevice.u, simple.u, simple.gradUZ, simple.gradUR, applyNonOrtho, f.mu, addConvectionTerm ? 1 : 0, convectionScheme, 1.0);
+            addTransportCoefficients << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, simple, vCoeff, bcDevice.v, simple.v, simple.gradVZ, simple.gradVR, applyNonOrtho, f.mu, addConvectionTerm ? 1 : 0, convectionScheme, 1.0);
 
             // add mu * ur / r^2 contribution
             addRadialMomentumCylindricalSource << <blocks, threadsPerBlock, 0, stream >> > (fvMeshDevice, vCoeff, f.mu);
