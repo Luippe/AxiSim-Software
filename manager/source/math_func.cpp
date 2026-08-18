@@ -168,6 +168,32 @@ Vec2 closestPointOnSegment(Vec2 p, Vec2 a, Vec2 b) {
 	};
 }
 
+double distancePointToSegment(Vec2 p, Vec2 a, Vec2 b) {
+	return distance(p, closestPointOnSegment(p, a, b));
+}
+
+int groupAtPoint(Vec2 point, const std::vector<BoundaryEdge>& edges,
+	const std::vector<BoundaryVertex>& vertices, double tol) {
+
+	int best = -1;
+	double bestDist = tol;
+
+	for (const BoundaryEdge& edge : edges) {
+		if (edge.groupID < 0) continue;
+		if (!edgeInRange(edge, vertices.size())) continue;
+
+		const double dist = distancePointToSegment(
+			point, vertices[edge.v0].pos, vertices[edge.v1].pos);
+
+		if (dist < bestDist) {
+			bestDist = dist;
+			best = edge.groupID;
+		}
+	}
+
+	return best;
+}
+
 double pickSign(const Vec2& p, const Vec2& a, const Vec2& b) {
 	return (p.z - b.z) * (a.r - b.r) - (a.z - b.z) * (p.r - b.r);
 }

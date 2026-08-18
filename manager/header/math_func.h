@@ -45,6 +45,16 @@ bool edgeInRange(const BoundaryEdge& e, std::size_t n);
 
 Vec2 closestPointOnSegment(Vec2 p, Vec2 a, Vec2 b);
 
+double distancePointToSegment(Vec2 p, Vec2 a, Vec2 b);
+
+// Boundary group of the sketch edge nearest `point`, or -1 if none is within `tol`.
+// One rule for both the solver's boundary-face classification and the OpenFOAM export,
+// so the exported patches and the solver's BC groups cut the boundary the same way.
+// Ungrouped sketch edges are skipped rather than matched-then-rejected: an untagged
+// edge lying closer must not shadow the tagged one behind it.
+int groupAtPoint(Vec2 point, const std::vector<BoundaryEdge>& edges,
+	const std::vector<BoundaryVertex>& vertices, double tol);
+
 // Signed side of point p relative to the directed edge a->b in the z-r plane
 // (>0 / <0 either side, 0 on the line). Building block for point-in-cell picking.
 double pickSign(const Vec2& p, const Vec2& a, const Vec2& b);

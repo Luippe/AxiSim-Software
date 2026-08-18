@@ -326,154 +326,48 @@ struct SketchModel {
         clearEntitySelection();
 
         switch (type) {
-        case SketchEntityType::Line:
-            if (SketchLine* line = findLine(entityID)) {
-                line->selected = true;
-                return true;
-            }
-            return false;
-        case SketchEntityType::Rectangle:
-            if (SketchRectangle* rect = findRectangle(entityID)) {
-                rect->selected = true;
-                return true;
-            }
-            return false;
-        case SketchEntityType::Circle:
-            if (SketchCircle* circle = findCircle(entityID)) {
-                circle->selected = true;
-                return true;
-            }
-            return false;
-        case SketchEntityType::Arc:
-            if (SketchArc* arc = findArc(entityID)) {
-                arc->selected = true;
-                return true;
-            }
-            return false;
-        default:
-            return false;
+        case SketchEntityType::Line:      return markSelected(findLine(entityID));
+        case SketchEntityType::Rectangle: return markSelected(findRectangle(entityID));
+        case SketchEntityType::Circle:    return markSelected(findCircle(entityID));
+        case SketchEntityType::Arc:       return markSelected(findArc(entityID));
+        default:                          return false;
         }
     }
 
-    SketchPoint* findPoint(int id) {
-        for (SketchPoint& point : points) {
-            if (point.id == id) {
-                return &point;
+    // IDs come from monotonic nextXID counters, so items[id] is the match unless
+    // something above it was erased -- try that before falling back to the scan.
+    template <typename C>
+    static auto findByID(C& items, int id) -> decltype(&*items.begin()) {
+        if (id >= 0 && id < (int)items.size() && items[id].id == id) {
+            return &items[id];
+        }
+
+        for (auto& item : items) {
+            if (item.id == id) {
+                return &item;
             }
         }
 
         return nullptr;
     }
 
-    const SketchPoint* findPoint(int id) const {
-        for (const SketchPoint& point : points) {
-            if (point.id == id) {
-                return &point;
-            }
-        }
+    SketchPoint* findPoint(int id) { return findByID(points, id); }
+    const SketchPoint* findPoint(int id) const { return findByID(points, id); }
 
-        return nullptr;
-    }
+    SketchLine* findLine(int id) { return findByID(lines, id); }
+    const SketchLine* findLine(int id) const { return findByID(lines, id); }
 
-    SketchLine* findLine(int id) {
-        for (SketchLine& line : lines) {
-            if (line.id == id) {
-                return &line;
-            }
-        }
+    SketchCircle* findCircle(int id) { return findByID(circles, id); }
+    const SketchCircle* findCircle(int id) const { return findByID(circles, id); }
 
-        return nullptr;
-    }
+    SketchArc* findArc(int id) { return findByID(arcs, id); }
+    const SketchArc* findArc(int id) const { return findByID(arcs, id); }
 
-    const SketchLine* findLine(int id) const {
-        for (const SketchLine& line : lines) {
-            if (line.id == id) {
-                return &line;
-            }
-        }
+    SketchRectangle* findRectangle(int id) { return findByID(rectangles, id); }
+    const SketchRectangle* findRectangle(int id) const { return findByID(rectangles, id); }
 
-        return nullptr;
-    }
-
-    SketchCircle* findCircle(int id) {
-        for (SketchCircle& circle : circles) {
-            if (circle.id == id) {
-                return &circle;
-            }
-        }
-
-        return nullptr;
-    }
-
-    const SketchCircle* findCircle(int id) const {
-        for (const SketchCircle& circle : circles) {
-            if (circle.id == id) {
-                return &circle;
-            }
-        }
-
-        return nullptr;
-    }
-
-    SketchArc* findArc(int id) {
-        for (SketchArc& arc : arcs) {
-            if (arc.id == id) {
-                return &arc;
-            }
-        }
-
-        return nullptr;
-    }
-
-    const SketchArc* findArc(int id) const {
-        for (const SketchArc& arc : arcs) {
-            if (arc.id == id) {
-                return &arc;
-            }
-        }
-
-        return nullptr;
-    }
-
-    SketchRectangle* findRectangle(int id) {
-        for (SketchRectangle& rect : rectangles) {
-            if (rect.id == id) {
-                return &rect;
-            }
-        }
-
-        return nullptr;
-    }
-
-    const SketchRectangle* findRectangle(int id) const {
-        for (const SketchRectangle& rect : rectangles) {
-            if (rect.id == id) {
-                return &rect;
-            }
-        }
-
-        return nullptr;
-    }
-
-    SketchDimension* findDimension(int id) {
-        for (SketchDimension& dimension : dimensions) {
-            if (dimension.id == id) {
-                return &dimension;
-            }
-        }
-
-        return nullptr;
-    }
-
-    const SketchDimension* findDimension(int id) const {
-        for (const SketchDimension& dimension : dimensions) {
-            if (dimension.id == id) {
-                return &dimension;
-            }
-        }
-
-        return nullptr;
-    }
+    SketchDimension* findDimension(int id) { return findByID(dimensions, id); }
+    const SketchDimension* findDimension(int id) const { return findByID(dimensions, id); }
 
     double getLineLength(int lineID) const {
         const SketchLine* line = findLine(lineID);
@@ -613,7 +507,17 @@ struct SketchModel {
         return makeBound(p0->pos, p1->pos);
     }
 
-    // --- internals for removeEntity ---
+    // --- internals ---
+
+    template <typename T>
+    static bool markSelected(T* entity) {
+        if (!entity) {
+            return false;
+        }
+
+        entity->selected = true;
+        return true;
+    }
 
     template <typename T>
     static void eraseEntityByID(std::vector<T>& items, int id) {

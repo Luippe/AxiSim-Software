@@ -1,7 +1,7 @@
 #include "mesh.h"
 #include "console.h"
 
-
+#include "aximesh/aximesh.h"
 #include "gmsh.h_cwrap"
 #include "time_manager.h"
 #include "solver_struct.h"
@@ -27,26 +27,6 @@ PointKey makePointKey(Vec2 p, double tol) {
 		(long long)std::llround(p.z / tol),
 		(long long)std::llround(p.r / tol)
 	};
-}
-
-// Shortest distance from point p to the segment a-b (in z-r space).
-static double distancePointToSegment(Vec2 p, Vec2 a, Vec2 b) {
-	double abz = b.z - a.z;
-	double abr = b.r - a.r;
-	double apz = p.z - a.z;
-	double apr = p.r - a.r;
-
-	double denom = abz * abz + abr * abr;
-	double t = (denom > 1e-30) ? (apz * abz + apr * abr) / denom : 0.0;
-	t = std::max(0.0, std::min(1.0, t));
-
-	double cz = a.z + t * abz;
-	double cr = a.r + t * abr;
-
-	double dz = p.z - cz;
-	double dr = p.r - cr;
-
-	return std::sqrt(dz * dz + dr * dr);
 }
 
 namespace {
@@ -474,6 +454,22 @@ namespace {
 		return loops;
 	}
 
+	EdgeOrient orientationFromFlags(
+		bool hasHorizontal,
+		bool hasVertical,
+		bool hasOther
+	) {
+		if (hasOther || (hasHorizontal && hasVertical)) {
+			return EdgeOrient::Both;
+		}
+
+		if (hasVertical) {
+			return EdgeOrient::Vertical;
+		}
+
+		return EdgeOrient::Horizontal;
+	}
+
 	EdgeOrient inferControlPathOrientation(
 		const std::vector<Vec2>& points,
 		double tol
@@ -505,31 +501,7 @@ namespace {
 			}
 		}
 
-		if (hasOther || (hasHorizontal && hasVertical)) {
-			return EdgeOrient::Both;
-		}
-
-		if (hasVertical) {
-			return EdgeOrient::Vertical;
-		}
-
-		return EdgeOrient::Horizontal;
-	}
-
-	EdgeOrient orientationFromFlags(
-		bool hasHorizontal,
-		bool hasVertical,
-		bool hasOther
-	) {
-		if (hasOther || (hasHorizontal && hasVertical)) {
-			return EdgeOrient::Both;
-		}
-
-		if (hasVertical) {
-			return EdgeOrient::Vertical;
-		}
-
-		return EdgeOrient::Horizontal;
+		return orientationFromFlags(hasHorizontal, hasVertical, hasOther);
 	}
 }
 
@@ -1154,10 +1126,6 @@ bool Mesh::convertSketchToStructuredMesh(const SketchModel& sketch) {
 	// Build the rectangular grid spanning the sketch's extent.
 	createGrid();
 
-	const int nr = g.nr;
-	const int nz = g.nz;
-
-
 	// The Mesh Inspector reconstructs the selectable wall boundary from these
 	// fluid/solid interface faces. Without this the rasterized walls (any wall not
 	// on the outer grid border) can't be shown or picked in the inspector.
@@ -1182,7 +1150,6 @@ void Mesh::rebuildSelectableObstacleEdges() {
 	const int nz = g.nz;
 
 	// Interior axial faces (constant z) between cells (i, jFace - 1) and (i, jFace).
-	// MeshEdge convention matches makeAxialEdge()/buildDomainBoundaryEdges().
 	for (int i = 0; i < nr; i++) {
 		for (int jFace = 1; jFace < nz; jFace++) {
 			selectableOuterEdges.insert(
@@ -1230,6 +1197,43 @@ bool Mesh::pointInsideDomain(const Vec2& p) const {
 	}
 
 	return inside;
+}
+
+void Mesh::runAxiMeshTriangulation() {
+
+	unstructuredTriangles.clear();
+	unstructuredPoints.clear();
+
+	if (boundaryEdges.empty()) printf("BOUNDARY EDGE IS EMPTY\n");
+	if (boundaryVertices.empty()) printf("BOUNDARY VERTICES IS EMPTY\n");
+
+	std::vector<AxiMesh::Segment> meshSegments;
+	std::vector<AxiMesh::Point> meshPoints;
+	for (const BoundaryEdge& edge : boundaryEdges) {
+		meshSegments.push_back({ edge.v0, edge.v1 });
+	}
+	for (const BoundaryVertex& vert : boundaryVertices) {
+		meshPoints.push_back({ vert.pos.z, vert.pos.r });
+	}
+
+	AxiMesh::Mesh axiMesh = AxiMesh::generateMesh(meshPoints, meshSegments, (int)meshPoints.size());
+
+	std::vector<AxiMesh::Triangle> triangles = axiMesh.triangles;
+	std::vector<AxiMesh::Point> points = axiMesh.points;
+
+	for (int i = 0; i < (int)triangles.size(); i++) {
+		unstructuredTriangles.push_back({triangles[i].v[0], triangles[i].v[1], triangles[i].v[2]});
+	}
+	for (int i = 0; i < (int)points.size(); i++) {
+		unstructuredPoints.push_back({ points[i].x, points[i].y });
+		//boundaryVertices[i].pointID = i;
+	}
+	//for (BoundaryVertex& vertex : boundaryVertices) {
+	//	vertex.pointID =
+	//}
+
+	printSize(axiMesh.points, axiMesh.segments, axiMesh.triangles);
+	printSize(unstructuredPoints, unstructuredTriangles);
 }
 
 void Mesh::runGmshTriangulation() {
@@ -1374,8 +1378,10 @@ void Mesh::runGmshTriangulation() {
 	gmsh::model::mesh::getNodes(nodeTags, coords, params);
 
 	unstructuredPoints.clear();
+	unstructuredPoints.reserve(nodeTags.size());
 
 	std::unordered_map<std::size_t, int> pointIDByNodeTag;
+	pointIDByNodeTag.reserve(nodeTags.size());
 
 	for (std::size_t n = 0; n < nodeTags.size(); n++) {
 		Vec2 p{};
@@ -1419,6 +1425,8 @@ void Mesh::runGmshTriangulation() {
 	std::vector<std::size_t> triNodeTags;
 
 	gmsh::model::mesh::getElementsByType(2, elemTags, triNodeTags);
+
+	unstructuredTriangles.reserve(triNodeTags.size() / 3);
 
 	for (std::size_t k = 0; k + 2 < triNodeTags.size(); k += 3) {
 		Triangle tri{};
@@ -1539,65 +1547,6 @@ inline double triangleArea2D(Vec2 a, Vec2 b, Vec2 c) {
 	double dr2 = c.r - a.r;
 
 	return 0.5 * std::abs(dz1 * dr2 - dr1 * dz2);
-}
-
-inline int cellID(int i, int j, int nz) {
-	return i * nz + j;
-}
-
-inline double axialAreaFull(double r0, double r1) {
-	// Full circular annulus area normal to z direction
-	return PI * (r1 * r1 - r0 * r0);
-}
-
-inline double radialAreaFull(double r, double dz) {
-	// Full cylindrical surface area normal to r direction
-	return 2.0 * PI * r * dz;
-}
-
-inline double cellVolumeFull(double r0, double r1, double dz) {
-	// Full axisymmetric cell volume
-	return PI * (r1 * r1 - r0 * r0) * dz;
-}
-
-MeshEdge makeAxialEdge(int i, int jFace) {
-	MeshEdge edge{};
-
-	edge.i = i;
-	edge.j = jFace;
-	edge.orient = EdgeOrient::Vertical; // rename to match your code
-
-	return edge;
-}
-
-MeshEdge makeRadialEdge(int iFace, int j) {
-	MeshEdge edge{};
-
-	edge.i = iFace;
-	edge.j = j;
-	edge.orient = EdgeOrient::Horizontal; // rename to match your code
-
-	return edge;
-}
-
-std::unordered_map<MeshEdge, int, MeshEdgeHash>
-createBoundaryEdgeLookup(const std::vector<BoundarySegmentGroup>& groups) {
-	std::unordered_map<MeshEdge, int, MeshEdgeHash> lookup;
-
-	for (const BoundarySegmentGroup& group : groups) {
-		for (const MeshEdge& edge : group.edges) {
-
-			auto [it, inserted] = lookup.emplace(edge, group.id);
-
-			if (!inserted) {
-				// Same edge was already assigned to another group.
-				// You can either overwrite, warn, or keep the first one.
-				it->second = group.id;
-			}
-		}
-	}
-
-	return lookup;
 }
 
 bool Mesh::isClosedControlPath(const BoundarySegment& seg) const {
@@ -1788,50 +1737,6 @@ BoundarySizing Mesh::getSizingForSegment(const BoundarySegment& seg) const {
 	return seg.sizing;
 }
 
-std::unordered_set<int> Mesh::getSegmentIDsInSameLoop(int segmentID) const {
-	std::unordered_set<int> ids;
-
-	const BoundarySegment* target = nullptr;
-
-	for (const BoundarySegment& seg : boundarySegments) {
-		if (seg.id == segmentID) {
-			target = &seg;
-			break;
-		}
-	}
-
-	if (!target) {
-		return ids;
-	}
-
-	// If this segment is not part of a loop, just return itself.
-	if (target->loopID < 0) {
-		ids.insert(segmentID);
-		return ids;
-	}
-
-	for (const BoundarySegment& seg : boundarySegments) {
-		if (seg.loopID == target->loopID) {
-			ids.insert(seg.id);
-		}
-	}
-
-	return ids;
-}
-
-int getBoundaryGroupID(
-	const std::unordered_map<MeshEdge, int, MeshEdgeHash>& lookup,
-	const MeshEdge& edge
-) {
-	auto it = lookup.find(edge);
-
-	if (it == lookup.end()) {
-		return -1;
-	}
-
-	return it->second;
-}
-
 void Mesh::generate() {
 	Clock::time_point startTime = startTimer();
 
@@ -1853,13 +1758,17 @@ void Mesh::generate() {
 		createCylinderVertices();
 
 		refreshFVMesh();
+
+
 	}
 	else {
 		isMultiBlock = false;
 
 		rebuildBoundaryDiscretization();
 
-		runGmshTriangulation();
+		// testing
+		runAxiMeshTriangulation();
+		//runGmshTriangulation();
 
 		// Refreshed before the render buffers because the line vertices need the
 		// same FVMesh -- this used to build a second, identical throwaway copy.
@@ -1905,11 +1814,26 @@ int Mesh::addUnstructuredBoundaryVertex(Vec2 p) {
 }
 
 
+// Tag external faces (neighbor < 0) with the BC group of the nearest sketch boundary
+// edge. Both FVMesh builders need it and neither can match by index: gmsh refines our
+// boundary lines, so a boundary triangle edge no longer shares endpoints with the coarse
+// boundary edge, and the multiblock path arrives with the block edgeGroup instead.
+void Mesh::classifyBoundaryFaces(FVMesh& mesh) const {
+	const double matchTol = 1e-4 * std::max(std::max(g.L, g.R), 1.0);
+
+	for (FVFace& face : mesh.faces) {
+		if (face.neighbor >= 0) {
+			continue; // interior/interface face
+		}
+
+		face.boundaryGroupID = groupAtPoint(
+			face.center, boundaryEdges, boundaryVertices, matchTol);
+	}
+}
+
 FVMesh Mesh::createUnstructuredMesh(
 	const std::vector<Vec2>& points,
-	const std::vector<Triangle>& triangles,
-	const std::vector<BoundaryVertex>& boundaryVertices,
-	const std::vector<BoundaryEdge>& boundaryEdges
+	const std::vector<Triangle>& triangles
 ) const {
 	FVMesh mesh;
 
@@ -1923,6 +1847,7 @@ FVMesh Mesh::createUnstructuredMesh(
 	mesh.points = points;
 	mesh.cellCornerStart.assign(triangles.size() + 1, 0);
 	mesh.cellCornerIDs.reserve(triangles.size() * 3);
+	mesh.faces.reserve(triangles.size() * 2);
 
 	const int nPoints = (int)(points.size());
 
@@ -1944,7 +1869,7 @@ FVMesh Mesh::createUnstructuredMesh(
 		cell.area2D = triangleArea2D(a, b, d);
 		cell.volume = 2.0 * PI * cell.center.r * cell.area2D;
 
-		cell.faceIDs.clear();
+		cell.faceIDs.reserve(3);
 
 		mesh.cellCornerStart[c] = (int)(mesh.cellCornerIDs.size());
 
@@ -2057,38 +1982,7 @@ FVMesh Mesh::createUnstructuredMesh(
 	// -------------------------
 	// 3. Classify boundary faces into boundary groups
 	// -------------------------
-	// gmsh refines our boundary lines (it inserts nodes along each addLine),
-	// so a boundary triangle edge does not share endpoints with the coarse
-	// boundary-edge endpoints and an index-based match fails. Instead classify
-	// each boundary face by which boundary edge its midpoint lies on.
-	double matchScale = std::max(std::max(g.L, g.R), 1.0);
-	double matchTol = 1e-4 * matchScale;
-
-	for (FVFace& face : mesh.faces) {
-		if (face.neighbor >= 0) {
-			continue; // interior face
-		}
-
-		int bestGroup = -1;
-		double bestDist = matchTol;
-
-		for (const BoundaryEdge& edge : boundaryEdges) {
-			if (edge.groupID < 0) continue;
-			if (!edgeInRange(edge, boundaryVertices.size())) continue;
-
-			Vec2 a = boundaryVertices[edge.v0].pos;
-			Vec2 b = boundaryVertices[edge.v1].pos;
-
-			double d = distancePointToSegment(face.center, a, b);
-
-			if (d < bestDist) {
-				bestDist = d;
-				bestGroup = edge.groupID;
-			}
-		}
-
-		face.boundaryGroupID = bestGroup;
-	}
+	classifyBoundaryFaces(mesh);
 
 	return mesh;
 }
@@ -2104,9 +1998,7 @@ void Mesh::updateAfterLoadingFile() {
 
 		FVMesh fvMesh = createUnstructuredMesh(
 			unstructuredPoints,
-			unstructuredTriangles,
-			boundaryVertices,
-			boundaryEdges
+			unstructuredTriangles
 		);
 
 		createUnstructuredVertices(unstructuredPoints, unstructuredTriangles);
@@ -2292,9 +2184,7 @@ FVMesh Mesh::buildFVMesh() const {
 
 	return createUnstructuredMesh(
 		unstructuredPoints,
-		unstructuredTriangles,
-		boundaryVertices,
-		boundaryEdges
+		unstructuredTriangles
 	);
 }
 
@@ -2353,7 +2243,7 @@ void Mesh::createUnstructuredVertices(
 ) {
 	vertices.clear();
 	indices.clear();
-
+	printSize(points, triangles);
 	for (const Vec2& p : points) {
 		glm::vec3 coord{
 			displayZ(p.z),
@@ -2390,40 +2280,6 @@ void Mesh::createUnstructuredLineVertices(
 
 		gridLineVertices.push_back(displayZ(p1.z));
 		gridLineVertices.push_back(displayR(p1.r));
-	}
-}
-
-void Mesh::createGridLineVertices() {
-	gridLineVertices.clear();
-
-	const std::vector<double>& rFace = g.rFace;
-	const std::vector<double>& zFace = g.zFace;
-
-	int nr = g.nr;
-	int nz = g.nz;
-
-	// Vertical grid lines, constant z
-	for (int j = 0; j <= nz; j++) {
-
-		float x = (float)(2.0 * zFace[j] / g.L - 1.0f);
-
-		float y0 = -1.0f;
-		float y1 = 1.0f;
-
-		gridLineVertices.push_back(x); gridLineVertices.push_back(y0);
-		gridLineVertices.push_back(x); gridLineVertices.push_back(y1);
-	}
-
-	// Horizontal grid lines, constant r
-	for (int i = 0; i <= nr; i++) {
-
-		float y = (float)(2.0 * rFace[i] / g.R - 1.0f);
-
-		float x0 = -1.0f;
-		float x1 = 1.0f;
-
-		gridLineVertices.push_back(x0); gridLineVertices.push_back(y);
-		gridLineVertices.push_back(x1); gridLineVertices.push_back(y);
 	}
 }
 
@@ -2585,35 +2441,9 @@ FVMesh Mesh::createMultiBlockFVMesh() const {
 		out.cellCornerStart[nCells] = (int)(out.cellCornerIDs.size());
 	}
 
-	// Tag external faces (neighbor < 0) with the BC group of the nearest sketch
-	// boundary edge -- the same geometric classification the unstructured
-	// createFVMesh uses (step 3). toPackedMesh leaves these at the block edgeGroup,
-	// which is -1 for trellis blocks, so without this no inlet/wall/outlet BC would
-	// ever be applied. Boundary faces lie exactly on the sketch edges, so the match
-	// is tight; the tolerance only guards floating-point drift.
-	const double matchTol = 1e-4 * std::max(std::max(g.L, g.R), 1.0);
-	for (FVFace& face : out.faces) {
-		if (face.neighbor >= 0) continue; // interior/interface face
-
-		int bestGroup = -1;
-		double bestDist = matchTol;
-
-		for (const BoundaryEdge& edge : boundaryEdges) {
-			if (edge.groupID < 0) continue;
-			if (!edgeInRange(edge, boundaryVertices.size())) continue;
-
-			Vec2 a = boundaryVertices[edge.v0].pos;
-			Vec2 b = boundaryVertices[edge.v1].pos;
-
-			double d = distancePointToSegment(face.center, a, b);
-			if (d < bestDist) {
-				bestDist = d;
-				bestGroup = edge.groupID;
-			}
-		}
-
-		face.boundaryGroupID = bestGroup;
-	}
+	// toPackedMesh leaves external faces at the block edgeGroup, which is -1 for
+	// trellis blocks, so without this no inlet/wall/outlet BC would ever be applied.
+	classifyBoundaryFaces(out);
 
 	return out;
 }
@@ -2939,4 +2769,3 @@ void Mesh::rebuildMultiBlockAfterLoad(const SketchModel& sketch) {
 	markFVMeshDirty();
 	refreshFVMesh();
 }
-

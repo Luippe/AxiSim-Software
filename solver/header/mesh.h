@@ -68,6 +68,8 @@ public:
 	int getAvailableLoopID();
 
 	void runGmshTriangulation();
+	void runAxiMeshTriangulation();
+
 	void applyRegionOfInfluenceFields(double defaultMeshSize);
 
 
@@ -211,7 +213,6 @@ public:
 	float displayR(double r) const;
 
 	void createGrid();
-	void createGridLineVertices();
 	void createGridVertices();
 	void createUnstructuredVertices(
 		const std::vector<Vec2>& points,
@@ -245,10 +246,12 @@ public:
 
 	FVMesh createUnstructuredMesh(
 		const std::vector<Vec2>& points,
-		const std::vector<Triangle>& triangles,
-		const std::vector<BoundaryVertex>& boundaryVertices,
-		const std::vector<BoundaryEdge>& boundaryEdges
+		const std::vector<Triangle>& triangles
 	) const;
+
+	// Shared by both FVMesh builders -- see the definition for why neither can
+	// match boundary faces to groups by index.
+	void classifyBoundaryFaces(FVMesh& mesh) const;
 
 	// search for segment with specific ID
 	BoundarySegment* getBoundarySegmentByID(int id);
@@ -257,7 +260,6 @@ public:
 	// Not derived from the live boundaryGroups vector -- see nextGroupID.
 	int getAvailableBoundaryGroupID();
 
-	std::unordered_set<int> getSegmentIDsInSameLoop(int segmentID) const;
 
 	// highlight all boundary segment in a group
 	void highlightSegmentsInGroup(const BoundarySegmentGroup& group);

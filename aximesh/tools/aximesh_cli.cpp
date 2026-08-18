@@ -36,10 +36,45 @@ using AxiMesh::Triangle;
 using AxiMesh::Segment;
 using Tri = std::array<int, 3>;
 
-const double superArea2 = 40000.0;			// |2A| of (-100,-100) (100,-100) (0,100)
-
 double cross(const Point& A, const Point& B, const Point& P) {
 	return (B.x - A.x) * (P.y - A.y) - (B.y - A.y) * (P.x - A.x);
+}
+
+// The convex hull by monotone chain: its |2A| and how many points sit on it. Any
+// triangulation of a point set tiles its hull exactly, so the area is what the triangles
+// must add up to once the super triangle is gone, and the boundary count pins down both
+// 2n - h - 2 triangles and h hull edges. Collinear points are kept: they add no area but
+// they are boundary points, so the strict < below must not pop them.
+struct Hull {
+	int points;
+	double area2;
+};
+
+Hull convexHull(const std::vector<Point>& points) {
+	int n = (int)points.size();
+	std::vector<Point> p = points;
+	std::sort(p.begin(), p.end(), [](const Point& a, const Point& b) {
+		return a.x < b.x || (a.x == b.x && a.y < b.y); });
+
+	std::vector<Point> hull(2 * n);
+	int k = 0;
+	for (int i = 0; i < n; i++) {
+		while (k >= 2 && cross(hull[k - 2], hull[k - 1], p[i]) < 0.0) k--;
+		hull[k++] = p[i];
+	}
+	for (int i = n - 2, lower = k + 1; i >= 0; i--) {
+		while (k >= lower && cross(hull[k - 2], hull[k - 1], p[i]) < 0.0) k--;
+		hull[k++] = p[i];
+	}
+	hull.resize(k ? k - 1 : 0);		// the closing point repeats the first
+
+	double area2 = 0.0;
+	for (int i = 0; i < (int)hull.size(); i++) {
+		const Point& A = hull[i];
+		const Point& B = hull[(i + 1) % hull.size()];
+		area2 += A.x * B.y - B.x * A.y;
+	}
+	return { (int)hull.size(), fabs(area2) };
 }
 
 // Taken relative to C so the super triangle's +/-100 coordinates do not eat the
@@ -226,20 +261,34 @@ void printLegend() {
 }
 
 // ---------------------------------------------------------------------------
-// invariants -- everything that holds for any triangulation insertPoints produces,
+// invariants -- everything that holds for any triangulation the two entry points produce,
 // whatever route the swaps took. Both suites run this, so generateMesh gets exactly
 // the same scrutiny as the hand-built cases.
+//
+// Three of the checks are counts rather than properties, and those are the three the two
+// suites disagree on: insertPoints hands back the super triangle intact, generateMesh runs
+// step 8 and hands back the hull of the real points. Expect carries just those three so
+// everything below them stays shared.
 // ---------------------------------------------------------------------------
 
+struct Expect {
+	int triangles;			// insertPoints 2n+1; after step 8, 2n-h-2
+	int hullEdges;			// insertPoints 3 (the super triangle's own); after step 8, h
+	double area2;			// |2A| of whichever hull the mesh fills
+};
+
 Report checkTriangulation(const std::vector<Point>& points,
-	const std::vector<Triangle>& triangles, const std::vector<Segment>& segments, int size) {
+	const std::vector<Triangle>& triangles, const std::vector<Segment>& segments,
+	const Expect& expect) {
 
 	Report r;
 	char detail[256];
 
-	// Splits grow the count by two and swaps leave it alone, so this holds all the way through.
-	snprintf(detail, sizeof(detail), "want %d, got %d", 2 * size + 1, (int)triangles.size());
-	r.check("triangle count is 2n+1", (int)triangles.size() == 2 * size + 1, detail);
+	// Before step 8 this is 2n+1: splits grow the count by two and swaps leave it alone.
+	// After it, 2n-h-2 -- which holds for ANY triangulation of the point set, so it still
+	// does not assume which route the swaps took.
+	snprintf(detail, sizeof(detail), "want %d, got %d", expect.triangles, (int)triangles.size());
+	r.check("triangle count", (int)triangles.size() == expect.triangles, detail);
 
 	// A bad index would make every geometric check below read out of bounds.
 	bool indicesValid = true;
@@ -263,11 +312,12 @@ Report checkTriangulation(const std::vector<Point>& points,
 	}
 	r.check("every triangle wound CCW", allCCW);
 
-	// The pieces still tile the super triangle exactly -- no gaps, no overlaps.
-	snprintf(detail, sizeof(detail), "want %.0f, got %.10g, off by %+.4g",
-		superArea2, areaSum, areaSum - superArea2);
-	r.check("areas sum to the super triangle",
-		fabs(areaSum - superArea2) < 1e-6 * superArea2, detail);
+	// The pieces still tile that hull exactly -- no gaps, no overlaps. This is the check that
+	// would catch step 8 dropping a triangle it should have kept.
+	snprintf(detail, sizeof(detail), "want %.10g, got %.10g, off by %+.4g",
+		expect.area2, areaSum, areaSum - expect.area2);
+	r.check("areas sum to the hull",
+		fabs(areaSum - expect.area2) < 1e-6 * expect.area2, detail);
 
 	// A triangle listed as its own neighbour sends the next walk round in circles.
 	int selfLinks = 0;
@@ -289,12 +339,14 @@ Report checkTriangulation(const std::vector<Point>& points,
 		brokenLinks, 3 * (int)triangles.size());
 	r.check("adjacency links reciprocal", brokenLinks == 0, detail);
 
-	// Only the super triangle's own three edges are on the hull.
+	// A closed hull has exactly one boundary edge per boundary point, and nothing interior
+	// may read -1. After step 8 this is the check that catches a neighbour link left pointing
+	// at a triangle that was dropped instead of being reset to the boundary sentinel.
 	int hullEdges = 0;
 	for (const Triangle& t : triangles)
 		for (int i = 0; i < 3; i++) if (t.adj[i] < 0) hullEdges++;
-	snprintf(detail, sizeof(detail), "want 3, got %d", hullEdges);
-	r.check("exactly three hull edges", hullEdges == 3, detail);
+	snprintf(detail, sizeof(detail), "want %d, got %d", expect.hullEdges, hullEdges);
+	r.check("hull edge count", hullEdges == expect.hullEdges, detail);
 
 	// Every constraint has to come out as an edge of some triangle. This is the only check
 	// that CDT adds -- the six above are about the mesh being a mesh, and constraints change
@@ -479,7 +531,11 @@ Report runCase(const Case& c, int index, int count) {
 	}
 	printf("\n");
 
-	Report r = checkTriangulation(points, triangles, {}, size);
+	// insertPoints stops before step 8, so the mesh still fills the super triangle
+	// the super triangle is the whole hull here, and insertPoints left its three
+	// vertices at the tail of points -- so its |2A| comes from the mesh, not a literal
+	const double superArea2 = fabs(cross(points[size], points[size + 1], points[size + 2]));
+	Report r = checkTriangulation(points, triangles, {}, { 2 * size + 1, 3, superArea2 });
 
 	if (!r.incomplete && !expected.empty()) {
 		char detail[64];
@@ -498,17 +554,16 @@ Report runCase(const Case& c, int index, int count) {
 
 struct MeshCase {
 	const char* name;
-	std::vector<double> px;
-	std::vector<double> py;
+	std::vector<Point> points;
 	std::vector<Segment> segments;		// empty: unconstrained, the whole suite applies
-	int hullPoints;			// points lying ON the hull boundary, collinear ones counted
 	const char* expected;
 };
 
-// Any triangulation of a point set has exactly 2n - h - 2 triangles, so the count
-// is checkable without knowing which triangulation you produced.
-int expectedTriangles(const MeshCase& c) {
-	return 2 * (int)c.px.size() - c.hullPoints - 2;
+// Any triangulation of a point set has exactly 2n - h - 2 triangles and h boundary edges,
+// so both are checkable without knowing which triangulation you produced.
+Expect expectFor(const MeshCase& c) {
+	const Hull h = convexHull(c.points);
+	return { 2 * (int)c.points.size() - h.points - 2, h.points, h.area2 };
 }
 
 const double s3 = 0.86602540378443865;		// sin(60 deg)
@@ -518,83 +573,95 @@ const double s3 = 0.86602540378443865;		// sin(60 deg)
 std::vector<MeshCase> meshCases() {
 	return {
 		{"triangle",
-		 {0.0, 1.0, 0.0}, {0.0, 0.0, 1.0}, {}, 3,
+		 {{0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0}}, {},
 		 "one triangle, nothing to swap"},
 
 		{"square",
-		 {0.0, 1.0, 1.0, 0.0}, {0.0, 0.0, 1.0, 1.0}, {}, 4,
+		 {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}}, {},
 		 "cocircular -- either diagonal is correct, must not swap forever"},
 
 		{"rhombus-tall",
-		 {-1.0, 0.0, 1.0, 0.0}, {0.0, -2.0, 0.0, 2.0}, {}, 4,
+		 {{-1.0, 0.0}, {0.0, -2.0}, {1.0, 0.0}, {0.0, 2.0}}, {},
 		 "diagonal must be horizontal, (-1,0)-(1,0)"},
 
 		{"rhombus-wide",
-		 {-1.0, 0.0, 1.0, 0.0}, {0.0, -0.5, 0.0, 0.5}, {}, 4,
+		 {{-1.0, 0.0}, {0.0, -0.5}, {1.0, 0.0}, {0.0, 0.5}}, {},
 		 "diagonal must be vertical, (0,-0.5)-(0,0.5)"},
 
 		{"collinear-hull",
-		 {0.0, 1.0, 2.0, 2.0, 0.0}, {0.0, 0.0, 0.0, 1.0, 1.0}, {}, 5,
+		 {{0.0, 0.0}, {1.0, 0.0}, {2.0, 0.0}, {2.0, 1.0}, {0.0, 1.0}}, {},
 		 "(1,0) sits on a hull edge and must survive as a vertex"},
 
 		{"hexagon-fan",
-		 {1.0, 0.5, -0.5, -1.0, -0.5, 0.5, 0.0},
-		 {0.0, s3, s3, 0.0, -s3, -s3, 0.0}, {}, 6,
+		 {{1.0, 0.0}, {0.5, s3}, {-0.5, s3}, {-1.0, 0.0},
+		  {-0.5, -s3}, {0.5, -s3}, {0.0, 0.0}}, {},
 		 "six triangles, every one sharing the centre point"},
 
 		// ---- constrained ----
 
 		{"boundary-only",
-		 {0.0, 1.0, 1.0, 0.0}, {0.0, 0.0, 1.0, 1.0},
-		 {{0,1}, {1,2}, {2,3}, {3,0}}, 4,
+		 {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}},
+		 {{0,1}, {1,2}, {2,3}, {3,0}},
 		 "the four hull edges are already edges, so constraint insertion must be a no-op -- "
 		 "this is the 'segment already present, do nothing' path"},
 
 		{"square-diagonal",
-		 {0.0, 1.0, 1.0, 0.0}, {0.0, 0.0, 1.0, 1.0},
-		 {{0,1}, {1,2}, {2,3}, {3,0}, {0,2}}, 4,
+		 {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}},
+		 {{0,1}, {1,2}, {2,3}, {3,0}, {0,2}},
 		 "cocircular square with diagonal 0-2 forced; the constraint is still Delaunay-legal, "
 		 "so only the insertion machinery is under test, not the conflict handling"},
 
 		{"rhombus-forced",
-		 {-1.0, 0.0, 1.0, 0.0}, {0.0, -0.5, 0.0, 0.5},
-		 {{0,1}, {1,2}, {2,3}, {3,0}, {0,2}}, 4,
+		 {{-1.0, 0.0}, {0.0, -0.5}, {1.0, 0.0}, {0.0, 0.5}},
+		 {{0,1}, {1,2}, {2,3}, {3,0}, {0,2}},
 		 "the real CDT case -- the Delaunay diagonal here is vertical (1-3), and 0-2 is forced "
 		 "instead, so a flip has to happen that the Delaunay test would immediately undo"},
 
 		{"blocked-edge",
-		 {0.0, 4.0, 2.0, 2.0}, {0.0, 0.0, 0.2, -2.0},
-		 {{0,1}}, 4,
+		 {{0.0, 0.0}, {4.0, 0.0}, {2.0, 0.2}, {2.0, -2.0}},
+		 {{0,1}},
 		 "vertex 2 sits just above the midpoint of 0-1 and inside the circumcircle of (0,3,1), "
 		 "so the unconstrained pass picks diagonal 2-3 instead; recovering 0-1 needs a flip "
 		 "that swapTest actively rejects"},
 
+		{"zigzag",
+		 {{0.0, 0.0}, {6.0, 0.0}, {1.0, 0.8}, {2.0, -0.7},
+		  {3.0, 0.9}, {4.0, -0.6}, {5.0, 0.7}},
+		 {{0,1}},
+		 "constraint 0-1 spans the full width while the other five points alternate above and "
+		 "below it, so every diagonal of the unconstrained triangulation crosses it -- the first "
+		 "case where step 3's queue has to loop instead of resolving in a single flip"},
+
 		{"notched-domain",
-		 {0.0, 2.0, 2.0, 1.0, 0.0}, {0.0, 0.0, 2.0, 1.0, 2.0},
-		 {{0,1}, {1,2}, {2,3}, {3,4}, {4,0}}, 5,
+		 {{0.0, 0.0}, {2.0, 0.0}, {2.0, 2.0}, {1.0, 1.0}, {0.0, 2.0}},
+		 {{0,1}, {1,2}, {2,3}, {3,4}, {4,0}},
 		 "non-convex outline whose five edges all survive the unconstrained pass anyway -- it "
-		 "guards the flood fill later rather than testing recovery"},
+		 "guards the flood fill later rather than testing recovery. The notch vertex (1,1) is "
+		 "INSIDE the convex hull, so h is 4 and the mesh still covers the whole square; the "
+		 "flood fill is what turns that into h=5 and 3 triangles"},
 	};
 }
 
 // generateMesh normalizes and bin-sorts before it reaches insertPoints, so vertex indices
 // no longer match caller order -- but every invariant is index agnostic, so the same suite
-// applies unchanged. The 2n-h-2 count is only checkable once step 8 drops the super triangle.
+// applies unchanged. Step 8 has already dropped the super triangle by the time this sees
+// the mesh, so the expected counts are the hull's rather than 2n+1.
 Report runMeshCase(const MeshCase& c, int index, int count) {
 
-	const int size = (int)c.px.size();
+	const int size = (int)c.points.size();
+	const Expect expect = expectFor(c);
 
 	printRule('-');
-	printf(" %s[%d/%d] %s%s  --  %d points, %d segments, %d triangles with the super triangle, %s%d after step 8%s\n",
-		style.head, index, count, c.name, style.off, size, (int)c.segments.size(), 2 * size + 1,
-		style.dim, expectedTriangles(c), style.off);
+	printf(" %s[%d/%d] %s%s  --  %d points, %d segments, %s%d on the hull -> %d triangles%s\n",
+		style.head, index, count, c.name, style.off, size, (int)c.segments.size(),
+		style.dim, expect.hullEdges, expect.triangles, style.off);
 	printRule('-');
 	printWrapped(c.expected, "  ");
 	printf("\n");
 
-	AxiMesh::Mesh mesh = AxiMesh::generateMesh(c.px, c.py, c.segments, size);
+	AxiMesh::Mesh mesh = AxiMesh::generateMesh(c.points, c.segments, size);
 
-	Report r = checkTriangulation(mesh.points, mesh.triangles, mesh.segments, size);
+	Report r = checkTriangulation(mesh.points, mesh.triangles, mesh.segments, expect);
 	reportResult(r, mesh.triangles);
 	return r;
 }
@@ -628,7 +695,7 @@ int main() {
 	}
 
 	int passed = printSummary("summary -- steps 5-7, through insertPoints", names, reports);
-	int meshPassed = printSummary("summary -- steps 1-7, through generateMesh", meshNames, meshReports);
+	int meshPassed = printSummary("summary -- steps 1-8, through generateMesh", meshNames, meshReports);
 
 	return (passed == (int)reports.size() && meshPassed == (int)meshReports.size()) ? 0 : 1;
 }

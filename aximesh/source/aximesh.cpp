@@ -4,17 +4,15 @@
 #include <array>
 #include <stack>
 #include <utility>
-
+#include <cassert>
 #include <chrono>
 #include <cstdio>
-
-void check() {
-	printf("RUNNING HERE!!!\n");
-}
 
 using AxiMesh::Point;
 using AxiMesh::Triangle;
 using AxiMesh::Segment;
+using AxiMesh::SegmentState;
+using AxiMesh::NormVariables;
 
 struct ScopedTimer {
 	std::chrono::steady_clock::time_point t0;
@@ -29,6 +27,9 @@ struct ScopedTimer {
 	}
 };
 
+double orient(const Point& A, const Point& B, const Point& P) {
+	return (B.x - A.x) * (P.y - A.y) - (B.y - A.y) * (P.x - A.x);
+}
 
 bool isPointInTriangle(const Triangle& T, const Point& P, const std::vector<Point>& points) {
 	for (int nE = 0; nE < 3; nE++) {
@@ -38,7 +39,7 @@ bool isPointInTriangle(const Triangle& T, const Point& P, const std::vector<Poin
 		const Point& A = points[indexA];
 		const Point& B = points[indexB];
 
-		double d = (B.x - A.x) * (P.y - A.y) - (B.y - A.y) * (P.x - A.x);
+		double d = orient(A, B, P);
 		const bool isPointInside = d >= 0;
 		if (!isPointInside) {
 			return false;
@@ -91,6 +92,13 @@ bool isBoundary(int index) {
 	return index == -1;
 }
 
+int getEdgeFromVertex(const Triangle& T, int vi) {
+	for (int i = 0; i < 3; i++) {
+		if (T.v[i] == vi) return i;
+	}
+	return -1;
+}
+
 void updateEdge(Triangle& T, int check, int replace) {
 	for (int i = 0; i < 3; i++) {
 		if (T.adj[i] == check) {
@@ -100,6 +108,86 @@ void updateEdge(Triangle& T, int check, int replace) {
 	}
 }
 
+double dotThreePoint(const Point& A, const Point& B, const Point& C) {
+	double dxAC = A.x - C.x;
+	double dyAC = A.y - C.y;
+	double dxBC = B.x - C.x;
+	double dyBC = B.y - C.y;
+	return dxAC * dxBC + dyAC * dyBC;
+}
+
+// loop/fan around vertex a, until vertex b is found
+bool findEdge(const std::vector<int>& vertexTri, const std::vector<Triangle>& triangles, int a, int b, int& tOut, int& eOut) {
+	int tStart = vertexTri[a];
+	int t = tStart;
+	assert(tStart != -1);
+	do {
+		int edge = getEdgeFromVertex(triangles[t], a);
+		if (edge == -1) return false;
+
+		if (triangles[t].v[(edge + 1) % 3] == b) {
+			tOut = t;
+			eOut = edge;
+			return true;
+		}
+		t = triangles[t].adj[edge];
+
+	} while (t != tStart && t != -1);
+	return false;
+}
+
+void flipEdge(std::vector<Triangle>& triangles, int t, int e) {
+
+	// get opposite triangle and shared edge index
+	int tOpp = triangles[t].adj[e];
+	assert(tOpp != -1);
+
+	int eOpp = -1;
+	for (int i = 0; i < 3; i++) {
+		if (triangles[tOpp].adj[i] == t) {
+			eOpp = i;
+			break;
+		}
+	}
+	assert(eOpp != -1);
+
+
+	Triangle& tOuter = triangles[t];
+	Triangle& tInner = triangles[tOpp];
+
+	int vOpp = tInner.v[(eOpp + 2) % 3];
+
+	int v0 = tOuter.v[e];
+	int v1 = tOuter.v[(e + 1) % 3];
+	int v2 = tOuter.v[(e + 2) % 3];
+
+	int tOuter1New = tOuter.adj[(e + 1) % 3];
+	int tOuter2New = tOuter.adj[(e + 2) % 3];
+
+	int tInner1New = tInner.adj[(eOpp + 1) % 3];
+	int tInner2New = tInner.adj[(eOpp + 2) % 3];
+
+	triangles[tOpp] = { {v1, v2, vOpp}, {tOuter1New, t, tInner2New} };
+	triangles[t] = { {v2, v0, vOpp}, {tOuter2New, tInner1New, tOpp} };
+
+	// there are two edges that needs to be corrected
+	if (!isBoundary(tInner1New)) {
+		updateEdge(triangles[tInner1New], tOpp, t);
+	}
+
+	if (!isBoundary(tOuter1New)) {
+		updateEdge(triangles[tOuter1New], t, tOpp);
+	}
+
+}
+
+// check every edge and see if any are tIndex, if so return that edge index
+int getEdgeFromNeighbour(const Triangle& tri, int tIndex) {
+	for (int i = 0; i < 3; i++) {
+		if (tri.adj[i] == tIndex) return i;
+	}
+	return -1;
+}
 
 std::vector<Triangle> AxiMesh::insertPoints(std::vector<Point>& points, int size) {
 
@@ -194,34 +282,11 @@ std::vector<Triangle> AxiMesh::insertPoints(std::vector<Point>& points, int size
 
 			if (!swapTest(points, P, tOuter, edge)) continue;
 
-			// the vertices are nP, v0, v1, and v2
-			// for the new triangles, make sure nP is the third point; optional (i think), but also good for consistency
-
-			int inner = tOuter.adj[edge];
-			Triangle& tInner = triangles[inner];
-
-			int v0 = tOuter.v[edge];
-			int v1 = tOuter.v[(edge + 1) % 3];
-			int v2 = tOuter.v[(edge + 2) % 3];
-
+			// flip the edge. make sure tOuter1New and tOuter2New are defined beforehand, so we can push them to the stack
 			int tOuter1New = tOuter.adj[(edge + 1) % 3];
 			int tOuter2New = tOuter.adj[(edge + 2) % 3];
 
-			int tInner1New = tInner.adj[1];
-			int tInner2New = tInner.adj[2];
-
-			triangles[inner] = { {v1, v2, nP}, {tOuter1New, outer, tInner2New} };
-			triangles[outer] = { {v2, v0, nP}, {tOuter2New, tInner1New, inner} };
-
-
-			// there are two edges that needs to be corrected
-			if (!isBoundary(tInner1New)) {
-				updateEdge(triangles[tInner1New], inner, outer);
-			}
-
-			if (!isBoundary(tOuter1New)) {
-				updateEdge(triangles[tOuter1New], outer, inner);
-			}
+			flipEdge(triangles, outer, edge);
 
 			if (!isBoundary(tOuter1New)) tStack.push(tOuter1New);
 			if (!isBoundary(tOuter2New)) tStack.push(tOuter2New);
@@ -236,13 +301,339 @@ std::vector<Triangle> AxiMesh::insertPoints(std::vector<Point>& points, int size
 	return triangles;
 }
 
-void constrain(const std::vector<Segment>& segments) {
+SegmentState checkSegment(
+	const std::vector<int>& vertexTri,
+	const std::vector<Point>& points,
+	const std::vector<Triangle>& triangles,
+	const Segment& segment,
+	int& tSol,
+	int& eSol
+) {
+
+	// check if segment exists
+	int vi = segment.a;
+	int vj = segment.b;
+	int tStart = vertexTri[vi];
+	int tCurrent = tStart;
+	do {
+		int edge = getEdgeFromVertex(triangles[tCurrent], vi);
+		if (edge == -1) return SegmentState::Unresolved;
+
+		// check if vj lands exactly on a point. that means the segment does already exist
+		int vA = triangles[tCurrent].v[(edge + 1) % 3];
+		int vB = triangles[tCurrent].v[(edge + 2) % 3];
+		if (vA == vj) {
+			return SegmentState::Exists;
+		}
+
+		// check if vi-vj crosses edge AB. that means the segment does not exist
+		double viA = orient(points[vi], points[vA], points[vj]);
+		double viB = orient(points[vi], points[vB], points[vj]);
+		if (viA > 0 && viB < 0) {
+			tSol = tCurrent;
+			eSol = (edge + 1) % 3;
+			return SegmentState::Crossing;
+		}
+		else if (viA == 0 && dotThreePoint(points[vj], points[vA], points[vi]) > 0) { // degenerate case where vi-vj is co-linear with vi-A
+			tSol = tCurrent;
+			eSol = edge;
+			return SegmentState::Degenerate;
+		}
+		tCurrent = triangles[tCurrent].adj[edge];
+
+	} while (tStart != tCurrent);
+
+	return SegmentState::Unresolved;
 
 }
 
+SegmentState handleCrossing(
+	const std::vector<Point>& points,
+	const std::vector<Triangle>& triangles,
+	const Segment& segment,
+	std::vector<Segment>& segCross,
+	int tSol,
+	int eSol
+) {
+	int vi = segment.a;
+	int vj = segment.b;
+
+	int e = eSol;
+	int t = tSol;
+	int eIn = e;
+	int vA = triangles[t].v[e];
+	int vB = triangles[t].v[(e + 1) % 3];
+
+
+	segCross.clear();
+	segCross.push_back({ vA, vB });
+
+	// marching towards vj
+	while (true) {
+
+		int tNext = triangles[t].adj[e];
+		for (int nE = 0; nE < 3; nE++) {
+			if (triangles[tNext].adj[nE] == t) {
+				eIn = nE;
+				break;
+			}
+		}
+
+		int vC = triangles[tNext].v[(eIn + 2) % 3];
+		if (vC == vj) return SegmentState::Crossing;
+
+		double viC = orient(points[vi], points[vC], points[vj]);
+		if (viC == 0) {
+			return SegmentState::Degenerate;
+		}
+		else if (viC < 0) {	// left
+			t = tNext;
+			e = (eIn + 1) % 3;
+			int vB = triangles[tNext].v[(eIn + 1) % 3];
+			segCross.push_back({ vB, vC});
+		}
+		else if (viC > 0) {	// right
+			t = tNext;
+			e = (eIn + 2) % 3;
+			int vA = triangles[tNext].v[eIn];
+			segCross.push_back({ vC, vA });
+		}
+	}
+}
+
+void handleCrossEdge(
+	std::vector<int>& vertexTri,        // needed to locate edges, and restamped after each swap
+	std::vector<Point>& points,
+	std::vector<Triangle>& triangles,   // step 3 mutates -- can't be const
+	const Segment& segment,
+	std::vector<Segment>& segCross,
+	std::vector<Segment>& segNew        // output for step 4
+){
+	int vi = segment.a;
+	int vj = segment.b;
+	segNew.clear();
+
+	int head = 0;
+	while (head != (int)segCross.size()) {
+
+		Segment seg = segCross[head++];
+
+		int t, e;
+		if (!findEdge(vertexTri, triangles, seg.a, seg.b, t, e)) {
+			printf("SOMETHING IS WRONG IN handleCrossEdge \n");
+		};
+
+		// if segment does exist, then get the two triangles from the shared edge
+		int tOpp = triangles[t].adj[e];
+		assert(tOpp != -1);
+		int eOpp = getEdgeFromNeighbour(triangles[tOpp], t);
+
+		// get all vertices
+		int vOpp = triangles[tOpp].v[(eOpp + 2) % 3];
+
+		int v0 = triangles[t].v[e];
+		int v1 = triangles[t].v[(e + 1) % 3];
+		int v2 = triangles[t].v[(e + 2) % 3];
+
+		// check if quad is convex, if so, do a edge flip
+		double d0 = orient(points[v2], points[vOpp], points[v0]);
+		double d1 = orient(points[v2], points[vOpp], points[v1]);
+		if (!(d0 < 0 && d1 > 0)) {
+			segCross.push_back(seg);
+			continue;
+		}
+
+		flipEdge(triangles, t, e);
+
+		// make sure to overwrite vertexTri for both triangles
+		for (int i = 0; i < 3; i++) {
+			vertexTri[triangles[t].v[i]] = t;
+			vertexTri[triangles[tOpp].v[i]] = tOpp;
+		}
+
+		// check if the flipped edge still intersects the segment. if so, add it back
+		double dA = orient(points[vi], points[v2], points[vj]);
+		double dB = orient(points[vi], points[vOpp], points[vj]);
+		if (dA > 0 && dB < 0 || dA < 0 && dB > 0 ) {
+			segCross.push_back({ v2, vOpp });
+		}
+		else if (!((v2 == vi && vOpp == vj) || (v2 == vj && vOpp == vi))) {
+			segNew.push_back({ v2, vOpp });
+		}
+	}
+}
+
+void restoreDelaunayFromSegments(
+	std::vector<int>& vertexTri,
+	const std::vector<Point>& points,
+	std::vector<Triangle>& triangles,
+	std::vector<Segment>& segNew
+) {
+	bool swapped = true;
+	while (swapped) {
+		swapped = false;
+		// for each shared segment, get the two adjacent triangles and do delaunay on them
+		for (Segment& seg : segNew) {
+
+			int t, e;
+			if (!findEdge(vertexTri, triangles, seg.a, seg.b, t, e)) continue;
+
+			int tOpp = triangles[t].adj[e];
+			assert(!isBoundary(tOpp));
+			int eOpp = getEdgeFromNeighbour(triangles[tOpp], t);
+
+			int vOpp = triangles[tOpp].v[(eOpp + 2) % 3];
+			int v2 = triangles[t].v[(e + 2) % 3];
+
+			if (!swapTest(points, points[vOpp], triangles[t], e)) continue;
+
+			flipEdge(triangles, t, e);
+
+			for (int i = 0; i < 3; i++) {
+				vertexTri[triangles[t].v[i]] = t;
+				vertexTri[triangles[tOpp].v[i]] = tOpp;
+			}
+
+			seg = { v2, vOpp };
+			swapped = true;
+
+		}
+	}
+}
+
+void constrain(
+	std::vector<int>& vertexTri,
+	AxiMesh::Mesh& mesh
+) {
+
+	std::vector<Segment> segCross;
+	for (const Segment& segment : mesh.segments) {
+		int tSol, eSol;
+		SegmentState state = checkSegment(vertexTri, mesh.points, mesh.triangles, segment, tSol, eSol);
+		std::vector<Segment> segNew;
+		switch (state) {
+		case SegmentState::Exists:
+			continue;
+		case SegmentState::Crossing:
+			state = handleCrossing(mesh.points, mesh.triangles, segment, segCross, tSol, eSol);
+			if (state != SegmentState::Crossing) break;
+			handleCrossEdge(vertexTri, mesh.points, mesh.triangles, segment, segCross, segNew);
+			restoreDelaunayFromSegments(vertexTri, mesh.points, mesh.triangles, segNew);
+			// TEMP scaffolding -- dump the crossing list for hand checking until step 3 lands
+			printf("    constraint %d-%d: %s, %d crossing(s)\n", segment.a, segment.b,
+				state == SegmentState::Crossing ? "reached vj" : "hit a vertex (degenerate)",
+				(int)segCross.size());
+			for (const Segment& s : segCross) {
+				printf("      %2d (%6.3f, %6.3f) -- %2d (%6.3f, %6.3f)\n",
+					s.a, mesh.points[s.a].x, mesh.points[s.a].y,
+					s.b, mesh.points[s.b].x, mesh.points[s.b].y);
+			}
+			break;
+		case SegmentState::Degenerate:
+			break;
+		}
+	}
+}
+
+NormVariables buildNormVariables(
+	const std::vector<Point>& points
+) {
+	NormVariables normVar;
+	auto resultX = std::minmax_element(points.begin(), points.end(),
+		[](const Point& a, const Point& b) { return a.x < b.x; });
+	auto resultY = std::minmax_element(points.begin(), points.end(),
+		[](const Point& a, const Point& b) { return a.y < b.y; });
+
+	normVar.pxMin = resultX.first->x;
+	normVar.pyMin = resultY.first->y;
+
+	normVar.dx = resultX.second->x - resultX.first->x;
+	normVar.dy = resultY.second->y - resultY.first->y;
+	normVar.dMax = std::max(normVar.dx, normVar.dy);
+
+	return normVar;
+}
+
+std::vector<Point> normalize(
+	const std::vector<Point>& points,
+	const NormVariables& normVar,
+	int size
+) {
+	std::vector<Point> normPoints(size);
+	for (int n = 0; n < size; n++) {
+		normPoints[n].x = (points[n].x - normVar.pxMin) / normVar.dMax;
+		normPoints[n].y = (points[n].y - normVar.pyMin) / normVar.dMax;
+	}
+	return normPoints;
+}
+
+std::vector<Point> unnormalize(
+	const std::vector<Point>& normPoints,
+	const NormVariables& normVar,
+	int size
+) {
+	std::vector<Point> points(size);
+	for (int n = 0; n < size; n++) {
+		points[n].x = normPoints[n].x * normVar.dMax + normVar.pxMin;
+		points[n].y = normPoints[n].y * normVar.dMax + normVar.pyMin;
+	}
+	return points;
+}
+
+std::vector<int> buildSortedPointIndices(
+	const std::vector<Point>& points,
+	const NormVariables& normVar,
+	int size
+){
+	std::vector<int> bins(size, 0.0);
+	std::vector<int> indices(size);
+
+	// create bins, each holding some points
+	int nBins = (int)lround(pow((double)size, 0.25));
+	for (int n = 0; n < size; n++) {
+
+		int i = int(0.99 * nBins * (points[n].x - normVar.pxMin) / normVar.dx);
+		int j = int(0.99 * nBins * (points[n].y - normVar.pyMin) / normVar.dy);
+
+		bins[n] = i % 2 == 0 ? i * nBins + j : (i + 1) * nBins - j - 1;
+		indices[n] = n;
+	}
+
+	// sort indices based off bin number. then sort the points based off the sorted indices
+	std::sort(indices.begin(), indices.end(), [&bins](int a, int b) {return bins[a] < bins[b]; });
+
+	return indices;
+}
+
+void removeSuperTriangle(std::vector<Triangle>& triangles, std::vector<Point>& points) {
+
+	int size = (int)points.size() - 3;
+	int keep = 0;
+	std::vector<int> newIndices((int)triangles.size(), -1);
+
+	// new indices contains triangles that do not have any super triangle vertices
+	for (int t = 0; t < (int)triangles.size(); t++) {
+		const Triangle& triangle = triangles[t];
+		if (triangle.v[0] >= size || triangle.v[1] >= size || triangle.v[2] >= size) continue;
+		newIndices[t] = keep++;
+	}
+
+	// make sure triangles are mapped to the new triangle indices
+	for (int t = 0; t < (int)triangles.size(); t++) {
+		if (newIndices[t] == -1) continue;
+		Triangle tri = triangles[t];
+		for (int i = 0; i < 3; i++) {
+			int tIndex = tri.adj[i];
+			tri.adj[i] = isBoundary(tIndex) ? -1 : newIndices[tIndex];
+		}
+		triangles[newIndices[t]] = tri;
+	}
+	triangles.resize(keep);
+	points.resize(size);
+}
+
 AxiMesh::Mesh AxiMesh::generateMesh(
-	const std::vector<double>& px,
-	const std::vector<double>& py,
+	const std::vector<Point>& points,
 	const std::vector<Segment>& segments,
 	int size
 ) {
@@ -250,47 +641,16 @@ AxiMesh::Mesh AxiMesh::generateMesh(
 	//ScopedTimer timer;
 	//timer.start();
 
-	std::vector<double> npx(size, 0.0);
-	std::vector<double> npy(size, 0.0);
-
 
 	// step 1: normalize coordinates
-	auto resultX = std::minmax_element(px.begin(), px.end());
-	auto resultY = std::minmax_element(py.begin(), py.end());
+	NormVariables normVar = buildNormVariables(points);
+	std::vector<Point> normPoints = normalize(points, normVar, size);
 
-	double pxMin = *resultX.first;
-	double pyMin = *resultY.first;
-
-	double dx = *resultX.second - *resultX.first;
-	double dy = *resultY.second - *resultY.first;
-	double dMax = std::max(dx, dy);
-
-	for (int n = 0; n < size; n++) {
-		npx[n] = (px[n] - pxMin) / dMax;
-		npy[n] = (py[n] - pyMin) / dMax;
-	}
-	
 	// step 2: put points into bins and sort by bin number
-	int nBins = (int)lround(pow((double)size, 0.25));
-	std::vector<int> bins(size, 0.0);
-	std::vector<int> indices(size);
-
-	for (int n = 0; n < size; n++) {
-
-		int i = int(0.99 * nBins * (px[n] - pxMin) / dx);
-		int j = int(0.99 * nBins * (py[n] - pyMin) / dy);
-
-		bins[n] = i % 2 == 0 ? i * nBins + j  : (i + 1) * nBins - j - 1;
-		indices[n] = n;
-	}
-
-	// sort indices based off bin number. then sort the points based off the sorted indices
-	std::vector<Point> points;
-
-	std::sort(indices.begin(), indices.end(), [&bins](int a, int b) {return bins[a] < bins[b]; });
-
+	std::vector<int> indices = buildSortedPointIndices(points, normVar, size);
+	std::vector<Point> p;
 	for (int n : indices) {
-		points.push_back({ npx[n], npy[n] });
+		p.push_back(normPoints[n]);
 	}
 
 	// the sort above renumbered every point, so caller-supplied segment indices have to
@@ -302,17 +662,28 @@ AxiMesh::Mesh AxiMesh::generateMesh(
 
 	// steps 3-4: super triangle, then insert every point into the triangle containing it
 	Mesh mesh;
-	mesh.triangles = insertPoints(points, size);	// appends the super vertices to points
-	mesh.points = std::move(points);
+	mesh.triangles = insertPoints(p, size);
+	mesh.points = std::move(p);
+
+	// store triangle indicies that the vertex belongs to. vertexTri[v] = t
+	// a single vertex can belong to multiple triangle, so the last one that writes will win
+	std::vector<int> vertexTri(size + 3, -1);
+	for (int t = 0; t < (int)mesh.triangles.size(); t++) {
+		for (int i = 0; i < 3; i++) {
+			vertexTri[mesh.triangles[t].v[i]] = t;
+		}
+	}
 
 	mesh.segments.reserve(segments.size());
 	for (const Segment& s : segments) {
 		mesh.segments.push_back({ newIndex[s.a], newIndex[s.b] });
 	}
 
-	// TODO: insert mesh.segments as constraints here (Sloan 1993), then flood fill from the
-	// super triangle through unconstrained edges to drop everything outside the domain
+	constrain(vertexTri, mesh);
 
-	//timer.end();
+	// remove super triangle
+	removeSuperTriangle(mesh.triangles, mesh.points);
+	mesh.points = unnormalize(mesh.points, normVar, size);
+
 	return mesh;
 }

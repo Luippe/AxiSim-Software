@@ -229,11 +229,6 @@ struct EdgeKeyHash {
 	}
 };
 
-struct CDTConstraintEdge {
-	std::size_t v0;
-	std::size_t v1;
-};
-
 enum class CellShape : uint8_t {
 
 	QUAD,
@@ -542,11 +537,5 @@ struct SolutionField {
 	std::vector<double> field;
 	std::vector<double> dr, dz;
 	BoundaryVariable boundaryVariable;
-};
-
-struct SolutionScalar {
-
-	double ocr;
-
 };
 

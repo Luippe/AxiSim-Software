@@ -20,6 +20,21 @@ namespace AxiMesh{
 		int b;
 	};
 
+	struct NormVariables {
+		double pxMin = 0;
+		double pyMin = 0;
+		double dMax = 0;
+		double dx = 0;
+		double dy = 0;
+	};
+
+	enum class SegmentState {
+		Exists,
+		Crossing,
+		Degenerate,
+		Unresolved
+	};
+
 	struct Mesh {
 		// the bin sort reorders the input, so points is not in caller order; the three
 		// super triangle vertices follow the `size` input points
@@ -29,8 +44,7 @@ namespace AxiMesh{
 	};
 
 	Mesh generateMesh(
-		const std::vector<double>& px,
-		const std::vector<double>& py,
+		const std::vector<Point>& points,
 		const std::vector<Segment>& segments,
 		int size
 	);

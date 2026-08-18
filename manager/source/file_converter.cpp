@@ -90,39 +90,6 @@ void blockEdgeEndpoints(const Block& block, Edge e, Vec2& first, Vec2& second) {
 	second = block.node(block.nr, 0);
 }
 
-// Boundary group of the sketch edge nearest `point`, or -1 if none is within `tol`.
-//
-// Deliberately the same nearest-edge rule createMultiBlockFVMesh runs on face
-// centres (solver/source/mesh.cpp), so the exported patches and the solver's BC
-// groups cut the boundary the same way. Ungrouped sketch edges are skipped rather
-// than matched-then-rejected: an untagged edge lying closer must not shadow the
-// tagged one behind it.
-int groupAtPoint(Vec2 point, const std::vector<BoundaryEdge>& edges,
-                 const std::vector<BoundaryVertex>& vertices, double tol) {
-
-	int best = -1;
-	double bestDist = tol;
-
-	for (const BoundaryEdge& edge : edges) {
-		if (edge.groupID < 0) continue;
-		if (!edgeInRange(edge, vertices.size())) continue;
-
-		const Vec2 near = closestPointOnSegment(
-			point, vertices[edge.v0].pos, vertices[edge.v1].pos);
-
-		const double dz = point.z - near.z;
-		const double dr = point.r - near.r;
-		const double dist = std::sqrt(dz * dz + dr * dr);
-
-		if (dist < bestDist) {
-			bestDist = dist;
-			best = edge.groupID;
-		}
-	}
-
-	return best;
-}
-
 // Largest |z| or r anywhere in the mesh -- the length the match tolerance scales
 // with. Same quantity as createMultiBlockFVMesh's max(g.L, g.R) for a domain whose
 // blocks span it, so both paths end up with the same tolerance.

@@ -1,7 +1,6 @@
 #pragma once
 #include <glm/vec3.hpp>
 #include <glm/vec2.hpp>
-#include "imgui.h"		// ImVec2 used by SurfacePoint below
 
 
 enum class CompareType {
@@ -38,23 +37,15 @@ struct LengthScale {
 struct SurfacePoint {
 
 	// i and j indices
-	ImVec2 dataPos;
+	glm::vec2 dataPos;
 
 	// optional data
-	ImVec2 vecValue;
+	glm::vec2 vecValue;
 	float value;
 };
 
 struct Vertex {
 	glm::vec3 position;
-};
-
-struct VertexEdge {
-	glm::vec3 p0;
-	glm::vec3 p1;
-	glm::vec3 c0;
-	glm::vec3 c1;
-	glm::vec3 color;
 };
 
 struct VertexLine {
