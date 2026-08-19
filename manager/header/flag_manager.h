@@ -91,6 +91,13 @@ namespace UIDockFlags {
 	inline constexpr ImGuiDockNodeFlags BaseDockspaceFlags =
 		ImGuiDockNodeFlags_NoWindowMenuButton;
 
+	// Inner dockspace holding viewer tabs (DockingSpace). Each tab window is begun
+	// with a p_open and so draws its own close button -- the node-level one would be
+	// a second X right beside it.
+	inline constexpr ImGuiDockNodeFlags ViewerDockspaceFlags =
+		ImGuiDockNodeFlags_NoWindowMenuButton |
+		ImGuiDockNodeFlags_NoCloseButton;
+
 }
 
 namespace UIColors {

@@ -43,7 +43,7 @@ struct MeshSnapResult {
 class MeshInspector : public BaseSurfaceViewer {
 public:
 
-	MeshInspector(Project& project, AppConfig& appConfig);
+	MeshInspector(Project& project, AppConfig& appConfig, SurfaceView& sharedView);
 
 	VertexBuffer vertexBuffer;
 

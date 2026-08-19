@@ -14,7 +14,7 @@
 #include <queue>
 #include <unordered_set>
 #include <unordered_map>
-
+#include <stdexcept>
 
 #include "math_func.h"
 
@@ -1222,7 +1222,15 @@ void Mesh::runAxiMeshTriangulation() {
 		meshPoints.push_back({ vert.pos.z, vert.pos.r });
 	}
 
-	AxiMesh::Mesh axiMesh = AxiMesh::generateMesh(meshPoints, meshSegments, (int)meshPoints.size());
+	AxiMesh::Mesh axiMesh;
+
+	try {
+		axiMesh = AxiMesh::generateMesh(meshPoints, meshSegments, (int)meshPoints.size());
+	}
+	catch (const std::exception& e) {
+		console->addLine(e.what());
+		return;
+	}
 
 	std::vector<AxiMesh::Triangle> triangles = axiMesh.triangles;
 	std::vector<AxiMesh::Point> points = axiMesh.points;

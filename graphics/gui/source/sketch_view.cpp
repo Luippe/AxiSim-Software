@@ -34,11 +34,11 @@ namespace {
 	}
 }
 
-SketchView::SketchView(Project& project, GUI& gui) :
+SketchView::SketchView(Project& project, GUI& gui, SurfaceView& sharedView) :
 	geometry(project.geometry),
 	gui(gui),
 	assets(gui.appConfig.assets),
-	BaseSurfaceViewer("graphics/shaders/sketch.vert", "graphics/shaders/sketch.frag") {
+	BaseSurfaceViewer("graphics/shaders/sketch.vert", "graphics/shaders/sketch.frag", &sharedView) {
 	frameBuffer.create2DBuffer(500, 500, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);
 }
 

@@ -37,7 +37,7 @@ DockingSpace::DockSpaceInfo DockingSpace::renderDockSpace() {
 	ImGui::DockSpace(
 		dockspaceID,
 		ImGui::GetContentRegionAvail(),
-		0,
+		ViewerDockspaceFlags,
 		&windowClass
 	);
 
@@ -108,8 +108,10 @@ void DockingSpace::drawActiveTabOutline() {
 	drawList->PopClipRect();
 }
 
-BaseSurfaceViewer::BaseSurfaceViewer(const char* vertexPath, const char* fragmentPath) :
-	shader(vertexPath, fragmentPath) {
+BaseSurfaceViewer::BaseSurfaceViewer(const char* vertexPath, const char* fragmentPath, SurfaceView* sharedView) :
+	shader(vertexPath, fragmentPath),
+	view(sharedView ? *sharedView : ownView),
+	camera(view.camera) {
 
 	windowClass.DockNodeFlagsOverrideSet = NoDockWindowFlags;
 
@@ -126,13 +128,13 @@ void BaseSurfaceViewer::updateLengthScale(double currentScale, const char* unitN
 		return;
 	}
 
-	if (!lengthScaleInitialized) {
-		lastLengthScale = currentScale;
-		lengthScaleInitialized = true;
+	if (!view.lengthScaleInitialized) {
+		view.lastLengthScale = currentScale;
+		view.lengthScaleInitialized = true;
 		return;
 	}
 
-	if (currentScale == lastLengthScale) {
+	if (currentScale == view.lastLengthScale) {
 		return;
 	}
 
@@ -140,7 +142,7 @@ void BaseSurfaceViewer::updateLengthScale(double currentScale, const char* unitN
 	// unit (1 mm, 1 m, etc)
 	camera.setZoom(zoomForUnitGrid(currentScale));
 
-	lastLengthScale = currentScale;
+	view.lastLengthScale = currentScale;
 }
 
 double BaseSurfaceViewer::zoomForUnitGrid(double scale) const {
@@ -166,7 +168,7 @@ void BaseSurfaceViewer::resetView() {
 	// recenter, then match the zoom to the project's current display unit so one
 	// grid cell reads exactly one unit
 	camera.initPosition();
-	camera.setZoom(zoomForUnitGrid(lastLengthScale));
+	camera.setZoom(zoomForUnitGrid(view.lastLengthScale));
 }
 
 void BaseSurfaceViewer::applyPendingResetView() {
@@ -434,7 +436,7 @@ double BaseSurfaceViewer::gridWorldStep() const {
 	// world meters), so the grid reads as round numbers in whatever unit is
 	// currently selected (e.g. 1/2/5 mm when on mm) instead of always
 	// rounding in meters and just relabeling.
-	double targetDisplayStep = targetWorldStep * lastLengthScale;
+	double targetDisplayStep = targetWorldStep * view.lastLengthScale;
 
 	double magnitude = std::pow(10.0, std::floor(std::log10(targetDisplayStep)));
 	double residual = targetDisplayStep / magnitude;
@@ -443,7 +445,7 @@ double BaseSurfaceViewer::gridWorldStep() const {
 
 	double niceDisplayStep = niceFactor * magnitude;
 
-	return niceDisplayStep / lastLengthScale; // back to world meters for drawing
+	return niceDisplayStep / view.lastLengthScale; // back to world meters for drawing
 }
 
 Vec2 BaseSurfaceViewer::snapToGridVertex(Vec2 world) const {
@@ -527,7 +529,7 @@ void BaseSurfaceViewer::drawGrid(ImDrawList* drawList) {
 		label,
 		sizeof(label),
 		"grid: %.4g %s",
-		step * lastLengthScale,
+		step * view.lastLengthScale,
 		currentUnitName
 	);
 

@@ -223,7 +223,7 @@ struct TrimPreviewResult {
 class SketchView : public BaseSurfaceViewer{
 public:
 
-	SketchView(Project& project, GUI& gui);
+	SketchView(Project& project, GUI& gui, SurfaceView& sharedView);
 
 	void render();
 

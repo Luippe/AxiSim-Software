@@ -168,13 +168,13 @@ namespace {
 	}
 }
 
-MeshInspector::MeshInspector(Project& project, AppConfig& appConfig) :
+MeshInspector::MeshInspector(Project& project, AppConfig& appConfig, SurfaceView& sharedView) :
 	project(project),
 	mesh(project.mesh),
 	geometry(project.geometry),
 	g(mesh.g),
 	assets(appConfig.assets),
-	BaseSurfaceViewer("graphics/shaders/mesh.vert", "graphics/shaders/mesh.frag") {
+	BaseSurfaceViewer("graphics/shaders/mesh.vert", "graphics/shaders/mesh.frag", &sharedView) {
 
 	// radial location
 	frameBuffer.create2DBuffer(500, 500, GL_RGB8, GL_RGB, GL_UNSIGNED_BYTE);

@@ -9,18 +9,24 @@
 #include <cstdio>
 #include <queue>
 #include <stdexcept>
-#include <format>
+//#include <format>
 
 using AxiMesh::Point;
 using AxiMesh::Triangle;
 using AxiMesh::Segment;
 using AxiMesh::SegmentState;
 using AxiMesh::NormVariables;
+using AxiMesh::ErrorCase;
 
-//
-//std::string errorTypeToMessage() {
-//
-//}
+std::string errorTypeToMessage(ErrorCase e) {
+	switch (e) {
+	case ErrorCase::STALLED:
+		return "point search has stalled";
+	case ErrorCase::WALK_OFF:
+		return "point is out of bounds and search has walked off";
+
+	}
+}
 
 struct ScopedTimer {
 	std::chrono::steady_clock::time_point t0;
@@ -254,7 +260,7 @@ bool insertVertex(
 	Point& P = points[nP];
 
 	for (int check = 0; ; check++) {
-		if (nT == -1)	return false;						// walked out of bounds
+		if (nT == -1)	throw std::runtime_error(errorTypeToMessage(ErrorCase::WALK_OFF));						// walked out of bounds
 		if (check > (int)triangles.size()) return false;	// stalled
 		const Triangle& T = triangles[nT];
 		bool isPointInside = true;
@@ -266,8 +272,10 @@ bool insertVertex(
 			Point& B = points[indexB];
 
 			double d = orient(A, B, P);
-			if (d == 0) return false;	// point on the line
 			if (d < 0) {
+				if (T.adj[nE] == -1) {
+					printf("WOAAWAAAAAAAAAA\n");
+				}
 				nT = T.adj[nE];
 				isPointInside = false;
 				break;
@@ -370,101 +378,13 @@ std::vector<Triangle> AxiMesh::insertPoints(std::vector<Point>& points, int size
 
 	// step 4: check if point is inside the most recently created triangle
 	int nT = 0;
-	int nP = 0;
-	while (nP < size) {
-
-		Point& P = points[nP];
-		Triangle& T = triangles[nT];
-
-		bool isPointInside = false;
-		for (int nE = 0; nE < 3; nE++) {
-
-			int indexA = T.v[nE];
-			int indexB = T.v[(nE + 1) % 3];
-			Point& A = points[indexA];
-			Point& B = points[indexB];
-
-			double d = (B.x - A.x) * (P.y - A.y) - (B.y - A.y) * (P.x - A.x);
-			isPointInside = d >= 0;
-			if (!isPointInside) {
-				nT = T.adj[nE];
-				break;
-			};
+	std::vector<int> touched;
+	for (int nP = 0; nP < size; nP++) {
+		touched.clear();
+		if (!insertVertex(points, triangles, touched, nP, nT)) {
+			continue;
 		}
-
-		// if point is inside the triangle, make 3 lines from the triangle to the point, creating 3 triangles
-		if (!isPointInside) continue;
-
-		// 1 triangle is overwritten and 2 new triangles are created everytime a point is inside a triangle
-		int v0 = T.v[0];
-		int v1 = T.v[1];
-		int v2 = T.v[2];
-
-		T.v[2] = nP;
-
-		int t0 = T.adj[0];
-		int t1 = T.adj[1];
-		int t2 = T.adj[2];
-
-		int t1New = (int)triangles.size();
-		int t2New = (int)triangles.size() + 1;
-
-		T.adj[1] = t1New;
-		T.adj[2] = t2New;
-
-		triangles.push_back({ {v1, v2, nP}, {t1, t2New, nT} });
-		triangles.push_back({ {v2, v0, nP}, {t2, nT, t1New} });
-
-		if (!isBoundary(t1)) {
-			updateEdge(triangles[t1], nT, t1New);
-		}
-
-		if (!isBoundary(t2)) {
-			updateEdge(triangles[t2], nT, t2New);
-		}
-
-		// step 6: initialize stack. check for any -1 here so we don't have to check inside step 7
-		std::stack<int> tStack = buildInitialStack(t0, t1, t2);
-
-		// step 7: check if point P is inside any circumcicle of surrounding triangle
-		while (!tStack.empty()) {
-			
-			// remove top triangle from stack
-			int outer = tStack.top();
-			tStack.pop();
-
-			Triangle& tOuter = triangles[outer];
-
-			if (tOuter.v[2] == nP) continue;
-
-			// find shared edge. recall how vertices are stored for a triangle
-			// for a new triangle, nP is always the third entry so use that to check for the shared edge
-			int edge = -1;
-			for (int i = 0; i < 3; i++) {
-				int nb = tOuter.adj[i];
-				if (nb != -1 && triangles[nb].v[2] == nP) {
-					edge = i;
-					break;
-				}
-			}
-			if (edge == -1) continue;
-
-			if (!swapTest(points, P, tOuter, edge)) continue;
-
-			// flip the edge. make sure tOuter1New and tOuter2New are defined beforehand, so we can push them to the stack
-			int tOuter1New = tOuter.adj[(edge + 1) % 3];
-			int tOuter2New = tOuter.adj[(edge + 2) % 3];
-
-			flipEdge(triangles, outer, edge);
-
-			if (!isBoundary(tOuter1New)) tStack.push(tOuter1New);
-			if (!isBoundary(tOuter2New)) tStack.push(tOuter2New);
-
-		}
-
-		// only move to the next point after a successful split
-		nP += 1;
-
+		nT = (int)triangles.size() - 1;
 	}
 
 	return triangles;
@@ -902,6 +822,14 @@ void refine(
 
 	}
 }
+void frontalDelaunay(
+	std::vector<Triangle>& triangles,
+	std::vector<Point>& points,
+	std::vector<Segment>& segments
+) {
+	std::vector<double> h(points.size());
+	std::vector<uint8_t> state(triangles.size());
+}
 
 AxiMesh::Mesh AxiMesh::generateMesh(
 	const std::vector<Point>& points,
@@ -958,7 +886,7 @@ AxiMesh::Mesh AxiMesh::generateMesh(
 	removeFloodFill(mesh.triangles, mesh.points, constrained);
 
 	// refinement
-	refine(mesh.triangles, mesh.points, mesh.segments, 1.0);
+	refine(mesh.triangles, mesh.points, mesh.segments, 1.4);
 	mesh.points = unnormalize(mesh.points, normVar);
 
 	return mesh;

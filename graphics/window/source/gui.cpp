@@ -284,11 +284,11 @@ void GUI::newFrame() {
 GUI::GUI(Project& project, Display& disp) :
 
 	project(project),
-	sketch(project, *this),
+	sketch(project, *this, geometryMeshView),
 	scene(project, *this),
 	menu(project, *this),
 	inspector(project, scene, appConfig),
-	meshInspector(project, appConfig),
+	meshInspector(project, appConfig, geometryMeshView),
 	console(*this, project),
 	mesh(project.mesh),
 	solver(project.solver),

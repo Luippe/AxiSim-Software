@@ -29,6 +29,11 @@ public:
 	AppConfig appConfig;
 	Menu menu;			// loads mesh/solver/results before the view objects are constructed
 	
+	// One view shared by the geometry and mesh tabs, so switching between them
+	// keeps the camera where the user left it. Must stay declared above the two
+	// viewers -- they bind a reference to it during construction.
+	SurfaceView geometryMeshView;
+
 	SketchView sketch;
 	SceneView scene;
 	Inspector inspector;

@@ -3,6 +3,16 @@
 #include <vector>
 
 namespace AxiMesh{
+
+	enum class ErrorCase {
+		OK,
+		STALLED,
+		WALK_OFF,
+		DUPLICATE,
+		ON_EDGE
+
+	};
+
 	struct Point {
 		double x = 0.0;
 		double y = 0.0;

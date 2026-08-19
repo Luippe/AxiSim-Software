@@ -536,10 +536,22 @@ static_assert(
 	"toolbarSmallIconSize is too large for a two-row section"
 );
 
+// One 2D view: the camera plus the length-scale bookkeeping that drives its zoom
+// snapping. Grouped because two viewers sharing a camera have to share the scale
+// guard too -- otherwise the second one to render re-snaps a zoom the first
+// already applied, undoing whatever the user did after the unit change.
+struct SurfaceView {
+	Camera2D camera;
+	double lastLengthScale = 1.0;
+	bool lengthScaleInitialized = false;
+};
+
 class BaseSurfaceViewer : public ToolbarHost {
 public:
 
-	BaseSurfaceViewer(const char* vertexShaderPath, const char* fragmentShaderPath);
+	// Hand the same SurfaceView to two viewers and they share one view, so switching
+	// between their tabs keeps the framing (geometry + mesh do this). Null = private view.
+	BaseSurfaceViewer(const char* vertexShaderPath, const char* fragmentShaderPath, SurfaceView* sharedView = nullptr);
 
 	// public copy variables
 	bool pendingCopy = false;
@@ -594,14 +606,15 @@ protected:
 	};
 
 	Rect canvasRect;
-	Camera2D camera;
 
-	// tracks the last project display scale seen by updateLengthScale(), so a
-	// change can be detected and the camera zoom snapped accordingly. Also
-	// used to label the grid spacing in the project's chosen display unit.
-	double lastLengthScale = 1.0;
+	// backs `view` when no shared view was injected -- never touch it directly
+	SurfaceView ownView;
+	SurfaceView& view;
+
+	// alias for view.camera, so every call site still reads `camera`
+	Camera2D& camera;
+
 	const char* currentUnitName = "m";
-	bool lengthScaleInitialized = false;
 
 	// set by requestResetView(); consumed by applyPendingResetView() during
 	// render to trigger a one-shot resetView().
