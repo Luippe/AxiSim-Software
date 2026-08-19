@@ -5,6 +5,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdint>
+#include <numbers>
 #include <unordered_map>
 
 #include "project.h"
@@ -566,7 +567,7 @@ void SceneView::buildUnstructuredSurface() {
 	}
 
 	// angular slices for the revolution
-	const float twoPi = 6.28318530718f;
+	const float twoPi = 2.0f * std::numbers::pi_v<float>;
 	int nSlices = std::max(8, (int)((float)results.nseg * (usSweep / twoPi)));
 
 	// A full sweep closes on itself (slice nSlices wraps to slice 0), so the

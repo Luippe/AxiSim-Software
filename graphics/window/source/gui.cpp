@@ -53,9 +53,9 @@ void applyTextColors() {
 // the tree indent (see initContext) so each branch icon aligns over its children.
 namespace {
 	constexpr float kUiScale      = 1.3f;
-	constexpr float kUiFontSmall  = 14.0f * kUiScale;
-	constexpr float kUiFontNormal = 18.0f * kUiScale;
-	constexpr float kUiFontLarge  = 24.0f * kUiScale;
+	constexpr float kUiFontSmall  = 10.0f * kUiScale;
+	constexpr float kUiFontNormal = 14.0f * kUiScale;
+	constexpr float kUiFontLarge  = 20.0f * kUiScale;
 }
 
 void initImGuiFonts(AppFonts& fonts) {

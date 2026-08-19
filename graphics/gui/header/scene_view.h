@@ -12,6 +12,7 @@
 
 #include "buffer_manager.h"
 
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -180,7 +181,7 @@ private:
 	float usValueUpper = 0.0f;
 
 	// full 360-degree revolution, matching the structured solid-of-revolution view
-	const float usSweep = 6.28318530718f;
+	const float usSweep = 2.0f * std::numbers::pi_v<float>;
 
 	Results& results;
 	Project& project;

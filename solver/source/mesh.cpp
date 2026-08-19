@@ -9,6 +9,7 @@
 #include <glm/trigonometric.hpp>
 #include <algorithm>
 #include <limits>
+#include <numbers>
 #include <numeric>
 #include <queue>
 #include <unordered_set>
@@ -30,7 +31,7 @@ PointKey makePointKey(Vec2 p, double tol) {
 }
 
 namespace {
-	constexpr double sketchMeshTwoPi = 6.28318530717958647692;
+	constexpr double sketchMeshTwoPi = 2.0 * std::numbers::pi;
 
 	double regionOutsideDistance(
 		const MeshRegionOfInfluence& region,
@@ -855,7 +856,12 @@ bool Mesh::convertSketchToUnstructuredMesh(const SketchModel& sketch) {
 			continue;
 		}
 
-		int segments = curveSampleCount(arc.radius * span, curveSpacing, 8);
+		// keep the same chord angle a full circle gets, so a trimmed circle
+		// doesn't come out visibly faceted
+		int segments = std::max(
+			(int)std::ceil(nseg * span / sketchMeshTwoPi),
+			curveSampleCount(arc.radius * span, curveSpacing, 8)
+		);
 
 		appendDraft(
 			drafts,

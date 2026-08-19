@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 #include <glm/vec2.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -22,7 +23,7 @@ void createCylinderTemplate(std::vector<CylinderTemplateVertex>& vertices, std::
 
 	if (nseg < 3) return;
 
-	constexpr float PI = 3.14159265359f;
+	constexpr float PI = std::numbers::pi_v<float>;
 	vertices.reserve(static_cast<size_t>(8 * nseg + 4));
 	indices.reserve(static_cast<size_t>(24 * nseg));
 

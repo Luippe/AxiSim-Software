@@ -3,12 +3,13 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <numbers>
 
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace {
 
-	constexpr float PI = 3.14159265359f;
+	constexpr float PI = std::numbers::pi_v<float>;
 
 	// local +X maps onto the axis each arm points down; the other two columns
 	// only have to complete a right-handed frame, since the arm is a solid of

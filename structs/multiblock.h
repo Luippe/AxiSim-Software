@@ -26,6 +26,7 @@
 #include <vector>
 #include <cstdint>
 #include <cmath>
+#include <numbers>
 #include <string>
 #include <set>
 
@@ -265,7 +266,7 @@ inline bool autoDetectInterfaces(MultiBlockMesh& m, std::string& reason,
 // carrying `defaultBoundaryGroup`; mapping those to real BC groups is separate.
 // ---------------------------------------------------------------------------
 
-constexpr double MB_PI = 3.14159265358979323846;
+constexpr double MB_PI = std::numbers::pi;
 
 // Polygon (quad) cross-section centroid + area via the shoelace formula.
 inline void quadCentroidArea(const MBNode& p0, const MBNode& p1,

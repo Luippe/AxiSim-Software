@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -10,7 +11,7 @@
 // ======================================================================
 namespace {
 
-	constexpr float PI = 3.14159265358979f;
+	constexpr float PI = std::numbers::pi_v<float>;
 
 	// ease in and out, so a snap starts and lands gently instead of stopping dead
 	float smoothStep(float t) {

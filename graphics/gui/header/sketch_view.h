@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numbers>
 #include <optional>
 #include <string>
 #include <vector>
@@ -21,7 +22,7 @@ class Geometry;
 
 // Pure 2D geometry helpers shared by the sketch view and the trim tool.
 namespace sketchmath {
-	constexpr double twoPi = 6.28318530717958647692;
+	constexpr double twoPi = 2.0 * std::numbers::pi;
 	constexpr double sketchEpsilon = 1e-9;
 
 	inline float pixelDistance(ImVec2 a, ImVec2 b) {

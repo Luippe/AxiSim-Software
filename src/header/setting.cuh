@@ -2,12 +2,13 @@
 
 #include <vector>
 #include <unordered_set>
+#include <numbers>
 
 #ifdef __INTELLISENSE__
 void __syncthreads();
 #endif
 
-constexpr double PI = 3.14159265358979323846;
+constexpr double PI = std::numbers::pi;
 
 // define domain and cell spacing
 struct GridConfig {

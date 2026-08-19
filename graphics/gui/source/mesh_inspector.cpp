@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <numbers>
 #include <string>
 #include <glm/glm.hpp>
 
@@ -18,7 +19,7 @@
 #include "unit_manager.h"
 
 namespace {
-	constexpr double meshInspectorTwoPi = 6.28318530717958647692;
+	constexpr double meshInspectorTwoPi = 2.0 * std::numbers::pi;
 	constexpr double meshInspectorEpsilon = 1e-9;
 
 	double normalizeInspectorAngle(double angle) {
@@ -140,82 +141,6 @@ namespace {
 		}
 
 		return inspectorOrientationFromFlags(hasHorizontal, hasVertical, hasOther);
-	}
-
-	// Chain a loop's boundary segments (each an ordered polyline that shares its
-	// endpoints with neighbours) into a single ordered ring of world points. The
-	// segments are not stored in ring order, so walk them head-to-tail, flipping a
-	// segment when only its far endpoint matches the current tail.
-	std::vector<Vec2> assembleLoopRing(
-		const std::vector<const BoundarySegment*>& segs,
-		double tol
-	) {
-		std::vector<Vec2> ring;
-		if (segs.empty()) {
-			return ring;
-		}
-
-		auto samePoint = [tol](Vec2 a, Vec2 b) {
-			double dz = a.z - b.z;
-			double dr = a.r - b.r;
-			return dz * dz + dr * dr <= tol * tol;
-		};
-
-		std::vector<bool> used(segs.size(), false);
-
-		ring = segs[0]->controlPoints;
-		used[0] = true;
-
-		for (std::size_t placed = 1; placed < segs.size(); ) {
-			if (ring.empty()) {
-				break;
-			}
-
-			Vec2 tail = ring.back();
-			bool progressed = false;
-
-			for (std::size_t k = 0; k < segs.size(); k++) {
-				if (used[k]) {
-					continue;
-				}
-
-				const std::vector<Vec2>& cp = segs[k]->controlPoints;
-				if (cp.size() < 2) {
-					used[k] = true;
-					placed++;
-					progressed = true;
-					break;
-				}
-
-				if (samePoint(cp.front(), tail)) {
-					ring.insert(ring.end(), cp.begin() + 1, cp.end());
-					used[k] = true;
-					placed++;
-					progressed = true;
-					break;
-				}
-
-				if (samePoint(cp.back(), tail)) {
-					ring.insert(ring.end(), cp.rbegin() + 1, cp.rend());
-					used[k] = true;
-					placed++;
-					progressed = true;
-					break;
-				}
-			}
-
-			// tolerance/topology gap: stop and fill whatever ring we have so far
-			if (!progressed) {
-				break;
-			}
-		}
-
-		// drop the duplicated closing vertex if the ring came back closed
-		if (ring.size() >= 2 && samePoint(ring.front(), ring.back())) {
-			ring.pop_back();
-		}
-
-		return ring;
 	}
 
 	// Quality::nonOrthogonality holds the worst COSINE over a cell's faces (1 =
@@ -1505,9 +1430,9 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
-	drawHighlightedCells2D(drawList);
-	// under the mesh lines, so the cells stay readable. Only one of the three ever
-	// paints (the toolbar toggles are exclusive), so the order between them is moot.
+	// The quality overlays paint under the mesh lines, so the cells stay readable.
+	// Only one of the three ever paints (the toolbar toggles are exclusive), so
+	// the order between them is moot.
 	drawAspectRatio(drawList);
 	drawOrthogonality(drawList);
 	drawSkewness(drawList);
@@ -1577,67 +1502,6 @@ void MeshInspector::drawMeshLines(ImDrawList* drawList) {
 			);
 		}
 	}
-}
-
-void MeshInspector::drawUnstructuredSolidBodies(ImDrawList* drawList) {
-	// Unstructured meshes conform to the geometry: obstacles are holes cut out of
-	// the triangulation, not solid cells. Recover each obstacle body from its
-	// boundary loop (segments with source == Obstacle, grouped by loopID) and fill
-	// it the same opaque gray the structured path uses for solid cells.
-	if (mesh.boundarySegments.empty()) {
-		return;
-	}
-
-	const ImU32 solidColor = IM_COL32(151, 151, 151, 255);
-
-	double modelScale = std::max(std::max(g.L, g.R), 1.0);
-	double tol = modelScale * 1e-6;
-
-	std::unordered_map<int, std::vector<const BoundarySegment*>> obstacleLoops;
-	for (const BoundarySegment& seg : mesh.boundarySegments) {
-		if (seg.source != BoundarySource::Obstacle) {
-			continue;
-		}
-		obstacleLoops[seg.loopID].push_back(&seg);
-	}
-
-	std::vector<ImVec2> screen;
-	for (const auto& [loopID, segs] : obstacleLoops) {
-		std::vector<Vec2> ring = assembleLoopRing(segs, tol);
-		if (ring.size() < 3) {
-			continue;
-		}
-
-		screen.clear();
-		screen.reserve(ring.size());
-		for (const Vec2& p : ring) {
-			screen.push_back(camera.worldToScreen(p));
-		}
-
-		drawList->AddConcavePolyFilled(screen.data(), (int)screen.size(), solidColor);
-	}
-}
-
-void MeshInspector::drawHighlightedCells2D(ImDrawList* drawList) {
-	if (mesh.currentMeshType != MeshType::Structured) {
-		drawUnstructuredSolidBodies(drawList);
-		return;
-	}
-
-	// Multiblock represents holes as absent blocks, so there is no raster obstacle
-	// fill to draw -- and drawing it would use the misaligned raster grid.
-	if (mesh.isMultiBlock) {
-		return;
-	}
-
-	if (g.zFace.size() < 2 || g.rFace.size() < 2) {
-		return;
-	}
-
-	int nz = (int)g.zFace.size() - 1;
-	int nr = (int)g.rFace.size() - 1;
-
-
 }
 
 void MeshInspector::drawBoundarySegments(
@@ -2479,9 +2343,9 @@ void MeshInspector::render() {
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
-	drawHighlightedCells2D(drawList);
-	// under the mesh lines, so the cells stay readable. Only one of the three ever
-	// paints (the toolbar toggles are exclusive), so the order between them is moot.
+	// The quality overlays paint under the mesh lines, so the cells stay readable.
+	// Only one of the three ever paints (the toolbar toggles are exclusive), so
+	// the order between them is moot.
 	drawAspectRatio(drawList);
 	drawOrthogonality(drawList);
 	drawSkewness(drawList);

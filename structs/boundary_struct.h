@@ -3,6 +3,7 @@
 #include <cstddef>     // std::size_t
 #include <cstdint>     // std::uint8_t
 #include <cmath>
+#include <numbers>
 #include <functional>  // std::hash
 #include <string>	   // std::string
 #include <unordered_map>
@@ -182,7 +183,7 @@ struct BoundaryCondition {
 	// as U0/V0 and preserve phase across continued transient runs.
 	double valueAtTime(double time) const {
 		if (const auto* p = std::get_if<PulsatileParams>(&params)) {
-			constexpr double twoPi = 6.283185307179586476925286766559;
+			constexpr double twoPi = 2.0 * std::numbers::pi;
 			return p->value *
 				(1.0 + p->amplitude * std::sin(twoPi * p->frequency * time));
 		}

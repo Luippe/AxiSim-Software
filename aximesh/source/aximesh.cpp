@@ -7,12 +7,20 @@
 #include <cassert>
 #include <chrono>
 #include <cstdio>
+#include <queue>
+#include <stdexcept>
+#include <format>
 
 using AxiMesh::Point;
 using AxiMesh::Triangle;
 using AxiMesh::Segment;
 using AxiMesh::SegmentState;
 using AxiMesh::NormVariables;
+
+//
+//std::string errorTypeToMessage() {
+//
+//}
 
 struct ScopedTimer {
 	std::chrono::steady_clock::time_point t0;
@@ -26,6 +34,11 @@ struct ScopedTimer {
 			std::chrono::steady_clock::now() - t0).count());
 	}
 };
+
+// distance squared
+double dist2(const Point& a, const Point& b) {
+	return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+}
 
 double orient(const Point& A, const Point& B, const Point& P) {
 	return (B.x - A.x) * (P.y - A.y) - (B.y - A.y) * (P.x - A.x);
@@ -88,8 +101,13 @@ std::stack<int> buildInitialStack(int t0, int t1, int t2) {
 	return tStack;
 }
 
-bool isBoundary(int index) {
-	return index == -1;
+bool isBoundary(int tIndex) {
+	return tIndex == -1;
+}
+
+
+Point getMidpointFromPoints(const Point& a, const Point& b) {
+	return Point{ 0.5 * (a.x + b.x), 0.5 * (a.y + b.y) };
 }
 
 int getEdgeFromVertex(const Triangle& T, int vi) {
@@ -181,12 +199,163 @@ void flipEdge(std::vector<Triangle>& triangles, int t, int e) {
 
 }
 
+// find circumcenter of three points using Cramer's rule
+Point getCircumcenter(const Point& a, const Point& b, const Point& c) {
+
+	double bx = b.x - a.x;
+	double by = b.y - a.y;
+	double cx = c.x - a.x;
+	double cy = c.y - a.y;
+
+	double b2 = bx * bx + by * by;
+	double c2 = cx * cx + cy * cy;
+	double d = 2.0 * orient(a, b, c);
+	return { a.x + ((cy * b2 - by * c2) / d),
+			 a.y + ((bx * c2 - cx * b2) / d) };
+}
+
+// a triangle is skinny if it satisfies: r^2 > (B * dmin)^2
+// r is circumradius, dmin is smallest triangle side length, B is defined by user
+// square everything to avoid having to sqrt. orient can give us negative, so squaring will give us positive
+// get circumradius squared using (A * B * C)^2 / (16 * area * area) where A, B, C are side lengths of the triangle
+bool isSkinny(const Triangle& triangle, const std::vector<Point>& points, double B) {
+	const Point& a = points[triangle.v[0]];
+	const Point& b = points[triangle.v[1]];
+	const Point& c = points[triangle.v[2]];
+
+	double ab = dist2(a, b);
+	double bc = dist2(b, c);
+	double ca = dist2(c, a);
+	double quadArea = orient(a, b, c);
+
+	double circumradius2 = (ab * bc * ca) / (4.0 * quadArea * quadArea);
+
+	double dmin2 = std::min({ ab, bc, ca });
+
+	return circumradius2 > B * B * dmin2;
+}
+
 // check every edge and see if any are tIndex, if so return that edge index
 int getEdgeFromNeighbour(const Triangle& tri, int tIndex) {
 	for (int i = 0; i < 3; i++) {
 		if (tri.adj[i] == tIndex) return i;
 	}
 	return -1;
+}
+
+// ensure points already includes the point you want to insert. just pass nP, the index of that point you inserted
+bool insertVertex(
+	std::vector<Point>& points,
+	std::vector<Triangle>& triangles,
+	std::vector<int>& touched,
+	int nP,
+	int nT
+) {
+	Point& P = points[nP];
+
+	for (int check = 0; ; check++) {
+		if (nT == -1)	return false;						// walked out of bounds
+		if (check > (int)triangles.size()) return false;	// stalled
+		const Triangle& T = triangles[nT];
+		bool isPointInside = true;
+		for (int nE = 0; nE < 3; nE++) {
+
+			int indexA = T.v[nE];
+			int indexB = T.v[(nE + 1) % 3];
+			Point& A = points[indexA];
+			Point& B = points[indexB];
+
+			double d = orient(A, B, P);
+			if (d == 0) return false;	// point on the line
+			if (d < 0) {
+				nT = T.adj[nE];
+				isPointInside = false;
+				break;
+			}
+		}
+		if (isPointInside) break;
+	}
+
+	Triangle& T = triangles[nT];
+	// 1 triangle is overwritten and 2 new triangles are created everytime a point is inside a triangle
+	int v0 = T.v[0];
+	int v1 = T.v[1];
+	int v2 = T.v[2];
+
+	T.v[2] = nP;
+
+	int t0 = T.adj[0];
+	int t1 = T.adj[1];
+	int t2 = T.adj[2];
+
+	int t1New = (int)triangles.size();
+	int t2New = (int)triangles.size() + 1;
+
+
+
+	T.adj[1] = t1New;
+	T.adj[2] = t2New;
+
+	triangles.push_back({ {v1, v2, nP}, {t1, t2New, nT} });
+	triangles.push_back({ {v2, v0, nP}, {t2, nT, t1New} });
+
+	if (!isBoundary(t1)) {
+		updateEdge(triangles[t1], nT, t1New);
+	}
+
+	if (!isBoundary(t2)) {
+		updateEdge(triangles[t2], nT, t2New);
+	}
+
+	touched.push_back(t1New);
+	touched.push_back(t2New);
+	touched.push_back(nT);
+
+	// step 6: initialize stack. check for any -1 here so we don't have to check inside step 7
+	std::stack<int> tStack = buildInitialStack(t0, t1, t2);
+
+	// step 7: check if point P is inside any circumcicle of surrounding triangle
+	while (!tStack.empty()) {
+
+		// remove top triangle from stack
+		int outer = tStack.top();
+		tStack.pop();
+
+		Triangle& tOuter = triangles[outer];
+
+		if (tOuter.v[2] == nP) continue;
+
+		// find shared edge. recall how vertices are stored for a triangle
+		// for a new triangle, nP is always the third entry so use that to check for the shared edge
+		int edge = -1;
+		for (int i = 0; i < 3; i++) {
+			int nb = tOuter.adj[i];
+			if (nb != -1 && triangles[nb].v[2] == nP) {
+				edge = i;
+				break;
+			}
+		}
+		if (edge == -1) continue;
+
+		if (!swapTest(points, P, tOuter, edge)) continue;
+
+		// flip the edge. make sure tOuter1New and tOuter2New are defined beforehand, so we can push them to the stack
+		int tOpp = tOuter.adj[edge];
+		int tOuter1New = tOuter.adj[(edge + 1) % 3];
+		int tOuter2New = tOuter.adj[(edge + 2) % 3];
+
+		flipEdge(triangles, outer, edge);
+		touched.push_back(tOpp);
+		touched.push_back(outer);
+
+		if (!isBoundary(tOuter1New)) {
+			tStack.push(tOuter1New);
+		}
+		if (!isBoundary(tOuter2New)) {
+			tStack.push(tOuter2New);
+		}
+	}
+	return true;
 }
 
 std::vector<Triangle> AxiMesh::insertPoints(std::vector<Point>& points, int size) {
@@ -463,6 +632,30 @@ void handleCrossEdge(
 	}
 }
 
+// mark all triangles that have a constrained edge
+std::vector<uint8_t> buildConstrainedEdge(
+	const std::vector<int>& vertexTri,
+	const std::vector<Triangle>& triangles,
+	const std::vector<Segment>& segments
+) {
+	std::vector<uint8_t> constrained(3 * (int)triangles.size(), 0);
+
+	for (const Segment& seg : segments) {
+		int t, e;
+
+		// find t and e which corresponds to a triangle adjacent to a given constrained segment
+		if (!findEdge(vertexTri, triangles, seg.a, seg.b, t, e)) continue;
+		constrained[3 * t + e] = 1;
+
+		// ok we got 1 adjacent triangle, now get the other triangle opposite of the constrained segment
+		int tOpp = triangles[t].adj[e];
+		if (isBoundary(tOpp)) continue;
+		int eOpp = getEdgeFromNeighbour(triangles[tOpp], t);
+		constrained[3 * tOpp + eOpp] = 1;
+	}
+	return constrained;
+}
+
 void restoreDelaunayFromSegments(
 	std::vector<int>& vertexTri,
 	const std::vector<Point>& points,
@@ -569,11 +762,10 @@ std::vector<Point> normalize(
 
 std::vector<Point> unnormalize(
 	const std::vector<Point>& normPoints,
-	const NormVariables& normVar,
-	int size
+	const NormVariables& normVar
 ) {
-	std::vector<Point> points(size);
-	for (int n = 0; n < size; n++) {
+	std::vector<Point> points(normPoints.size());
+	for (int n = 0; n < (int)normPoints.size(); n++) {
 		points[n].x = normPoints[n].x * normVar.dMax + normVar.pxMin;
 		points[n].y = normPoints[n].y * normVar.dMax + normVar.pyMin;
 	}
@@ -605,31 +797,110 @@ std::vector<int> buildSortedPointIndices(
 	return indices;
 }
 
-void removeSuperTriangle(std::vector<Triangle>& triangles, std::vector<Point>& points) {
+void removeFloodFill(
+	std::vector<Triangle>& triangles,
+	std::vector<Point>& points,
+	const std::vector<uint8_t>& constrained
+) {
 
 	int size = (int)points.size() - 3;
-	int keep = 0;
-	std::vector<int> newIndices((int)triangles.size(), -1);
+	int triSize = (int)triangles.size();
 
-	// new indices contains triangles that do not have any super triangle vertices
-	for (int t = 0; t < (int)triangles.size(); t++) {
+	// mark all triangles that share the same vertex as the supertriangle
+	// we know for sure those triangles are outside, and needs to be removed
+	std::stack<int> removal;
+	std::vector<int8_t> parity(triSize, -1);
+	for (int t = 0; t < triSize; t++) {
 		const Triangle& triangle = triangles[t];
-		if (triangle.v[0] >= size || triangle.v[1] >= size || triangle.v[2] >= size) continue;
+		if (triangle.v[0] >= size || triangle.v[1] >= size || triangle.v[2] >= size) {
+			removal.push(t);
+			parity[t] = 0;
+		}
+	}
+
+	// using the above triangles, start a flood fill where it checks all exterior triangles and marks them as outside
+	// partiy keeps track of inside/outside. unvisited = -1. inside = 1. outside = 0.
+	while (!removal.empty()) {
+		int t = removal.top();
+		removal.pop();
+		for (int e = 0; e < 3; e++) {
+			const Triangle& triangle = triangles[t];
+			int nb = triangle.adj[e];
+			if (isBoundary(nb)) continue;						// skip boundaries
+
+			int8_t p = constrained[3 * t + e] == 1 ? 1 - parity[t] : parity[t];
+			if (parity[nb] != -1) continue;						// ensure the neighbor is unvisited
+			parity[nb] = p;										// set parity, which marks as visited
+			removal.push(nb);
+		}
+	}
+
+	// new indices contains triangles that are NOT outside
+	int keep = 0;
+	std::vector<int> newIndices(triSize, -1);
+	for (int t = 0; t < triSize; t++) {
+		Triangle& triangle = triangles[t];
+		//if (triangle.v[0] >= size || triangle.v[1] >= size || triangle.v[2] >= size) continue;	 // uncomment to enable only super triangle removal
+		if (parity[t] != 1) continue;	// uncomment to enable both super triangle removal + floodfill
 		newIndices[t] = keep++;
 	}
 
 	// make sure triangles are mapped to the new triangle indices
-	for (int t = 0; t < (int)triangles.size(); t++) {
+	for (int t = 0; t < triSize; t++) {
 		if (newIndices[t] == -1) continue;
-		Triangle tri = triangles[t];
+		Triangle triangle = triangles[t];
 		for (int i = 0; i < 3; i++) {
-			int tIndex = tri.adj[i];
-			tri.adj[i] = isBoundary(tIndex) ? -1 : newIndices[tIndex];
+
+			int tIndex = triangle.adj[i];
+			triangle.adj[i] = isBoundary(tIndex) ? -1 : newIndices[tIndex];
 		}
-		triangles[newIndices[t]] = tri;
+		triangles[newIndices[t]] = triangle;
 	}
 	triangles.resize(keep);
 	points.resize(size);
+}
+
+
+void refine(
+	std::vector<Triangle>& triangles,
+	std::vector<Point>& points,
+	std::vector<Segment>& segments,
+	double B
+) {
+
+	std::vector<int> queue;
+
+	std::vector<int> touched;
+
+
+	// store all skinny triangles
+	for (int t = 0; t < (int)triangles.size(); t++) {
+		if (isSkinny(triangles[t], points, B)) queue.push_back(t);
+	}
+
+	while (!queue.empty()) {
+
+		int t = queue.back();
+		queue.pop_back();
+		if (!isSkinny(triangles[t], points, B)) continue;	// ensures that we are looking at skinny triangles
+
+		const Triangle& triangle = triangles[t];
+		Point center = getCircumcenter(points[triangle.v[0]], points[triangle.v[1]], points[triangle.v[2]]);
+		points.push_back(center);
+
+		if (!insertVertex(points, triangles, touched, (int)points.size() - 1, t)) {
+			points.pop_back();
+			touched.clear();
+			continue;
+		}
+
+		// if any of the modified triangles are skinny, push it back into queue for interrogation
+		for (int nT : touched) {
+			if (isSkinny(triangles[nT], points, B)) queue.push_back(nT);
+		}
+		touched.clear();
+
+	}
 }
 
 AxiMesh::Mesh AxiMesh::generateMesh(
@@ -679,11 +950,16 @@ AxiMesh::Mesh AxiMesh::generateMesh(
 		mesh.segments.push_back({ newIndex[s.a], newIndex[s.b] });
 	}
 
+	// apply constraints
 	constrain(vertexTri, mesh);
 
-	// remove super triangle
-	removeSuperTriangle(mesh.triangles, mesh.points);
-	mesh.points = unnormalize(mesh.points, normVar, size);
+	// remove triangles in regions that are not needed. also removes the supertriangle
+	std::vector<uint8_t> constrained = buildConstrainedEdge(vertexTri, mesh.triangles, mesh.segments);
+	removeFloodFill(mesh.triangles, mesh.points, constrained);
+
+	// refinement
+	refine(mesh.triangles, mesh.points, mesh.segments, 1.0);
+	mesh.points = unnormalize(mesh.points, normVar);
 
 	return mesh;
 }
