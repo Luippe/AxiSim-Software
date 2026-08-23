@@ -5,6 +5,11 @@
 
 namespace AxiMesh{
 
+	enum class InsertionScheme {
+		REBAY,
+		ENGWIRDA
+	};
+
 	enum class ErrorCase {
 		OK,
 		STALLED,
@@ -59,7 +64,9 @@ namespace AxiMesh{
 	struct Params {
 		double B = 1.4;
 		double beta = 0.2;
-		double classify_tol = 1.4;
+		double classify_tol = 1.224;
+		InsertionScheme scheme = InsertionScheme::REBAY;
+		//InsertionScheme scheme = InsertionScheme::ENGWIRDA;
 		//int maxStallCount = 100;
 	};
 

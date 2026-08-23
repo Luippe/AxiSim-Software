@@ -163,6 +163,22 @@ namespace AxiMesh {
 		return state[t] == AdvancingState::ACTIVE;
 	}
 
+	void acceptTest(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		const std::vector<double>& h,
+		std::vector<AdvancingState>& state,
+		const Params& params,
+		int t
+	) {
+		const Triangle& triangle = triangles[t];
+		double hT = (h[triangle.v[0]] + h[triangle.v[1]] + h[triangle.v[2]]) / 3.0;
+		double target = params.classify_tol * hT;
+
+		state[t] = (3.0 * circumradius2(points, triangle) <= target * target) ? AdvancingState::ACCEPTED : AdvancingState::WAITING;
+	}
+
+
 	// ensure the frontal edge is valid based on the current triangle layout
 	bool isValidFrontEdge(
 		const std::vector<Triangle>& triangles,
@@ -174,6 +190,7 @@ namespace AxiMesh {
 
 		if (triangle.v[e] != frontEdge.v0)						return false;
 		if (triangle.v[(e + 1) % 3] != frontEdge.v1)			return false;
+		if (triangle.v[(e + 2) % 3] != frontEdge.v2)			return false;
 		if (state[frontEdge.t] == AdvancingState::ACCEPTED)		return false;
 		int nb = triangle.adj[e];
 		if (nb != -1 && state[nb] != AdvancingState::ACCEPTED)	return false;
@@ -202,30 +219,6 @@ namespace AxiMesh {
 					});
 			}
 		}
-	}
-
-	void acceptTest(
-		const std::vector<Point>& points,
-		const std::vector<Triangle>& triangles,
-		const std::vector<double>& h,
-		std::vector<AdvancingState>& state,
-		const Params& params,
-		int t
-	) {
-		const Triangle& triangle = triangles[t];
-		double hT = (h[triangle.v[0]] + h[triangle.v[1]] + h[triangle.v[2]]) / 3.0;
-		double target = params.classify_tol * hT;
-		const Point& a = points[triangle.v[0]];
-		const Point& b = points[triangle.v[1]];
-		const Point& c = points[triangle.v[2]];
-
-		double ab = dist2(a, b);
-		double bc = dist2(b, c);
-		double ca = dist2(c, a);
-		double quadArea = orient(a, b, c);
-
-		double circumradius2 = (ab * bc * ca) / (4.0 * quadArea * quadArea);
-		state[t] = (3.0 * circumradius2 <= target * target) ? AdvancingState::ACCEPTED : AdvancingState::WAITING;
 	}
 
 
@@ -317,7 +310,8 @@ namespace AxiMesh {
 	bool isSkinny(
 		const Triangle& triangle,
 		const std::vector<Point>& points,
-		const Params& params) {
+		const Params& params
+	) {
 		const Point& a = points[triangle.v[0]];
 		const Point& b = points[triangle.v[1]];
 		const Point& c = points[triangle.v[2]];
@@ -325,19 +319,45 @@ namespace AxiMesh {
 		double ab = dist2(a, b);
 		double bc = dist2(b, c);
 		double ca = dist2(c, a);
-		double quadArea = orient(a, b, c);
-
-		double circumradius2 = (ab * bc * ca) / (4.0 * quadArea * quadArea);
 
 		double dmin2 = std::min({ ab, bc, ca });
 
-		return circumradius2 > params.B * params.B * dmin2;
+		return circumradius2(points, triangle) > params.B * params.B * dmin2;
 	}
 
 	// check every edge and see if any are tIndex, if so return that edge index
 	int getEdgeFromNeighbour(const Triangle& tri, int tIndex) {
 		for (int i = 0; i < 3; i++) {
 			if (tri.adj[i] == tIndex) return i;
+		}
+		return -1;
+	}
+
+	int locateTriangle(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		const Point& P,
+		int tStart
+	) {
+		int nT = tStart;
+		for (int check = 0; ; check++) {
+			if (nT == -1)						return -1;
+			if (check > (int)triangles.size())	throwError(ErrorCase::STALLED);
+			const Triangle& T = triangles[nT];
+			bool isPointInside = true;
+			for (int nE = 0; nE < 3; nE++) {
+
+				int indexA = T.v[nE];
+				int indexB = T.v[(nE + 1) % 3];
+
+				double d = orient(points[indexA], points[indexB], P);
+				if (d < 0) {
+					nT = T.adj[nE];
+					isPointInside = false;
+					break;
+				}
+			}
+			if (isPointInside) return nT;
 		}
 		return -1;
 	}
@@ -352,27 +372,8 @@ namespace AxiMesh {
 	) {
 		Point& P = points[nP];
 
-		for (int check = 0; ; check++) {
-			if (nT == -1)						return false;
-			if (check > (int)triangles.size())	throwError(ErrorCase::STALLED);
-			const Triangle& T = triangles[nT];
-			bool isPointInside = true;
-			for (int nE = 0; nE < 3; nE++) {
-
-				int indexA = T.v[nE];
-				int indexB = T.v[(nE + 1) % 3];
-				Point& A = points[indexA];
-				Point& B = points[indexB];
-
-				double d = orient(A, B, P);
-				if (d < 0) {
-					nT = T.adj[nE];
-					isPointInside = false;
-					break;
-				}
-			}
-			if (isPointInside) break;
-		}
+		nT = locateTriangle(points, triangles, P, nT);
+		if (nT == -1) return false;
 
 		Triangle& T = triangles[nT];
 		// 1 triangle is overwritten and 2 new triangles are created everytime a point is inside a triangle
@@ -896,6 +897,7 @@ namespace AxiMesh {
 			points.push_back(center);
 
 			if (!insertVertex(points, triangles, touched, (int)points.size() - 1, t)) {
+
 				points.pop_back();
 				touched.clear();
 				continue;
@@ -910,6 +912,126 @@ namespace AxiMesh {
 		}
 	}
 
+	bool getPointRebay(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		std::vector<double>& h,
+		const FrontEdge& frontEdge,
+		Point& X
+	) {
+
+		// Rebay 1993 sec 6.2: front edge PQ, midpoint M, p = |PQ|/2, q = |C_A M|,
+		// new point X on the Voronoi segment at distance d from M along unit vector e
+		Point P = points[frontEdge.v0];
+		Point Q = points[frontEdge.v1];
+		Point apex = points[frontEdge.v2];
+
+		double lenPQ = frontEdge.len;
+		double p = 0.5 * lenPQ;
+		const Point& M = { 0.5 * (P.x + Q.x), 0.5 * (P.y + Q.y) };
+		double ex = -(Q.y - P.y) / lenPQ;
+		double ey = (Q.x - P.x) / lenPQ;
+		double hM = 0.5 * (h[frontEdge.v0] + h[frontEdge.v1]);
+		double rhoM = hM / (std::sqrt(3));
+		double rhoHat = std::max(rhoM, p);
+		double d = rhoHat + std::sqrt(rhoHat * rhoHat - p * p);
+		const Point& CA = getCircumcenter(P, Q, apex);
+		double q = (CA.x - M.x) * ex + (CA.y - M.y) * ey;
+		if (q <= 0.0) return false;
+		d = std::min(d, q);				// Rebay's upper limit rhoHat <= (p^2+q^2)/(2q) reduces to d <= q
+		X = { M.x + d * ex, M.y + d * ey };
+
+		return true;
+	}
+
+	// sample h at an arbitrary point. use barycentric weight
+	bool sampleH(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		const std::vector<double>& h,
+		const Point& P,
+		int tStart,
+		double& hOut
+	) {
+
+		int t = locateTriangle(points, triangles, P, tStart);
+		if (t == -1) return false;
+
+		const Triangle& T = triangles[t];
+		const Point& A = points[T.v[0]];
+		const Point& B = points[T.v[1]];
+		const Point& C = points[T.v[2]];
+
+		double area = orient(A, B, C);
+
+		double wA = orient(B, C, P) / area;
+		double wB = orient(C, A, P) / area;
+		double wC = orient(A, B, P) / area;
+
+		hOut = wA * h[T.v[0]] + wB * h[T.v[1]] + wC * h[T.v[2]];
+		return true;
+	}
+
+	bool getPointEngwirda(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		std::vector<double>& h,
+		const FrontEdge& frontEdge,
+		const Params& params,
+		Point& X
+	) {
+
+		Point P = points[frontEdge.v0];
+		Point Q = points[frontEdge.v1];
+		Point apex = points[triangles[frontEdge.t].v[(frontEdge.e + 2) % 3]];
+		const Point& M = { 0.5 * (P.x + Q.x), 0.5 * (P.y + Q.y) };
+		double lenPQ = frontEdge.len;
+		double p = 0.5 * lenPQ;
+		double ex = -(Q.y - P.y) / lenPQ;
+		double ey = (Q.x - P.x) / lenPQ;
+
+
+		// type 1
+		Point X1 = getCircumcenter(P, Q, apex);
+		double d1 = (X1.x - M.x) * ex + (X1.y - M.y) * ey;
+		if (d1 <= 0.0) return false;
+
+		// type 2
+		double hM1, hM2;
+		double hM = 0.5 * (h[frontEdge.v0] + h[frontEdge.v1]);
+
+		double d2 = std::sqrt(hM * hM - p * p);
+		if (hM < p) return false;
+		for (int i = 0; i < 5; i++) {
+			const Point& C = { M.x + d2 * ex, M.y + d2 * ey };
+			const Point& PCM = { 0.5 * (P.x + C.x), 0.5 * (P.y + C.y) };
+			const Point& QCM = { 0.5 * (Q.x + C.x), 0.5 * (Q.y + C.y) };
+
+			if (!sampleH(points, triangles, h, PCM, frontEdge.t, hM1)) break;
+			if (!sampleH(points, triangles, h, QCM, frontEdge.t, hM2)) break;
+			if (hM1 < p || hM2 < p) break;
+
+			double a1 = std::sqrt(hM1 * hM1 - p * p);
+			double a2 = std::sqrt(hM2 * hM2 - p * p);
+			d2 = 0.5 * (a1 + a2);
+		}
+		Point X2 = { M.x + d2 * ex, M.y + d2 * ey };
+		if (d2 <= 0.0) return false;
+
+		// type 3
+		double a3 = p / (std::tan(0.5 * std::asin(1.0 / (2.0 * params.B))));
+		Point X3 = { M.x + a3 * ex, M.y + a3 * ey };
+		double d3 = (X3.x - M.x) * ex + (X3.y - M.y) * ey;
+		if (d3 <= 0.0) return false;
+
+		if		(d2 <= d1 && d2 <= d3 && d2 >= p)	X = X2;
+		else if (d3 <= d1)							X = X3;
+		else										X = X1;
+
+		return true;
+
+	}
+
 	void advancingFront(
 		std::vector<Point>& points,
 		std::vector<Triangle>& triangles,
@@ -918,7 +1040,6 @@ namespace AxiMesh {
 		FrontQueue& frontEdges,
 		const Params& params
 	) {
-		double rhoConst = 1 / std::sqrt(3);
 		std::vector<int> touched;
 		std::vector<int> dirty;
 		std::vector<int> mark;
@@ -930,28 +1051,19 @@ namespace AxiMesh {
 			frontEdges.pop();
 			if (!isValidFrontEdge(triangles, state, frontEdge)) continue;
 
-			// Rebay 1993 sec 6.2: front edge PQ, midpoint M, p = |PQ|/2, q = |C_A M|,
-			// new point X on the Voronoi segment at distance d from M along unit vector e
-			Point P = points[frontEdge.v0];
-			Point Q = points[frontEdge.v1];
-			Point apex = points[triangles[frontEdge.t].v[(frontEdge.e + 2) % 3]];
+			double hP = 0.0;
+			Point X;
+			switch (params.scheme) {
+			case InsertionScheme::REBAY:
+				if (!getPointRebay(points, triangles, h, frontEdge, X)) continue;
+				break;
+			case InsertionScheme::ENGWIRDA:
+				if (!getPointEngwirda(points, triangles, h, frontEdge, params, X)) continue;
+				break;
+			}
 
-			double lenPQ = frontEdge.len;
-			double p = lenPQ / 2.0;
-			const Point& M = { 0.5 * (P.x + Q.x), 0.5 * (P.y + Q.y) };
-			double ex = -(Q.y - P.y) / lenPQ;
-			double ey = (Q.x - P.x) / lenPQ;
-			double hM = 0.5 * (h[frontEdge.v0] + h[frontEdge.v1]);
-			double rhoM = rhoConst * hM;
-			double rhoHat = std::max(rhoM, p);
-			double d = rhoHat + std::sqrt(rhoHat * rhoHat - p * p);
-			const Point& CA = getCircumcenter(P, Q, apex);
-
-			double q = (CA.x - M.x) * ex + (CA.y - M.y) * ey;
-			if (q <= 0.0) continue;
-			d = std::min(d, q);				// Rebay's upper limit rhoHat <= (p^2+q^2)/(2q) reduces to d <= q
-			const Point& X = { M.x + d * ex, M.y + d * ey };
-
+			sampleH(points, triangles, h, X, frontEdge.t, hP);
+			//hP = 0.5 * (h[frontEdge.v0] + h[frontEdge.v1]);
 			points.push_back(X);
 			if (!insertVertex(points, triangles, touched, (int)points.size() - 1, frontEdge.t)) {
 				points.pop_back();
@@ -959,7 +1071,7 @@ namespace AxiMesh {
 				continue;
 			}
 
-			h.push_back(hM);
+			h.push_back(hP);
 			state.resize(triangles.size(), AdvancingState::WAITING);		// size of state = size of triangles, always
 			mark.resize(triangles.size(), -1);
 
@@ -1002,6 +1114,12 @@ namespace AxiMesh {
 
 			touched.clear();
 		}
+		for (int i = 0; i < (int)triangles.size(); i++) {
+			if (isSkinny(triangles[i], points, params)) {
+				printf("%d\n", i);
+			}
+		}
+
 	}
 
 	void buildFrontEdges(
@@ -1026,6 +1144,41 @@ namespace AxiMesh {
 				}
 			}
 		}
+	}
+
+	void lipschitzSmoothing(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		std::vector<double>& h,
+		const Params& params
+	) {
+
+		// gradation constraint (Lipschitz smoothing)
+		bool changed = false;
+		int stallCount = 0;
+		do {
+			changed = false;
+			if (stallCount++ > 100) throwError(ErrorCase::STALLED);
+			for (int t = 0; t < (int)triangles.size(); t++) {
+				const Triangle& triangle = triangles[t];
+				for (int e = 0; e < 3; e++) {
+					int v = triangle.v[e];
+					int w = triangle.v[(e + 1) % 3];
+
+					// iterate to ensure lipschitz condition holds
+					double lenVW = std::sqrt(dist2(points[v], points[w]));
+					if (h[v] > h[w] + params.beta * lenVW) {
+						h[v] = h[w] + params.beta * lenVW;
+						changed = true;
+					}
+					if (h[w] > h[v] + params.beta * lenVW) {
+						h[w] = h[v] + params.beta * lenVW;
+						changed = true;
+					}
+				}
+			}
+		} while (changed);
+
 	}
 
 	void frontalInit(
@@ -1057,31 +1210,7 @@ namespace AxiMesh {
 			h[i] = lSum[i] / count[i];
 		}
 
-		// gradation constraint (Lipschitz smoothing)
-		bool changed = false;
-		int stallCount = 0;
-		do {
-			changed = false;
-			if (stallCount++ > 100) throwError(ErrorCase::STALLED);
-			for (int t = 0; t < (int)triangles.size(); t++) {
-				const Triangle& triangle = triangles[t];
-				for (int e = 0; e < 3; e++) {
-					int v = triangle.v[e];
-					int w = triangle.v[(e + 1) % 3];
-
-					// iterate to ensure lipschitz condition holds
-					double lenVW = std::sqrt(dist2(points[v], points[w]));
-					if (h[v] > h[w] + params.beta * lenVW) {
-						h[v] = h[w] + params.beta * lenVW;
-						changed = true;
-					}
-					if (h[w] > h[v] + params.beta * lenVW) {
-						h[w] = h[v] + params.beta * lenVW;
-						changed = true;
-					}
-				}
-			}
-		} while (changed);
+		lipschitzSmoothing(points, triangles, h, params);
 
 		// populate triangle states. two passes.
 		// first pass accepts all triangles adjacent to a boundary

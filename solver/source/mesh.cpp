@@ -1246,8 +1246,8 @@ void Mesh::runAxiMeshTriangulation() {
 	//	vertex.pointID =
 	//}
 
-	printSize(axiMesh.points, axiMesh.segments, axiMesh.triangles);
-	printSize(unstructuredPoints, unstructuredTriangles);
+	//printSize(axiMesh.points, axiMesh.segments, axiMesh.triangles);
+	//printSize(unstructuredPoints, unstructuredTriangles);
 }
 
 void Mesh::runGmshTriangulation() {
