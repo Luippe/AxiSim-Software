@@ -24,6 +24,8 @@ namespace AxiMesh {
 			return "point is out of bounds and search has walked off";
 		case ErrorCase::SIZE_DIFF:
 			return "different size detected";
+		case ErrorCase::COMPLEX_SQRT:
+			return "complex number from a square root";
 		default:
 			return "ERROR";
 		}
@@ -83,6 +85,8 @@ namespace AxiMesh {
 		}
 		return true;
 	}
+
+
 
 	bool swapTest(const std::vector<Point>& points, const Point& P, const Triangle& T, int edge) {
 
@@ -156,20 +160,47 @@ namespace AxiMesh {
 		return dxAC * dxBC + dyAC * dyBC;
 	}
 
-	bool activeTest(
+	// get minimum side of triangle
+	double getMinSide2(
+		const std::vector<Point>& points,
+		const Triangle& triangle
+	) {
+		const Point& a = points[triangle.v[0]];
+		const Point& b = points[triangle.v[1]];
+		const Point& c = points[triangle.v[2]];
+
+		double ab = dist2(a, b);
+		double bc = dist2(b, c);
+		double ca = dist2(c, a);
+
+		return std::min({ ab, bc, ca });
+	}
+
+	void activeTest(
 		const std::vector<Triangle>& triangles,
 		std::vector<AdvancingState>& state,
 		int t
 	) {
-		if (state[t] == AdvancingState::ACCEPTED) return false;
+		if (state[t] == AdvancingState::ACCEPTED) return;
 		for (int e = 0; e < 3; e++) {
 			int tAdj = triangles[t].adj[e];
 			if (tAdj == -1 || state[tAdj] == AdvancingState::ACCEPTED) {
 				state[t] = AdvancingState::ACTIVE;
-				break;
+				return;
 			}
 		}
-		return state[t] == AdvancingState::ACTIVE;
+	}
+
+	// a triangle is skinny if it satisfies: r^2 > (B * dmin)^2
+	// r is circumradius, dmin is smallest triangle side length, B is defined by user
+	// square everything to avoid having to sqrt. orient can give us negative, so squaring will give us positive
+	// get circumradius squared using (A * B * C)^2 / (16 * area * area) where A, B, C are side lengths of the triangle
+	bool isSkinny(
+		const Triangle& triangle,
+		const std::vector<Point>& points,
+		const Params& params
+	) {
+		return circumradius2(points, triangle) > params.B * params.B * getMinSide2(points, triangle);
 	}
 
 	void acceptTest(
@@ -184,7 +215,10 @@ namespace AxiMesh {
 		double hT = (h[triangle.v[0]] + h[triangle.v[1]] + h[triangle.v[2]]) / 3.0;
 		double target = params.classify_tol * hT;
 
-		state[t] = (3.0 * circumradius2(points, triangle) <= target * target) ? AdvancingState::ACCEPTED : AdvancingState::WAITING;
+		//state[t] = (3.0 * circumradius2(points, triangle) <= target * target) ? AdvancingState::ACCEPTED : AdvancingState::WAITING;
+		bool sizeOK = 3.0 * circumradius2(points, triangle) <= target * target;
+		state[t] = (sizeOK && !isSkinny(triangle, points, params)) ? AdvancingState::ACCEPTED
+			: AdvancingState::WAITING;
 	}
 
 
@@ -354,21 +388,7 @@ namespace AxiMesh {
 				 a.y + ((bx * c2 - cx * b2) / d) };
 	}
 
-	// get minimum side of triangle
-	double getMinSide2(
-		const std::vector<Point>& points,
-		const Triangle& triangle
-	) {
-		const Point& a = points[triangle.v[0]];
-		const Point& b = points[triangle.v[1]];
-		const Point& c = points[triangle.v[2]];
 
-		double ab = dist2(a, b);
-		double bc = dist2(b, c);
-		double ca = dist2(c, a);
-
-		return std::min({ ab, bc, ca });
-	}
 
 	// get minimum angle
 	double getMinAngle(
@@ -381,17 +401,7 @@ namespace AxiMesh {
 		return std::asin(std::sqrt(sin2));
 	}
 
-	// a triangle is skinny if it satisfies: r^2 > (B * dmin)^2
-	// r is circumradius, dmin is smallest triangle side length, B is defined by user
-	// square everything to avoid having to sqrt. orient can give us negative, so squaring will give us positive
-	// get circumradius squared using (A * B * C)^2 / (16 * area * area) where A, B, C are side lengths of the triangle
-	bool isSkinny(
-		const Triangle& triangle,
-		const std::vector<Point>& points,
-		const Params& params
-	) {
-		return circumradius2(points, triangle) > params.B * params.B * getMinSide2(points, triangle);
-	}
+
 
 
 	// check every edge and see if any are tIndex, if so return that edge index
@@ -1086,13 +1096,12 @@ namespace AxiMesh {
 
 		Point P = points[frontEdge.v0];
 		Point Q = points[frontEdge.v1];
-		Point apex = points[triangles[frontEdge.t].v[(frontEdge.e + 2) % 3]];
+		Point apex = points[frontEdge.v2];
 		const Point& M = { 0.5 * (P.x + Q.x), 0.5 * (P.y + Q.y) };
 		double lenPQ = frontEdge.len;
 		double p = 0.5 * lenPQ;
 		double ex = -(Q.y - P.y) / lenPQ;
 		double ey = (Q.x - P.x) / lenPQ;
-
 
 		// type 1
 		Point X1 = getCircumcenter(P, Q, apex);
@@ -1103,24 +1112,23 @@ namespace AxiMesh {
 		double hM1, hM2;
 		double hM = 0.5 * (h[frontEdge.v0] + h[frontEdge.v1]);
 
-		if (hM < p) return false;
+		if (hM < p)						throwError(ErrorCase::COMPLEX_SQRT);
 		double d2 = std::sqrt(hM * hM - p * p);
 
-		for (int i = 0; i < 5; i++) {
+		for (int i = 0; i < 10; i++) {
 			const Point& C = { M.x + d2 * ex, M.y + d2 * ey };
 			const Point& PCM = { 0.5 * (P.x + C.x), 0.5 * (P.y + C.y) };
 			const Point& QCM = { 0.5 * (Q.x + C.x), 0.5 * (Q.y + C.y) };
 
 			if (!sampleH(points, triangles, h, PCM, frontEdge.t, hM1)) break;
 			if (!sampleH(points, triangles, h, QCM, frontEdge.t, hM2)) break;
-			if (hM1 < p || hM2 < p) break;
+			if (hM1 < p || hM2 < p)		throwError(ErrorCase::COMPLEX_SQRT);
 
 			double a1 = std::sqrt(hM1 * hM1 - p * p);
 			double a2 = std::sqrt(hM2 * hM2 - p * p);
 			d2 = 0.5 * (a1 + a2);
 		}
 		Point X2 = { M.x + d2 * ex, M.y + d2 * ey };
-		if (d2 <= 0.0) return false;
 
 		// type 3
 		double a3 = p / (std::tan(0.5 * std::asin(1.0 / (2.0 * params.B))));
@@ -1155,8 +1163,8 @@ namespace AxiMesh {
 			frontEdges.pop();
 			if (!isValidFrontEdge(triangles, state, frontEdge)) continue;
 
-			double hP = 0.0;
-			Point X;
+			double hP = 0.0;	// size function at new point
+			Point X;			// location of new point
 			switch (params.scheme) {
 			case InsertionScheme::REBAY:
 				if (!getPointRebay(points, triangles, h, frontEdge, X)) continue;
@@ -1167,7 +1175,6 @@ namespace AxiMesh {
 			}
 
 			sampleH(points, triangles, h, X, frontEdge.t, hP);
-			//hP = 0.5 * (h[frontEdge.v0] + h[frontEdge.v1]);
 
 			points.push_back(X);
 			if (!insertVertex(points, triangles, touched, (int)points.size() - 1, frontEdge.t)) {
@@ -1440,8 +1447,6 @@ namespace AxiMesh {
 		}
 		p.x = points[nP].x + (sumX / ringSize);
 		p.y = points[nP].y + (sumY / ringSize);
-		//p.x = points[nP].x + 0.2 * sumX;
-		//p.y = points[nP].y + 0.2 * sumY;
 		return p;
 	}
 
@@ -1462,21 +1467,13 @@ namespace AxiMesh {
 				int vOpp = triangles[tOpp].v[(eOpp + 2) % 3];
 
 				double before = std::min(triangleQuality(points[v0], points[v1], points[v2]),
-					triangleQuality(points[v1], points[v0], points[vOpp]));
+										triangleQuality(points[v1], points[v0], points[vOpp]));
 				double after = std::min(triangleQuality(points[v2], points[v0], points[vOpp]),
-					triangleQuality(points[v2], points[vOpp], points[v1]));
+										triangleQuality(points[v2], points[vOpp], points[v1]));
 
 				if (after > before) flipEdge(triangles, t, e);
 			}
 		}
-	}
-
-	void removePoint(
-		std::vector<Point>& points,
-		std::vector<Triangle>& triangles,
-		int nP
-	) {
-
 	}
 
 	void smartSmoothing(
@@ -1496,7 +1493,7 @@ namespace AxiMesh {
 			Point target = generalSmoothing(points, triangles, h, ring, params, func, i);
 
 			// only move if the worst triangle in the fan improves
-			//points[i] = target;
+			// points[i] = target;
 			if (fanQuality(points, triangles, ring, i, target) >
 				fanQuality(points, triangles, ring, i, points[i])) {
 				points[i] = target;
@@ -1526,6 +1523,13 @@ namespace AxiMesh {
 		}
 	}
 
+	SizeField buildSizingFunction(
+		const Params& params
+	) {
+		SizeField h;
+
+	}
+
 	Mesh generateMesh(
 		const std::vector<Point>& points,
 		const std::vector<Segment>& segments,
@@ -1536,10 +1540,10 @@ namespace AxiMesh {
 		//ScopedTimer timer;
 		//timer.start();
 
-
 		// step 1: normalize coordinates
 		NormVariables normVar = buildNormVariables(points);
 		std::vector<Point> normPoints = normalize(points, normVar, size);
+		SizeField sizing;
 
 		// step 2: put points into bins and sort by bin number
 		std::vector<int> indices = buildSortedPointIndices(points, normVar, size);
@@ -1584,6 +1588,8 @@ namespace AxiMesh {
 		// frontal delaunay
 		// initialize sizing field and states for advancing front
 		std::vector<double> h(mesh.points.size(), std::numeric_limits<double>::max());
+		//std::vector<double> h(mesh.points.size(), 0.02);
+
 		std::vector<AdvancingState> state(mesh.triangles.size(), AdvancingState::WAITING);
 		FrontQueue frontEdges;
 

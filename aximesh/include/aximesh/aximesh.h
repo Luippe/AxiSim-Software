@@ -23,7 +23,8 @@ namespace AxiMesh{
 		WALK_OFF,
 		DUPLICATE,
 		ON_EDGE,
-		SIZE_DIFF
+		SIZE_DIFF,
+		COMPLEX_SQRT
 
 	};
 
@@ -74,12 +75,21 @@ namespace AxiMesh{
 		double dy = 0;
 	};
 
+	struct SizeField {
+		int nz = 100;
+		int nr = 100;
+		double dz = 0.0;
+		double dr = 0.0;
+		double sample();
+
+	};
+
 	struct Params {
-		double B = 1.4;
+		double B = 1.0;
 		double gSmoothing = 0.3;
-		double classify_tol = 1.224;
-		//InsertionScheme scheme = InsertionScheme::REBAY;
-		InsertionScheme scheme = InsertionScheme::ENGWIRDA;
+		double classify_tol = 1.2247;
+		InsertionScheme scheme = InsertionScheme::REBAY;
+		//InsertionScheme scheme = InsertionScheme::ENGWIRDA;
 
 
 		// smoothing variables
