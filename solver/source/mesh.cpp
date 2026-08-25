@@ -8,6 +8,7 @@
 #include "printer.h"
 #include <glm/trigonometric.hpp>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <numbers>
 #include <numeric>
@@ -518,6 +519,7 @@ bool Mesh::hasDomainBoundarySegments() const {
 void Mesh::clearUnstructuredGeometry() {
 	unstructuredPoints.clear();
 	unstructuredTriangles.clear();
+	unstructuredSizing.clear();
 
 	boundaryVertices.clear();
 	boundaryEdges.clear();
@@ -1209,6 +1211,7 @@ void Mesh::runAxiMeshTriangulation() {
 
 	unstructuredTriangles.clear();
 	unstructuredPoints.clear();
+	unstructuredSizing.clear();
 
 	if (boundaryEdges.empty()) printf("BOUNDARY EDGE IS EMPTY\n");
 	if (boundaryVertices.empty()) printf("BOUNDARY VERTICES IS EMPTY\n");
@@ -1241,6 +1244,20 @@ void Mesh::runAxiMeshTriangulation() {
 	for (int i = 0; i < (int)points.size(); i++) {
 		unstructuredPoints.push_back({ points[i].x, points[i].y });
 		//boundaryVertices[i].pointID = i;
+	}
+
+	// axiMesh.sizing is a length in the mesher's normalized space, so undo that map
+	// with the same variables generateMesh built from these input points. A value
+	// still at the DBL_MAX it was seeded with is a point the sizing field never
+	// reached; store -1 so consumers only have to test for a positive length.
+	const double dMax = AxiMesh::buildNormVariables(meshPoints).dMax;
+	constexpr double unsetSize = 0.5 * std::numeric_limits<double>::max();
+
+	unstructuredSizing.reserve(axiMesh.sizing.size());
+
+	for (double h : axiMesh.sizing) {
+		bool measured = std::isfinite(h) && h > 0.0 && h < unsetSize;
+		unstructuredSizing.push_back(measured ? h * dMax : -1.0);
 	}
 	//for (BoundaryVertex& vertex : boundaryVertices) {
 	//	vertex.pointID =
@@ -1393,6 +1410,9 @@ void Mesh::runGmshTriangulation() {
 
 	unstructuredPoints.clear();
 	unstructuredPoints.reserve(nodeTags.size());
+
+	// gmsh keeps its size field to itself, so this path leaves none behind
+	unstructuredSizing.clear();
 
 	std::unordered_map<std::size_t, int> pointIDByNodeTag;
 	pointIDByNodeTag.reserve(nodeTags.size());
@@ -1581,6 +1601,7 @@ void Mesh::rebuildBoundaryDiscretization() {
 	boundaryVertices.clear();
 	boundaryEdges.clear();
 	unstructuredPoints.clear();
+	unstructuredSizing.clear();
 
 	std::unordered_map<PointKey, int, PointKeyHash> vertexLookup;
 

@@ -107,6 +107,12 @@ public:
 
 	std::vector<Vec2> unstructuredPoints;
 	std::vector<Triangle> unstructuredTriangles;
+
+	// The target edge length (metres) the mesher aimed for at each unstructuredPoints
+	// entry, -1 where it has none. Only the aximesh path produces one and it is not
+	// serialized, so a gmsh mesh or a loaded project leaves it empty -- which is how a
+	// consumer knows there is no sizing field to show.
+	std::vector<double> unstructuredSizing;
 	std::vector<BoundaryVertex> boundaryVertices;
 	std::vector<BoundarySegment> boundarySegments;
 	std::vector<MeshRegionOfInfluence> regionsOfInfluence;
@@ -276,6 +282,7 @@ private:
 	// See getFVMesh(). Dirty by default so a Mesh that is loaded or hand-built
 	// rather than generated still gets one built on first refresh.
 	FVMesh fvMesh;
+
 	bool fvMeshDirty = true;
 
 	// Pick the right construction path for the current mesh type and build it.

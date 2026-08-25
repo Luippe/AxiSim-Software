@@ -116,14 +116,15 @@ private:
 	bool toggleAspectRatio = false;	// overlay: shade every cell by its aspect ratio
 	bool toggleOrthogonality = false;	// overlay: shade every cell by its non-orthogonality
 	bool toggleSkewness = false;	// overlay: shade every cell by its skewness
+	bool toggleSizing = false;		// overlay: shade every cell by the mesher's target size
 	int selectedCell = -1;			// FV cell pinned by a left click (-1 = none)
 	bool inspectMeshDirty = true;	// rebuild the snapshot on the next render
 
-	// The three quality overlays are one view of the mesh, not three: each toolbar
-	// toggle clears the other two, so only one shading -- and one legend, they share
-	// the same corner -- is ever up. This is what the rest of the panel asks.
+	// The four cell overlays are one view of the mesh, not four: each toolbar toggle
+	// clears the others, so only one shading -- and one legend, they share the same
+	// corner -- is ever up. This is what the rest of the panel asks.
 	bool qualityOverlayActive() const {
-		return toggleAspectRatio || toggleOrthogonality || toggleSkewness;
+		return toggleAspectRatio || toggleOrthogonality || toggleSkewness || toggleSizing;
 	}
 
 	// The FV mesh the inspector reads. Mesh owns and caches it (built at generate
@@ -194,6 +195,18 @@ private:
 	void drawAspectRatio(ImDrawList* drawList);
 	void drawOrthogonality(ImDrawList* drawList);
 	void drawSkewness(ImDrawList* drawList);
+
+	// Shade every cell by the target edge length the mesher aimed for there. Unlike
+	// the three shape metrics this is an input to the mesh rather than a property of
+	// it, so it has no universal good/bad range -- the ramp spans the field's own
+	// min and max, in the project's display length unit.
+	void drawSizing(ImDrawList* drawList);
+
+	// Mesh::unstructuredSizing averaged over the cell's own corner nodes -- the sizing
+	// field lives on vertices, the overlay and the cell report both want one number
+	// per cell. Negative when this mesh carries no sizing field, or the cell has no
+	// usable corners.
+	double cellTargetSize(int cellID) const;
 
 	// Shared body of the three overlays above: shade every cell by its own value on
 	// a fixed [lo, hi] ramp, then raise the legend if anything was painted. Only the

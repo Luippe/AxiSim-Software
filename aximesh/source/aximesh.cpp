@@ -9,8 +9,10 @@
 #include <cstdio>
 #include <stdexcept>
 #include <queue>
+#include <functional>
 
 //#include <format>
+using SmoothFunc = double(*)(double d);
 
 namespace AxiMesh {
 
@@ -20,7 +22,10 @@ namespace AxiMesh {
 			return "point search has stalled";
 		case ErrorCase::WALK_OFF:
 			return "point is out of bounds and search has walked off";
-
+		case ErrorCase::SIZE_DIFF:
+			return "different size detected";
+		default:
+			return "ERROR";
 		}
 	}
 
@@ -44,6 +49,10 @@ namespace AxiMesh {
 	// distance squared
 	double dist2(const Point& a, const Point& b) {
 		return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+	}
+
+	double dist(const Point& a, const Point& b) {
+		return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
 	}
 
 	double orient(const Point& A, const Point& B, const Point& P) {
@@ -221,6 +230,20 @@ namespace AxiMesh {
 		}
 	}
 
+	Point ringCentroid(
+		const std::vector<Point>& points,
+		const PointRing& ring
+	) {
+		Point p;
+		int ringSize = (int)ring.neighbors.size();
+		for (const int& nb : ring.neighbors) {
+			p.x += points[nb].x;
+			p.y += points[nb].y;
+		}
+		p.x = p.x / ringSize;
+		p.y = p.y / ringSize;
+		return p;
+	}
 
 	// loop/fan around vertex a, until vertex b is found
 	bool findEdge(const std::vector<int>& vertexTri, const std::vector<Triangle>& triangles, int a, int b, int& tOut, int& eOut) {
@@ -240,6 +263,35 @@ namespace AxiMesh {
 
 		} while (t != tStart && t != -1);
 		return false;
+	}
+
+	// 1 = equilateral
+	double triangleQuality(
+		const Point& a,
+		const Point& b,
+		const Point& c
+	) {
+		double l2 = dist2(a, b) + dist2(b, c) + dist2(c, a);
+		return 2.0 * std::sqrt(3.0) * orient(a, b, c) / l2;
+	}
+
+	double fanQuality(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		const PointRing& ring,
+		int vi,
+		const Point& candidate
+	) {
+		double q = std::numeric_limits<double>::max();
+		for (int t : ring.tris) {
+			const Triangle& T = triangles[t];
+			Point p[3];
+			for (int e = 0; e < 3; e++) {
+				p[e] = (T.v[e] == vi) ? candidate : points[T.v[e]];
+			}
+			q = std::min(q, triangleQuality(p[0], p[1], p[2]));
+		}
+		return q;
 	}
 
 	void flipEdge(std::vector<Triangle>& triangles, int t, int e) {
@@ -302,6 +354,32 @@ namespace AxiMesh {
 				 a.y + ((bx * c2 - cx * b2) / d) };
 	}
 
+	// get minimum side of triangle
+	double getMinSide2(
+		const std::vector<Point>& points,
+		const Triangle& triangle
+	) {
+		const Point& a = points[triangle.v[0]];
+		const Point& b = points[triangle.v[1]];
+		const Point& c = points[triangle.v[2]];
+
+		double ab = dist2(a, b);
+		double bc = dist2(b, c);
+		double ca = dist2(c, a);
+
+		return std::min({ ab, bc, ca });
+	}
+
+	// get minimum angle
+	double getMinAngle(
+		const std::vector<Point>& points,
+		const Triangle& triangle
+	) {
+		double crad2 = circumradius2(points, triangle);
+		double dmin2 = getMinSide2(points, triangle);
+		double sin2 = std::min(1.0, dmin2 / (4.0 * crad2));
+		return std::asin(std::sqrt(sin2));
+	}
 
 	// a triangle is skinny if it satisfies: r^2 > (B * dmin)^2
 	// r is circumradius, dmin is smallest triangle side length, B is defined by user
@@ -312,18 +390,9 @@ namespace AxiMesh {
 		const std::vector<Point>& points,
 		const Params& params
 	) {
-		const Point& a = points[triangle.v[0]];
-		const Point& b = points[triangle.v[1]];
-		const Point& c = points[triangle.v[2]];
-
-		double ab = dist2(a, b);
-		double bc = dist2(b, c);
-		double ca = dist2(c, a);
-
-		double dmin2 = std::min({ ab, bc, ca });
-
-		return circumradius2(points, triangle) > params.B * params.B * dmin2;
+		return circumradius2(points, triangle) > params.B * params.B * getMinSide2(points, triangle);
 	}
+
 
 	// check every edge and see if any are tIndex, if so return that edge index
 	int getEdgeFromNeighbour(const Triangle& tri, int tIndex) {
@@ -331,6 +400,41 @@ namespace AxiMesh {
 			if (tri.adj[i] == tIndex) return i;
 		}
 		return -1;
+	}
+
+	void lipschitzSmoothing(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		std::vector<double>& h,
+		const Params& params
+	) {
+
+		// gradation constraint (Lipschitz smoothing)
+		bool changed = false;
+		int stallCount = 0;
+		do {
+			changed = false;
+			if (stallCount++ > 100) throwError(ErrorCase::STALLED);
+			for (int t = 0; t < (int)triangles.size(); t++) {
+				const Triangle& triangle = triangles[t];
+				for (int e = 0; e < 3; e++) {
+					int v = triangle.v[e];
+					int w = triangle.v[(e + 1) % 3];
+
+					// iterate to ensure lipschitz condition holds
+					double lenVW = std::sqrt(dist2(points[v], points[w]));
+					if (h[v] > h[w] + params.gSmoothing * lenVW) {
+						h[v] = h[w] + params.gSmoothing * lenVW;
+						changed = true;
+					}
+					if (h[w] > h[v] + params.gSmoothing * lenVW) {
+						h[w] = h[v] + params.gSmoothing * lenVW;
+						changed = true;
+					}
+				}
+			}
+		} while (changed);
+
 	}
 
 	int locateTriangle(
@@ -389,8 +493,6 @@ namespace AxiMesh {
 
 		int t1New = (int)triangles.size();
 		int t2New = (int)triangles.size() + 1;
-
-
 
 		T.adj[1] = t1New;
 		T.adj[2] = t2New;
@@ -837,7 +939,6 @@ namespace AxiMesh {
 				const Triangle& triangle = triangles[t];
 				int nb = triangle.adj[e];
 				if (isBoundary(nb)) continue;						// skip boundaries
-
 				int8_t p = constrained[3 * t + e] == 1 ? 1 - parity[t] : parity[t];
 				if (parity[nb] != -1) continue;						// ensure the neighbor is unvisited
 				parity[nb] = p;										// set parity, which marks as visited
@@ -944,6 +1045,8 @@ namespace AxiMesh {
 		return true;
 	}
 
+
+
 	// sample h at an arbitrary point. use barycentric weight
 	bool sampleH(
 		const std::vector<Point>& points,
@@ -1000,8 +1103,9 @@ namespace AxiMesh {
 		double hM1, hM2;
 		double hM = 0.5 * (h[frontEdge.v0] + h[frontEdge.v1]);
 
-		double d2 = std::sqrt(hM * hM - p * p);
 		if (hM < p) return false;
+		double d2 = std::sqrt(hM * hM - p * p);
+
 		for (int i = 0; i < 5; i++) {
 			const Point& C = { M.x + d2 * ex, M.y + d2 * ey };
 			const Point& PCM = { 0.5 * (P.x + C.x), 0.5 * (P.y + C.y) };
@@ -1064,6 +1168,7 @@ namespace AxiMesh {
 
 			sampleH(points, triangles, h, X, frontEdge.t, hP);
 			//hP = 0.5 * (h[frontEdge.v0] + h[frontEdge.v1]);
+
 			points.push_back(X);
 			if (!insertVertex(points, triangles, touched, (int)points.size() - 1, frontEdge.t)) {
 				points.pop_back();
@@ -1072,11 +1177,13 @@ namespace AxiMesh {
 			}
 
 			h.push_back(hP);
+			//lipschitzSmoothing(points, triangles, h, params);
+
 			state.resize(triangles.size(), AdvancingState::WAITING);		// size of state = size of triangles, always
 			mark.resize(triangles.size(), -1);
 
 			++epoch;
-			dirty.clear();
+
 
 			// build dirty vector, which includes triangles that have to be reclassified
 			// use mark and epoch. mark stores the iteration in which the triangle was stored
@@ -1112,13 +1219,20 @@ namespace AxiMesh {
 				pushValidFrontEdge(points, triangles, state, frontEdges, t);
 			}
 
+			dirty.clear();
 			touched.clear();
 		}
-		for (int i = 0; i < (int)triangles.size(); i++) {
-			if (isSkinny(triangles[i], points, params)) {
-				printf("%d\n", i);
-			}
-		}
+		//for (int i = 0; i < (int)triangles.size(); i++) {
+		//	if (isSkinny(triangles[i], points, params)) {
+		//		printf("%d\n", i);
+		//	}
+		//}
+		//double minAngle = 100.0;
+		//for (const Triangle& triangle : triangles) {
+		//	minAngle = std::min(minAngle, getMinAngle(points, triangle));
+		//
+		//}
+		//printf("%f\n", minAngle);
 
 	}
 
@@ -1144,41 +1258,6 @@ namespace AxiMesh {
 				}
 			}
 		}
-	}
-
-	void lipschitzSmoothing(
-		const std::vector<Point>& points,
-		const std::vector<Triangle>& triangles,
-		std::vector<double>& h,
-		const Params& params
-	) {
-
-		// gradation constraint (Lipschitz smoothing)
-		bool changed = false;
-		int stallCount = 0;
-		do {
-			changed = false;
-			if (stallCount++ > 100) throwError(ErrorCase::STALLED);
-			for (int t = 0; t < (int)triangles.size(); t++) {
-				const Triangle& triangle = triangles[t];
-				for (int e = 0; e < 3; e++) {
-					int v = triangle.v[e];
-					int w = triangle.v[(e + 1) % 3];
-
-					// iterate to ensure lipschitz condition holds
-					double lenVW = std::sqrt(dist2(points[v], points[w]));
-					if (h[v] > h[w] + params.beta * lenVW) {
-						h[v] = h[w] + params.beta * lenVW;
-						changed = true;
-					}
-					if (h[w] > h[v] + params.beta * lenVW) {
-						h[w] = h[v] + params.beta * lenVW;
-						changed = true;
-					}
-				}
-			}
-		} while (changed);
-
 	}
 
 	void frontalInit(
@@ -1229,6 +1308,222 @@ namespace AxiMesh {
 		for (int t = 0; t < (int)triangles.size(); t++) {
 			pushValidFrontEdge(points, triangles, state, frontEdges, t);
 		};
+	}
+
+	std::vector<uint8_t> buildPinnedPoints(
+		const std::vector<Segment>& segments,
+		int size
+	) {
+		std::vector<uint8_t> pinned(size, 0);
+		for (const Segment& seg : segments) {
+			pinned[seg.a] = 1;
+			pinned[seg.b] = 1;
+		}
+		return pinned;
+	}
+
+	std::vector<PointRing> buildPointRings(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		const std::vector<uint8_t>& pinned
+	) {
+		// if the point is not on the boundary, push
+		std::vector<PointRing> pRings(points.size());
+		for (const Triangle& triangle : triangles) {
+			for (int e = 0; e < 3; e++) {
+				int a = triangle.v[e];
+				int b = triangle.v[(e + 1) % 3];
+				if (!pinned[a]) pRings[a].neighbors.push_back(b);
+				if (!pinned[b]) pRings[b].neighbors.push_back(a);
+			}
+		}
+
+		// remove duplicates
+		for (PointRing& ring : pRings) {
+			std::sort(ring.neighbors.begin(), ring.neighbors.end());
+			auto it = std::unique(ring.neighbors.begin(), ring.neighbors.end());
+			ring.neighbors.erase(it, ring.neighbors.end());
+		}
+
+		// add triangle fan
+		for (int t = 0; t < (int)triangles.size(); t++) {
+			for (int e = 0; e < 3; e++) {
+				if (!pinned[triangles[t].v[e]]) pRings[triangles[t].v[e]].tris.push_back(t);
+			}
+		}
+		return pRings;
+	}
+
+	SmoothFunc getSmoothingFunction(
+		const Params& params
+	) {
+		switch (params.smoothingScheme) {
+		case SmoothingScheme::LAPLACIAN:
+			return [](double d) {return -d; };
+		case SmoothingScheme::OURS:
+			return [](double d) {
+				double d4 = d * d * d * d;
+				return (1 - d4) * std::exp(-d4);
+				};
+		default: return [](double) {return 0.0; };
+		}
+	}
+
+
+	double normalizedArea(
+		const std::vector<Point>& points,
+		const Triangle& triangle,
+		const std::vector<double>& h
+	) {
+		double hT = (h[triangle.v[0]] + h[triangle.v[1]] + h[triangle.v[2]]) / 3.0;
+		double area = 0.5 * orient(points[triangle.v[0]], points[triangle.v[1]], points[triangle.v[2]]);
+		return area / (hT * hT);
+	}
+
+	double getPointExtent(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		const std::vector<double>& h,
+		const PointRing& ring,
+		const Params& params
+	) {
+		double extent = 0.0;
+		int size = (int)ring.tris.size();
+		for (const int& t : ring.tris) {
+			const Triangle& triangle = triangles[t];
+			extent += normalizedArea(points, triangle, h);
+		}
+		return (2.3 * extent) / (std::sqrt(size * (size - 2)));
+	}
+
+	double getEdgeExtent(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		const std::vector<double>& h,
+		int t,
+		int e
+	) {
+		const Triangle& triangle = triangles[t];
+		int tOpp = triangle.adj[e];
+		if (tOpp == -1) {
+			int a = triangle.v[e];
+			int b = triangle.v[(e + 1) % 3];
+			double r = 0.5 * (h[a] + h[b]);
+			double len = dist(points[a], points[b]) / r;
+			return 0.5 * len * len;
+		}
+		return 0.8 * (normalizedArea(points, triangle, h) + normalizedArea(points, triangles[tOpp], h));
+	}
+
+	Point generalSmoothing(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		const std::vector<double>& h,
+		const PointRing& ring,
+		const Params& params,
+		SmoothFunc func,
+		int nP
+	) {
+		Point p;
+		int ringSize = (int)ring.neighbors.size();
+		double sumX = 0.0;
+		double sumY = 0.0;
+
+		for (const int& nb : ring.neighbors) {
+			double r = 0.5 * (h[nP] + h[nb]);
+			double d = dist(points[nP], points[nb]) / r;
+			double nx = (points[nP].x - points[nb].x) / d;
+			double ny = (points[nP].y - points[nb].y) / d;
+			double fd = func(d);
+			sumX += fd * nx;
+			sumY += fd * ny;
+		}
+		p.x = points[nP].x + (sumX / ringSize);
+		p.y = points[nP].y + (sumY / ringSize);
+		//p.x = points[nP].x + 0.2 * sumX;
+		//p.y = points[nP].y + 0.2 * sumY;
+		return p;
+	}
+
+	void smartEdgeFlip(
+		std::vector<Point>& points,
+		std::vector<Triangle>& triangles
+	) {
+		for (int t = 0; t < (int)triangles.size(); t++) {
+			for (int e = 0; e < 3; e++) {
+				// for interior edge (t,e), quad in CCW order is: v2, v0, vOpp, v1
+				int tOpp = triangles[t].adj[e];
+				if (tOpp == -1) continue;                 // boundary
+				int eOpp = getEdgeFromNeighbour(triangles[tOpp], t);
+
+				int v0 = triangles[t].v[e];
+				int v1 = triangles[t].v[(e + 1) % 3];
+				int v2 = triangles[t].v[(e + 2) % 3];
+				int vOpp = triangles[tOpp].v[(eOpp + 2) % 3];
+
+				double before = std::min(triangleQuality(points[v0], points[v1], points[v2]),
+					triangleQuality(points[v1], points[v0], points[vOpp]));
+				double after = std::min(triangleQuality(points[v2], points[v0], points[vOpp]),
+					triangleQuality(points[v2], points[vOpp], points[v1]));
+
+				if (after > before) flipEdge(triangles, t, e);
+			}
+		}
+	}
+
+	void removePoint(
+		std::vector<Point>& points,
+		std::vector<Triangle>& triangles,
+		int nP
+	) {
+
+	}
+
+	void smartSmoothing(
+		std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		const std::vector<PointRing>& pRings,
+		const std::vector<double>& h,
+		const Params& params
+	) {
+		double lambda = params.laplacianRelax;
+
+		for (int i = 0; i < (int)points.size(); i++) {
+			const PointRing& ring = pRings[i];
+			if (ring.neighbors.empty() || ring.tris.empty()) continue;
+
+			SmoothFunc func = getSmoothingFunction(params);
+			Point target = generalSmoothing(points, triangles, h, ring, params, func, i);
+
+			// only move if the worst triangle in the fan improves
+			//points[i] = target;
+			if (fanQuality(points, triangles, ring, i, target) >
+				fanQuality(points, triangles, ring, i, points[i])) {
+				points[i] = target;
+			}
+		}
+	}
+
+	void postSmoothing(
+		std::vector<Point>& points,
+		std::vector<Triangle>& triangles,
+		std::vector<PointRing>& pRings,
+		const std::vector<double>& h,
+		const std::vector<uint8_t>& pinned,
+		const Params& params
+	) {
+
+		if ((int)points.size() != (int)pRings.size()) throwError(ErrorCase::SIZE_DIFF);
+
+		// flip any edges -> rebuild pRings -> smoothing
+		for (int k = 0; k < params.iterSmoothing; k++) {
+
+			smartEdgeFlip(points, triangles);
+			pRings = buildPointRings(points, triangles, pinned);
+			if (params.enableSmoothing) smartSmoothing(points, triangles, pRings, h, params);
+			else return;
+
+		}
 	}
 
 	Mesh generateMesh(
@@ -1294,10 +1589,20 @@ namespace AxiMesh {
 
 		frontalInit(mesh.points, mesh.triangles, mesh.segments, h, state, frontEdges, params);
 
-		// refinement
+		// REFINEMENT
 		advancingFront(mesh.points, mesh.triangles, h, state, frontEdges, params);
 		//Ruppert(mesh.triangles, mesh.points, mesh.segments, params);
+
+
+		// SMOOTHING
+		std::vector<uint8_t> pinned = buildPinnedPoints(mesh.segments, (int)mesh.points.size());
+		mesh.pRings = buildPointRings(mesh.points, mesh.triangles, pinned);
+
+		postSmoothing(mesh.points, mesh.triangles, mesh.pRings, h, pinned, params);
+
+
 		mesh.points = unnormalize(mesh.points, normVar);
+		mesh.sizing = h;
 
 		return mesh;
 	}

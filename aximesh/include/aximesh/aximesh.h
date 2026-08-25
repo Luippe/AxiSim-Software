@@ -2,7 +2,7 @@
 
 #include <queue>
 #include <vector>
-
+#include <set>
 namespace AxiMesh{
 
 	enum class InsertionScheme {
@@ -10,12 +10,20 @@ namespace AxiMesh{
 		ENGWIRDA
 	};
 
+	enum class SmoothingScheme {
+		NONE,
+		CENTROID,
+		LAPLACIAN,
+		OURS,
+	};
+
 	enum class ErrorCase {
 		OK,
 		STALLED,
 		WALK_OFF,
 		DUPLICATE,
-		ON_EDGE
+		ON_EDGE,
+		SIZE_DIFF
 
 	};
 
@@ -37,6 +45,11 @@ namespace AxiMesh{
 		int v0;
 		int v1;
 		int v2;
+	};
+
+	struct PointRing {
+		std::vector<int> neighbors;
+		std::vector<int> tris;
 	};
 
 	// max-heap on crad -- Rebay advances from the active triangle with the largest circumradius
@@ -63,11 +76,18 @@ namespace AxiMesh{
 
 	struct Params {
 		double B = 1.4;
-		double beta = 0.2;
+		double gSmoothing = 0.3;
 		double classify_tol = 1.224;
-		InsertionScheme scheme = InsertionScheme::REBAY;
-		//InsertionScheme scheme = InsertionScheme::ENGWIRDA;
-		//int maxStallCount = 100;
+		//InsertionScheme scheme = InsertionScheme::REBAY;
+		InsertionScheme scheme = InsertionScheme::ENGWIRDA;
+
+
+		// smoothing variables
+		bool enableSmoothing = true;
+		SmoothingScheme smoothingScheme = SmoothingScheme::LAPLACIAN;
+		//SmoothingScheme smoothingScheme = SmoothingScheme::OURS;
+		int iterSmoothing = 10;
+		double laplacianRelax = 0.7;
 	};
 
 	enum class SegmentState {
@@ -89,6 +109,13 @@ namespace AxiMesh{
 		std::vector<Point> points;
 		std::vector<Triangle> triangles;
 		std::vector<Segment> segments;		// remapped to the reordered point indices
+
+		// target edge length per point, in the NORMALIZED coordinates the mesher works
+		// in -- points are unnormalized on the way out, this is not. Scale by
+		// buildNormVariables(<the same input points>).dMax for a world length. A point
+		// the field never reached (the super triangle corners) keeps DBL_MAX.
+		std::vector<double> sizing;
+		std::vector<PointRing> pRings;
 	};
 
 	Mesh generateMesh(
@@ -97,6 +124,11 @@ namespace AxiMesh{
 		int size,
 		const Params& params = {}
 	);
+
+	// The affine map generateMesh normalizes with. Public so a caller can undo it on
+	// Mesh::sizing, which comes back in normalized units -- pass the same point list
+	// that was handed to generateMesh.
+	NormVariables buildNormVariables(const std::vector<Point>& points);
 
 
 	// Steps 3 and 5-7 on their own: build the super triangle, then insert each point into

@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <numbers>
 #include <string>
 #include <glm/glm.hpp>
@@ -1430,12 +1431,13 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
-	// The quality overlays paint under the mesh lines, so the cells stay readable.
-	// Only one of the three ever paints (the toolbar toggles are exclusive), so
+	// The cell overlays paint under the mesh lines, so the cells stay readable.
+	// Only one of the four ever paints (the toolbar toggles are exclusive), so
 	// the order between them is moot.
 	drawAspectRatio(drawList);
 	drawOrthogonality(drawList);
 	drawSkewness(drawList);
+	drawSizing(drawList);
 	drawMeshLines(drawList);
 	drawRegionsOfInfluence(drawList);
 	drawPendingObjects(drawList);
@@ -1611,18 +1613,28 @@ void MeshInspector::drawToolBar() {
 	if (addImageButtonToggle("AspectRatio", "Aspect", "Shade cells by aspect ratio", assets.icon("quality"), toggleAspectRatio)) {
 		toggleOrthogonality = false;
 		toggleSkewness = false;
+		toggleSizing = false;
 		inspectMeshDirty = true;	// the overlay needs the cell outlines too
 	}
 	ImGui::SameLine();
 	if (addImageButtonToggle("Orthogonality", "Ortho", "Shade cells by non-orthogonality", assets.icon("quality"), toggleOrthogonality)) {
 		toggleAspectRatio = false;
 		toggleSkewness = false;
+		toggleSizing = false;
 		inspectMeshDirty = true;
 	}
 	ImGui::SameLine();
 	if (addImageButtonToggle("Skewness", "Skew", "Shade cells by skewness", assets.icon("quality"), toggleSkewness)) {
 		toggleAspectRatio = false;
 		toggleOrthogonality = false;
+		toggleSizing = false;
+		inspectMeshDirty = true;
+	}
+	ImGui::SameLine();
+	if (addImageButtonToggle("Sizing", "Size", "Shade cells by the mesher's target size", assets.icon("quality"), toggleSizing)) {
+		toggleAspectRatio = false;
+		toggleOrthogonality = false;
+		toggleSkewness = false;
 		inspectMeshDirty = true;
 	}
 	endSection("View");
@@ -2012,6 +2024,15 @@ std::string MeshInspector::buildCellInfoText(int cellID) const {
 		info += line;
 	}
 
+	// --- target size (what the mesher aimed for here, not what it achieved) ---
+	const double targetSize = cellTargetSize(cellID);
+
+	if (targetSize > 0.0) {
+		std::snprintf(line, sizeof(line), "\ntarget size (%s): %.4g",
+			currentUnitName, targetSize * project.lengthScale.value);
+		info += line;
+	}
+
 	// --- per-face geometry: neighbour, edge length, face non-orthogonality ---
 	if (!cell.faceIDs.empty()) {
 		info += "\nfaces (nb | len | non-orth):";
@@ -2222,6 +2243,99 @@ void MeshInspector::drawSkewness(ImDrawList* drawList) {
 	drawQualityOverlay(drawList, mesh.quality.skewness, 0.0, 1.0, "skew");
 }
 
+double MeshInspector::cellTargetSize(int cellID) const {
+	const FVMesh& fv = inspectMesh();
+	const std::vector<double>& h = mesh.unstructuredSizing;
+
+	// The sizing field is indexed by mesh node, and on the triangulated path the FV
+	// mesh's point list IS that node list -- so matching lengths is what says the two
+	// belong to the same mesh. A structured/multiblock FVMesh or a loaded project
+	// fails this and has no sizing to report.
+	if (h.empty() || h.size() != fv.points.size()) {
+		return -1.0;
+	}
+
+	if (cellID < 0 || cellID + 1 >= (int)fv.cellCornerStart.size()) {
+		return -1.0;
+	}
+
+	const int begin = fv.cellCornerStart[cellID];
+	const int end = fv.cellCornerStart[cellID + 1];
+
+	double sum = 0.0;
+	int n = 0;
+
+	for (int k = begin; k < end; k++) {
+		const int pointID = fv.cellCornerIDs[k];
+
+		if (pointID < 0 || pointID >= (int)h.size()) {
+			return -1.0;
+		}
+
+		// one unmeasured corner makes the average meaningless, so drop the cell
+		// rather than report a mean of the corners that happen to have a size
+		if (!std::isfinite(h[pointID]) || h[pointID] <= 0.0) {
+			return -1.0;
+		}
+
+		sum += h[pointID];
+		n++;
+	}
+
+	return n > 0 ? sum / n : -1.0;
+}
+
+void MeshInspector::drawSizing(ImDrawList* drawList) {
+	if (!toggleSizing) {
+		return;
+	}
+
+	const FVMesh& fv = inspectMesh();
+
+	if (fv.cells.empty() || mesh.unstructuredSizing.size() != fv.points.size()) {
+		return;
+	}
+
+	// The overlay shades cells, so the nodal field is collapsed to one value per cell
+	// here and handed to the shared ramp. Display units, so the legend reads in
+	// whatever the project shows lengths in rather than in metres.
+	const double toDisplay = project.lengthScale.value;
+
+	std::vector<double> values(fv.cells.size(), -1.0);
+
+	double lo = std::numeric_limits<double>::max();
+	double hi = -std::numeric_limits<double>::max();
+
+	for (int c = 0; c < (int)values.size(); c++) {
+		const double size = cellTargetSize(c);
+
+		if (size <= 0.0) {
+			continue;	// left at -1, which the ramp's own low-end test skips
+		}
+
+		values[c] = size * toDisplay;
+
+		lo = std::min(lo, values[c]);
+		hi = std::max(hi, values[c]);
+	}
+
+	if (lo > hi) {
+		return;		// nothing measurable on this mesh
+	}
+
+	// A perfectly uniform field would divide by a zero span. Nudge the top end so it
+	// all paints at the fine end instead of turning every cell into a NaN color.
+	if (hi <= lo) {
+		hi = lo + std::max(lo * 1e-6, std::numeric_limits<double>::min());
+	}
+
+	// Unlike the shape metrics there is no fixed range to label this with -- the
+	// scale is the field's own, so the unit has to be on the legend to mean anything.
+	const std::string label = std::string("size (") + currentUnitName + ")";
+
+	drawQualityOverlay(drawList, values, lo, hi, label.c_str());
+}
+
 void MeshInspector::drawQualityLegend(
 	ImDrawList* drawList,
 	double lo,
@@ -2343,12 +2457,13 @@ void MeshInspector::render() {
 
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
-	// The quality overlays paint under the mesh lines, so the cells stay readable.
-	// Only one of the three ever paints (the toolbar toggles are exclusive), so
+	// The cell overlays paint under the mesh lines, so the cells stay readable.
+	// Only one of the four ever paints (the toolbar toggles are exclusive), so
 	// the order between them is moot.
 	drawAspectRatio(drawList);
 	drawOrthogonality(drawList);
 	drawSkewness(drawList);
+	drawSizing(drawList);
 	drawMeshLines(drawList);
 	drawRegionsOfInfluence(drawList);
 	drawPendingObjects(drawList);
