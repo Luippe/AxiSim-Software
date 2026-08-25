@@ -221,6 +221,14 @@ namespace AxiMesh {
 			: AdvancingState::WAITING;
 	}
 
+	double curvatureAt(const Point& A, const Point& B, const Point& C) {
+		double area = 2 * orient(A, B, C);
+		double ab = dist(A, B);
+		double bc = dist(B, C);
+		double ca = dist(C, A);
+
+		return 2.0 * area / ((ab * bc * ca));
+	}
 
 	// ensure the frontal edge is valid based on the current triangle layout
 	bool isValidFrontEdge(
@@ -1184,7 +1192,6 @@ namespace AxiMesh {
 			}
 
 			h.push_back(hP);
-			//lipschitzSmoothing(points, triangles, h, params);
 
 			state.resize(triangles.size(), AdvancingState::WAITING);		// size of state = size of triangles, always
 			mark.resize(triangles.size(), -1);
@@ -1274,7 +1281,8 @@ namespace AxiMesh {
 		std::vector<double>& h,
 		std::vector<AdvancingState>& state,
 		FrontQueue& frontEdges,
-		const Params& params
+		const Params& params,
+		SizeField& sizing
 	) {
 
 		std::vector<double> lSum(points.size());
@@ -1297,6 +1305,10 @@ namespace AxiMesh {
 		}
 
 		lipschitzSmoothing(points, triangles, h, params);
+
+		//for (int i = 0; i < (int)points.size(); i++) {
+		//	h[i] = sizing.sample(points[i]);
+		//}
 
 		// populate triangle states. two passes.
 		// first pass accepts all triangles adjacent to a boundary
@@ -1483,7 +1495,6 @@ namespace AxiMesh {
 		const std::vector<double>& h,
 		const Params& params
 	) {
-		double lambda = params.laplacianRelax;
 
 		for (int i = 0; i < (int)points.size(); i++) {
 			const PointRing& ring = pRings[i];
@@ -1523,11 +1534,105 @@ namespace AxiMesh {
 		}
 	}
 
-	SizeField buildSizingFunction(
-		const Params& params
-	) {
-		SizeField h;
+	double SizeField::sample(const Point& p) const {
+		double fi = p.x / dz;
+		double fj = p.y / dr;
 
+		// clamp to the last *full* cell -- the interpolation reads i+1 and j+1
+		int i = std::clamp((int)std::floor(fi), 0, nz - 2);
+		int j = std::clamp((int)std::floor(fj), 0, nr - 2);
+
+		// after clamping, so a point outside the grid reads the edge instead of extrapolating
+		double tx = std::clamp(fi - i, 0.0, 1.0);
+		double ty = std::clamp(fj - j, 0.0, 1.0);
+
+		double h00 = h[(size_t)j * nz + i];
+		double h10 = h[(size_t)j * nz + i + 1];
+		double h01 = h[(size_t)(j + 1) * nz + i];
+		double h11 = h[(size_t)(j + 1) * nz + i + 1];
+
+		return (1.0 - ty) * ((1.0 - tx) * h00 + tx * h10)
+			+ ty * ((1.0 - tx) * h01 + tx * h11);
+	}
+
+	double distPointToLine(const Point& P, const Point& A, const Point& B) {
+
+		double abx = B.x - A.x;
+		double aby = B.y - A.y;
+		double len2 = abx * abx + aby * aby;
+
+		// piecewise linear line. when t = 0, C = A. when t = 1, C = B.
+		double t = ((P.x - A.x) * abx + (P.y - A.y) * aby) / len2;
+		t = std::clamp(t, 0.0, 1.0);
+
+		double cx = A.x + t * abx;
+		double cy = A.y + t * aby;
+		return std::sqrt((P.x - cx) * (P.x - cx) + (P.y - cy) * (P.y - cy));
+
+	}
+
+
+	SizeField buildSizingFunction(
+		const std::vector<Segment>& segments,
+		const std::vector<Point>& points,
+		const Params& params,
+		const NormVariables& normVar
+	) {
+		SizeField sizing;
+		double extZ = normVar.dx / normVar.dMax;   // one of these is exactly 1.0
+		double extR = normVar.dy / normVar.dMax;
+		double cell = std::min(extZ, extR) / 99.0; // square cells, finer axis wins
+
+		sizing.dz = cell;
+		sizing.dr = cell;
+		sizing.nz = (int)std::ceil(extZ / cell) + 1;
+		sizing.nr = (int)std::ceil(extR / cell) + 1;
+		sizing.h.assign((size_t)sizing.nz * sizing.nr, params.hMax);
+
+		double radius = (double)params.stampCells * sizing.dz;
+
+		//for (int k = 0; k < (int)segments.size(); k++) {
+
+		//	// create bounding box
+		//	const Point& a = points[segments[k].a];
+		//	const Point& b = points[segments[k].b];
+
+		//	double len = dist(a, b);
+		//	int j0 = (int)std::floor((std::min(a.y, b.y) - radius) / sizing.dr);
+		//	int j1 = (int)std::ceil((std::max(a.y, b.y) + radius) / sizing.dr);
+		//	int i0 = (int)std::floor((std::min(a.x, b.x) - radius) / sizing.dz);
+		//	int i1 = (int)std::ceil((std::max(a.x, b.x) + radius) / sizing.dz);
+		//	j0 = std::max(j0, 0);
+		//	i0 = std::max(i0, 0);
+		//	j1 = std::min(j1, sizing.nr - 1);
+		//	i1 = std::min(i1, sizing.nz - 1);
+
+		//	for (int i = i0; i <= i1; i++) {
+		//		for (int j = j0; j <= j1; j++) {
+		//			Point p{ i * sizing.dz, j * sizing.dr };
+		//			double d = distPointToLine(p, a, b);
+		//			if (d > radius) continue;
+		//			double& hn = sizing.h[j * sizing.nz + i];
+		//			hn = std::min(hn, len + params.gSmoothing * d);
+		//
+		//		}
+		//	}
+		//}
+		for (int k = 0; k < (int)segments.size(); k++) {
+			const Point& a = points[segments[k].a];
+			const Point& b = points[segments[k].b];
+			double len = dist(a, b);
+
+			for (int i = 0; i < sizing.nz; i++) {
+				for (int j = 0; j < sizing.nr; j++) {
+					Point p{ i * sizing.dz, j * sizing.dr };
+					double d = distPointToLine(p, a, b);
+					double& hn = sizing.h[(size_t)j * sizing.nz + i];
+					hn = std::min(hn, len + params.gSmoothing * d);
+				}
+			}
+		}
+		return sizing;
 	}
 
 	Mesh generateMesh(
@@ -1543,7 +1648,8 @@ namespace AxiMesh {
 		// step 1: normalize coordinates
 		NormVariables normVar = buildNormVariables(points);
 		std::vector<Point> normPoints = normalize(points, normVar, size);
-		SizeField sizing;
+
+		SizeField sizing = buildSizingFunction(segments, normPoints, params, normVar);
 
 		// step 2: put points into bins and sort by bin number
 		std::vector<int> indices = buildSortedPointIndices(points, normVar, size);
@@ -1558,6 +1664,7 @@ namespace AxiMesh {
 		for (int k = 0; k < size; k++) {
 			newIndex[indices[k]] = k;
 		}
+
 
 		// steps 3-4: super triangle, then insert every point into the triangle containing it
 		Mesh mesh;
@@ -1593,7 +1700,7 @@ namespace AxiMesh {
 		std::vector<AdvancingState> state(mesh.triangles.size(), AdvancingState::WAITING);
 		FrontQueue frontEdges;
 
-		frontalInit(mesh.points, mesh.triangles, mesh.segments, h, state, frontEdges, params);
+		frontalInit(mesh.points, mesh.triangles, mesh.segments, h, state, frontEdges, params, sizing);
 
 		// REFINEMENT
 		advancingFront(mesh.points, mesh.triangles, h, state, frontEdges, params);

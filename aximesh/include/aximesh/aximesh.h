@@ -80,8 +80,8 @@ namespace AxiMesh{
 		int nr = 100;
 		double dz = 0.0;
 		double dr = 0.0;
-		double sample();
-
+		std::vector<double> h;
+		double sample(const Point& p) const;
 	};
 
 	struct Params {
@@ -97,7 +97,9 @@ namespace AxiMesh{
 		SmoothingScheme smoothingScheme = SmoothingScheme::LAPLACIAN;
 		//SmoothingScheme smoothingScheme = SmoothingScheme::OURS;
 		int iterSmoothing = 10;
-		double laplacianRelax = 0.7;
+		double hMax = 1.0;
+		double hMin = 0.0;
+		int stampCells = 2;
 	};
 
 	enum class SegmentState {
