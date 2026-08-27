@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -217,15 +218,52 @@ namespace AxiMesh::Smoothing {
 		}
 	}
 
+	// worst triangle across the two fans a collapse of np into nb would touch. M = where nb ends
+	// up, or nullptr to measure the fans as they stand. tA/tB are deleted, so they never count.
+	double collapseFanQuality(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		const std::vector<uint8_t>& dead,
+		const PointRing& ringNp,
+		const PointRing& ringNb,
+		int np,
+		int nb,
+		const Point* M,
+		int tA,
+		int tB
+	) {
+		double q = std::numeric_limits<double>::max();
+
+		auto scan = [&](const PointRing& ring) {
+			for (int t : ring.tris) {
+				if (dead[t] || t == tA || t == tB) continue;
+				const Triangle& triangle = triangles[t];
+				Point p[3];
+				for (int e = 0; e < 3; e++) {
+					int v = triangle.v[e];
+					p[e] = (M && (v == np || v == nb)) ? *M : points[v];
+				}
+				q = std::min(q, triangleQuality(p[0], p[1], p[2]));
+			}
+		};
+
+		// a pinned nb has an empty ring, which is right -- it does not move, so its fan is untouched
+		scan(ringNp);
+		scan(ringNb);
+		return q;
+	}
+
 	bool collapseEdge(
 		std::vector<Point>& points,
 		std::vector<Triangle>& triangles,
 		std::vector<uint8_t>& dead,
-		const PointRing& ring,
+		const std::vector<PointRing>& pRings,
 		int np,
 		int nb,
 		int boundary
 	) {
+		const PointRing& ring = pRings[np];
+
 		// find the two triangles that are adjacent to edge np-nb. also find the corresponding edge
 		int tA = -1;
 		int tB = -1;
@@ -249,18 +287,22 @@ namespace AxiMesh::Smoothing {
 		// an earlier collapse in this sweep may already have taken the edge
 		if (tA == -1 || tB == -1) return false;
 
+		// nb moves to the midpoint, unless it is pinned to the boundary and must stay put
+		Point M = boundary
+			? points[nb]
+			: Point{ 0.5 * (points[np].x + points[nb].x), 0.5 * (points[np].y + points[nb].y) };
+
+		// refuse to make the neighbourhood worse than it already is. checked before any mutation, so
+		// a rejected edge leaves the mesh untouched and the caller can try the next candidate
+		double qBefore = collapseFanQuality(points, triangles, dead, pRings[np], pRings[nb], np, nb, nullptr, tA, tB);
+		double qAfter = collapseFanQuality(points, triangles, dead, pRings[np], pRings[nb], np, nb, &M, tA, tB);
+		if (qAfter < qBefore) return false;
+
 		// removing a triangle glues its two surviving edges together
 		preserveTriangleAdjacency(triangles, tA, eA);
 		preserveTriangleAdjacency(triangles, tB, eB);
 
-
-		if (!boundary) {
-			// calculate the midpoint between np and nb
-			Point M = { 0.5 * (points[np].x + points[nb].x), 0.5 * (points[np].y + points[nb].y) };
-
-			// nb becomes the new midpoint
-			points[nb] = M;
-		}
+		points[nb] = M;
 
 		// np disappears into nb across its whole fan
 		for (int t : ring.tris) {
@@ -375,7 +417,7 @@ namespace AxiMesh::Smoothing {
 
 			for (auto& [boundary, nb] : candidates) {
 				if (gone[nb]) continue;
-				if (!collapseEdge(points, triangles, dead, pRings[i], i, nb, boundary)) continue;
+				if (!collapseEdge(points, triangles, dead, pRings, i, nb, boundary)) continue;
 				gone[i] = 1;
 				gone[nb] = 1;		// nb inherited i's fan, so its cached ring is stale for the rest of the sweep
 				collapsed = true;
@@ -448,18 +490,17 @@ namespace AxiMesh::Smoothing {
 		std::vector<uint8_t>& pinned,
 		const Params& params
 	) {
-
+		if (!params.enableSmoothing) return;
 		if ((int)points.size() != (int)pRings.size()) throwError(ErrorCase::SIZE_DIFF);
 
-		// flip any edges -> rebuild pRings -> smoothing
+		// collapse edge -> flip edges -> rebuild pRings -> smoothing
 		for (int k = 0; k < params.iterSmoothing; k++) {
 			// collapse compacts points, so pRings is stale until it is rebuilt below
 			smartEdgeCollapse(points, triangles, segments, pRings, h, pinned, params);
 
 			smartEdgeFlip(points, triangles);
 			pRings = buildPointRings(points, triangles, pinned);
-			if (params.enableSmoothing) smartSmoothing(points, triangles, pRings, h, params);
-			else return;
+			smartSmoothing(points, triangles, pRings, h, params);
 
 		}
 	}

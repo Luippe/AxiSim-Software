@@ -89,10 +89,8 @@ namespace AxiMesh{
 		bool enableSmoothing = true;
 		SmoothingScheme smoothingScheme = SmoothingScheme::LAPLACIAN;
 		//SmoothingScheme smoothingScheme = SmoothingScheme::OURS;
-		int iterSmoothing = 2;
-		// world lengths -- generateMesh converts them into its normalized space.
-		// hMax is the bulk size the field plateaus at; 0 means "the coarsest boundary
-		// segment", so the interior never grows coarser than the walls
+		int iterSmoothing = 3;
+
 		double hMax = 0.0;
 		double hMin = 0.0;
 	};
