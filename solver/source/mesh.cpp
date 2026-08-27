@@ -2133,8 +2133,8 @@ void Mesh::generate() {
 		rebuildBoundaryDiscretization();
 
 		// testing
-		runAxiMeshTriangulation();
-		//runGmshTriangulation();
+		//runAxiMeshTriangulation();
+		runGmshTriangulation();
 
 		// Refreshed before the render buffers because the line vertices need the
 		// same FVMesh -- this used to build a second, identical throwaway copy.

@@ -13,6 +13,7 @@
 #include "project.h"
 #include "geometry.h"
 #include "console.h"
+#include "mesh_plot.h"
 
 #include "flag_manager.h"
 #include "printer.h"
@@ -142,6 +143,39 @@ namespace {
 		}
 
 		return inspectorOrientationFromFlags(hasHorizontal, hasVertical, hasOther);
+	}
+
+	// The p1 and p99 of the cells that carry a value, for the local ramp mode.
+	// Percentiles rather than min/max: one sliver at 30 would push every other cell
+	// back to the green end, which is the problem the mode exists to solve. False
+	// when nothing is measurable, or when every cell landed on the same value --
+	// both cases would divide the ramp by a zero span, so the caller keeps the
+	// fixed band instead.
+	bool inspectorPercentiles(const std::vector<double>& values, double& p1, double& p99) {
+		std::vector<double> v;
+		v.reserve(values.size());
+
+		for (double x : values) {
+			if (std::isfinite(x)) {
+				v.push_back(x);
+			}
+		}
+
+		if (v.empty()) {
+			return false;
+		}
+
+		std::sort(v.begin(), v.end());
+
+		auto at = [&](double p) {
+			size_t i = (size_t)std::llround(p * (double)(v.size() - 1));
+			return v[std::min(i, v.size() - 1)];
+		};
+
+		p1 = at(0.01);
+		p99 = at(0.99);
+
+		return p99 > p1;
 	}
 
 	// Quality ramp for the cell-quality overlays: green (well shaped) -> yellow ->
@@ -1546,6 +1580,29 @@ void MeshInspector::drawToolBar() {
 		toggleElementQuality = false;
 		inspectMeshDirty = true;
 	}
+	ImGui::SameLine();
+	// A ramp mode for the two shape overlays rather than an overlay itself, so it
+	// clears nothing -- and there is nothing for it to rescale unless one is up.
+	ImGui::BeginDisabled(!toggleAspectRatio && !toggleElementQuality);
+	addImageButtonToggle(
+		"LocalScaling",
+		"Local",
+		"Scale the ramp to this mesh (p1-p99) instead of the metric's fixed band",
+		assets.icon("ruler"),
+		localQualityScaling
+	);
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	// Its own window, not an overlay, so it clears none of the toggles above and
+	// stays readable next to whichever one is up.
+	addImageButtonToggle(
+		"QualityHistogram",
+		"Plot",
+		"Plot the distribution of every quality metric",
+		assets.icon("add_plot"),
+		showQualityHistogram
+	);
+
 	endSection("View");
 
 	endToolbar();
@@ -2109,16 +2166,25 @@ void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
 		return;
 	}
 
-	// The radius ratio is unbounded above, so the red end is a threshold rather than
-	// a range: 3.0 is the top of the band Verdict calls acceptable, which makes red
-	// mean "outside the accepted band" instead of an arbitrary number. Fixed rather
-	// than scaled to the worst cell present, which would stretch an already-good
-	// mesh over a meaningless range and paint it red.
-	//
-	// Expect a good mesh to be flat green -- measured on a 2x1 box and a notched
-	// box, every cell lands under 1.12, while a 5 degree wedge tip reaches 29.8. The
-	// overlay is built to pick slivers out of a good mesh, not to rank good cells.
-	drawQualityOverlay(drawList, mesh.quality.aspectRatios, 1.0, 3.0, "aspect");
+	// Global: 1.0 -- an equilateral cell -- is the green end and 2.0 the red end.
+	// Absolute, so the same colour means the same shape on every mesh, but a good
+	// mesh reads flat green (measured: a 2x1 box tops out at 1.12, a 5 degree wedge
+	// tip reaches 29.8). Local trades that comparability for spread across whatever
+	// this mesh actually contains.
+	double lo = 1.0;
+	double hi = 2.0;
+	const char* label = "aspect";
+
+	double p1 = 0.0;
+	double p99 = 0.0;
+
+	if (localQualityScaling && inspectorPercentiles(mesh.quality.aspectRatios, p1, p99)) {
+		lo = p1;		// small is good here, so p1 is the green end
+		hi = p99;
+		label = "aspect (local)";
+	}
+
+	drawQualityOverlay(drawList, mesh.quality.aspectRatios, lo, hi, label);
 }
 
 void MeshInspector::drawElementQuality(ImDrawList* drawList) {
@@ -2126,13 +2192,24 @@ void MeshInspector::drawElementQuality(ImDrawList* drawList) {
 		return;
 	}
 
-	// The mean ratio is already normalized -- 1 is equilateral and 0 degenerate --
-	// so the ramp is its full definition range and needs no threshold picked for it.
-	// Like the aspect overlay, a good mesh sits near the green end and stays there:
-	// measured, a clean box bottoms out at 0.91 and only a sliver reaches 0.15.
-	// lo and hi run backwards because here the LARGEST value is the good one; an
-	// inverted triangle comes out negative and pins at red, which is correct.
-	drawQualityOverlay(drawList, mesh.quality.elementQuality, 1.0, 0.0, "quality");
+	// Global: the mean ratio is already normalized -- 1 equilateral, 0 degenerate --
+	// so the fixed ramp is its full definition range. lo and hi run backwards
+	// throughout because here the LARGEST value is the good one; an inverted
+	// triangle comes out negative and pins at red, which is correct.
+	double lo = 1.0;
+	double hi = 0.0;
+	const char* label = "quality";
+
+	double p1 = 0.0;
+	double p99 = 0.0;
+
+	if (localQualityScaling && inspectorPercentiles(mesh.quality.elementQuality, p1, p99)) {
+		lo = p99;		// large is good here, so p99 is the green end
+		hi = p1;
+		label = "quality (local)";
+	}
+
+	drawQualityOverlay(drawList, mesh.quality.elementQuality, lo, hi, label);
 }
 
 double MeshInspector::cellTargetSize(int cellID) const {
@@ -2369,6 +2446,28 @@ void MeshInspector::render() {
 	drawList->PopClipRect();
 
 	drawPopup();
+
+	ImGui::End();
+
+	// Outside the viewport's Begin/End: this is a top-level window of its own.
+	drawQualityHistogramWindow();
+}
+
+void MeshInspector::drawQualityHistogramWindow() {
+	if (!showQualityHistogram) {
+		return;
+	}
+
+	// No window class here, unlike every other panel: this one is meant to be
+	// dragged and docked wherever the user wants it, which is exactly what the
+	// viewers' NoDockWindowFlags class forbids.
+	ImGui::SetNextWindowSize(ImVec2(520.0f, 560.0f), ImGuiCond_FirstUseEver);
+
+	// The window's own close button drives the toolbar toggle, so the two cannot
+	// disagree about whether it is up.
+	if (ImGui::Begin("Mesh Quality###MeshQualityHistograms", &showQualityHistogram)) {
+		drawMeshQualityHistograms(mesh.quality, histogramLogCount);
+	}
 
 	ImGui::End();
 }

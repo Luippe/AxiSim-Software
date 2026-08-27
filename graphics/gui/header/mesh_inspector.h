@@ -116,6 +116,20 @@ private:
 	bool toggleAspectRatio = false;	// overlay: shade every cell by its aspect ratio
 	bool toggleElementQuality = false;	// overlay: shade every cell by its element quality
 	bool toggleSizing = false;		// overlay: shade every cell by the mesher's target size
+
+	// Ramp mode for the two shape overlays, not an overlay of its own -- it does not
+	// clear them and is not part of qualityOverlayActive(). False = the fixed band
+	// each metric is defined against (absolute, comparable between meshes); true =
+	// this mesh's own p1..p99, which is the only way to see variation across a mesh
+	// whose cells are all good.
+	bool localQualityScaling = false;
+
+	// The quality histograms get their own dockable window rather than a viewport
+	// pane: the viewport slot sets NoDockingOverMe, so a pane there could not be
+	// dragged out or tabbed with anything.
+	bool showQualityHistogram = false;
+	bool histogramLogCount = false;	// log the bin counts, so the long tails stay visible
+
 	int selectedCell = -1;			// FV cell pinned by a left click (-1 = none)
 	bool inspectMeshDirty = true;	// rebuild the snapshot on the next render
 
@@ -221,6 +235,10 @@ private:
 
 	// colorbar for the quality overlays, labelled with the range and the metric it shades
 	void drawQualityLegend(ImDrawList* drawList, double lo, double hi, const char* label);
+
+	// Free-floating window stacking one histogram per Quality metric. Submitted
+	// from render(), so it is only up while the Mesh tab is.
+	void drawQualityHistogramWindow();
 
 
 	// -------------cell inspection--------------
