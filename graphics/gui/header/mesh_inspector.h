@@ -114,17 +114,16 @@ private:
 	bool toggleInspectCell = false;	// toolbar mode: pick cells to read mesh data
 	bool toggleMesh = true;
 	bool toggleAspectRatio = false;	// overlay: shade every cell by its aspect ratio
-	bool toggleOrthogonality = false;	// overlay: shade every cell by its non-orthogonality
-	bool toggleSkewness = false;	// overlay: shade every cell by its skewness
+	bool toggleElementQuality = false;	// overlay: shade every cell by its element quality
 	bool toggleSizing = false;		// overlay: shade every cell by the mesher's target size
 	int selectedCell = -1;			// FV cell pinned by a left click (-1 = none)
 	bool inspectMeshDirty = true;	// rebuild the snapshot on the next render
 
-	// The four cell overlays are one view of the mesh, not four: each toolbar toggle
+	// The three cell overlays are one view of the mesh, not three: each toolbar toggle
 	// clears the others, so only one shading -- and one legend, they share the same
 	// corner -- is ever up. This is what the rest of the panel asks.
 	bool qualityOverlayActive() const {
-		return toggleAspectRatio || toggleOrthogonality || toggleSkewness || toggleSizing;
+		return toggleAspectRatio || toggleElementQuality || toggleSizing;
 	}
 
 	// The FV mesh the inspector reads. Mesh owns and caches it (built at generate
@@ -193,11 +192,10 @@ private:
 	void drawBoundarySegments(ImDrawList* drawList);
 	void drawRegionsOfInfluence(ImDrawList* drawList);
 	void drawAspectRatio(ImDrawList* drawList);
-	void drawOrthogonality(ImDrawList* drawList);
-	void drawSkewness(ImDrawList* drawList);
+	void drawElementQuality(ImDrawList* drawList);
 
 	// Shade every cell by the target edge length the mesher aimed for there. Unlike
-	// the three shape metrics this is an input to the mesh rather than a property of
+	// the two shape metrics this is an input to the mesh rather than a property of
 	// it, so it has no universal good/bad range -- the ramp spans the field's own
 	// min and max, in the project's display length unit.
 	void drawSizing(ImDrawList* drawList);
@@ -211,15 +209,14 @@ private:
 	// Shared body of the three overlays above: shade every cell by its own value on
 	// a fixed [lo, hi] ramp, then raise the legend if anything was painted. Only the
 	// numbers and the label differ between the metrics, so they all come through
-	// here. `toMetric` converts a stored value into the quantity the legend is
-	// labelled in (null when it is already in it).
+	// here. lo is the green end and hi the red end; lo > hi is allowed, which is how
+	// a metric whose best value is its largest (element quality) gets shaded.
 	void drawQualityOverlay(
 		ImDrawList* drawList,
 		const std::vector<double>& values,
 		double lo,
 		double hi,
-		const char* label,
-		double (*toMetric)(double) = nullptr
+		const char* label
 	);
 
 	// colorbar for the quality overlays, labelled with the range and the metric it shades
@@ -235,10 +232,6 @@ private:
 
 	// pin/unpin a cell on left click (only while inspect mode is on)
 	void handleCellSelection(ImGuiIO& io);
-
-	// max non-orthogonality over the cell's interior faces, in degrees
-	// (-1 if the cell has no interior faces); also reports the average
-	double cellNonOrthogonality(int cellID, double& avgDeg, int& interiorFaces) const;
 
 	// build the text report for a picked cell
 	std::string buildCellInfoText(int cellID) const;

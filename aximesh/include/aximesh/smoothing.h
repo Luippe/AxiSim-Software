@@ -5,8 +5,6 @@
 #include <cstdint>
 #include <vector>
 
-// step 8: mesh improvement -- short-edge collapse, edge flips and point smoothing.
-// Split out of aximesh.cpp; the bodies are unchanged.
 namespace AxiMesh::Smoothing {
 
 	using SmoothFunc = double(*)(double d);
@@ -16,11 +14,6 @@ namespace AxiMesh::Smoothing {
 		const PointRing& ring
 	);
 
-	double triangleQuality(
-		const Point& a,
-		const Point& b,
-		const Point& c
-	);
 
 	double fanQuality(
 		const std::vector<Point>& points,
@@ -75,14 +68,6 @@ namespace AxiMesh::Smoothing {
 		const Params& params,
 		SmoothFunc func,
 		int nP
-	);
-
-	bool collapseBoundaryEdge(
-		std::vector<Triangle>& triangles,
-		std::vector<uint8_t>& dead,
-		const PointRing& ring,
-		int np,
-		int nb
 	);
 
 	void removeDeadTriangles(

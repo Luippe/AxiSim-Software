@@ -144,17 +144,6 @@ namespace {
 		return inspectorOrientationFromFlags(hasHorizontal, hasVertical, hasOther);
 	}
 
-	// Quality::nonOrthogonality holds the worst COSINE over a cell's faces (1 =
-	// orthogonal), which is not a number anyone reads a mesh in -- the pinned-cell
-	// report and the manual both state non-orthogonality as the angle, so the
-	// overlay converts before it shades. Clamping first keeps a face whose stored
-	// cosine drifted a hair past +-1 (or divided by a zero-length centroid vector)
-	// out of acos's domain; a NaN that survives is dropped by the overlay itself.
-	double inspectorNonOrthoDegrees(double cosAngle) {
-		constexpr double radToDeg = 57.29577951308232;
-		return std::acos(std::clamp(cosAngle, -1.0, 1.0)) * radToDeg;
-	}
-
 	// Quality ramp for the cell-quality overlays: green (well shaped) -> yellow ->
 	// red (badly shaped), the conventional reading in every mesher. Kept local
 	// rather than taken from Colormap, whose LUTs are picked by the user for
@@ -842,75 +831,6 @@ int MeshInspector::pickCell(const Vec2& world) const {
 	return -1;
 }
 
-double MeshInspector::cellNonOrthogonality(
-	int cellID,
-	double& avgDeg,
-	int& interiorFaces
-) const {
-	avgDeg = 0.0;
-	interiorFaces = 0;
-
-	const FVMesh& fv = inspectMesh();
-
-	if (cellID < 0 || cellID >= (int)fv.cells.size()) {
-		return -1.0;
-	}
-
-	const FVCell& cell = fv.cells[cellID];
-
-	double maxDeg = 0.0;
-	double sumDeg = 0.0;
-
-	constexpr double radToDeg = 57.29577951308232;
-
-	for (int fid : cell.faceIDs) {
-		if (fid < 0 || fid >= (int)fv.faces.size()) {
-			continue;
-		}
-
-		const FVFace& f = fv.faces[fid];
-
-		if (f.neighbor < 0) {
-			continue; // boundary face: no neighbour centroid to measure against
-		}
-
-		if (f.owner < 0 || f.owner >= (int)fv.cells.size() ||
-			f.neighbor >= (int)fv.cells.size()) {
-			continue;
-		}
-
-		const FVCell& P = fv.cells[f.owner];
-		const FVCell& N = fv.cells[f.neighbor];
-
-		// d: centroid-to-centroid vector;  S (f.normal): face normal
-		double dz = N.center.z - P.center.z;
-		double dr = N.center.r - P.center.r;
-		double dLen = std::sqrt(dz * dz + dr * dr);
-		double nLen = std::sqrt(f.normal.z * f.normal.z + f.normal.r * f.normal.r);
-
-		if (dLen < 1e-30 || nLen < 1e-30) {
-			continue;
-		}
-
-		// angle between the centroid line and the face normal (0 = orthogonal)
-		double cosAng = (dz * f.normal.z + dr * f.normal.r) / (dLen * nLen);
-		cosAng = std::clamp(cosAng, -1.0, 1.0);
-
-		double ang = std::acos(std::abs(cosAng)) * radToDeg;
-
-		maxDeg = std::max(maxDeg, ang);
-		sumDeg += ang;
-		interiorFaces++;
-	}
-
-	if (interiorFaces == 0) {
-		return -1.0;
-	}
-
-	avgDeg = sumDeg / interiorFaces;
-	return maxDeg;
-}
-
 void MeshInspector::handleCellSelection(ImGuiIO& io) {
 	if (!isMouseNearImage(io)) {
 		return;
@@ -1432,11 +1352,10 @@ void MeshInspector::copyActiveSurfaceToClipboard() {
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
 	// The cell overlays paint under the mesh lines, so the cells stay readable.
-	// Only one of the four ever paints (the toolbar toggles are exclusive), so
+	// Only one of the three ever paints (the toolbar toggles are exclusive), so
 	// the order between them is moot.
 	drawAspectRatio(drawList);
-	drawOrthogonality(drawList);
-	drawSkewness(drawList);
+	drawElementQuality(drawList);
 	drawSizing(drawList);
 	drawMeshLines(drawList);
 	drawRegionsOfInfluence(drawList);
@@ -1611,30 +1530,20 @@ void MeshInspector::drawToolBar() {
 	// same ramp, so two at once would leave the top one's colors over the bottom
 	// one's legend.
 	if (addImageButtonToggle("AspectRatio", "Aspect", "Shade cells by aspect ratio", assets.icon("quality"), toggleAspectRatio)) {
-		toggleOrthogonality = false;
-		toggleSkewness = false;
+		toggleElementQuality = false;
 		toggleSizing = false;
 		inspectMeshDirty = true;	// the overlay needs the cell outlines too
 	}
 	ImGui::SameLine();
-	if (addImageButtonToggle("Orthogonality", "Ortho", "Shade cells by non-orthogonality", assets.icon("quality"), toggleOrthogonality)) {
+	if (addImageButtonToggle("ElementQuality", "Quality", "Shade cells by element quality", assets.icon("quality"), toggleElementQuality)) {
 		toggleAspectRatio = false;
-		toggleSkewness = false;
-		toggleSizing = false;
-		inspectMeshDirty = true;
-	}
-	ImGui::SameLine();
-	if (addImageButtonToggle("Skewness", "Skew", "Shade cells by skewness", assets.icon("quality"), toggleSkewness)) {
-		toggleAspectRatio = false;
-		toggleOrthogonality = false;
 		toggleSizing = false;
 		inspectMeshDirty = true;
 	}
 	ImGui::SameLine();
 	if (addImageButtonToggle("Sizing", "Size", "Shade cells by the mesher's target size", assets.icon("quality"), toggleSizing)) {
 		toggleAspectRatio = false;
-		toggleOrthogonality = false;
-		toggleSkewness = false;
+		toggleElementQuality = false;
 		inspectMeshDirty = true;
 	}
 	endSection("View");
@@ -1997,16 +1906,12 @@ std::string MeshInspector::buildCellInfoText(int cellID) const {
 	std::snprintf(line, sizeof(line), "\nfaces:   %d", (int)cell.faceIDs.size());
 	info += line;
 
-	// --- non-orthogonality (the mesh-quality measure) ---
-	double avgDeg = 0.0;
-	int interiorFaces = 0;
-	double maxDeg = cellNonOrthogonality(cellID, avgDeg, interiorFaces);
-
 	info += "\n----------------";
 
-	// --- aspect ratio (Mesh measures it alongside the FV mesh) ---
+	// --- shape metrics (Mesh measures them alongside the FV mesh) ---
+	// Both are triangle-only, so a quad cell reads n/a rather than a wrong number.
 	if (cellID < (int)mesh.quality.aspectRatios.size() &&
-		mesh.quality.aspectRatios[cellID] >= 1.0) {
+		std::isfinite(mesh.quality.aspectRatios[cellID])) {
 		std::snprintf(line, sizeof(line), "\naspect ratio: %.3f",
 			mesh.quality.aspectRatios[cellID]);
 		info += line;
@@ -2015,13 +1920,14 @@ std::string MeshInspector::buildCellInfoText(int cellID) const {
 		info += "\naspect ratio: n/a";
 	}
 
-	if (maxDeg < 0.0) {
-		info += "\nnon-orthogonality: n/a (no interior faces)";
+	if (cellID < (int)mesh.quality.elementQuality.size() &&
+		std::isfinite(mesh.quality.elementQuality[cellID])) {
+		std::snprintf(line, sizeof(line), "\nelement quality: %.3f",
+			mesh.quality.elementQuality[cellID]);
+		info += line;
 	}
 	else {
-		std::snprintf(line, sizeof(line),
-			"\nnon-orthogonality (deg):\n  max %.3f   avg %.3f", maxDeg, avgDeg);
-		info += line;
+		info += "\nelement quality: n/a";
 	}
 
 	// --- target size (what the mesher aimed for here, not what it achieved) ---
@@ -2133,8 +2039,7 @@ void MeshInspector::drawQualityOverlay(
 	const std::vector<double>& values,
 	double lo,
 	double hi,
-	const char* label,
-	double (*toMetric)(double)
+	const char* label
 ) {
 	const FVMesh& fv = inspectMesh();
 
@@ -2163,13 +2068,12 @@ void MeshInspector::drawQualityOverlay(
 	ImVec2 pts[maxCellCorners];
 
 	for (int c = 0; c < (int)values.size(); c++) {
-		const double v = toMetric ? toMetric(values[c]) : values[c];
+		const double v = values[c];
 
-		// Below the low end is how a metric reports a cell it could not measure --
-		// calculateAspectRatio uses 0, under the 1.0 floor of any real ratio. Skip
-		// it rather than paint it the "excellent" green a clamp would give. A
-		// non-finite value is the same story with a degenerate cell behind it.
-		if (!std::isfinite(v) || v < lo) {
+		// Every metric reports a cell it could not measure as NaN -- a quad under a
+		// triangle formula, a cell with no sizing, a degenerate one whose ratio came
+		// back infinite. Skip it rather than paint it the shade a clamp would give.
+		if (!std::isfinite(v)) {
 			continue;
 		}
 
@@ -2205,42 +2109,30 @@ void MeshInspector::drawAspectRatio(ImDrawList* drawList) {
 		return;
 	}
 
-	// 1.0 -- a perfect cell -- is the green end and 2.0 the red end. Fixed rather
+	// The radius ratio is unbounded above, so the red end is a threshold rather than
+	// a range: 3.0 is the top of the band Verdict calls acceptable, which makes red
+	// mean "outside the accepted band" instead of an arbitrary number. Fixed rather
 	// than scaled to the worst cell present, which would stretch an already-good
-	// mesh over a meaningless range and paint it red; on this ramp a uniform grid
-	// stays green, as it should.
-	drawQualityOverlay(drawList, mesh.quality.aspectRatios, 1.0, 2.0, "aspect");
+	// mesh over a meaningless range and paint it red.
+	//
+	// Expect a good mesh to be flat green -- measured on a 2x1 box and a notched
+	// box, every cell lands under 1.12, while a 5 degree wedge tip reaches 29.8. The
+	// overlay is built to pick slivers out of a good mesh, not to rank good cells.
+	drawQualityOverlay(drawList, mesh.quality.aspectRatios, 1.0, 3.0, "aspect");
 }
 
-void MeshInspector::drawOrthogonality(ImDrawList* drawList) {
-	if (!toggleOrthogonality) {
+void MeshInspector::drawElementQuality(ImDrawList* drawList) {
+	if (!toggleElementQuality) {
 		return;
 	}
 
-	// Quality stores the worst cosine over the cell's faces, so 1 means orthogonal.
-	// The overlay reads it as the angle instead, which is the way the pinned-cell
-	// report and the manual both state non-orthogonality. 70 deg is the red end:
-	// the conventional point past which a cell's correction term is too large to
-	// trust, so anything worse pins at red rather than earning its own shade.
-	drawQualityOverlay(
-		drawList,
-		mesh.quality.nonOrthogonality,
-		0.0,
-		70.0,
-		"non-orth deg",
-		inspectorNonOrthoDegrees
-	);
-}
-
-void MeshInspector::drawSkewness(ImDrawList* drawList) {
-	if (!toggleSkewness) {
-		return;
-	}
-
-	// Skewness comes out of Quality already normalized -- 0 is the ideal cell for
-	// its corner count, 1 is degenerate -- so the ramp is its full definition range
-	// and needs no threshold picked for it.
-	drawQualityOverlay(drawList, mesh.quality.skewness, 0.0, 1.0, "skew");
+	// The mean ratio is already normalized -- 1 is equilateral and 0 degenerate --
+	// so the ramp is its full definition range and needs no threshold picked for it.
+	// Like the aspect overlay, a good mesh sits near the green end and stays there:
+	// measured, a clean box bottoms out at 0.91 and only a sliver reaches 0.15.
+	// lo and hi run backwards because here the LARGEST value is the good one; an
+	// inverted triangle comes out negative and pins at red, which is correct.
+	drawQualityOverlay(drawList, mesh.quality.elementQuality, 1.0, 0.0, "quality");
 }
 
 double MeshInspector::cellTargetSize(int cellID) const {
@@ -2301,7 +2193,7 @@ void MeshInspector::drawSizing(ImDrawList* drawList) {
 	// whatever the project shows lengths in rather than in metres.
 	const double toDisplay = project.lengthScale.value;
 
-	std::vector<double> values(fv.cells.size(), -1.0);
+	std::vector<double> values(fv.cells.size(), std::numeric_limits<double>::quiet_NaN());
 
 	double lo = std::numeric_limits<double>::max();
 	double hi = -std::numeric_limits<double>::max();
@@ -2310,7 +2202,7 @@ void MeshInspector::drawSizing(ImDrawList* drawList) {
 		const double size = cellTargetSize(c);
 
 		if (size <= 0.0) {
-			continue;	// left at -1, which the ramp's own low-end test skips
+			continue;	// left at NaN, which the ramp skips as unmeasurable
 		}
 
 		values[c] = size * toDisplay;
@@ -2344,7 +2236,8 @@ void MeshInspector::drawQualityLegend(
 ) {
 	// Three metrics share this corner and the same green-to-red ramp, so without the
 	// end numbers and the metric name a color says nothing about which scale it is
-	// on -- 1 is a flawless cell on the aspect bar and a dead one on the skew bar.
+	// on -- 1 is a flawless cell on both shape bars, but it is the bottom of the
+	// aspect bar and the top of the quality one.
 	const float pad = 10.0f;
 	const float barWidth = 16.0f;
 	const float barHeight = 110.0f;
@@ -2458,11 +2351,10 @@ void MeshInspector::render() {
 	drawList->PushClipRect(canvasRect.min, canvasRect.max, true);
 	drawAxes(drawList);
 	// The cell overlays paint under the mesh lines, so the cells stay readable.
-	// Only one of the four ever paints (the toolbar toggles are exclusive), so
+	// Only one of the three ever paints (the toolbar toggles are exclusive), so
 	// the order between them is moot.
 	drawAspectRatio(drawList);
-	drawOrthogonality(drawList);
-	drawSkewness(drawList);
+	drawElementQuality(drawList);
 	drawSizing(drawList);
 	drawMeshLines(drawList);
 	drawRegionsOfInfluence(drawList);

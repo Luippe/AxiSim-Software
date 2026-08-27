@@ -40,6 +40,11 @@ namespace AxiMesh{
 		int adj[3];
 	};
 
+	struct Quad {
+		int v[4];
+		int adj[4];
+	};
+
 	struct FrontEdge {
 		int t = -1;
 		int e = -1;
@@ -109,19 +114,21 @@ namespace AxiMesh{
 	};
 
 	struct Mesh {
-		// the bin sort reorders the input, so points is not in caller order; the three
-		// super triangle vertices follow the `size` input points. Edge collapse then drops
-		// every point no triangle still uses, so index k is not input point k either
 		std::vector<Point> points;
 		std::vector<Triangle> triangles;
 		std::vector<Segment> segments;		// remapped to the reordered point indices
 
-		// target edge length per point, in the NORMALIZED coordinates the mesher works
-		// in -- points are unnormalized on the way out, this is not. Scale by
-		// buildNormVariables(<the same input points>).dMax for a world length. A point
-		// the field never reached (the super triangle corners) keeps DBL_MAX.
+		std::vector<double> volume;
+		std::vector<double> area2D;
+		std::vector<Point> center;
+
 		std::vector<double> sizing;
 		std::vector<PointRing> pRings;
+
+		// per triangle, filled by Quality::buildQuality
+		std::vector<double> elementQuality;
+		std::vector<double> aspectRatio;
+
 	};
 
 	Mesh generateMesh(

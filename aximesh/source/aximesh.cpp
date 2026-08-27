@@ -1,5 +1,6 @@
 #include "aximesh/aximesh.h"
 #include "aximesh/smoothing.h"
+#include "aximesh/quality.h"
 
 #include <algorithm>
 #include <array>
@@ -10,8 +11,9 @@
 #include <cstdio>
 #include <stdexcept>
 #include <limits>
+#include <numbers>
 
-
+constexpr double PI = std::numbers::pi;
 
 namespace AxiMesh {
 
@@ -50,6 +52,13 @@ namespace AxiMesh {
 				std::chrono::steady_clock::now() - t0).count());
 		}
 	};
+
+	inline Point triangleCentroid(Point a, Point b, Point c) {
+		return Point{
+			(a.x + b.x + c.x) / 3.0,
+			(a.y + b.y + c.y) / 3.0
+		};
+	}
 
 	// distance squared
 	double dist2(const Point& a, const Point& b) {
@@ -1150,21 +1159,6 @@ namespace AxiMesh {
 				continue;
 			}
 
-			 //one Dijkstra relaxation over the new one-ring, against hMax -- interpolating the
-			 //ring instead is convex, so it could never place a point coarser than the boundary
-			//const int newVertex = (int)points.size() - 1;
-			//double hNew = params.hMax;
-			//for (int t : touched) {
-			//	const Triangle& triangle = triangles[t];
-			//	for (int i = 0; i < 3; i++) {
-			//		if (triangle.v[i] != newVertex) continue;
-			//		for (int k = 1; k <= 2; k++) {
-			//			int w = triangle.v[(i + k) % 3];
-			//			hNew = std::min(hNew, h[w] + params.gSmoothing * dist(points[newVertex], points[w]));
-			//		}
-			//	}
-			//}
-
 			h.push_back(hNew);
 
 			state.resize(triangles.size(), AdvancingState::WAITING);		// size of state = size of triangles, always
@@ -1360,6 +1354,31 @@ namespace AxiMesh {
 	}
 
 
+	void buildGeometry(
+		Mesh& mesh
+	) {
+		const std::vector<Triangle>& triangles = mesh.triangles;
+		const std::vector<Point>& points = mesh.points;
+
+		mesh.area2D.resize(triangles.size());
+		mesh.volume.resize(triangles.size());
+		mesh.center.resize(triangles.size());
+
+		for (int t = 0; t < (int)triangles.size(); t++) {
+			const Triangle& tri = triangles[t];
+
+			const Point& a = points[tri.v[0]];
+			const Point& b = points[tri.v[1]];
+			const Point& c = points[tri.v[2]];
+
+			// calculate area, volume, and center of triangle
+			mesh.area2D[t] = 0.5 * orient(a, b, c);
+			mesh.center[t] = triangleCentroid(a, b, c);
+			mesh.volume[t] = 2.0 * PI * mesh.center[t].y * mesh.area2D[t];
+
+		}
+	}
+
 	Mesh generateMesh(
 		const std::vector<Point>& points,
 		const std::vector<Segment>& segments,
@@ -1424,6 +1443,7 @@ namespace AxiMesh {
 			mesh.segments.push_back({ newIndex[s.a], newIndex[s.b] });
 		}
 
+
 		// apply constraints
 		constrain(vertexTri, mesh);
 
@@ -1453,6 +1473,8 @@ namespace AxiMesh {
 		mesh.points = unnormalize(mesh.points, normVar);
 		mesh.sizing = std::move(h);
 
+		buildGeometry(mesh);
+		Quality::buildQuality(mesh);
 		return mesh;
 	}
 }

@@ -1,10 +1,12 @@
 #include "aximesh/smoothing.h"
+#include "aximesh/quality.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <utility>
 #include <vector>
+
 
 namespace AxiMesh {
 
@@ -37,15 +39,7 @@ namespace AxiMesh::Smoothing {
 		return p;
 	}
 
-	// 1 = equilateral
-	double triangleQuality(
-		const Point& a,
-		const Point& b,
-		const Point& c
-	) {
-		double l2 = dist2(a, b) + dist2(b, c) + dist2(c, a);
-		return 2.0 * std::sqrt(3.0) * orient(a, b, c) / l2;
-	}
+
 
 	double fanQuality(
 		const std::vector<Point>& points,
@@ -61,7 +55,7 @@ namespace AxiMesh::Smoothing {
 			for (int e = 0; e < 3; e++) {
 				p[e] = (T.v[e] == vi) ? candidate : points[T.v[e]];
 			}
-			q = std::min(q, triangleQuality(p[0], p[1], p[2]));
+			q = std::min(q, Quality::triangleQuality(p[0], p[1], p[2]));
 		}
 		return q;
 	}
@@ -243,7 +237,7 @@ namespace AxiMesh::Smoothing {
 					int v = triangle.v[e];
 					p[e] = (M && (v == np || v == nb)) ? *M : points[v];
 				}
-				q = std::min(q, triangleQuality(p[0], p[1], p[2]));
+				q = std::min(q, Quality::triangleQuality(p[0], p[1], p[2]));
 			}
 		};
 
@@ -448,10 +442,10 @@ namespace AxiMesh::Smoothing {
 				int v2 = triangles[t].v[(e + 2) % 3];
 				int vOpp = triangles[tOpp].v[(eOpp + 2) % 3];
 
-				double before = std::min(triangleQuality(points[v0], points[v1], points[v2]),
-										triangleQuality(points[v1], points[v0], points[vOpp]));
-				double after = std::min(triangleQuality(points[v2], points[v0], points[vOpp]),
-										triangleQuality(points[v2], points[vOpp], points[v1]));
+				double before = std::min(Quality::triangleQuality(points[v0], points[v1], points[v2]),
+										Quality::triangleQuality(points[v1], points[v0], points[vOpp]));
+				double after = std::min(Quality::triangleQuality(points[v2], points[v0], points[vOpp]),
+										Quality::triangleQuality(points[v2], points[vOpp], points[v1]));
 
 				if (after > before) flipEdge(triangles, t, e);
 			}
