@@ -370,9 +370,6 @@ namespace AxiMesh {
 		return std::asin(std::sqrt(sin2));
 	}
 
-
-
-
 	// for a given triangle tri, iterate through each adjacent triangle until tIndex is found. return the edge index
 	int getEdgeFromNeighbour(const Triangle& tri, int tIndex) {
 		for (int i = 0; i < 3; i++) {

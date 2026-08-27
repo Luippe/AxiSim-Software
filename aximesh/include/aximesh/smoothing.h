@@ -77,14 +77,6 @@ namespace AxiMesh::Smoothing {
 		int nP
 	);
 
-	bool canCollapseBoundaryEdge(
-		const std::vector<Triangle>& triangles,
-		int tA,
-		int eA,
-		int tB,
-		int eB
-	);
-
 	bool collapseBoundaryEdge(
 		std::vector<Triangle>& triangles,
 		std::vector<uint8_t>& dead,
@@ -106,7 +98,7 @@ namespace AxiMesh::Smoothing {
 		std::vector<uint8_t>& pinned
 	);
 
-	void smartEdgeCollpase(
+	void smartEdgeCollapse(
 		std::vector<Point>& points,
 		std::vector<Triangle>& triangles,
 		std::vector<Segment>& segments,

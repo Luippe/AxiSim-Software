@@ -197,28 +197,34 @@ namespace AxiMesh::Smoothing {
 		return p;
 	}
 
-	// np and nb may only share the two apexes of the edge, or the collapse folds the mesh.
-	// only the cheap half is checked -- link(nb) is out of reach, pinned points get no ring
-	bool canCollapseBoundaryEdge(
-		const std::vector<Triangle>& triangles,
-		int tA,
-		int eA,
-		int tB,
-		int eB
+
+	// when a triangle is deleted, ensure the adjacency is held between the two triangles that are affected
+	// takes t, the triangle to be removed, and e, the edge which will collapse
+	void preserveTriangleAdjacency(
+		std::vector<Triangle>& triangles,
+		int t,
+		int e
 	) {
-		int apexA = triangles[tA].v[(eA + 2) % 3];
-		int apexB = triangles[tB].v[(eB + 2) % 3];
-		return apexA != apexB;		// equal means np has valence 2 and its whole fan would die
+		int tAdj1 = triangles[t].adj[(e + 1) % 3];
+		int tAdj2 = triangles[t].adj[(e + 2) % 3];
+		if (tAdj1 != -1) {
+			int eOpp1 = getEdgeFromNeighbour(triangles[tAdj1], t);
+			triangles[tAdj1].adj[eOpp1] = tAdj2;
+		}
+		if (tAdj2 != -1) {
+			int eOpp2 = getEdgeFromNeighbour(triangles[tAdj2], t);
+			triangles[tAdj2].adj[eOpp2] = tAdj1;
+		}
 	}
 
-	// collapse edge np-nb onto nb and mark the two incident triangles dead. the caller
-	// guarantees np is unpinned and nb is pinned
-	bool collapseBoundaryEdge(
+	bool collapseEdge(
+		std::vector<Point>& points,
 		std::vector<Triangle>& triangles,
 		std::vector<uint8_t>& dead,
 		const PointRing& ring,
 		int np,
-		int nb
+		int nb,
+		int boundary
 	) {
 		// find the two triangles that are adjacent to edge np-nb. also find the corresponding edge
 		int tA = -1;
@@ -242,25 +248,18 @@ namespace AxiMesh::Smoothing {
 
 		// an earlier collapse in this sweep may already have taken the edge
 		if (tA == -1 || tB == -1) return false;
-		if (!canCollapseBoundaryEdge(triangles, tA, eA, tB, eB)) return false;
 
 		// removing a triangle glues its two surviving edges together
-		for (int pass = 0; pass < 2; pass++) {
-			int t = pass == 0 ? tA : tB;
-			int e = pass == 0 ? eA : eB;
-			int tAdj1 = triangles[t].adj[(e + 1) % 3];
-			int tAdj2 = triangles[t].adj[(e + 2) % 3];
+		preserveTriangleAdjacency(triangles, tA, eA);
+		preserveTriangleAdjacency(triangles, tB, eB);
 
-			if (tAdj1 != -1) {
-				int eOpp1 = getEdgeFromNeighbour(triangles[tAdj1], t);
-				if (eOpp1 == -1) throwError(ErrorCase::DEAD_NEIGHBOR);
-				triangles[tAdj1].adj[eOpp1] = tAdj2;
-			}
-			if (tAdj2 != -1) {
-				int eOpp2 = getEdgeFromNeighbour(triangles[tAdj2], t);
-				if (eOpp2 == -1) throwError(ErrorCase::DEAD_NEIGHBOR);
-				triangles[tAdj2].adj[eOpp2] = tAdj1;
-			}
+
+		if (!boundary) {
+			// calculate the midpoint between np and nb
+			Point M = { 0.5 * (points[np].x + points[nb].x), 0.5 * (points[np].y + points[nb].y) };
+
+			// nb becomes the new midpoint
+			points[nb] = M;
 		}
 
 		// np disappears into nb across its whole fan
@@ -347,7 +346,7 @@ namespace AxiMesh::Smoothing {
 		}
 	}
 
-	void smartEdgeCollpase(
+	void smartEdgeCollapse(
 		std::vector<Point>& points,
 		std::vector<Triangle>& triangles,
 		std::vector<Segment>& segments,
@@ -375,11 +374,10 @@ namespace AxiMesh::Smoothing {
 
 
 			for (auto& [boundary, nb] : candidates) {
-				if (boundary != 1 || gone[nb]) {
-					continue;
-				};		// check if the point lies on a boundary
-				if (!collapseBoundaryEdge(triangles, dead, pRings[i], i, nb)) continue;
+				if (gone[nb]) continue;
+				if (!collapseEdge(points, triangles, dead, pRings[i], i, nb, boundary)) continue;
 				gone[i] = 1;
+				gone[nb] = 1;		// nb inherited i's fan, so its cached ring is stale for the rest of the sweep
 				collapsed = true;
 				break;		// i is absorbed into nb, so its remaining candidates no longer exist
 			}
@@ -456,7 +454,7 @@ namespace AxiMesh::Smoothing {
 		// flip any edges -> rebuild pRings -> smoothing
 		for (int k = 0; k < params.iterSmoothing; k++) {
 			// collapse compacts points, so pRings is stale until it is rebuilt below
-			smartEdgeCollpase(points, triangles, segments, pRings, h, pinned, params);
+			smartEdgeCollapse(points, triangles, segments, pRings, h, pinned, params);
 
 			smartEdgeFlip(points, triangles);
 			pRings = buildPointRings(points, triangles, pinned);
