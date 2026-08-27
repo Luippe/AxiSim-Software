@@ -1,6 +1,7 @@
 #include "quality.h"
 
 #include <algorithm>
+#include <numeric>
 
 #include "boundary_struct.h"
 
@@ -162,6 +163,10 @@ void Quality::buildQuality(const FVMesh& fvMesh) {
 	calculateAspectRatio(fvMesh, aspectRatios);
 	calculateOrthogonality(fvMesh, nonOrthogonality);
 	calculateSkewness(fvMesh, skewness);
+	printf("Max Aspect Ratio: %f\n", *std::max_element(aspectRatios.begin(), aspectRatios.end()));
+	printf("Min Aspect Ratio: %f\n", *std::min_element(aspectRatios.begin(), aspectRatios.end()));
+	printf("Mean Aspect Ratio: %f\n", (double)std::accumulate(aspectRatios.begin(), aspectRatios.end(), 0.0) / ((double)aspectRatios.size()));
+
 
 }
 

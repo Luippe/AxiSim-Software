@@ -12,7 +12,6 @@
 #include <limits>
 
 
-//#include <format>
 
 namespace AxiMesh {
 

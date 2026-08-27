@@ -1554,6 +1554,7 @@ void Mesh::runGmshTriangulation() {
 	unstructuredTriangles.clear();
 
 	gmsh::initialize();
+	gmsh::option::setNumber("General.Verbosity", 2);	// errors and warnings only -- gmsh defaults to printing progress
 	gmsh::clear();
 
 	gmsh::model::add("AxiSimMesh");
