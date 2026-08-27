@@ -109,9 +109,10 @@ public:
 	std::vector<Triangle> unstructuredTriangles;
 
 	// The target edge length (metres) the mesher aimed for at each unstructuredPoints
-	// entry, -1 where it has none. Only the aximesh path produces one and it is not
-	// serialized, so a gmsh mesh or a loaded project leaves it empty -- which is how a
-	// consumer knows there is no sizing field to show.
+	// entry, -1 where it has none. Both triangulated paths fill it -- aximesh from its
+	// own vertex field, gmsh from the size callback it is asked through -- but it is
+	// not serialized, so a structured mesh or a loaded project leaves it empty, which
+	// is how a consumer knows there is no sizing field to show.
 	std::vector<double> unstructuredSizing;
 	std::vector<BoundaryVertex> boundaryVertices;
 	std::vector<BoundarySegment> boundarySegments;

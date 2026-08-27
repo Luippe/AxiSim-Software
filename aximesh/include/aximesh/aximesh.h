@@ -24,7 +24,9 @@ namespace AxiMesh{
 		DUPLICATE,
 		ON_EDGE,
 		SIZE_DIFF,
-		COMPLEX_SQRT
+		COMPLEX_SQRT,
+		DEAD_NEIGHBOR,
+		DEAD_SEGMENT
 
 	};
 
@@ -49,8 +51,8 @@ namespace AxiMesh{
 	};
 
 	struct PointRing {
-		std::vector<int> neighbors;
-		std::vector<int> tris;
+		std::vector<int> neighbors;		// adjacent points
+		std::vector<int> tris;			// adjacent triangles
 	};
 
 	// max-heap on crad -- Rebay advances from the active triangle with the largest circumradius
@@ -75,18 +77,9 @@ namespace AxiMesh{
 		double dy = 0;
 	};
 
-	struct SizeField {
-		int nz = 100;
-		int nr = 100;
-		double dz = 0.0;
-		double dr = 0.0;
-		std::vector<double> h;
-		double sample(const Point& p) const;
-	};
-
 	struct Params {
 		double B = 1.0;
-		double gSmoothing = 0.3;
+		double gSmoothing = 0.1;
 		double classify_tol = 1.2247;
 		InsertionScheme scheme = InsertionScheme::REBAY;
 		//InsertionScheme scheme = InsertionScheme::ENGWIRDA;
@@ -97,9 +90,11 @@ namespace AxiMesh{
 		SmoothingScheme smoothingScheme = SmoothingScheme::LAPLACIAN;
 		//SmoothingScheme smoothingScheme = SmoothingScheme::OURS;
 		int iterSmoothing = 10;
-		double hMax = 1.0;
+		// world lengths -- generateMesh converts them into its normalized space.
+		// hMax is the bulk size the field plateaus at; 0 means "the coarsest boundary
+		// segment", so the interior never grows coarser than the walls
+		double hMax = 0.0;
 		double hMin = 0.0;
-		int stampCells = 2;
 	};
 
 	enum class SegmentState {
@@ -117,7 +112,8 @@ namespace AxiMesh{
 
 	struct Mesh {
 		// the bin sort reorders the input, so points is not in caller order; the three
-		// super triangle vertices follow the `size` input points
+		// super triangle vertices follow the `size` input points. Edge collapse then drops
+		// every point no triangle still uses, so index k is not input point k either
 		std::vector<Point> points;
 		std::vector<Triangle> triangles;
 		std::vector<Segment> segments;		// remapped to the reordered point indices

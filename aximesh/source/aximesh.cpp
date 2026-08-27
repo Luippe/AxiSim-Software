@@ -1,4 +1,5 @@
 #include "aximesh/aximesh.h"
+#include "aximesh/smoothing.h"
 
 #include <algorithm>
 #include <array>
@@ -8,11 +9,10 @@
 #include <chrono>
 #include <cstdio>
 #include <stdexcept>
-#include <queue>
-#include <functional>
+#include <limits>
+
 
 //#include <format>
-using SmoothFunc = double(*)(double d);
 
 namespace AxiMesh {
 
@@ -26,6 +26,10 @@ namespace AxiMesh {
 			return "different size detected";
 		case ErrorCase::COMPLEX_SQRT:
 			return "complex number from a square root";
+		case ErrorCase::DEAD_NEIGHBOR:
+			return "a live triangle still points at a removed one";
+		case ErrorCase::DEAD_SEGMENT:
+			return "a segment endpoint was collapsed away";
 		default:
 			return "ERROR";
 		}
@@ -143,10 +147,11 @@ namespace AxiMesh {
 		return -1;
 	}
 
+	// for a given triangle, find the adjacent check triangle and replace its adjacency with the replace triangle
 	void updateEdge(Triangle& T, int check, int replace) {
-		for (int i = 0; i < 3; i++) {
-			if (T.adj[i] == check) {
-				T.adj[i] = replace;
+		for (int e = 0; e < 3; e++) {
+			if (T.adj[e] == check) {
+				T.adj[e] = replace;
 				break;
 			}
 		}
@@ -272,21 +277,6 @@ namespace AxiMesh {
 		}
 	}
 
-	Point ringCentroid(
-		const std::vector<Point>& points,
-		const PointRing& ring
-	) {
-		Point p;
-		int ringSize = (int)ring.neighbors.size();
-		for (const int& nb : ring.neighbors) {
-			p.x += points[nb].x;
-			p.y += points[nb].y;
-		}
-		p.x = p.x / ringSize;
-		p.y = p.y / ringSize;
-		return p;
-	}
-
 	// loop/fan around vertex a, until vertex b is found
 	bool findEdge(const std::vector<int>& vertexTri, const std::vector<Triangle>& triangles, int a, int b, int& tOut, int& eOut) {
 		int tStart = vertexTri[a];
@@ -305,35 +295,6 @@ namespace AxiMesh {
 
 		} while (t != tStart && t != -1);
 		return false;
-	}
-
-	// 1 = equilateral
-	double triangleQuality(
-		const Point& a,
-		const Point& b,
-		const Point& c
-	) {
-		double l2 = dist2(a, b) + dist2(b, c) + dist2(c, a);
-		return 2.0 * std::sqrt(3.0) * orient(a, b, c) / l2;
-	}
-
-	double fanQuality(
-		const std::vector<Point>& points,
-		const std::vector<Triangle>& triangles,
-		const PointRing& ring,
-		int vi,
-		const Point& candidate
-	) {
-		double q = std::numeric_limits<double>::max();
-		for (int t : ring.tris) {
-			const Triangle& T = triangles[t];
-			Point p[3];
-			for (int e = 0; e < 3; e++) {
-				p[e] = (T.v[e] == vi) ? candidate : points[T.v[e]];
-			}
-			q = std::min(q, triangleQuality(p[0], p[1], p[2]));
-		}
-		return q;
 	}
 
 	void flipEdge(std::vector<Triangle>& triangles, int t, int e) {
@@ -412,7 +373,7 @@ namespace AxiMesh {
 
 
 
-	// check every edge and see if any are tIndex, if so return that edge index
+	// for a given triangle tri, iterate through each adjacent triangle until tIndex is found. return the edge index
 	int getEdgeFromNeighbour(const Triangle& tri, int tIndex) {
 		for (int i = 0; i < 3; i++) {
 			if (tri.adj[i] == tIndex) return i;
@@ -940,6 +901,7 @@ namespace AxiMesh {
 		// we know for sure those triangles are outside, and needs to be removed
 		std::stack<int> removal;
 		std::vector<int8_t> parity(triSize, -1);
+		
 		for (int t = 0; t < triSize; t++) {
 			const Triangle& triangle = triangles[t];
 			if (triangle.v[0] >= size || triangle.v[1] >= size || triangle.v[2] >= size) {
@@ -1164,14 +1126,13 @@ namespace AxiMesh {
 		std::vector<int> dirty;
 		std::vector<int> mark;
 		int epoch = 0;
-
+		int nT = 0;
 		while (!frontEdges.empty()) {
 
 			FrontEdge frontEdge = frontEdges.top();		// copy before pop -- top() is a reference into the heap
 			frontEdges.pop();
 			if (!isValidFrontEdge(triangles, state, frontEdge)) continue;
 
-			double hP = 0.0;	// size function at new point
 			Point X;			// location of new point
 			switch (params.scheme) {
 			case InsertionScheme::REBAY:
@@ -1182,7 +1143,9 @@ namespace AxiMesh {
 				break;
 			}
 
-			sampleH(points, triangles, h, X, frontEdge.t, hP);
+			double hNew = 0.0;
+			sampleH(points, triangles, h, X, frontEdge.t, hNew);
+			hNew = std::min(hNew, params.hMax);
 
 			points.push_back(X);
 			if (!insertVertex(points, triangles, touched, (int)points.size() - 1, frontEdge.t)) {
@@ -1191,7 +1154,22 @@ namespace AxiMesh {
 				continue;
 			}
 
-			h.push_back(hP);
+			 //one Dijkstra relaxation over the new one-ring, against hMax -- interpolating the
+			 //ring instead is convex, so it could never place a point coarser than the boundary
+			//const int newVertex = (int)points.size() - 1;
+			//double hNew = params.hMax;
+			//for (int t : touched) {
+			//	const Triangle& triangle = triangles[t];
+			//	for (int i = 0; i < 3; i++) {
+			//		if (triangle.v[i] != newVertex) continue;
+			//		for (int k = 1; k <= 2; k++) {
+			//			int w = triangle.v[(i + k) % 3];
+			//			hNew = std::min(hNew, h[w] + params.gSmoothing * dist(points[newVertex], points[w]));
+			//		}
+			//	}
+			//}
+
+			h.push_back(hNew);
 
 			state.resize(triangles.size(), AdvancingState::WAITING);		// size of state = size of triangles, always
 			mark.resize(triangles.size(), -1);
@@ -1274,6 +1252,70 @@ namespace AxiMesh {
 		}
 	}
 
+	// h starts at hMax everywhere and is only ever lowered, which is what lets an interior
+	// vertex stay coarser than the walls -- interpolating from the boundary never could.
+	// Dijkstra over the mesh edges is Persson's O(n log n) limiter on a graph metric, so the
+	// field propagates around a wall instead of through it.
+	void buildVertexSizing(
+		const std::vector<Point>& points,
+		const std::vector<Triangle>& triangles,
+		const std::vector<Segment>& segments,
+		const Params& params,
+		std::vector<double>& h
+	) {
+		h.assign(points.size(), params.hMax);
+
+		// seed: every boundary vertex wants the mean of the segments meeting it
+		std::vector<double> lSum(points.size(), 0.0);
+		std::vector<int> count(points.size(), 0);
+		for (const Segment& seg : segments) {
+			double l = dist(points[seg.a], points[seg.b]);
+			lSum[seg.a] += l;
+			lSum[seg.b] += l;
+			count[seg.a] += 1;
+			count[seg.b] += 1;
+		}
+		for (int i = 0; i < (int)h.size(); i++) {
+			if (count[i] == 0) continue;
+			h[i] = std::max(params.hMin, std::min(lSum[i] / count[i], params.hMax));
+		}
+
+		std::vector<std::vector<int>> nbr(points.size());
+		for (const Triangle& triangle : triangles) {
+			for (int e = 0; e < 3; e++) {
+				int v = triangle.v[e];
+				int w = triangle.v[(e + 1) % 3];
+				nbr[v].push_back(w);
+				nbr[w].push_back(v);
+			}
+		}
+
+		// a vertex no surviving triangle references (the super triangle corners) sits
+		// outside the domain -- leave it unset so callers can tell it from a real size
+		for (int v = 0; v < (int)h.size(); v++) {
+			if (nbr[v].empty()) h[v] = std::numeric_limits<double>::max();
+		}
+
+		using Node = std::pair<double, int>;
+		std::priority_queue<Node, std::vector<Node>, std::greater<Node>> pq;
+		for (int v = 0; v < (int)h.size(); v++) {
+			if (h[v] < params.hMax) pq.push({ h[v], v });
+		}
+
+		while (!pq.empty()) {
+			Node top = pq.top();
+			pq.pop();
+			if (top.first > h[top.second]) continue;		// stale heap entry
+			for (int w : nbr[top.second]) {
+				double cand = top.first + params.gSmoothing * dist(points[top.second], points[w]);
+				if (cand < h[w]) {
+					h[w] = cand;
+					pq.push({ cand, w });
+				}
+			}
+		}
+	}
+
 	void frontalInit(
 		std::vector<Point>& points,
 		std::vector<Triangle>& triangles,
@@ -1281,34 +1323,10 @@ namespace AxiMesh {
 		std::vector<double>& h,
 		std::vector<AdvancingState>& state,
 		FrontQueue& frontEdges,
-		const Params& params,
-		SizeField& sizing
+		const Params& params
 	) {
 
-		std::vector<double> lSum(points.size());
-		std::vector<int> count(points.size());
-
-		// initialize size field
-		for (const Segment& seg : segments) {
-
-			double l = std::sqrt(dist2(points[seg.a], points[seg.b]));
-			lSum[seg.a] += l;
-			lSum[seg.b] += l;
-			count[seg.a] += 1;
-			count[seg.b] += 1;
-
-		}
-
-		for (int i = 0; i < (int)h.size(); i++) {
-			if (count[i] == 0) continue;
-			h[i] = lSum[i] / count[i];
-		}
-
-		lipschitzSmoothing(points, triangles, h, params);
-
-		//for (int i = 0; i < (int)points.size(); i++) {
-		//	h[i] = sizing.sample(points[i]);
-		//}
+		buildVertexSizing(points, triangles, segments, params, h);
 
 		// populate triangle states. two passes.
 		// first pass accepts all triangles adjacent to a boundary
@@ -1329,232 +1347,6 @@ namespace AxiMesh {
 		};
 	}
 
-	std::vector<uint8_t> buildPinnedPoints(
-		const std::vector<Segment>& segments,
-		int size
-	) {
-		std::vector<uint8_t> pinned(size, 0);
-		for (const Segment& seg : segments) {
-			pinned[seg.a] = 1;
-			pinned[seg.b] = 1;
-		}
-		return pinned;
-	}
-
-	std::vector<PointRing> buildPointRings(
-		const std::vector<Point>& points,
-		const std::vector<Triangle>& triangles,
-		const std::vector<uint8_t>& pinned
-	) {
-		// if the point is not on the boundary, push
-		std::vector<PointRing> pRings(points.size());
-		for (const Triangle& triangle : triangles) {
-			for (int e = 0; e < 3; e++) {
-				int a = triangle.v[e];
-				int b = triangle.v[(e + 1) % 3];
-				if (!pinned[a]) pRings[a].neighbors.push_back(b);
-				if (!pinned[b]) pRings[b].neighbors.push_back(a);
-			}
-		}
-
-		// remove duplicates
-		for (PointRing& ring : pRings) {
-			std::sort(ring.neighbors.begin(), ring.neighbors.end());
-			auto it = std::unique(ring.neighbors.begin(), ring.neighbors.end());
-			ring.neighbors.erase(it, ring.neighbors.end());
-		}
-
-		// add triangle fan
-		for (int t = 0; t < (int)triangles.size(); t++) {
-			for (int e = 0; e < 3; e++) {
-				if (!pinned[triangles[t].v[e]]) pRings[triangles[t].v[e]].tris.push_back(t);
-			}
-		}
-		return pRings;
-	}
-
-	SmoothFunc getSmoothingFunction(
-		const Params& params
-	) {
-		switch (params.smoothingScheme) {
-		case SmoothingScheme::LAPLACIAN:
-			return [](double d) {return -d; };
-		case SmoothingScheme::OURS:
-			return [](double d) {
-				double d4 = d * d * d * d;
-				return (1 - d4) * std::exp(-d4);
-				};
-		default: return [](double) {return 0.0; };
-		}
-	}
-
-
-	double normalizedArea(
-		const std::vector<Point>& points,
-		const Triangle& triangle,
-		const std::vector<double>& h
-	) {
-		double hT = (h[triangle.v[0]] + h[triangle.v[1]] + h[triangle.v[2]]) / 3.0;
-		double area = 0.5 * orient(points[triangle.v[0]], points[triangle.v[1]], points[triangle.v[2]]);
-		return area / (hT * hT);
-	}
-
-	double getPointExtent(
-		const std::vector<Point>& points,
-		const std::vector<Triangle>& triangles,
-		const std::vector<double>& h,
-		const PointRing& ring,
-		const Params& params
-	) {
-		double extent = 0.0;
-		int size = (int)ring.tris.size();
-		for (const int& t : ring.tris) {
-			const Triangle& triangle = triangles[t];
-			extent += normalizedArea(points, triangle, h);
-		}
-		return (2.3 * extent) / (std::sqrt(size * (size - 2)));
-	}
-
-	double getEdgeExtent(
-		const std::vector<Point>& points,
-		const std::vector<Triangle>& triangles,
-		const std::vector<double>& h,
-		int t,
-		int e
-	) {
-		const Triangle& triangle = triangles[t];
-		int tOpp = triangle.adj[e];
-		if (tOpp == -1) {
-			int a = triangle.v[e];
-			int b = triangle.v[(e + 1) % 3];
-			double r = 0.5 * (h[a] + h[b]);
-			double len = dist(points[a], points[b]) / r;
-			return 0.5 * len * len;
-		}
-		return 0.8 * (normalizedArea(points, triangle, h) + normalizedArea(points, triangles[tOpp], h));
-	}
-
-	Point generalSmoothing(
-		const std::vector<Point>& points,
-		const std::vector<Triangle>& triangles,
-		const std::vector<double>& h,
-		const PointRing& ring,
-		const Params& params,
-		SmoothFunc func,
-		int nP
-	) {
-		Point p;
-		int ringSize = (int)ring.neighbors.size();
-		double sumX = 0.0;
-		double sumY = 0.0;
-
-		for (const int& nb : ring.neighbors) {
-			double r = 0.5 * (h[nP] + h[nb]);
-			double d = dist(points[nP], points[nb]) / r;
-			double nx = (points[nP].x - points[nb].x) / d;
-			double ny = (points[nP].y - points[nb].y) / d;
-			double fd = func(d);
-			sumX += fd * nx;
-			sumY += fd * ny;
-		}
-		p.x = points[nP].x + (sumX / ringSize);
-		p.y = points[nP].y + (sumY / ringSize);
-		return p;
-	}
-
-	void smartEdgeFlip(
-		std::vector<Point>& points,
-		std::vector<Triangle>& triangles
-	) {
-		for (int t = 0; t < (int)triangles.size(); t++) {
-			for (int e = 0; e < 3; e++) {
-				// for interior edge (t,e), quad in CCW order is: v2, v0, vOpp, v1
-				int tOpp = triangles[t].adj[e];
-				if (tOpp == -1) continue;                 // boundary
-				int eOpp = getEdgeFromNeighbour(triangles[tOpp], t);
-
-				int v0 = triangles[t].v[e];
-				int v1 = triangles[t].v[(e + 1) % 3];
-				int v2 = triangles[t].v[(e + 2) % 3];
-				int vOpp = triangles[tOpp].v[(eOpp + 2) % 3];
-
-				double before = std::min(triangleQuality(points[v0], points[v1], points[v2]),
-										triangleQuality(points[v1], points[v0], points[vOpp]));
-				double after = std::min(triangleQuality(points[v2], points[v0], points[vOpp]),
-										triangleQuality(points[v2], points[vOpp], points[v1]));
-
-				if (after > before) flipEdge(triangles, t, e);
-			}
-		}
-	}
-
-	void smartSmoothing(
-		std::vector<Point>& points,
-		const std::vector<Triangle>& triangles,
-		const std::vector<PointRing>& pRings,
-		const std::vector<double>& h,
-		const Params& params
-	) {
-
-		for (int i = 0; i < (int)points.size(); i++) {
-			const PointRing& ring = pRings[i];
-			if (ring.neighbors.empty() || ring.tris.empty()) continue;
-
-			SmoothFunc func = getSmoothingFunction(params);
-			Point target = generalSmoothing(points, triangles, h, ring, params, func, i);
-
-			// only move if the worst triangle in the fan improves
-			// points[i] = target;
-			if (fanQuality(points, triangles, ring, i, target) >
-				fanQuality(points, triangles, ring, i, points[i])) {
-				points[i] = target;
-			}
-		}
-	}
-
-	void postSmoothing(
-		std::vector<Point>& points,
-		std::vector<Triangle>& triangles,
-		std::vector<PointRing>& pRings,
-		const std::vector<double>& h,
-		const std::vector<uint8_t>& pinned,
-		const Params& params
-	) {
-
-		if ((int)points.size() != (int)pRings.size()) throwError(ErrorCase::SIZE_DIFF);
-
-		// flip any edges -> rebuild pRings -> smoothing
-		for (int k = 0; k < params.iterSmoothing; k++) {
-
-			smartEdgeFlip(points, triangles);
-			pRings = buildPointRings(points, triangles, pinned);
-			if (params.enableSmoothing) smartSmoothing(points, triangles, pRings, h, params);
-			else return;
-
-		}
-	}
-
-	double SizeField::sample(const Point& p) const {
-		double fi = p.x / dz;
-		double fj = p.y / dr;
-
-		// clamp to the last *full* cell -- the interpolation reads i+1 and j+1
-		int i = std::clamp((int)std::floor(fi), 0, nz - 2);
-		int j = std::clamp((int)std::floor(fj), 0, nr - 2);
-
-		// after clamping, so a point outside the grid reads the edge instead of extrapolating
-		double tx = std::clamp(fi - i, 0.0, 1.0);
-		double ty = std::clamp(fj - j, 0.0, 1.0);
-
-		double h00 = h[(size_t)j * nz + i];
-		double h10 = h[(size_t)j * nz + i + 1];
-		double h01 = h[(size_t)(j + 1) * nz + i];
-		double h11 = h[(size_t)(j + 1) * nz + i + 1];
-
-		return (1.0 - ty) * ((1.0 - tx) * h00 + tx * h10)
-			+ ty * ((1.0 - tx) * h01 + tx * h11);
-	}
-
 	double distPointToLine(const Point& P, const Point& A, const Point& B) {
 
 		double abx = B.x - A.x;
@@ -1572,69 +1364,6 @@ namespace AxiMesh {
 	}
 
 
-	SizeField buildSizingFunction(
-		const std::vector<Segment>& segments,
-		const std::vector<Point>& points,
-		const Params& params,
-		const NormVariables& normVar
-	) {
-		SizeField sizing;
-		double extZ = normVar.dx / normVar.dMax;   // one of these is exactly 1.0
-		double extR = normVar.dy / normVar.dMax;
-		double cell = std::min(extZ, extR) / 99.0; // square cells, finer axis wins
-
-		sizing.dz = cell;
-		sizing.dr = cell;
-		sizing.nz = (int)std::ceil(extZ / cell) + 1;
-		sizing.nr = (int)std::ceil(extR / cell) + 1;
-		sizing.h.assign((size_t)sizing.nz * sizing.nr, params.hMax);
-
-		double radius = (double)params.stampCells * sizing.dz;
-
-		//for (int k = 0; k < (int)segments.size(); k++) {
-
-		//	// create bounding box
-		//	const Point& a = points[segments[k].a];
-		//	const Point& b = points[segments[k].b];
-
-		//	double len = dist(a, b);
-		//	int j0 = (int)std::floor((std::min(a.y, b.y) - radius) / sizing.dr);
-		//	int j1 = (int)std::ceil((std::max(a.y, b.y) + radius) / sizing.dr);
-		//	int i0 = (int)std::floor((std::min(a.x, b.x) - radius) / sizing.dz);
-		//	int i1 = (int)std::ceil((std::max(a.x, b.x) + radius) / sizing.dz);
-		//	j0 = std::max(j0, 0);
-		//	i0 = std::max(i0, 0);
-		//	j1 = std::min(j1, sizing.nr - 1);
-		//	i1 = std::min(i1, sizing.nz - 1);
-
-		//	for (int i = i0; i <= i1; i++) {
-		//		for (int j = j0; j <= j1; j++) {
-		//			Point p{ i * sizing.dz, j * sizing.dr };
-		//			double d = distPointToLine(p, a, b);
-		//			if (d > radius) continue;
-		//			double& hn = sizing.h[j * sizing.nz + i];
-		//			hn = std::min(hn, len + params.gSmoothing * d);
-		//
-		//		}
-		//	}
-		//}
-		for (int k = 0; k < (int)segments.size(); k++) {
-			const Point& a = points[segments[k].a];
-			const Point& b = points[segments[k].b];
-			double len = dist(a, b);
-
-			for (int i = 0; i < sizing.nz; i++) {
-				for (int j = 0; j < sizing.nr; j++) {
-					Point p{ i * sizing.dz, j * sizing.dr };
-					double d = distPointToLine(p, a, b);
-					double& hn = sizing.h[(size_t)j * sizing.nz + i];
-					hn = std::min(hn, len + params.gSmoothing * d);
-				}
-			}
-		}
-		return sizing;
-	}
-
 	Mesh generateMesh(
 		const std::vector<Point>& points,
 		const std::vector<Segment>& segments,
@@ -1649,7 +1378,21 @@ namespace AxiMesh {
 		NormVariables normVar = buildNormVariables(points);
 		std::vector<Point> normPoints = normalize(points, normVar, size);
 
-		SizeField sizing = buildSizingFunction(segments, normPoints, params, normVar);
+		// Params carries world lengths but everything below runs in normalized space.
+		// hMax == 0 means "the coarsest boundary segment", which is what keeps the bulk
+		// uniform instead of letting it grow away from every wall.
+		Params normParams = params;
+		normParams.hMin = params.hMin / normVar.dMax;
+		if (params.hMax > 0.0) {
+			normParams.hMax = params.hMax / normVar.dMax;
+		}
+		else {
+			normParams.hMax = 0.0;
+			for (const Segment& s : segments) {
+				normParams.hMax = std::max(normParams.hMax, dist(normPoints[s.a], normPoints[s.b]));
+			}
+			if (normParams.hMax <= 0.0) normParams.hMax = 1.0;		// nothing to measure -- do not cap
+		}
 
 		// step 2: put points into bins and sort by bin number
 		std::vector<int> indices = buildSortedPointIndices(points, normVar, size);
@@ -1693,29 +1436,26 @@ namespace AxiMesh {
 		removeFloodFill(mesh.triangles, mesh.points, constrained);
 
 		// frontal delaunay
-		// initialize sizing field and states for advancing front
-		std::vector<double> h(mesh.points.size(), std::numeric_limits<double>::max());
-		//std::vector<double> h(mesh.points.size(), 0.02);
-
+		std::vector<double> h;			// buildVertexSizing sizes and fills it
 		std::vector<AdvancingState> state(mesh.triangles.size(), AdvancingState::WAITING);
 		FrontQueue frontEdges;
 
-		frontalInit(mesh.points, mesh.triangles, mesh.segments, h, state, frontEdges, params, sizing);
+		frontalInit(mesh.points, mesh.triangles, mesh.segments, h, state, frontEdges, normParams);
 
 		// REFINEMENT
-		advancingFront(mesh.points, mesh.triangles, h, state, frontEdges, params);
+		advancingFront(mesh.points, mesh.triangles, h, state, frontEdges, normParams);
 		//Ruppert(mesh.triangles, mesh.points, mesh.segments, params);
 
 
 		// SMOOTHING
-		std::vector<uint8_t> pinned = buildPinnedPoints(mesh.segments, (int)mesh.points.size());
-		mesh.pRings = buildPointRings(mesh.points, mesh.triangles, pinned);
+		std::vector<uint8_t> pinned = Smoothing::buildPinnedPoints(mesh.segments, (int)mesh.points.size());
+		mesh.pRings = Smoothing::buildPointRings(mesh.points, mesh.triangles, pinned);
 
-		postSmoothing(mesh.points, mesh.triangles, mesh.pRings, h, pinned, params);
+		Smoothing::postSmoothing(mesh.points, mesh.triangles, mesh.segments, mesh.pRings, h, pinned, normParams);
 
 
 		mesh.points = unnormalize(mesh.points, normVar);
-		mesh.sizing = h;
+		mesh.sizing = std::move(h);
 
 		return mesh;
 	}

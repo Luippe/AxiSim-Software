@@ -24,7 +24,7 @@ file(GLOB_RECURSE AXIMESH_HEADERS CONFIGURE_DEPENDS
 add_library(aximesh STATIC
     ${AXIMESH_SOURCES}
     ${AXIMESH_HEADERS}
-)
+ "include/aximesh/smoothing.h")
 
 # PUBLIC so anything linking aximesh can #include "aximesh/..." with no further
 # setup. The aximesh/ prefix keeps these headers out of AxiSim's flat include
@@ -47,6 +47,6 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
 
 add_executable(aximesh_cli
     "${CMAKE_CURRENT_SOURCE_DIR}/tools/aximesh_cli.cpp"
-)
+ "include/aximesh/smoothing.h")
 
 target_link_libraries(aximesh_cli PRIVATE aximesh)

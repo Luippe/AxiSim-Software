@@ -9,6 +9,7 @@
 #include <glm/trigonometric.hpp>
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <limits>
 #include <numbers>
 #include <numeric>
@@ -504,6 +505,288 @@ namespace {
 		}
 
 		return orientationFromFlags(hasHorizontal, hasVertical, hasOther);
+	}
+
+	// One evaluation of gmsh's mesh size field: the size it returned, and where it was
+	// asked for it. float is plenty -- this only ever feeds the inspector's overlay.
+	struct GmshSizeSample {
+		float z = 0.0f;
+		float r = 0.0f;
+		float h = 0.0f;
+	};
+
+	// gmsh asks the size field far more often than it keeps points, so the domain is
+	// thoroughly covered long before this cap; past it samples are dropped rather than
+	// letting a big mesh grow the buffer without bound.
+	constexpr std::size_t maxGmshSizeSamples = 4000000;
+
+	// gmsh answers its own MAX_LC, 1e22, wherever nothing prescribes a size. That is
+	// not a size, it is "unconstrained", and letting one through would stretch the
+	// overlay's ramp to 1e22 and flatten every real cell onto its low end.
+	constexpr double gmshUnconstrainedSize = 1e21;
+
+	// Hand every recorded sample to the mesh node nearest it, and let each node keep
+	// the closest sample that reached it. There is no exact pairing to look up
+	// instead: gmsh evaluates the field at candidate points and then smooths the mesh,
+	// so a final node sits near -- not on -- the positions it was asked about. Closest
+	// rather than the mean of what a node collected, because a graded node's catchment
+	// reaches further into the coarse side than the fine one, which biases a mean
+	// upwards by roughly the gradation ratio (measured: 11% mean error, vs 0.4%).
+	// Nodes that collect nothing stay at -1 for spreadGmshSizingIntoInterior below.
+	void scatterGmshSizeSamples(
+		const std::vector<GmshSizeSample>& samples,
+		const std::vector<Vec2>& nodes,
+		std::vector<double>& sizing
+	) {
+		sizing.assign(nodes.size(), -1.0);
+
+		if (samples.empty() || nodes.empty()) {
+			return;
+		}
+
+		double zMin = nodes.front().z;
+		double zMax = nodes.front().z;
+		double rMin = nodes.front().r;
+		double rMax = nodes.front().r;
+
+		for (const Vec2& p : nodes) {
+			zMin = std::min(zMin, p.z);
+			zMax = std::max(zMax, p.z);
+			rMin = std::min(rMin, p.r);
+			rMax = std::max(rMax, p.r);
+		}
+
+		const double zSpan = std::max(zMax - zMin, 1e-30);
+		const double rSpan = std::max(rMax - rMin, 1e-30);
+
+		// ~2 nodes per bucket, so the ring search below usually stops at the first ring
+		const int n = std::clamp(
+			(int)std::sqrt((double)nodes.size() * 0.5) + 1,
+			1,
+			512
+		);
+
+		auto bucketOf = [&](double z, double r, int& bz, int& br) {
+			bz = std::clamp((int)((z - zMin) / zSpan * n), 0, n - 1);
+			br = std::clamp((int)((r - rMin) / rSpan * n), 0, n - 1);
+		};
+
+		// counting sort of the nodes into buckets: offsets first, then the node IDs
+		std::vector<int> bucketStart(n * n + 1, 0);
+
+		for (const Vec2& p : nodes) {
+			int bz = 0;
+			int br = 0;
+			bucketOf(p.z, p.r, bz, br);
+			bucketStart[br * n + bz + 1]++;
+		}
+
+		for (int b = 0; b < n * n; b++) {
+			bucketStart[b + 1] += bucketStart[b];
+		}
+
+		std::vector<int> bucketNodes(nodes.size());
+		std::vector<int> fill(bucketStart.begin(), bucketStart.end() - 1);
+
+		for (int i = 0; i < (int)nodes.size(); i++) {
+			int bz = 0;
+			int br = 0;
+			bucketOf(nodes[i].z, nodes[i].r, bz, br);
+			bucketNodes[fill[br * n + bz]++] = i;
+		}
+
+		// how close the sample a node is currently reporting was to it
+		std::vector<double> nodeDist(nodes.size(), std::numeric_limits<double>::max());
+
+		// How far out to keep looking for a node. A fixed window will not do: the whole
+		// point of a sizing field is that node spacing varies, so the coarse end of a
+		// graded mesh is many buckets between nodes and would come out blank. A sample
+		// that finds nothing even this far out is gmsh probing well outside the mesh.
+		constexpr int maxRing = 8;
+
+		for (const GmshSizeSample& s : samples) {
+			int bz = 0;
+			int br = 0;
+			bucketOf(s.z, s.r, bz, br);
+
+			int best = -1;
+			double bestDist = std::numeric_limits<double>::max();
+
+			for (int ring = 0; ring <= maxRing; ring++) {
+				const bool hadHit = best >= 0;
+
+				for (int jr = br - ring; jr <= br + ring; jr++) {
+					if (jr < 0 || jr >= n) {
+						continue;
+					}
+
+					const bool edgeRow = (jr == br - ring || jr == br + ring);
+
+					for (int jz = bz - ring; jz <= bz + ring; jz++) {
+						if (jz < 0 || jz >= n) {
+							continue;
+						}
+
+						// the inside of the ring belongs to the ring before it
+						if (!edgeRow && jz != bz - ring && jz != bz + ring) {
+							continue;
+						}
+
+						const int b = jr * n + jz;
+
+						for (int k = bucketStart[b]; k < bucketStart[b + 1]; k++) {
+							const int id = bucketNodes[k];
+
+							const double dz = nodes[id].z - s.z;
+							const double dr = nodes[id].r - s.r;
+							const double d = dz * dz + dr * dr;
+
+							if (d < bestDist) {
+								bestDist = d;
+								best = id;
+							}
+						}
+					}
+				}
+
+				// the ring past the first hit can still hold something closer; nothing
+				// beyond that can, at this bucket size
+				if (hadHit) {
+					break;
+				}
+			}
+
+			if (best < 0 || bestDist >= nodeDist[best]) {
+				continue;
+			}
+
+			nodeDist[best] = bestDist;
+			sizing[best] = s.h;
+		}
+	}
+
+	// Spread the measured sizes over the nodes gmsh left unconstrained, layer by layer
+	// out from the ones that were measured, each node taking the mean of the
+	// neighbours that were already known when its layer started.
+	//
+	// This does more than patch stray gaps. With no background field gmsh answers
+	// unconstrained for *every* surface query and only the geometry points carry a
+	// size, because the interpolation Mesh.MeshSizeExtendFromBoundary performs happens
+	// inside the 2D algorithm rather than in the field this sits in front of. Measured
+	// on a boundary cut into transfinite curves the way runGmshTriangulation cuts it:
+	// 100% of surface queries unconstrained, 240 real sizes for 1903 nodes.
+	//
+	// So with no region of influence the interior of the overlay is this interpolation
+	// of gmsh's boundary sizes rather than gmsh's own -- same inputs, same smooth
+	// shape, and its median lands within 10% of the edge lengths gmsh actually built,
+	// but individual interior numbers can be out by 2x, so do not read them off it.
+	// With a background field gmsh answers everywhere and this fills nothing.
+	void spreadGmshSizingIntoInterior(
+		const std::vector<Triangle>& triangles,
+		std::vector<double>& sizing
+	) {
+		const int nodeCount = (int)sizing.size();
+
+		if (nodeCount == 0) {
+			return;
+		}
+
+		// adjacency over the triangle edges, CSR-style: count, prefix-sum, then fill.
+		// An edge shared by two triangles lands in the list twice, which only weights
+		// that neighbour twice in the means below -- every triangle counts the same.
+		auto forEachDirectedEdge = [&](auto&& visit) {
+			for (const Triangle& tri : triangles) {
+				const int v[3] = { tri.v0, tri.v1, tri.v2 };
+
+				for (int a = 0; a < 3; a++) {
+					const int b = (a + 1) % 3;
+
+					if (v[a] < 0 || v[a] >= nodeCount ||
+						v[b] < 0 || v[b] >= nodeCount) {
+						continue;
+					}
+
+					visit(v[a], v[b]);
+					visit(v[b], v[a]);
+				}
+			}
+		};
+
+		std::vector<int> start(nodeCount + 1, 0);
+		forEachDirectedEdge([&](int from, int) { start[from + 1]++; });
+
+		for (int i = 0; i < nodeCount; i++) {
+			start[i + 1] += start[i];
+		}
+
+		std::vector<int> neighbours(start.back());
+		std::vector<int> fill(start.begin(), start.end() - 1);
+		forEachDirectedEdge([&](int from, int to) { neighbours[fill[from]++] = to; });
+
+		std::vector<char> known(nodeCount, 0);
+		std::vector<int> frontier;
+
+		for (int i = 0; i < nodeCount; i++) {
+			if (sizing[i] > 0.0) {
+				known[i] = 1;
+				frontier.push_back(i);
+			}
+		}
+
+		// each node enters a layer once, so the whole walk is one pass over the edges
+		std::vector<char> queued(nodeCount, 0);
+		std::vector<int> layer;
+		std::vector<double> layerValue;
+
+		while (!frontier.empty()) {
+			layer.clear();
+
+			for (int v : frontier) {
+				for (int k = start[v]; k < start[v + 1]; k++) {
+					const int w = neighbours[k];
+
+					if (!known[w] && !queued[w]) {
+						queued[w] = 1;
+						layer.push_back(w);
+					}
+				}
+			}
+
+			if (layer.empty()) {
+				return;
+			}
+
+			layerValue.assign(layer.size(), -1.0);
+
+			for (int i = 0; i < (int)layer.size(); i++) {
+				const int v = layer[i];
+
+				double sum = 0.0;
+				int n = 0;
+
+				for (int k = start[v]; k < start[v + 1]; k++) {
+					const int w = neighbours[k];
+
+					if (known[w]) {
+						sum += sizing[w];
+						n++;
+					}
+				}
+
+				if (n > 0) {
+					layerValue[i] = sum / n;
+				}
+			}
+
+			for (int i = 0; i < (int)layer.size(); i++) {
+				if (layerValue[i] > 0.0) {
+					sizing[layer[i]] = layerValue[i];
+					known[layer[i]] = 1;
+				}
+			}
+
+			frontier.swap(layer);
+		}
 	}
 }
 
@@ -1247,9 +1530,9 @@ void Mesh::runAxiMeshTriangulation() {
 	}
 
 	// axiMesh.sizing is a length in the mesher's normalized space, so undo that map
-	// with the same variables generateMesh built from these input points. A value
-	// still at the DBL_MAX it was seeded with is a point the sizing field never
-	// reached; store -1 so consumers only have to test for a positive length.
+	// with the same variables generateMesh built from these input points. The mesher
+	// samples its background field at every point, so the guard below is only a
+	// backstop; store -1 for anything unusable so consumers test for a positive length.
 	const double dMax = AxiMesh::buildNormVariables(meshPoints).dMax;
 	constexpr double unsetSize = 0.5 * std::numeric_limits<double>::max();
 
@@ -1400,7 +1683,30 @@ void Mesh::runGmshTriangulation() {
 	gmsh::option::setNumber("Mesh.Algorithm", 6); // Frontal-Delaunay
 	applyRegionOfInfluenceFields(defaultMeshSize);
 
+	// gmsh never hands its size field back, so the only way to see what it aimed for
+	// is to sit inside it: the callback is handed the size the field would have
+	// prescribed at each point it is asked about, and returns it untouched. One
+	// surface means one meshing thread, so the plain push_back needs no lock.
+	std::vector<GmshSizeSample> sizeSamples;
+
+	gmsh::model::mesh::setSizeCallback(
+		[&sizeSamples](int, int, double x, double y, double, double lc) {
+			if (sizeSamples.size() < maxGmshSizeSamples &&
+				std::isfinite(lc) &&
+				lc > 0.0 &&
+				lc < gmshUnconstrainedSize) {
+				sizeSamples.push_back({ (float)x, (float)y, (float)lc });
+			}
+
+			return lc;
+		}
+	);
+
 	gmsh::model::mesh::generate(2);
+
+	// Before sizeSamples goes out of scope: the cwrap leaks the std::function holding
+	// a reference to it, and gmsh would keep calling it on the next mesh otherwise.
+	gmsh::model::mesh::removeSizeCallback();
 
 	std::vector<std::size_t> nodeTags;
 	std::vector<double> coords;
@@ -1410,9 +1716,6 @@ void Mesh::runGmshTriangulation() {
 
 	unstructuredPoints.clear();
 	unstructuredPoints.reserve(nodeTags.size());
-
-	// gmsh keeps its size field to itself, so this path leaves none behind
-	unstructuredSizing.clear();
 
 	std::unordered_map<std::size_t, int> pointIDByNodeTag;
 	pointIDByNodeTag.reserve(nodeTags.size());
@@ -1469,6 +1772,33 @@ void Mesh::runGmshTriangulation() {
 		tri.v2 = pointIDByNodeTag[triNodeTags[k + 2]];
 
 		unstructuredTriangles.push_back(tri);
+	}
+
+	// What gmsh aimed for at each node, in metres: its own size field, recorded above
+	// and pushed onto the nodes it settled on. Same shape as the field the aximesh
+	// path builds, so the inspector's sizing overlay reads either one.
+	scatterGmshSizeSamples(sizeSamples, unstructuredPoints, unstructuredSizing);
+
+	int measuredNodes = 0;
+
+	for (double h : unstructuredSizing) {
+		if (h > 0.0) {
+			measuredNodes++;
+		}
+	}
+
+	spreadGmshSizingIntoInterior(unstructuredTriangles, unstructuredSizing);
+
+	// How much of the overlay is gmsh's answer and how much is the spread above is
+	// worth knowing before reading numbers off it, and it swings with whether a
+	// region of influence is driving the mesh -- so report it rather than document it.
+	if (console != nullptr && !unstructuredSizing.empty()) {
+		console->addLine(std::format(
+			"Mesh sizing: {} of {} nodes measured from gmsh, {} interpolated",
+			measuredNodes,
+			unstructuredSizing.size(),
+			unstructuredSizing.size() - measuredNodes
+		));
 	}
 
 	gmsh::finalize();
