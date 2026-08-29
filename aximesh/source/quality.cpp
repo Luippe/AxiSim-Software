@@ -42,12 +42,26 @@ namespace AxiMesh::Quality {
 		return l0 * l1 * l2 * (l0 + l1 + l2) / denom;
 	}
 
+	void trianglePlaneAngle(
+		std::vector<double>& planeAngle,
+		const Point& a,
+		const Point& b,
+		const Point& c,
+		int t
+	) {
+		const double cross = std::abs(orient(a, b, c));
+		planeAngle[3 * t] = std::atan2(cross, (b.x - a.x) * (c.x - a.x) + (b.y - a.y) * (c.y - a.y));
+		planeAngle[3 * t + 1] = std::atan2(cross, (c.x - b.x) * (a.x - b.x) + (c.y - b.y) * (a.y - b.y));
+		planeAngle[3 * t + 2] = std::atan2(cross, (a.x - c.x) * (b.x - c.x) + (a.y - c.y) * (b.y - c.y));
+	}
+
 	void buildQuality(Mesh& mesh) {
 		const std::vector<Triangle>& triangles = mesh.triangles;
 		const std::vector<Point>& points = mesh.points;
 
 		mesh.elementQuality.assign(triangles.size(), 0.0);
 		mesh.aspectRatio.assign(triangles.size(), 0.0);
+		mesh.planeAngle.assign(3 * triangles.size(), 0.0);
 
 		for (int t = 0; t < (int)triangles.size(); t++) {
 			const Triangle& tri = triangles[t];
@@ -58,6 +72,7 @@ namespace AxiMesh::Quality {
 
 			mesh.elementQuality[t] = triangleQuality(a, b, c);
 			mesh.aspectRatio[t] = triangleAspectRatio(a, b, c);
+			trianglePlaneAngle(mesh.planeAngle, a, b, c, t);
 		}
 	}
 

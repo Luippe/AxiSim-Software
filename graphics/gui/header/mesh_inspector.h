@@ -130,6 +130,12 @@ private:
 	bool showQualityHistogram = false;
 	bool histogramLogCount = false;	// log the bin counts, so the long tails stay visible
 
+	// Whether the cursor is over the viewport and not over a window floating above
+	// it. The canvas hit-tests a raw rect (isMouseNearImage), which knows nothing
+	// about what is drawn on top, so without this the histogram window would pass
+	// every click, drag and wheel straight through to the mesh underneath.
+	bool viewportHovered = false;
+
 	int selectedCell = -1;			// FV cell pinned by a left click (-1 = none)
 	bool inspectMeshDirty = true;	// rebuild the snapshot on the next render
 

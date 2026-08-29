@@ -1,6 +1,7 @@
 #include "quality.h"
 
 #include <limits>
+#include <numbers>
 
 #include "aximesh/quality.h"
 #include "boundary_struct.h"
@@ -26,6 +27,7 @@ void Quality::buildQuality(const FVMesh& fvMesh) {
 
 	aspectRatios.assign(nCells, unmeasured);
 	elementQuality.assign(nCells, unmeasured);
+	planeAngles.assign(3 * (size_t)nCells, unmeasured);
 
 	const std::vector<int>& cornerStart = fvMesh.cellCornerStart;
 	const std::vector<int>& cornerIDs = fvMesh.cellCornerIDs;
@@ -62,6 +64,13 @@ void Quality::buildQuality(const FVMesh& fvMesh) {
 		// downstream the same way the NaN does
 		aspectRatios[c] = AxiMesh::Quality::triangleAspectRatio(a, b, d);
 		elementQuality[c] = AxiMesh::Quality::triangleQuality(a, b, d);
+
+		// fills [3c, 3c+2] in radians; the histogram band is degrees
+		AxiMesh::Quality::trianglePlaneAngle(planeAngles, a, b, d, c);
+
+		for (int k = 0; k < 3; k++) {
+			planeAngles[3 * (size_t)c + k] *= 180.0 / std::numbers::pi;
+		}
 	}
 }
 
@@ -71,4 +80,5 @@ void Quality::reset() {
 	// painted onto whatever mesh happens to have the same cell count next.
 	aspectRatios.clear();
 	elementQuality.clear();
+	planeAngles.clear();
 }

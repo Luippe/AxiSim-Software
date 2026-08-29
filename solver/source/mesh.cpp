@@ -1511,7 +1511,12 @@ void Mesh::runAxiMeshTriangulation() {
 	AxiMesh::Mesh axiMesh;
 
 	try {
-		axiMesh = AxiMesh::generateMesh(meshPoints, meshSegments, (int)meshPoints.size());
+		axiMesh = AxiMesh::generateMesh(
+			meshPoints,
+			meshSegments,
+			(int)meshPoints.size(),
+			aximeshParams
+		);
 	}
 	catch (const std::exception& e) {
 		console->addLine(e.what());
@@ -2133,8 +2138,8 @@ void Mesh::generate() {
 		rebuildBoundaryDiscretization();
 
 		// testing
-		//runAxiMeshTriangulation();
-		runGmshTriangulation();
+		runAxiMeshTriangulation();
+		//runGmshTriangulation();
 
 		// Refreshed before the render buffers because the line vertices need the
 		// same FVMesh -- this used to build a second, identical throwaway copy.

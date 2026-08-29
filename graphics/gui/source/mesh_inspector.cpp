@@ -1281,7 +1281,7 @@ void MeshInspector::handleMouse() {
 	// The anchor is taken in the same breath, so that whether the gesture started
 	// here and where it started cannot come from two different presses.
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-		leftPressedOnCanvas = isMouseNearImage(io);
+		leftPressedOnCanvas = viewportHovered && isMouseNearImage(io);
 
 		if (leftPressedOnCanvas) {
 			updateInitialLeftClick(io);
@@ -1298,8 +1298,9 @@ void MeshInspector::handleMouse() {
 		leftPressedOnCanvas = false;
 	}
 
-	// if mouse is not near the image, then dont handle any mouse events
-	if (!isMouseNearImage(io)) return;
+	// if mouse is not near the image, or something is floating over it, then dont
+	// handle any mouse events
+	if (!viewportHovered || !isMouseNearImage(io)) return;
 
 	toggleSnapping = io.KeyCtrl;
 
@@ -2376,6 +2377,16 @@ void MeshInspector::render() {
 
 	ImDrawList* drawList = ImGui::GetWindowDrawList();
 
+	// The two Allow flags keep this to its one job -- a window drawn ON TOP of the
+	// canvas eats the mouse. Without them it would also fire on an active widget
+	// (cutting off a drag mid-gesture) and on the canvas's own right-click menu
+	// (which has always left panning and zooming live behind it).
+	viewportHovered = ImGui::IsWindowHovered(
+		ImGuiHoveredFlags_ChildWindows |
+		ImGuiHoveredFlags_AllowWhenBlockedByActiveItem |
+		ImGuiHoveredFlags_AllowWhenBlockedByPopup
+	);
+
 	// toolbar lives in the app-wide strip above the dockspace (GUI::drawAppToolbar)
 
 	ImVec2 pos = ImGui::GetCursorScreenPos();
@@ -2410,8 +2421,10 @@ void MeshInspector::render() {
 		buildInspectMesh();
 	}
 
-	// Update hover before mouse logic (suppressed while inspecting cells)
-	if (toggleInspectCell) {
+	// Update hover before mouse logic (suppressed while inspecting cells, and while
+	// a floating window covers the cursor -- highlighting through it would advertise
+	// a click that handleMouse is about to refuse)
+	if (toggleInspectCell || !viewportHovered) {
 		hoveredId = std::nullopt;
 	}
 	else {

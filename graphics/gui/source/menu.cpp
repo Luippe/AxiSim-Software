@@ -680,6 +680,11 @@ static const char* const advancedSolverSections[] = {
 	nullptr
 };
 
+static const char* const advancedMeshSections[] = {
+	"Parameters",
+	nullptr
+};
+
 static const char* const advancedResultsSections[] = {
 	"Animation",
 	"Camera",
@@ -703,7 +708,7 @@ void Menu::drawAdvancedNav() {
 	);
 
 	drawAdvancedBranch("Geometry", AdvancedPage::Geometry, nullptr);
-	drawAdvancedBranch("Mesh", AdvancedPage::Mesh, nullptr);
+	drawAdvancedBranch("Mesh", AdvancedPage::Mesh, advancedMeshSections);
 	drawAdvancedBranch("Solver", AdvancedPage::Solver, advancedSolverSections);
 	drawAdvancedBranch("Results", AdvancedPage::Results, advancedResultsSections);
 
@@ -856,6 +861,12 @@ void Menu::advancedEmptyPage(const char* what) {
 	ImGui::TextDisabled("No advanced %s options yet.", what);
 }
 
+void inputDoubleClamped(const char* label, double& value, double minValue, double maxValue, const char* format = "%.1f") {
+	if (ImGui::InputDouble(label, &value, 0.0, 0.0, format)) {
+		value = std::clamp(value, minValue, maxValue);
+	}
+}
+
 void Menu::drawAdvancedGeometryPage() {
 
 	//if (beginAdvancedSection("Sketch")) {
@@ -876,15 +887,38 @@ void Menu::drawAdvancedGeometryPage() {
 
 void Menu::drawAdvancedMeshPage() {
 
-	//if (beginAdvancedSection()) {
+	AxiMesh::Params& params = project.mesh.aximeshParams;
 
-	//}
-	advancedEmptyPage("mesh");
-}
+	if (beginAdvancedSection("Parameters")) {
 
-void inputDoubleClamped(const char* label, double& value, double minValue, double maxValue, const char* format = "%.1f") {
-	if (ImGui::InputDouble(label, &value, 0.0, 0.0, format)) {
-		value = std::clamp(value, minValue, maxValue);
+		// B is the radius-edge bound: the smallest angle it admits is asin(1/2B), so
+		// the default 1.0 is the familiar 30 degrees. An equilateral triangle sits at
+		// 1/sqrt(3), and at or under that every triangle reads as skinny and
+		// refinement never terminates -- hence a floor a hair above it.
+		advancedRow("Radius-Edge Ratio (B)");
+		inputDoubleClamped("##RadiusEdgeRatio", params.B, 0.58, 10.0, "%.4f");
+
+		// Lipschitz gradation: neighbouring target sizes may differ by at most g per
+		// unit edge length. 0 forces one uniform size across the mesh.
+		advancedRow("Sizing Gradation (g)");
+		inputDoubleClamped("##SizingGradation", params.gSmoothing, 0.0, 1.0, "%.4f");
+
+		advancedRow("Classification Tolerance");
+		inputDoubleClamped("##ClassifyTolerance", params.classify_tol, 1.0, 3.0, "%.4f");
+
+		advancedRow("Smoothing");
+		ImGui::Checkbox("##EnableSmoothing", &params.enableSmoothing);
+
+		ImGui::BeginDisabled(!params.enableSmoothing);
+		advancedRow("Smoothing Iterations");
+		ImGui::InputInt("##SmoothingIterations", &params.iterSmoothing);
+		ImGui::EndDisabled();
+
+		if (params.iterSmoothing < 0) {
+			params.iterSmoothing = 0;
+		}
+
+		endAdvancedSection();
 	}
 }
 

@@ -3,6 +3,7 @@
 #include <optional>
 #include <array>
 
+#include "aximesh/aximesh.h"
 #include "multiblock.h"
 #include "quality.h"
 
@@ -104,6 +105,12 @@ public:
 	std::vector<BoundarySegmentGroup> boundaryGroups;
 	std::vector<BoundaryEdge> boundaryEdges;
 	std::unordered_set<int> highlightedBoundarySegmentIDs;
+
+	// What runAxiMeshTriangulation hands generateMesh, edited in Advanced Options >
+	// Mesh > Parameters. Held as the mesher's own struct so its defaults stay the
+	// single source of truth. Like every mesher setting, an edit reaches nothing
+	// until the next re-mesh.
+	AxiMesh::Params aximeshParams;
 
 	std::vector<Vec2> unstructuredPoints;
 	std::vector<Triangle> unstructuredTriangles;

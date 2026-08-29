@@ -128,6 +128,8 @@ namespace AxiMesh{
 		// per triangle, filled by Quality::buildQuality
 		std::vector<double> elementQuality;
 		std::vector<double> aspectRatio;
+		std::vector<double> planeAngle;
+
 
 	};
 
