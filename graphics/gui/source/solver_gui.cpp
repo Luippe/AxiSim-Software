@@ -569,7 +569,7 @@ void SolverGUI::drawPropertiesPanel() {
 		ImGui::PopFont();
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 10.0f));
-		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.20f, 0.25f, 0.32f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.62f, 0.65f, 0.70f, 1.0f));
 		ImGui::BeginChild("Properties", ImVec2(0.0f, 0.0f), true);
 
 		// Scope every widget below to THIS group. Without it each group's rows

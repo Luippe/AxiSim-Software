@@ -17,7 +17,7 @@ namespace {
 
 	// Green reads clearly against the histogram fill without looking like another
 	// series. Both bounds share one colour: which is which is never in doubt.
-	const ImVec4 boundsColour = ImVec4(0.20f, 0.80f, 0.30f, 1.0f);
+	const ImVec4 boundsColour = ImVec4(0.10f, 0.60f, 0.20f, 1.0f);
 
 	// Tall enough to read a distribution. Three of these no longer fit the window's
 	// default height, so the panel scrolls -- shrinking them to avoid that costs more

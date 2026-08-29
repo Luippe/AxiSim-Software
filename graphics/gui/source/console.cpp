@@ -385,7 +385,7 @@ void Console::executeCommand(const std::string& cmd) {
 
 	if (words.empty()) return;
 
-	addLine("> " + cmd);
+	addLine(">> " + cmd);
 
 	std::string action = words[0];
 
@@ -693,8 +693,8 @@ void Console::drawCompletionPopup(const ImVec2& inputMin, const ImVec2& inputMax
 		boxMax.y = boxMin.y + height;
 	}
 
-	dl->AddRectFilled(boxMin, boxMax, IM_COL32(28, 32, 40, 250), 4.0f);
-	dl->AddRect(boxMin, boxMax, IM_COL32(90, 110, 140, 220), 4.0f, 0, 1.0f);
+	dl->AddRectFilled(boxMin, boxMax, ImGui::GetColorU32(ImGuiCol_PopupBg), 4.0f);
+	dl->AddRect(boxMin, boxMax, ImGui::GetColorU32(ImGuiCol_Border), 4.0f, 0, 1.0f);
 
 	for (int r = 0; r < visible; r++) {
 		int i = firstRow + r;
@@ -706,17 +706,17 @@ void Console::drawCompletionPopup(const ImVec2& inputMin, const ImVec2& inputMax
 		ImVec2 rowMax(boxMax.x - 2.0f, rowMin.y + rowH);
 
 		if (i == completionIndex) {
-			dl->AddRectFilled(rowMin, rowMax, IM_COL32(56, 92, 140, 255), 3.0f);
+			dl->AddRectFilled(rowMin, rowMax, ImGui::GetColorU32(ImGuiCol_Header), 3.0f);
 		}
 
 		float textY = rowMin.y + (rowH - fontSize) * 0.5f;
 
 		ImVec2 wordPos(rowMin.x + padX, textY);
-		dl->AddText(font, fontSize, wordPos, IM_COL32(236, 239, 245, 255), item.word.c_str());
+		dl->AddText(font, fontSize, wordPos, ImGui::GetColorU32(ImGuiCol_Text), item.word.c_str());
 
 		if (!item.description.empty()) {
 			ImVec2 descPos(rowMin.x + padX + wordColW + gap, textY);
-			dl->AddText(font, fontSize, descPos, IM_COL32(150, 158, 172, 255), item.description.c_str());
+			dl->AddText(font, fontSize, descPos, ImGui::GetColorU32(ImGuiCol_TextDisabled), item.description.c_str());
 		}
 	}
 }
@@ -776,7 +776,18 @@ void Console::draw() {
 		ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
 		ImGui::IsMouseHoveringRect(outputMin, outputMax);
 
-	if (clickToFocusInput) {
+	// MATLAB-style prompt. A label rather than part of the buffer, so it cannot be
+	// edited, deleted, or submitted along with the command.
+	ImGui::AlignTextToFramePadding();
+	ImGui::TextUnformatted(">>");
+
+	// the prompt sits outside the input's rect, so without this it would be a dead
+	// spot for click-to-focus right next to the caret
+	bool promptClicked = ImGui::IsItemClicked();
+
+	ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
+
+	if (clickToFocusInput || promptClicked) {
 		// SetKeyboardFocusHere() cannot do this, from anywhere in this function: it works
 		// by submitting a nav-move request, and at the *end* of this same frame imgui
 		// reacts to the very click we are handling by treating the output child as empty
@@ -801,6 +812,12 @@ void Console::draw() {
 		refocusInput = false;
 	}
 
+	// Blended into the window: the prompt and a bare caret, not a boxed field.
+	ImGui::PushStyleColor(ImGuiCol_FrameBg,        IM_COL32(0, 0, 0, 0));
+	ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, IM_COL32(0, 0, 0, 0));
+	ImGui::PushStyleColor(ImGuiCol_FrameBgActive,  IM_COL32(0, 0, 0, 0));
+	ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	bool submitted = ImGui::InputText(
 		"##Console",
@@ -810,6 +827,9 @@ void Console::draw() {
 		&Console::textEditCallbackStub,
 		this
 	);
+
+	ImGui::PopStyleVar();
+	ImGui::PopStyleColor(3);
 
 	ImVec2 inputMin = ImGui::GetItemRectMin();
 	ImVec2 inputMax = ImGui::GetItemRectMax();

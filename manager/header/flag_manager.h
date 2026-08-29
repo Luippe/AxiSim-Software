@@ -109,6 +109,11 @@ namespace UIColors {
 	inline constexpr ImU32 AccentHovered = IM_COL32(80, 160, 255, 255);
 	inline constexpr ImU32 AccentActive  = IM_COL32(40, 120, 235, 255);
 
+	// Idle toolbar buttons are transparent, so hover/press paint a wash over the
+	// band behind them. Dark, because a white wash is invisible on light chrome.
+	inline constexpr ImU32 HoverWash  = IM_COL32(0, 0, 0, 28);
+	inline constexpr ImU32 ActiveWash = IM_COL32(0, 0, 0, 46);
+
 }
 
 namespace UIInputTextFlags {

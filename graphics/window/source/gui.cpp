@@ -38,14 +38,17 @@ void applyTextColors() {
 	ImGuiStyle& style = ImGui::GetStyle();
 	ImVec4* colors = style.Colors;
 
-	// Main normal text
-	colors[ImGuiCol_Text] = ImVec4(1.0f, 1.0f, 1.0f, 1.00f);
+	// Main normal text. Off-black rather than pure black, which reads as harsh
+	// against the light background.
+	colors[ImGuiCol_Text] = ImVec4(0.10f, 0.11f, 0.13f, 1.00f);
 
-	// Disabled text / gray text
-	colors[ImGuiCol_TextDisabled] = ImVec4(0.55f, 0.60f, 0.65f, 1.00f);
+	// Disabled text / gray text. Darker than StyleColorsLight's 0.60 grey: the UI
+	// uses TextDisabled for real labels (toolbar captions, section names, the
+	// status bar), not only for greyed-out widgets, so it has to stay readable.
+	colors[ImGuiCol_TextDisabled] = ImVec4(0.42f, 0.45f, 0.50f, 1.00f);
 
-	// Opaque menus / dropdowns (StyleColorsDark leaves these ~6% transparent)
-	colors[ImGuiCol_PopupBg] = ImVec4(0.11f, 0.11f, 0.12f, 1.00f);
+	// Opaque menus / dropdowns (StyleColorsLight leaves these ~2% transparent)
+	colors[ImGuiCol_PopupBg] = ImVec4(0.98f, 0.98f, 0.99f, 1.00f);
 }
 
 // UI font sizes (px). One scale knob drives all text and the font-sized tree/
@@ -88,7 +91,8 @@ void initContext(ImGuiContext*& imguiContext, ImPlotContext*& implotContext, GLF
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 	io.ConfigWindowsMoveFromTitleBarOnly = true;
-	ImGui::StyleColorsDark();
+	ImGui::StyleColorsLight();
+	applyTextColors();
 
 	// Indent tree children by the node's arrow width (fontSize + 2*FramePadding.x)
 	// so a branch's icon lines up directly above its child-leaf icons. ImGui's
@@ -324,7 +328,6 @@ GUI::GUI(Project& project, Display& disp) :
 
 	// initialize all fonts and icon assets
 	initImGuiFonts(appConfig.fonts);
-	applyTextColors();
 	initAssetBuffers(appConfig.assets);
 
 }
@@ -405,7 +408,7 @@ void GUI::drawStatusBar() {
 	drawList->AddLine(
 		ImVec2(sepX, comboY),
 		ImVec2(sepX, comboY + comboHeight),
-		IM_COL32(80, 95, 115, 180),
+		ImGui::GetColorU32(ImGuiCol_Separator),
 		1.0f
 	);
 

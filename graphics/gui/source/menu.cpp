@@ -500,7 +500,7 @@ void Menu::drawShortcutModal() {
 
 		if (!shortcutError.empty()) {
 			ImGui::TextColored(
-				ImVec4(1.0f, 0.2f, 0.2f, 1.0f),
+				ImVec4(0.75f, 0.10f, 0.10f, 1.0f),
 				"%s",
 				shortcutError.c_str()
 			);

@@ -333,7 +333,7 @@ void AnimationGUI::render() {
     }
 
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-    ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(255, 255, 255, 180));
+    ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(0, 0, 0, 70));
 
     float plusW = ImGui::CalcTextSize("+").x + ImGui::GetStyle().FramePadding.x * 2.0f;
     float minusW = ImGui::CalcTextSize("-").x + ImGui::GetStyle().FramePadding.x * 2.0f;

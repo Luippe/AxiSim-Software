@@ -609,7 +609,7 @@ bool ToolbarHost::drawImageButtonWithCaption(
 		ImGui::PushFont(nullptr, captionFontSize);
 		ImGui::PushStyleColor(
 			ImGuiCol_Text,
-			active ? ImVec4(0.92f, 0.95f, 1.00f, 1.0f)                 // bright for the active tool
+			active ? ImGui::GetStyleColorVec4(ImGuiCol_Text)           // full strength for the active tool
 			       : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled)  // muted otherwise
 		);
 
@@ -632,8 +632,8 @@ bool ToolbarHost::addImageButton(const char* id, const char* label, const char* 
 	// transparent by default so the button blends into the toolbar;
 	// only paint a subtle fill on hover / press.
 	ImGui::PushStyleColor(ImGuiCol_Button,        IM_COL32(0, 0, 0, 0));
-	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(255, 255, 255, 30));
-	ImGui::PushStyleColor(ImGuiCol_ButtonActive,  IM_COL32(255, 255, 255, 48));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, UIColors::HoverWash);
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive,  UIColors::ActiveWash);
 
 	bool clicked = drawImageButtonWithCaption("##addImageButton", label, tooltip, icon, buttonSize, false);
 
@@ -650,8 +650,8 @@ bool ToolbarHost::addImageButtonToggle(const char* id, const char* label, const 
 
 	// transparent by default so the button blends into the toolbar; highlight on hover.
 	ImGui::PushStyleColor(ImGuiCol_Button,        IM_COL32(0, 0, 0, 0));
-	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(255, 255, 255, 30));
-	ImGui::PushStyleColor(ImGuiCol_ButtonActive,  IM_COL32(255, 255, 255, 48));
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, UIColors::HoverWash);
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive,  UIColors::ActiveWash);
 	int styleColorCount = 3;
 
 	// when the tool is active, fill it with the accent color instead.
@@ -714,7 +714,7 @@ bool ToolbarHost::addImageButtonRow(
 		drawList->AddRectFilled(
 			rowMin,
 			ImVec2(rowMin.x + rowSize.x, rowMin.y + rowSize.y),
-			held ? IM_COL32(255, 255, 255, 48) : IM_COL32(255, 255, 255, 30),
+			held ? UIColors::ActiveWash : UIColors::HoverWash,
 			imageButtonRounding
 		);
 	}
