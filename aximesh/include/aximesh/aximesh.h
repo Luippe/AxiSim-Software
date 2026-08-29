@@ -86,8 +86,8 @@ namespace AxiMesh{
 		double B = 1.0;
 		double gSmoothing = 0.1;
 		double classify_tol = 1.2247;
-		InsertionScheme scheme = InsertionScheme::REBAY;
-		//InsertionScheme scheme = InsertionScheme::ENGWIRDA;
+		//InsertionScheme scheme = InsertionScheme::REBAY;
+		InsertionScheme scheme = InsertionScheme::ENGWIRDA;
 
 
 		// smoothing variables
